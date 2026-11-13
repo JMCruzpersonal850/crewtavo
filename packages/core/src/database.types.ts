@@ -76,14 +76,14 @@ isOneToOne: false
                   ]
                 },"attachments": {
                   Row: {
-                    "caption": string | null,"company_id": string,"content_type": string | null,"created_at": string,"created_by": string | null,"file_name": string,"id": string,"owner_id": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string | null,"shareable_by": string | null,"size_bytes": number | null
+                    "caption": string | null,"company_id": string,"content_type": string | null,"created_at": string,"created_by": string | null,"file_name": string,"id": string,"marked_at": string | null,"marked_path": string | null,"owner_id": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string | null,"shareable_by": string | null,"size_bytes": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "caption"?: string | null,"company_id": string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name": string,"id"?: string,"owner_id": string,"owner_type": string,"path": string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
+                    "caption"?: string | null,"company_id": string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name": string,"id"?: string,"marked_at"?: string | null,"marked_path"?: string | null,"owner_id": string,"owner_type": string,"path": string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
                   }
                   Update: {
-                    "caption"?: string | null,"company_id"?: string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name"?: string,"id"?: string,"owner_id"?: string,"owner_type"?: string,"path"?: string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
+                    "caption"?: string | null,"company_id"?: string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name"?: string,"id"?: string,"marked_at"?: string | null,"marked_path"?: string | null,"owner_id"?: string,"owner_type"?: string,"path"?: string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
                   }
                   Relationships: [
                     {
@@ -3104,14 +3104,14 @@ isOneToOne: false
                   ]
                 },"time_entries": {
                   Row: {
-                    "approved_at": string | null,"approved_by": string | null,"auto_stopped_at": string | null,"category": string,"company_id": string,"created_at": string,"ended_at": string | null,"id": string,"in_place": Json | null,"job_id": string | null,"labor_rate": number | null,"notes": string | null,"out_place": Json | null,"reminded_at": string | null,"started_at": string,"updated_at": string,"user_id": string,"visit_id": string | null
+                    "approved_at": string | null,"approved_by": string | null,"auto_stopped_at": string | null,"category": string,"company_id": string,"created_at": string,"ended_at": string | null,"geofence_in": boolean,"geofence_out": boolean,"id": string,"in_place": Json | null,"job_id": string | null,"labor_rate": number | null,"notes": string | null,"out_place": Json | null,"reminded_at": string | null,"started_at": string,"updated_at": string,"user_id": string,"visit_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"company_id": string,"created_at"?: string,"ended_at"?: string | null,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at": string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
+                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"company_id": string,"created_at"?: string,"ended_at"?: string | null,"geofence_in"?: boolean,"geofence_out"?: boolean,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at": string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
                   }
                   Update: {
-                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"company_id"?: string,"created_at"?: string,"ended_at"?: string | null,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at"?: string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
+                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"company_id"?: string,"created_at"?: string,"ended_at"?: string | null,"geofence_in"?: boolean,"geofence_out"?: boolean,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at"?: string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -4491,7 +4491,7 @@ isOneToOne: false
                            },
 "record_photos":
 { Args: { "p_client"?: string,"p_company": string,"p_job"?: string }; Returns: {
-              "can_share": boolean,"cant_share": string,"content_type": string,"created_at": string,"created_by": string,"file_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string,"visit_id": string,"visit_on": string
+              "can_share": boolean,"cant_share": string,"content_type": string,"created_at": string,"created_by": string,"file_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"marked_path": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string,"visit_id": string,"visit_on": string
             }[]
                            },
 "record_referral":
