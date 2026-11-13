@@ -16,7 +16,7 @@ import { formatDateTime, timeAgo } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
-import { ConnectEmailHint } from "../settings/ConnectEmailHint";
+import { ConnectEmailHint, ConnectTextingHint } from "../settings/ConnectEmailHint";
 
 export interface RuleRow {
   id: string;
@@ -79,8 +79,8 @@ export function AutomationsPage() {
         <div className="callout callout-warning">
           <Icon name="alert" size={20} />
           <div className="grow">
-            <div>{usesEmail && !session.config.features.email ? "Email isn't connected" : "Texting isn't set up on this server"}</div>
-            <div className="small" style={{ fontWeight: 400 }}>Rules that send {usesEmail && !session.config.features.email ? "emails" : "texts"} will show as failed until it is. Notifications, tags and tasks still work.{usesEmail && !session.config.features.email && <ConnectEmailHint />}</div>
+            <div>{usesEmail && !session.config.features.email ? "Email isn't connected" : "Texting isn't set up"}</div>
+            <div className="small" style={{ fontWeight: 400 }}>Rules that send {usesEmail && !session.config.features.email ? "emails" : "texts"} will show as failed until it is. Notifications, tags and tasks still work.{usesEmail && !session.config.features.email ? <ConnectEmailHint /> : <ConnectTextingHint />}</div>
           </div>
         </div>
       ) : null}

@@ -13,7 +13,7 @@ import { checkMailbox, emailConfigured, loadMailbox, sendEmail, smsConfigured } 
 import { adminClient, publishableKey, type Db } from "../lib/supabase";
 import { timeRates } from "../services/payRates";
 import { saveLetterheadPicture } from "../services/letterhead";
-import { emailCodesOffered } from "../services/signInCodes";
+import { emailCodesOffered, textCodesOffered } from "../services/signInCodes";
 import { removeLogo, setLogo } from "../services/logo";
 import { removePhoto, setPhoto } from "../services/photos";
 import { adminAccess, allowAdminGrant, invitePerson, inviteStatus, sendInvite, welcomeLink, type TeamScope } from "../services/team";
@@ -67,6 +67,8 @@ account.get("/config", async (c) =>
         // Whether the sign-in page offers a sub a sign-in code by email (services/signInCodes.ts): the
         // way in when this Crewtavo can't text, and the one for a sub with no phone on file when it can.
         emailCodes: await emailCodesOffered(c.env),
+        // And a code by text: with the server's Twilio account, or any company's own (the same service).
+        smsCodes: await textCodesOffered(c.env),
         devMail: Boolean(c.env.MAILPIT_URL && !c.env.RESEND_API_KEY),
         roofInsights: Boolean(c.env.GOOGLE_MAPS_SERVER_KEY),
       },
@@ -119,7 +121,7 @@ account.get("/me", requireUser, async (c) => {
   // ...and, on Railway, whether the owner still has to connect it (services/railway.ts).
   const [connected, agreements, railways] = companyIds.length
     ? await Promise.all([
-        adminClient(c.env).from("integrations").select("company_id, provider").in("provider", ["email", "anthropic", "fal"]).neq("status", "disconnected").in("company_id", companyIds),
+        adminClient(c.env).from("integrations").select("company_id, provider, external_account_id").in("provider", ["email", "anthropic", "fal", "twilio"]).neq("status", "disconnected").in("company_id", companyIds),
         adminClient(c.env).from("terms_acceptances").select("company_id").eq("version", TERMS_VERSION).in("company_id", companyIds),
         adminClient(c.env).from("integrations").select("company_id, status").eq("provider", "railway").in("company_id", companyIds),
       ]).then(([apps, terms, railway]) => [must(apps), must(terms), must(railway)] as const)
@@ -127,6 +129,8 @@ account.get("/me", requireUser, async (c) => {
   const withMailbox = new Set(connected.filter((r) => r.provider === "email").map((r) => r.company_id));
   const withClaudeKey = new Set(connected.filter((r) => r.provider === "anthropic").map((r) => r.company_id));
   const withFal = new Set(connected.filter((r) => r.provider === "fal").map((r) => r.company_id));
+  // (One connected with its Account SID: a key saved the old way never sent anything.)
+  const withTwilio = new Set(connected.filter((r) => r.provider === "twilio" && r.external_account_id).map((r) => r.company_id));
   const agreed = new Set(agreements.map((r) => r.company_id));
   const all = must(everyRole);
   return c.json({
@@ -153,6 +157,8 @@ account.get("/me", requireUser, async (c) => {
           : null,
         // Whether email goes out for this company (its own mailbox): for a sub too, whose notices it sends.
         email_connected: withMailbox.has(m.company_id),
+        // Whether texts go out for this company from its own Twilio account (Apps → Twilio): for a sub too.
+        sms_connected: withTwilio.has(m.company_id),
         ai_connected: staff && withClaudeKey.has(m.company_id),
         // Apps → fal.ai: Find paving on the measuring map.
         fal_connected: staff && withFal.has(m.company_id),

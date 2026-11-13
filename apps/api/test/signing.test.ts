@@ -626,7 +626,7 @@ describe("the signed copy", () => {
     const res = await call(`/quotes/${QUOTE}/send-copy`, { channel: "sms" });
     const body = await res.json();
     expect(body).toEqual({ sent: true, link: expect.stringContaining("/hub/") });
-    expect(sendSms).toHaveBeenCalledWith(env, { to: "(614) 555-0142", body: expect.stringMatching(/^Ridgeline Roofing: Here's your signed estimate\. You can view, print or save it any time: https:\/\/ops\.example\.com\/hub\/\S+$/) });
+    expect(sendSms).toHaveBeenCalledWith(env, { to: "(614) 555-0142", company: ROOFER, body: expect.stringMatching(/^Ridgeline Roofing: Here's your signed estimate\. You can view, print or save it any time: https:\/\/ops\.example\.com\/hub\/\S+$/) });
     // The text has the client's own link; the person sending it and the timeline get the office's copy.
     expect((await hubLinkIn(sendSms.mock.calls[0]![1].body))!.via).toBeUndefined();
     expect(await hubLinkIn(sendSms.mock.calls[0]![1].body)).toMatchObject({ own: 1 });

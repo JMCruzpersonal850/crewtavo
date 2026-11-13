@@ -4,7 +4,8 @@
  *      SMTP with an app password, or the company's Resend key;
  *   2. the server's Resend account (RESEND_API_KEY, EMAIL_FROM), if whoever installed it set one;
  *   3. in development, the local Mailpit inbox (MAILPIT_URL).
- * SMS uses Twilio over REST. When nothing is set up, sends are skipped and the caller gets
+ * SMS uses Twilio over REST: the company's own account when it connected one (Apps → Twilio), else
+ * the server's (lib/twilio.ts). When nothing is set up, sends are skipped and the caller gets
  * { sent: false } plus the reason; the UI can then offer the link to copy instead.
  * How each send for a company went is noted (noteSending), so its owners and admins hear on the bell
  * and by push when its email or texts stop going out, and not only on Settings → Email.
@@ -15,6 +16,7 @@ import { decryptJson } from "./crypto";
 import { reportError } from "./monitoring";
 import { smtpSend, SmtpError, type SmtpSettings } from "./smtp";
 import { adminClient } from "./supabase";
+import { companyTwilio, postMessage, twilioFor, type TwilioAccount } from "./twilio";
 
 export interface SendResult {
   sent: boolean;
@@ -109,12 +111,19 @@ export async function anyMailbox(env: Env): Promise<boolean | null> {
 
 /** Is there a server-wide way to send (Resend for the whole install, or Mailpit in development)? */
 export const emailConfigured = (env: Env) => Boolean((env.RESEND_API_KEY && env.EMAIL_FROM) || env.MAILPIT_URL);
+/** The same for texts: the server's own Twilio account (or Mailpit in development). A company may have its own: smsReady. */
 export const smsConfigured = (env: Env) => Boolean((env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) || env.MAILPIT_URL);
 
 /** Can this company send email (its own mailbox, or the server's)? */
 export async function emailReady(env: Env, companyId?: string | null): Promise<boolean> {
   if (companyId && (await loadMailbox(env, companyId).catch(() => null))) return true;
   return emailConfigured(env);
+}
+
+/** Can this company send texts (its own Twilio account, or the server's)? */
+export async function smsReady(env: Env, companyId?: string | null): Promise<boolean> {
+  if (companyId && (await companyTwilio(env, companyId).catch(() => null))) return true;
+  return smsConfigured(env);
 }
 
 /** `"Name" <email>`: quoted, so a comma in the name ("Acme Lawn Care, LLC") doesn't split it in two. */
@@ -198,6 +207,8 @@ const SENDING_WARNING = {
     fix: "Reminders and other texts won't reach anyone until it's fixed. Check the Twilio account, and the Twilio keys this Crewtavo was set up with.",
   },
 };
+/** The same for a company on its own Twilio account, which it fixes itself on the Apps page. */
+const OWN_TWILIO_FIX = "Reminders and other texts won't reach anyone until it's fixed. Check your Twilio account, then connect it again in Apps → Twilio.";
 
 /**
  * Tells the database how a company's email or text went, so its owners and admins hear when sending
@@ -206,7 +217,7 @@ const SENDING_WARNING = {
  * that can't be sent to says nothing about the company's sending, so it isn't counted. Never throws:
  * whether the message went is already known, and this mustn't change it.
  */
-export async function noteSending(env: Env, companyId: string, channel: "email" | "sms", result: SendResult): Promise<void> {
+export async function noteSending(env: Env, companyId: string, channel: "email" | "sms", result: SendResult, ownTwilio = false): Promise<void> {
   const problem = result.sent ? null : sendProblem(result);
   if (problem === "unset" || problem === "recipient") return;
   const key = `${companyId}:${channel}`;
@@ -221,7 +232,7 @@ export async function noteSending(env: Env, companyId: string, channel: "email" 
       problem
         ? {
             p_company: companyId, p_channel: channel, p_ok: false, p_error: reason, p_refused: problem === "sign_in",
-            p_title: words.title, p_body: [problem === "sign_in" ? "" : words.lead, reason, words.fix].filter(Boolean).join(" "),
+            p_title: words.title, p_body: [problem === "sign_in" ? "" : words.lead, reason, channel === "sms" && ownTwilio ? OWN_TWILIO_FIX : words.fix].filter(Boolean).join(" "),
           }
         : { p_company: companyId, p_channel: channel, p_ok: true },
     );
@@ -354,28 +365,43 @@ async function mailpit(env: Env, message: EmailMessage & { from?: string }): Pro
 }
 
 /**
- * Send a text. Given the company it's for (sends nobody is watching: notifications, automations,
- * review asks), how it went is noted, so its owners hear when texts stop going out (noteSending).
+ * Send a text, from the company's own Twilio account when it has one, else the server's. `company`
+ * says whose account when someone is sending by hand and watching how it goes. Given as
+ * `companyId` (sends nobody is watching: notifications, automations, review asks), how it went is
+ * also noted, so its owners hear when texts stop going out (noteSending).
  */
-export async function sendSms(env: Env, message: { to: string; body: string }, companyId?: string | null): Promise<SendResult> {
-  const result = await textOut(env, message);
-  if (companyId) await noteSending(env, companyId, "sms", result);
+export async function sendSms(env: Env, message: { to: string; body: string; company?: string | null }, companyId?: string | null): Promise<SendResult> {
+  const whose = companyId ?? message.company ?? null;
+  const account = await twilioFor(env, whose);
+  const result = await textOut(env, account, message);
+  if (account?.own && whose) await noteTwilioHealth(env, whose, account, result);
+  if (companyId) await noteSending(env, companyId, "sms", result, Boolean(account?.own));
   return result;
 }
 
-async function textOut(env: Env, message: { to: string; body: string }): Promise<SendResult> {
-  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM_NUMBER: from } = env;
-  if ((!sid || !token || !from) && env.MAILPIT_URL) {
+/**
+ * Show a company's own Twilio account that stopped signing in (a changed Auth Token, a closed
+ * account) on its Apps page, and clear it once a text goes through again.
+ */
+async function noteTwilioHealth(env: Env, companyId: string, account: TwilioAccount, result: SendResult) {
+  const refused = !result.sent && sendProblem(result) === "sign_in";
+  const next = result.sent ? "connected" : refused ? "error" : account.status;
+  if (!next || next === account.status) return;
+  account.status = next;
+  await adminClient(env)
+    .from("integrations")
+    .update({ status: next, last_error: result.sent ? null : (result.reason ?? "").slice(0, 500) })
+    .eq("company_id", companyId)
+    .eq("provider", "twilio");
+}
+
+async function textOut(env: Env, account: TwilioAccount | null, message: { to: string; body: string }): Promise<SendResult> {
+  if (!account && env.MAILPIT_URL) {
     const digits = message.to.replace(/[^0-9]/g, "") || "unknown";
     return mailpit(env, { to: `sms-${digits}@sms.local`, subject: `Text to ${message.to}`, text: message.body });
   }
-  if (!sid || !token || !from) return { sent: false, reason: "Texting isn't set up on this Crewtavo yet." };
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-    method: "POST",
-    headers: { Authorization: `Basic ${btoa(`${sid}:${token}`)}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ To: message.to, From: from, Body: message.body }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  }).catch(() => null);
+  if (!account) return { sent: false, reason: "Texting isn't set up yet. An admin can connect a Twilio account in Apps → Twilio." };
+  const response = await postMessage(account, message);
   if (!response) return { sent: false, reason: "Couldn't reach the text provider. Try again." };
   if (!response.ok) {
     const detail = (await response.json().catch(() => ({}))) as { message?: string; code?: number };

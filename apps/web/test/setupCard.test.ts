@@ -3,7 +3,7 @@
  * the business's own, and measuring is only offered for work priced by area or length.
  */
 import { describe, expect, it } from "vitest";
-import { priceListState } from "../src/features/home/SetupCard";
+import { priceListState, sendingSteps } from "../src/features/home/SetupCard";
 
 const made = "2026-11-01T10:00:00.000+00:00";
 const item = (unit: string, extra: Partial<{ formula: string | null; created_at: string; updated_at: string }> = {}) => ({
@@ -33,5 +33,26 @@ describe("the setup checklist's price list step", () => {
     expect(priceListState(made, [changed, added, item("sq ft")])).toEqual({ prices: true, measures: true });
     // Nothing priced by measuring: the database finds none, so there's no third.
     expect(priceListState(made, [item("hr"), item("visit")])).toEqual({ prices: false, measures: false });
+  });
+});
+
+describe("email and texting on the setup checklist", () => {
+  const session = (role: string, permissions: string[], features: { email: boolean; sms: boolean }) => ({ role, permissions, config: { features } }) as unknown as Parameters<typeof sendingSteps>[0];
+  const steps = (...args: Parameters<typeof session>) => sendingSteps(session(...args)).map((s) => [s.key, s.show, s.done, s.to]);
+
+  it("asks a new owner to connect email and turn on texting, and says where", () => {
+    expect(steps("owner", [], { email: false, sms: false })).toEqual([["email", true, false, "/settings?tab=email"], ["texting", true, false, "/apps/twilio"]]);
+  });
+
+  it("ticks each off once the business can send that way, its own account or the server's", () => {
+    expect(steps("owner", [], { email: true, sms: false }).map((s) => s[2])).toEqual([true, false]);
+    expect(steps("owner", [], { email: true, sms: true }).map((s) => s[2])).toEqual([true, true]);
+  });
+
+  it("shows them to the people who can connect them", () => {
+    expect(steps("admin", ["apps", "settings"], { email: false, sms: false }).map((s) => s[1])).toEqual([true, true]);
+    // An admin who doesn't connect apps can still set up email from Settings.
+    expect(steps("admin", ["settings"], { email: false, sms: false }).map((s) => s[1])).toEqual([true, false]);
+    expect(steps("office", ["apps", "settings"], { email: false, sms: false }).map((s) => s[1])).toEqual([false, false]);
   });
 });

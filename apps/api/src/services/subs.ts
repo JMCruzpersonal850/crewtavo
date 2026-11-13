@@ -10,7 +10,7 @@ import { firstName, renderEmail } from "../lib/email";
 import { HttpError, must } from "../lib/http";
 import { clientLink, linkLifetimeDays } from "../lib/links";
 import { reportError } from "../lib/monitoring";
-import { sendEmail, sendSms, smsConfigured } from "../lib/notify";
+import { sendEmail, sendSms, smsReady } from "../lib/notify";
 import type { Db } from "../lib/supabase";
 import { logoImage } from "./logo";
 
@@ -70,9 +70,9 @@ async function sendToSub(env: Env, baseUrl: string, company: Company, sub: Sub, 
   }
   if (channels.includes("sms")) {
     if (!sub.phone) out.sms = { sent: false, reason: "Add a phone number for this sub first." };
-    else if (!smsConfigured(env)) out.sms = { sent: false, reason: "Texting isn't set up. Copy the link and text it yourself." };
+    else if (!(await smsReady(env, company.id))) out.sms = { sent: false, reason: "Texting isn't set up. Copy the link and text it yourself." };
     else {
-      const result = await sendSms(env, { to: sub.phone, body: message.sms });
+      const result = await sendSms(env, { to: sub.phone, body: message.sms, company: company.id });
       out.sms = { sent: result.sent, reason: result.sent ? null : result.reason ?? "The text didn't go out." };
     }
   }
@@ -142,7 +142,7 @@ export async function remindSubs(env: Env, admin: Db, alerts: readonly SubAlert[
       const text = `Hi ${firstName(sub.contact_name || sub.name)},\n\n${intro}\n\n${lines.join("\n")}\n\nPlease send us ${items.length === 1 ? "the new one" : "the new ones"} here:\n\n${link}\n\nThanks,\n${company.name}`;
       const sms = `${company.name}: ${lines.join(", ")}. Please send us ${items.length === 1 ? "the new one" : "the new ones"}: ${link}`;
       const subject = items.length === 1 ? `Your ${subDocumentLabel(items[0]!.kind).toLowerCase()} on file with ${company.name} ${ended ? "has run out" : "is running out"}` : `Your paperwork on file with ${company.name}`;
-      const channels = [...(sub.email ? (["email"] as const) : []), ...(sub.phone && smsConfigured(env) ? (["sms"] as const) : [])];
+      const channels = [...(sub.email ? (["email"] as const) : []), ...(sub.phone && (await smsReady(env, company.id)) ? (["sms"] as const) : [])];
       // The database only asks for subs there's a way to reach; one that can't be is a miss to count.
       if (!channels.length) {
         counts.failed++;

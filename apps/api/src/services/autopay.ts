@@ -34,7 +34,7 @@ import { firstName, isEmail, renderEmail } from "../lib/email";
 import { HttpError } from "../lib/http";
 import { clientLinks } from "../lib/links";
 import { reportError } from "../lib/monitoring";
-import { emailReady, sendEmail, sendSms, smsConfigured } from "../lib/notify";
+import { emailReady, sendEmail, sendSms, smsReady } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
 import { logoImage } from "./logo";
@@ -639,9 +639,9 @@ export async function sendAutopayNotice(env: Env, admin: Db, chargeId: string, s
     return "sent";
   }
   // Never to a client who texted STOP (and Twilio saying they did is kept).
-  if (client.phone && smsConfigured(env) && !textsOff(client)) {
+  if (client.phone && (await smsReady(env, company.id)) && !textsOff(client)) {
     const body = (who: Who) => `${company.name}: ${short}${invoiceLink ? ` ${invoiceLink[who]}` : ""}`;
-    const result = await sendSms(env, { to: client.phone, body: body("own") });
+    const result = await sendSms(env, { to: client.phone, body: body("own"), company: company.id });
     await noteRefusedText(admin, client, client.phone, result, company.id);
     if (!result.sent) throw new Error(result.reason ?? "The notice wasn't sent.");
     await logMessage(admin, { company_id: company.id, client_id: client.id, channel: "sms", subject: null, body: body("office"), related_type: "invoice", related_id: invoice.id, external_id: key });
@@ -697,9 +697,9 @@ export async function sendAutopayAgreed(env: Env, admin: Db, authorizationId: st
     await logMessage(admin, { company_id: company.id, client_id: who.id, channel: "email", subject, body: write("office"), related_type: "autopay", related_id: who.id, external_id: key });
     return "sent";
   }
-  if (who.phone && smsConfigured(env) && !textsOff(who)) {
+  if (who.phone && (await smsReady(env, company.id)) && !textsOff(who)) {
     const body = (link: Who) => `${company.name}: ${intro} Not you, or changed your mind? ${links ? `Turn it off here: ${links[link]}` : "Contact us to turn it off."}`;
-    const result = await sendSms(env, { to: who.phone, body: body("own") });
+    const result = await sendSms(env, { to: who.phone, body: body("own"), company: company.id });
     await noteRefusedText(admin, who, who.phone, result, company.id);
     if (!result.sent) throw new Error(result.reason ?? "The copy of the agreement wasn't sent.");
     await logMessage(admin, { company_id: company.id, client_id: who.id, channel: "sms", subject: null, body: body("office"), related_type: "autopay", related_id: who.id, external_id: key });
@@ -805,7 +805,7 @@ export async function sendAutopayInvite(
   }
   if (input.channel === "email" && !reachable(client.email)) throw new Error("This client has no email address.");
   if (input.channel === "sms" && !client.phone) throw new Error("This client has no mobile number.");
-  if (input.channel === "sms" && !smsConfigured(env)) throw new Error("Texting isn't set up.");
+  if (input.channel === "sms" && !(await smsReady(env, input.companyId))) throw new Error("Texting isn't set up.");
   if (input.channel === "sms" && textsOff(client)) return { sent: false, detail: `Skipped: ${textsOffReason(client.display_name)}` };
 
   // A card brought in from Stripe that they haven't agreed to: one tap confirms it. Not one saved
@@ -837,7 +837,7 @@ export async function sendAutopayInvite(
   const sms = (url: string) => words(url).sms;
   // The button says what tapping it does here; receipts and notices keep "Manage autopay".
   const button = card ? "Confirm autopay" : "Save your card";
-  const result = input.channel === "email" ? await emailFrom(env, company, client.email!.trim(), subject, text(links.own), base, button) : await sendSms(env, { to: client.phone!, body: sms(links.own) });
+  const result = input.channel === "email" ? await emailFrom(env, company, client.email!.trim(), subject, text(links.own), base, button) : await sendSms(env, { to: client.phone!, body: sms(links.own), company: input.companyId });
   if (input.channel === "sms") await noteRefusedText(admin, client, client.phone!, result, input.companyId);
   if (!result.sent) throw new Error(result.reason ?? "The invite wasn't sent.");
   await logMessage(admin, {

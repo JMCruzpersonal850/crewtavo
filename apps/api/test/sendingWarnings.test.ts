@@ -161,6 +161,21 @@ describe("a text", () => {
     }]);
   });
 
+  it("from the company's own Twilio account says where the company fixes it, and shows on its Apps page", async () => {
+    const co = company();
+    const w = world({
+      twilio: () => Response.json({ code: 20003, message: "Authenticate" }, { status: 401 }),
+      integrations: [{ company_id: co, provider: "twilio", status: "connected", external_account_id: `AC${"a".repeat(32)}`, settings: { from_number: "+15405550100" } }],
+      integration_secrets: [{ company_id: co, provider: "twilio", ciphertext: await encryptJson(env, { api_key: "own-token" }) }],
+    });
+    const { noted, updates } = serve(w);
+    expect(await sendSms(env, { to: "+15405550101", body: "Reminder" }, co)).toMatchObject({ sent: false, status: 401 });
+    expect(noted[0]!.p_body).toBe(
+      "The text provider refused it (401: Authenticate). Reminders and other texts won't reach anyone until it's fixed. Check your Twilio account, then connect it again in Apps → Twilio.",
+    );
+    expect(updates).toEqual([{ status: "error", last_error: "The text provider refused it (401: Authenticate)." }]);
+  });
+
   it("to a number that can't be texted isn't counted, and neither is one sent for no company", async () => {
     const w = world({ twilio: () => Response.json({ code: 21610, message: "Attempt to send to unsubscribed recipient" }, { status: 400 }) });
     const { noted } = serve(w);

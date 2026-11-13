@@ -19,6 +19,7 @@ import { isEmail, renderEmail } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson, uuid } from "../lib/http";
 import { sentToClient } from "../lib/links";
 import { sendEmail, sendSms } from "../lib/notify";
+import { inboundAccounts } from "../lib/twilio";
 import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
 import { logoImage } from "../services/logo";
@@ -57,7 +58,7 @@ messages.post("/messages/send", requireUser, requireCompany(SALES), async (c) =>
     if (textsOffTo(client, to)) throw new HttpError(400, textsOffRefusal(client.display_name));
     if (await numberStopped(adminClient(c.env), companyId, to)) throw new HttpError(400, numberStoppedRefusal(to));
     if (body.body.length > 1600) throw new HttpError(400, "Texts are limited to 1,600 characters.");
-    result = await sendSms(c.env, { to, body: body.body });
+    result = await sendSms(c.env, { to, body: body.body, company: companyId });
     await noteRefusedText(adminClient(c.env), client, to, result, companyId);
   }
   const { data: row, error } = await db
@@ -82,17 +83,27 @@ export async function twilioSignature(token: string, url: string, params: Record
   return btoa(String.fromCharCode(...mac));
 }
 
-/** Incoming texts (set this URL as the Twilio number's messaging webhook). */
+/**
+ * Incoming texts (set this URL as the Twilio number's messaging webhook). Twilio signs each request
+ * with the Auth Token of the account the number is in, so whose text it is comes from which token
+ * signed it: a company's own account (the one the request's AccountSid and To name, lib/twilio.ts
+ * inboundAccounts), whose texts are that company's alone, or the server's, whose number every
+ * company without its own shares. A request no known token signed is refused.
+ */
 messages.post("/webhooks/twilio", async (c) => {
-  const token = c.env.TWILIO_AUTH_TOKEN;
-  if (!token) throw new HttpError(501, "Texting isn't configured.");
   const form = Object.fromEntries((await c.req.formData()).entries()) as Record<string, string>;
+  const admin = adminClient(c.env);
+  const accounts = await inboundAccounts(c.env, admin, form);
+  if (!accounts.length) throw new HttpError(501, "Texting isn't configured.");
   // Twilio signs the exact address it posts to: APP_URL, or one this instance had before a switch.
   const signature = c.req.header("x-twilio-signature") ?? "";
-  const signedFor = async (base: string) => safeEqual(await twilioSignature(token, `${base}/api/webhooks/twilio`, form), signature);
-  let signed = await signedFor(appUrl(c));
-  for (const base of signed ? [] : (await addressHistory(c.env)).origins) if (await signedFor(base)) signed = true;
-  if (!signed) throw new HttpError(403, "Bad signature.");
+  const signedBy = async (base: string) => {
+    for (const account of accounts) if (safeEqual(await twilioSignature(account.token, `${base}/api/webhooks/twilio`, form), signature)) return account;
+    return null;
+  };
+  let account = await signedBy(appUrl(c));
+  for (const base of account ? [] : (await addressHistory(c.env)).origins) account ??= await signedBy(base);
+  if (!account) throw new HttpError(403, "Bad signature.");
 
   const from = phoneKey(form.From);
   const body = (form.Body ?? "").slice(0, 10_000);
@@ -101,8 +112,8 @@ messages.post("/webhooks/twilio", async (c) => {
   const optOut = (form.OptOutType ?? "").toUpperCase();
   const keyword = optOut === "STOP" ? "stop" : optOut === "START" ? "start" : optOut ? null : smsKeyword(body);
   // Filed under the client or contact whose number it is, or kept as from an unknown number
-  // (services/inboundTexts.ts). The server's own number is shared by every company here.
-  const touched = await receiveText(adminClient(c.env), { from: form.From!, body, sid: form.MessageSid ?? null, keyword }, null);
+  // (services/inboundTexts.ts), for the companies on the account that signed it.
+  const touched = await receiveText(admin, { from: form.From!, body, sid: form.MessageSid ?? null, keyword }, account.companies);
   for (const company of touched) kickAutomations(c, company);
   return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
 });

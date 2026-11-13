@@ -26,7 +26,7 @@ export interface AppConfig {
    * `emailCodes`: a sub can get a sign-in code by email, since this Crewtavo sends email in some way
    * (its own sender or some company's mailbox). For the whole instance, never one business.
    */
-  features: { ai: boolean; payments: boolean; email: boolean; sms: boolean; emailCodes?: boolean; roofInsights: boolean; devMail?: boolean; findPaving?: boolean };
+  features: { ai: boolean; payments: boolean; email: boolean; sms: boolean; emailCodes?: boolean; smsCodes?: boolean; roofInsights: boolean; devMail?: boolean; findPaving?: boolean };
   /**
    * Import from Google Drive (Drive's Google Picker), when the deployment sets GOOGLE_CLIENT_ID and
    * GOOGLE_PICKER_API_KEY: the OAuth client, the browser key and the Cloud project number. All public.
@@ -37,12 +37,23 @@ export interface AppConfig {
 
 /**
  * What's on for one business: the instance's own keys (config), or what the business set up itself.
- * Its own mailbox (Settings → Email) turns email on, its own Anthropic key (Apps → Claude) AI, and
- * its fal.ai key (Apps → fal.ai) Find paving on the measuring map.
+ * Its own mailbox (Settings → Email) turns email on, its own Twilio account (Apps → Twilio) texting,
+ * its own Anthropic key (Apps → Claude) AI, and its fal.ai key (Apps → fal.ai) Find paving on the
+ * measuring map.
  */
-export function companyFeatures(features: AppConfig["features"], company: { email_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean }): AppConfig["features"] {
+export function companyFeatures(
+  features: AppConfig["features"],
+  company: { email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean },
+): AppConfig["features"] {
   const ownMailbox = Boolean(company.email_connected);
-  return { ...features, email: features.email || ownMailbox, devMail: !ownMailbox && Boolean(features.devMail), ai: features.ai || Boolean(company.ai_connected), findPaving: Boolean(company.fal_connected) };
+  return {
+    ...features,
+    email: features.email || ownMailbox,
+    sms: features.sms || Boolean(company.sms_connected),
+    devMail: !ownMailbox && Boolean(features.devMail),
+    ai: features.ai || Boolean(company.ai_connected),
+    findPaving: Boolean(company.fal_connected),
+  };
 }
 
 // Kept across hot reloads in development so modules that re-import this one keep a live client.

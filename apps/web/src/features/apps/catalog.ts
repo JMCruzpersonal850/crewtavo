@@ -47,6 +47,23 @@ export interface AppRow {
   google_business?: GoogleBusinessState;
   /** Facebook & Instagram: the Page and Instagram account posts go to, and what's in the way. */
   meta?: MetaState;
+  /** Twilio: whose account texts go from, and where the number's incoming texts go (routes/apps.ts). */
+  twilio?: TwilioState | null;
+}
+
+export interface TwilioState {
+  /** The company connected its own Twilio account; `from_number` is the number texts go from. */
+  own: boolean;
+  /** Texts go from the Twilio account the server was set up with (the company hasn't connected its own). */
+  server: boolean;
+  from_number: string | null;
+  /** The address Twilio sends incoming texts to for this Crewtavo, and whether the company's number does. */
+  webhook_url: string;
+  webhook_set: boolean;
+  /** Where the number sends incoming texts now, when that's somewhere else. */
+  other_webhook: string | null;
+  /** This Crewtavo has a public https address, which Twilio needs to reach it. */
+  reachable: boolean;
 }
 
 export interface MetaState {
@@ -656,14 +673,15 @@ export const APP_INFO: Record<string, AppInfo> = {
   twilio: {
     developer: "Twilio",
     tagline: "Texts that reach your clients",
-    about: "Send visit reminders and on-my-way texts, and keep two-way conversations with clients in Messages.",
+    about:
+      "Send visit reminders and on-my-way texts, and keep two-way conversations with clients in Messages. Connect your own Twilio account with three things from your Twilio console: your Account SID, your Auth Token and your number. Crewtavo checks them with Twilio before saving, texts from your number, and can point the number's replies at Messages for you. Twilio bills you directly for what you send.",
     highlights: [
       { icon: "bell", title: "Reminders", text: "The day before, so clients leave the gate open." },
       { icon: "truck", title: "On my way", text: "One tap from the field when a crew heads out." },
       { icon: "messages", title: "Conversations", text: "Replies land in Messages for the whole office." },
     ],
-    access: ["Send texts from your number", "Receive replies"],
-    connectsWith: "API key",
+    access: ["Send texts from your number", "Receive replies, and stop texting anyone who texts STOP", "Set where your number sends incoming texts, only when you ask"],
+    connectsWith: "Your Twilio account",
     website: "https://www.twilio.com/",
     open: "/messages",
   },

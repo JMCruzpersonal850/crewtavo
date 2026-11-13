@@ -37,6 +37,7 @@ import { allowStrict } from "../lib/limit";
 import { reportError } from "../lib/monitoring";
 import { sealAuthToken } from "../lib/signInGuard";
 import { anyMailbox, emailConfigured, emailReady, sendEmail, sendSms, smsConfigured } from "../lib/notify";
+import { anyTwilio } from "../lib/twilio";
 import { adminClient } from "../lib/supabase";
 import { visitorBlock } from "../lib/visitor";
 import { logoImage } from "./logo";
@@ -233,14 +234,25 @@ async function withinBudget(env: Env, way: Way): Promise<boolean> {
 }
 
 /**
+ * Whether the sign-in page offers codes by text (GET /api/config, features.smsCodes): when this
+ * Crewtavo can text at all, through the server's Twilio account or at least one company's own. It's
+ * the same for everyone, as with codes by email (emailCodesOffered). When it can't be told, they are.
+ */
+export async function textCodesOffered(env: Env): Promise<boolean> {
+  return smsConfigured(env) || ((await anyTwilio(env)) ?? true);
+}
+
+/**
  * Text me a code (POST /api/auth/text-code): texts a code when the number belongs to a sub's sign-in,
- * and answers { sent: true } either way. The text goes out after the answer, through `later`. Only
- * when the instance can't text at all does it say so, which says nothing about anyone's number.
+ * and answers { sent: true } either way, whether or not that sub's company can text (that's the
+ * company's, and says nothing here). The text goes out after the answer, through `later`, from the
+ * sub's company's own Twilio account when it has one, else the server's. Only when the instance
+ * can't text at all does it say so, which says nothing about anyone's number.
  */
 export async function askForCode(env: Env, phone: string, ip: string, later: (work: Promise<unknown>) => void): Promise<TextCodeAnswer> {
-  if (!smsConfigured(env)) return { sent: false, reason: "sms_off" };
+  if (!(await textCodesOffered(env))) return { sent: false, reason: "sms_off" };
   const e164 = readPhone(phone);
-  for (const { login, code } of await newCodes(env, TEXT, e164, ip)) later(textCode(env, e164, code, login.company_name));
+  for (const { login, code } of await newCodes(env, TEXT, e164, ip)) later(textCode(env, e164, code, login.company_name, login.company_id));
   return { sent: true };
 }
 
@@ -248,9 +260,9 @@ export async function askForCode(env: Env, phone: string, ip: string, later: (wo
  * Texts the code, after the answer. The instance's hourly limit on texts is counted here, only for
  * texts that would go out, and never shows in the answer or how long it takes: past it, no text.
  */
-async function textCode(env: Env, to: string, code: string, companyName: string) {
+async function textCode(env: Env, to: string, code: string, companyName: string, companyId: string) {
   if (!(await withinBudget(env, TEXT))) return;
-  const sent = await sendSms(env, { to, body: signInCodeText(code, companyName) });
+  const sent = await sendSms(env, { to, body: signInCodeText(code, companyName), company: companyId });
   // The provider's reason can repeat the number, which stays out of the log.
   if (!sent.sent) console.error(`Text sign-in: a code didn't go out. ${(sent.reason ?? "").replace(/\+?\d[\d ().-]{5,}\d/g, "(number)")}`.trim());
 }

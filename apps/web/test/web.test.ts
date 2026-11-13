@@ -84,6 +84,15 @@ describe("what's on for a business", () => {
     expect(companyFeatures(off, {})).toMatchObject({ email: false, devMail: true });
   });
 
+  it("turns texting on with the business's own Twilio account, without one on the server", () => {
+    expect(companyFeatures(off, { sms_connected: true }).sms).toBe(true);
+    expect(companyFeatures(off, {}).sms).toBe(false);
+    // The server's account texts for every business that hasn't connected its own.
+    expect(companyFeatures({ ...off, sms: true }, { sms_connected: false }).sms).toBe(true);
+    // Whether the sign-in page offers a code by text is the whole Crewtavo's, as for email.
+    expect(companyFeatures({ ...off, smsCodes: true }, {})).toMatchObject({ sms: false, smsCodes: true });
+  });
+
   it("keeps whether a sub can get a sign-in code by email, which is for the whole Crewtavo", () => {
     expect(companyFeatures({ ...off, emailCodes: true }, {}).emailCodes).toBe(true);
     expect(companyFeatures({ ...off, emailCodes: false }, { email_connected: true })).toMatchObject({ emailCodes: false, email: true });

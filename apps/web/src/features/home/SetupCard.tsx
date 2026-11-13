@@ -1,7 +1,8 @@
 /**
  * Home: the few things that make Crewtavo the business's own, for owners and the office, here rather
- * than inside the quotes and invoices being worked on: in any trade, prices, payments, logo, team and
- * a first client, then options on a quote, and measuring for work priced by area or length. Each step ticks itself off once it's been done
+ * than inside the quotes and invoices being worked on: in any trade, prices, payments, logo, email and
+ * texting (so the first quote can go out), team and a first client, then options on a quote, and
+ * measuring for work priced by area or length. Each step ticks itself off once it's been done
  * (one small read finds out), the card goes when every step is done, and anyone can hide it for good.
  */
 import { useQuery } from "@tanstack/react-query";
@@ -102,6 +103,25 @@ export function useSetupSteps(enabled: boolean) {
   });
 }
 
+/**
+ * Email and texting, before the first quote goes out: connecting the business's own mailbox
+ * (Settings → Email) and its own Twilio account (Apps → Twilio). Each is done once this business
+ * can send that way, its own or the server's. For the people who can connect them.
+ */
+export function sendingSteps(session: Pick<Session, "role" | "permissions" | "config">) {
+  const admin = hasRole(session, "admin");
+  return [
+    {
+      key: "email", show: admin && (can(session, "apps") || can(session, "settings")), done: session.config.features.email,
+      title: "Connect your email", detail: "Quotes, invoices and reminders go out from your own address.", to: "/settings?tab=email",
+    },
+    {
+      key: "texting", show: admin && can(session, "apps"), done: session.config.features.sms,
+      title: "Turn on texting", detail: "Reminders and on-my-way texts from your own number, with your Twilio account.", to: "/apps/twilio",
+    },
+  ];
+}
+
 export function SetupCard() {
   const session = useSession();
   const key = hiddenKey(session.company.id, session.userId);
@@ -116,6 +136,7 @@ export function SetupCard() {
     { key: "prices", show: true, done: steps.data.prices, title: "Set your prices", detail: "Your services and what you charge, so quotes and invoices fill themselves in.", to: "/settings?tab=prices" },
     { key: "payments", show: takesMoney, done: Boolean(payments.data?.connected), title: "Take payments online", detail: "Clients pay their invoices by card or bank from the link you send.", to: "/settings?tab=payments" },
     { key: "logo", show: hasRole(session, "admin"), done: logo, title: "Add your logo", detail: "On your quotes, invoices and the client's portal.", to: "/settings?tab=company" },
+    ...sendingSteps(session),
     { key: "team", show: hasRole(session, "admin") && can(session, "team"), done: steps.data.team, title: "Invite your team", detail: "The office and your crews, each seeing what their role allows.", to: "/settings?tab=team" },
     { key: "client", show: true, done: steps.data.client, title: "Add your first client", detail: "Or bring your clients over from Jobber or a spreadsheet.", to: "/clients" },
     { key: "options", show: true, done: steps.data.options, title: "Offer options on a quote", detail: "Good, Better and Best side by side, and the client picks one.", to: "/quotes" },

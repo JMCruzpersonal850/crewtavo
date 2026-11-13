@@ -44,7 +44,7 @@ import type { Env } from "../env";
 import { companyFooter, firstName } from "../lib/email";
 import { clientLink, reviewLink } from "../lib/links";
 import { reportError } from "../lib/monitoring";
-import { emailReady, sendSms, smsConfigured, type SendResult } from "../lib/notify";
+import { emailReady, sendSms, smsReady, type SendResult } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { emailClient } from "./marketingEmail";
 import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT } from "./textsOff";
@@ -240,7 +240,7 @@ export async function sendReviewRequest(env: Env, admin: Db, args: ReviewArgs): 
   let channels: SendChannel[] = [];
   if (args.channel !== "link") {
     if (!automatic && args.channel === "sms" && client.phone && textsOff(client)) throw new Error(`${textsOffReason(name)} Ask by email instead.`);
-    const reach = reachOf(client, { email: await emailReady(env, args.companyId), sms: smsConfigured(env) });
+    const reach = reachOf(client, { email: await emailReady(env, args.companyId), sms: await smsReady(env, args.companyId) });
     const plan = askChannels(args.channel, reach, quiet);
     // Quiet hours text no one: with no email to go by instead, the ask waits for 9am.
     if (plan.wait) throw new WaitUntil(quietHoursEnd(now, timeZone), `Quiet hours: waits until 9am to text, since ${reach.hasEmail ? "email isn't connected" : `${name} has no email`}`);
@@ -333,6 +333,8 @@ export async function sendDueReminders(env: Env) {
   const companyById = new Map((companies.data ?? []).map((c) => [c.id, c]));
   const clientById = new Map((clients.data ?? []).map((c) => [c.id, c]));
   const ready = new Map<string, boolean>();
+  // And whether each can text: its own Twilio account, or the server's.
+  const texting = new Map<string, boolean>();
 
   const remind = async (row: (typeof claimed)[number]): Promise<"sent" | "failed" | "stopped" | "waiting" | "lost" | null> => {
     const finish = async (outcome: "sent" | "failed" | "stop" | "later", next: Date | null, note?: string) => {
@@ -347,9 +349,10 @@ export async function sendDueReminders(env: Env) {
     const settings = (company.settings ?? {}) as Record<string, unknown> & { review_url?: string };
     const timeZone = company.timezone || "UTC";
     if (!ready.has(company.id)) ready.set(company.id, await emailReady(env, company.id));
+    if (!texting.has(company.id)) texting.set(company.id, await smsReady(env, company.id));
     const plan = reminderPlan({
       request: row, client, marketingOn: marketingOn(settings), hasReviewUrl: Boolean(settings.review_url), emailReady: ready.get(company.id)!,
-      smsReady: smsConfigured(env), settings, now: new Date(), timeZone,
+      smsReady: texting.get(company.id)!, settings, now: new Date(), timeZone,
     });
     if (plan.kind === "stop") {
       await finish("stop", null, plan.why);

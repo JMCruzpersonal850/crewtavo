@@ -348,8 +348,12 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   account. Job offers they accept or decline in the field app (a lapsed certificate warns, and the
   offer records it), what's owed and paid, 1099-NEC totals by year, and a workers' comp audit
   report. Subs sign in with a link or a code by text or email, no password.
-- **Communication:** email from your own mailbox, two-way texting through Twilio, a message center,
-  and notifications in the app, by email, by text or as phone push, each person's choice.
+- **Communication:** email from your own mailbox, two-way texting through your own Twilio account
+  (connected on the Apps page, no server settings), a message center, and notifications in the app,
+  by email, by text or as phone push, each person's choice. A client's other contacts (a spouse, a
+  property manager) can be ticked to get their reminders, quotes, invoices and receipts too, a
+  quote or invoice can go to several people at once, and a text from a number nobody knows is kept
+  in Messages to add to a client.
 - **Automations and marketing:** rules like "when a quote is sent, wait 3 days, then email the
   client", campaigns, promo codes, Google review requests and referrals.
 - **Claude and ChatGPT:** a built-in connector that can look things up or run the business:
@@ -409,7 +413,7 @@ Everything an instance needs is generated. These optional settings turn on extra
 | `ANTHROPIC_API_KEY`, `AI_MODEL` | AI rewriting and answers from your SOPs. Companies can also add their own key on the Apps page. |
 | `GOOGLE_MAPS_BROWSER_KEY`, `GOOGLE_MAPS_SERVER_KEY` | Optional: Google satellite on the measuring map (Map Tiles API), and roof pitch suggestions (Solar API). Measuring needs no key: it uses free US and state imagery. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | A Stripe account shared by every company on the server. Usually not needed: each business connects its own Stripe on the Apps page. |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Text messages, and two-way texting. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | A Twilio account shared by every company on the server. Usually not needed: each business connects its own Twilio account on the Apps page. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Email through Resend. Needed on Railway's trial and Hobby plans, which block SMTP; elsewhere, a default sender until the business connects its own mailbox. |
 | `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET` | An Intuit app for QuickBooks Online sync. Usually not needed: each business pastes its own Intuit app's keys on the Apps page. |
 | `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_ACCOUNTS_URL` | A Zoho app for Zoho Books sync. Usually not needed: each business pastes its own Zoho app's keys on the Apps page. |

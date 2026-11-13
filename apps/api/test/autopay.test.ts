@@ -37,7 +37,7 @@ const m = vi.hoisted(() => ({
   sendEmail: vi.fn(),
   sendSms: vi.fn(),
   emailReady: vi.fn(),
-  smsConfigured: vi.fn(),
+  smsReady: vi.fn(),
   reportError: vi.fn(),
 }));
 vi.mock("../src/integrations/stripe", async (original) => ({
@@ -59,7 +59,7 @@ vi.mock("../src/lib/notify", async (original) => ({
   sendEmail: m.sendEmail,
   sendSms: m.sendSms,
   emailReady: m.emailReady,
-  smsConfigured: m.smsConfigured,
+  smsReady: m.smsReady,
 }));
 vi.mock("../src/lib/monitoring", async (original) => ({ ...(await original<typeof import("../src/lib/monitoring")>()), reportError: m.reportError }));
 
@@ -281,7 +281,7 @@ beforeEach(() => {
   m.sendEmail.mockResolvedValue({ sent: true, id: "em_1" });
   m.sendSms.mockResolvedValue({ sent: true, id: "SM1" });
   m.emailReady.mockResolvedValue(true);
-  m.smsConfigured.mockReturnValue(true);
+  m.smsReady.mockResolvedValue(true);
   m.chargeTip.mockResolvedValue({ status: "paid" });
   m.detachPaymentMethod.mockResolvedValue(undefined);
   stripeCalls.length = 0;
@@ -744,7 +744,7 @@ describe("the notice of a charge that didn't go through", () => {
 
     const quiet = failing();
     quiet.tables.clients![0]!.email = null;
-    m.smsConfigured.mockReturnValue(false);
+    m.smsReady.mockResolvedValue(false);
     expect(await sendAutopayNotice(env, quiet.db, CHARGE, "failed", 1)).toBe("skipped: no way to reach them");
   });
 
@@ -889,7 +889,7 @@ describe("autopay invites", () => {
     await expect(invite(world(), { baseUrl: null })).rejects.toThrow("Set APP_URL so links can go out.");
     await expect(invite(world(), { clientId: SAM })).rejects.toThrow("This client has no email address.");
     await expect(invite(world(), { channel: "sms" })).rejects.toThrow("This client has no mobile number.");
-    m.smsConfigured.mockReturnValue(false);
+    m.smsReady.mockResolvedValue(false);
     await expect(invite(world(), { clientId: SAM, channel: "sms" })).rejects.toThrow("Texting isn't set up.");
     expect(m.sendEmail).not.toHaveBeenCalled();
   });

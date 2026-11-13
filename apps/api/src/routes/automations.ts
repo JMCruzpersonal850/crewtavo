@@ -9,7 +9,7 @@ import type { AppEnv } from "../env";
 import { requireCompany, requireUser } from "../lib/auth";
 import { firstName } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson } from "../lib/http";
-import { emailReady, smsConfigured } from "../lib/notify";
+import { emailReady, smsReady } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
 import { buildContext, officeVars, processAutomations, withAutopayLink, withEvent } from "../services/automations";
 import { autopayAvailable, autopayInviteText } from "../services/autopay";
@@ -73,6 +73,7 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
   const r = (t?: string) => renderTemplate(t ?? "", vars).trim();
   const warnings: string[] = [];
   const canEmail = await emailReady(c.env, companyId);
+  const canText = await smsReady(c.env, companyId);
   const takesAutopay = (rule.actions as Action[]).some((a) => a.type === "invite_autopay") ? await autopayAvailable(c.env, admin, companyId) : true;
   const previews = (rule.actions as Action[]).map((a) => {
     switch (a.type) {
@@ -83,7 +84,7 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
         if (!ctx.client?.email) warnings.push(`${ctx.client?.display_name ?? "This client"} has no email address.`);
         return { type: a.type, to: ctx.client?.email ?? null, title: r(a.subject), body: r(a.body) };
       case "send_sms":
-        if (!smsConfigured(c.env)) warnings.push("Text messaging isn't set up on this server, so text actions will fail until it is.");
+        if (!canText) warnings.push("Texting isn't set up yet (Apps → Twilio), so text actions will fail until it is.");
         return { type: a.type, to: ctx.client?.phone ?? null, body: r(a.body) };
       case "add_note":
         return { type: a.type, body: r(a.body) };
@@ -96,7 +97,7 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
       case "invite_autopay": {
         if (!takesAutopay) warnings.push("Autopay isn't on (Settings → Payments, and a Stripe key that can save cards), so invites won't go out until it is.");
         const to = a.channel === "sms" ? (ctx.client?.phone ?? null) : (ctx.client?.email ?? null);
-        if (a.channel === "sms" && !smsConfigured(c.env)) warnings.push("Text messaging isn't set up on this server, so text actions will fail until it is.");
+        if (a.channel === "sms" && !canText) warnings.push("Texting isn't set up yet (Apps → Twilio), so text actions will fail until it is.");
         if (a.channel !== "sms" && !canEmail) warnings.push("Email isn't connected yet (Settings → Email), so email actions will fail until it is.");
         if (!to) warnings.push(`${ctx.client?.display_name ?? "This client"} has no ${a.channel === "sms" ? "mobile number" : "email address"}.`);
         // The set-up invite as it goes (a client with a card from Stripe is asked to confirm it instead).

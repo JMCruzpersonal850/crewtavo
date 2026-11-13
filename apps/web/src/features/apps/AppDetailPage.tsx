@@ -43,6 +43,7 @@ import { MetaPanel } from "./MetaPanel";
 import { SCREENSHOTS } from "./screenshots";
 import { StripePanel } from "./StripePanel";
 import { TeamChatPanel, useTeamChatSwitch } from "./TeamChatPanel";
+import { TwilioPanel } from "./TwilioPanel";
 import { useTradeAppSwitch } from "./tradeApps";
 import { WebsiteFormsPanel, useWebsiteFormsSwitch } from "./WebsiteFormsPanel";
 import { WebsitePanel } from "./WebsitePanel";
@@ -86,9 +87,9 @@ function statusOf(app: AppRow, installed: boolean): { label: string; tone: Tone 
   return { label: "Not installed", tone: "muted" };
 }
 
-/** Signed in or a key added: what /apps/:id/disconnect takes away. Stripe set up for the server isn't the company's to remove. */
+/** Signed in or a key added: what /apps/:id/disconnect takes away. Stripe or Twilio set up for the server isn't the company's to remove. */
 const hasAccount = (app: AppRow) =>
-  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own);
+  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own) && !(app.id === "twilio" && !app.twilio?.own);
 
 /** Where Open goes: a page in Crewtavo, or the app itself. */
 const openTarget = (app: AppRow, info: AppInfo) => (app.id === "stripe" && !app.stripe?.own ? "/payouts" : (info.open ?? info.website));
@@ -140,8 +141,9 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
   const refresh = () => {
     for (const key of ["apps", "calendars", "google-calendars"]) queryClient.invalidateQueries({ queryKey: [key] });
     // The company's own Anthropic key turns on Ask and the other AI buttons, a fal.ai key Find paving
-    // on the measuring map (lib/session.tsx), and the website's editor puts Website in the menu.
-    if (app.id === "anthropic" || app.id === "fal" || app.auth === "site") session.refresh();
+    // on the measuring map, its Twilio account texting (lib/session.tsx), and the website's editor
+    // puts Website in the menu.
+    if (app.id === "anthropic" || app.id === "fal" || app.id === "twilio" || app.auth === "site") session.refresh();
   };
   const connect = useMutation({
     mutationFn: () => api.post<{ authorization_url: string }>(`/apps/${app.id}/connect`),
@@ -336,7 +338,7 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           <div className="app-hero-actions">
             {actions}
             {((installed && !phase) || unavailable) && <StatusPill label={status.label} tone={status.tone} />}
-            {installed && app.id === "stripe" && !app.stripe?.own && <span className="muted small">Set up for this server</span>}
+            {installed && ((app.id === "stripe" && !app.stripe?.own) || (app.id === "twilio" && !app.twilio?.own)) && <span className="muted small">Set up for this server</span>}
             {info.beta && <StatusPill label="Beta" tone="info" />}
           </div>
         </div>
@@ -411,6 +413,8 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
             <WebsitePanel app={app} onSaved={refresh} />
           ) : app.id === "abc_supply" ? (
             <AbcSupplyPanel app={app} onChanged={refresh} />
+          ) : app.id === "twilio" ? (
+            <TwilioPanel app={app} onChanged={refresh} />
           ) : app.auth === "connector" || app.id === "anthropic" ? (
             <>
               <ConnectorCard app={app} mcpUrl={mcpUrl} setup />
@@ -436,8 +440,9 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           {app.auth === "link" && <LinkCalendarsPanel app={app.id} appName={app.name} steps={info.steps} />}
           {(app.auth === "connector" || app.id === "anthropic") && <ConnectorCard app={app} mcpUrl={mcpUrl} />}
           {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
-          {app.auth === "api_key" && app.id !== "abc_supply" && <KeyCard app={app} onSaved={refresh} />}
+          {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && <KeyCard app={app} onSaved={refresh} />}
           {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
+          {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
           {app.id === "website_analytics" && <AnalyticsPanel />}
           {app.id === "website_forms" && <WebsiteFormsPanel />}
           {app.id === "careers" && <WebsiteFormsPanel kind="careers" />}
@@ -594,7 +599,7 @@ function uninstallBody(app: AppRow, counts: { assistants: number; calendars: num
     if (hasAccount(app)) parts.push("Your Anthropic key is removed, so Crewtavo's writing help stops using it.");
     return `${parts.join(" ")} ${again}`;
   }
-  if (app.id === "twilio") return `Texts stop going out from your number. Nothing already sent is deleted. ${again}`;
+  if (app.id === "twilio") return `Texts stop going out from your number, and your Twilio account's keys are removed from Crewtavo. Nothing already sent is deleted, and your Twilio account isn't changed. ${again}`;
   if (app.auth === "site") return `Website comes out of the menu. Your website, its editor and everything on it stay as they are. ${again}`;
   return `Crewtavo stops using it right away. Nothing already here is deleted. ${again}`;
 }

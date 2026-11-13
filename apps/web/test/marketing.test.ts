@@ -212,8 +212,11 @@ describe("Marketing's code", () => {
   });
 
   it("lets a quote or invoice be texted to a different number for a client who texted STOP", () => {
+    // Their own number is listed but can't be ticked, and another number can still be typed in
+    // (test/sendRecipients.test.ts checks which numbers are marked).
     const dialog = source("../src/features/quotes/SendDialog.tsx");
-    expect(dialog).toContain('channel === "sms" && !textsOffSince ? formatPhoneTyping(phone ?? "") : ""');
+    expect(dialog).toContain("checked={!p.blocked && ticked.includes(p.to)} disabled={Boolean(p.blocked)}");
+    expect(dialog).toContain('"Another number"');
     expect(dialog).not.toContain("disabled={Boolean(textsOffSince)}");
   });
 

@@ -214,7 +214,7 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
           return sendEmail(s.env, { to: person.to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer }), replyTo: company.email ?? undefined, fromName: company.name }, s.companyId);
         })
       : await sendToEach(people, async (person) => {
-          const result = await sendSms(s.env, { to: person.to, body: `${company.name}: ${intro} ${linkFor("sms", person.to)}` });
+          const result = await sendSms(s.env, { to: person.to, body: `${company.name}: ${intro} ${linkFor("sms", person.to)}`, company: s.companyId });
           await noteRefusedText(admin, client, person.to, result, s.companyId);
           return result;
         });

@@ -13,6 +13,7 @@
  *               and routes/roofing.ts)
  *   site      - the company's website editor, by its address (Sveltia CMS: companies.settings.website, integrations/website.ts)
  * ABC Supply is an api_key app with two keys: its own app's Client ID and secret (integrations/abcSupply.ts).
+ * Twilio is an api_key app with an Account SID, an Auth Token and the number texts go from (lib/twilio.ts).
  * Google Business Profile signs in like Google Calendar, with the same Google app, and brings the
  * business's reviews into Marketing → Reviews while Marketing is installed (services/googleReviews.ts).
  * Facebook & Instagram signs in with the business's own Meta app only (its App ID and secret pasted
@@ -261,7 +262,9 @@ export const CATALOG: CatalogEntry[] = [
     description: "Text messages: reminders, on-my-way texts and two-way conversations.",
     auth: "api_key",
     docs: "https://www.twilio.com/docs/messaging",
-    available: (env) => Boolean(env.TWILIO_ACCOUNT_SID),
+    // A company connects its own Twilio account (its Account SID, Auth Token and number: lib/twilio.ts);
+    // a deployment can also set one for everyone.
+    available: () => true,
   },
   {
     id: "sveltia",

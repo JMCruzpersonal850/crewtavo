@@ -1,5 +1,6 @@
 /** Apps page: catalog with status, OAuth connect/callback/disconnect, API keys, and AI helpers. */
 import { ADMINS, type Role } from "@crewtavo/core";
+import { phoneDisplay } from "@crewtavo/core/phone";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { projectNumber } from "@crewtavo/core/reviews";
 import { websiteOf } from "@crewtavo/core/website";
@@ -13,7 +14,8 @@ import { randomId, signToken, verifyToken } from "../lib/crypto";
 import { renderEmail } from "../lib/email";
 import { endConnection, teamConnections } from "../lib/assistants";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
-import { emailReady, sendEmail } from "../lib/notify";
+import { emailReady, sendEmail, sendingWorks } from "../lib/notify";
+import { checkTwilio, companyTwilio, forgetTwilio, serverTwilio, setSmsWebhook, TwilioProblem, type TwilioSettings } from "../lib/twilio";
 import { adminClient, type Db } from "../lib/supabase";
 import { companyAnthropicKey, complete, countAiAsk } from "../services/ai";
 import { analyticsSettings } from "../services/analytics";
@@ -57,7 +59,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   // are read below. The server's key does neither.
   const can = ownKey ? await stripeCapabilities(c.env, adminClient(c.env), c.var.companyId).catch(() => null) : null;
   const [rows, calendars, company] = await Promise.all([
-    c.var.db.from("integrations").select("provider, status, account_label, connected_at, last_sync_at, last_error, settings").eq("company_id", c.var.companyId),
+    c.var.db.from("integrations").select("provider, status, account_label, external_account_id, connected_at, last_sync_at, last_error, settings").eq("company_id", c.var.companyId),
     c.var.db.from("calendar_sources").select("app, last_error").eq("company_id", c.var.companyId),
     c.var.db.from("companies").select("settings").eq("id", c.var.companyId).maybeSingle(),
   ]);
@@ -70,7 +72,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const builtinOn: Record<string, boolean> = { team_chat: (company.data?.settings as { team_chat?: { enabled?: boolean } } | null)?.team_chat?.enabled === true };
   // The website's editor, by its address (integrations/website.ts).
   const website = websiteOf(company.data?.settings as Record<string, unknown> | null);
-  const byProvider = new Map(integrations.map(({ settings, ...r }) => [r.provider, r]));
+  const byProvider = new Map(integrations.map(({ settings, external_account_id, ...r }) => [r.provider, r]));
   // Website analytics, while it counts visits (routes/analytics.ts), website forms and careers
   // (routes/websiteForms.ts), Drive (routes/drive.ts) and Marketing (routes/marketing.ts).
   builtinOn.website_analytics = analyticsSettings(company.data?.settings).enabled === true;
@@ -104,6 +106,14 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         full_key: ownKey && stripeSettings.key_kind === "secret" && stripeSettings.livemode !== false,
       }
     : null;
+  // Twilio: the company's own account (its number, and where that number's incoming texts go), or
+  // the server's for companies that haven't connected theirs. A key saved before accounts could be
+  // connected here (no Account SID with it) never sent anything, so it doesn't count.
+  const twilioRow = integrations.find((r) => r.provider === "twilio" && r.status !== "disconnected" && r.external_account_id);
+  const serverTexts = !twilioRow && Boolean(serverTwilio(c.env));
+  if (!twilioRow) byProvider.delete("twilio");
+  if (serverTexts) byProvider.set("twilio", { provider: "twilio", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
+  const twilio = twilioState(appUrl(c), twilioRow ? (twilioRow.settings as unknown as TwilioSettings) : null, serverTexts);
   // Without the company's email or the server's, the owners hear about Stripe changes on the bell only.
   const ownersEmailed = await emailReady(c.env, c.var.companyId);
   return c.json({
@@ -124,6 +134,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.auth === "site" ? { website } : {}),
         ...(entry.id === "stripe" ? { ...(stripe ? { stripe } : {}), owners_emailed: ownersEmailed } : {}),
         ...(entry.id === "abc_supply" && abc ? { supplier: abc } : {}),
+        ...(entry.id === "twilio" ? { twilio } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
         ...(takesKeys ? { takes_app_keys: true, app_keys: ownKeys } : {}),
@@ -133,6 +144,28 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
 });
 
 type IntegrationRow = { status: string; settings: unknown } | undefined;
+
+/** Where Twilio sends a number's incoming texts for this Crewtavo. */
+const twilioWebhook = (base: string) => `${base}/api/webhooks/twilio`;
+
+/**
+ * Twilio on its app page: whether texts go from the company's own account (`own`, with its number)
+ * or the server's (`server`), the address to give Twilio for incoming texts, and whether the
+ * company's number already sends them there. Twilio only reaches a public https address.
+ */
+function twilioState(base: string, own: TwilioSettings | null, server: boolean) {
+  const webhook_url = twilioWebhook(base);
+  return {
+    own: Boolean(own),
+    server,
+    from_number: own?.from_number ?? null,
+    webhook_url,
+    webhook_set: Boolean(own?.sms_url) && own!.sms_url === webhook_url,
+    // Where the number's incoming texts go now, when that's somewhere else.
+    other_webhook: own?.sms_url && own.sms_url !== webhook_url ? own.sms_url : null,
+    reachable: base.startsWith("https://"),
+  };
+}
 
 /**
  * Google Business Profile on its app page: the location, the sync's state, the review link offer and
@@ -357,6 +390,8 @@ apps.post("/apps/:provider/disconnect", requireUser, requireCompany(ADMINS, "app
     .match({ company_id: c.var.companyId, provider });
   if (error) throw dbError(error);
   if (who && was) runInBackground(c, noteStripeChange(c, who, { before: was.label, after: null, from: was.id, to: null, moved: null }));
+  // Texts go from the server's account again, if it has one, from the next one on.
+  if (provider === "twilio") forgetTwilio(c.var.companyId);
   return c.json({ provider, status: "disconnected", ...(provider === "google_business" ? { removed } : {}), ...(shared ? { revoked: false } : {}) });
 });
 
@@ -558,6 +593,75 @@ apps.put("/apps/abc_supply/account", requireUser, requireCompany(ADMINS, "apps")
   }
 });
 
+/**
+ * Twilio: the company's own account, so texting works without anyone setting up the server. The
+ * Account SID, Auth Token and sending number are checked with Twilio first (the account is read and
+ * the number looked up in it, which costs nothing), and refused with what to fix when they don't
+ * work. The token is kept encrypted and never returned.
+ */
+apps.put("/apps/twilio/account", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(
+    c,
+    z.object({
+      account_sid: z.string().trim().min(1, "Paste your Account SID.").max(60),
+      auth_token: z.string().trim().min(8, "That looks too short. Copy the whole Auth Token.").max(200).regex(/^\S+$/, "Paste it without spaces."),
+      from_number: z.string().trim().min(7, "Enter your Twilio number.").max(40),
+    }),
+  );
+  let checked;
+  try {
+    checked = await checkTwilio(body);
+  } catch (error) {
+    if (error instanceof TwilioProblem) throw new HttpError(400, error.message);
+    throw error;
+  }
+  const admin = adminClient(c.env);
+  const settings: TwilioSettings = { from_number: checked.from_number, phone_sid: checked.phone_sid, sms_url: checked.sms_url || null };
+  const { error } = await admin.from("integrations").upsert({
+    company_id: c.var.companyId,
+    provider: "twilio",
+    status: "connected",
+    account_label: `${checked.name} · ${phoneDisplay(checked.from_number)}`.slice(0, 200),
+    external_account_id: body.account_sid,
+    settings: asJson(settings),
+    connected_by: c.var.userId,
+    connected_at: new Date().toISOString(),
+    last_error: null,
+  });
+  if (error) throw dbError(error);
+  await saveSecret(c.env, admin, c.var.companyId, "twilio", { api_key: body.auth_token, extra: { account_sid: body.account_sid } });
+  forgetTwilio(c.var.companyId);
+  // A warning that texts weren't going out was about the account before this one.
+  await sendingWorks(c.env, c.var.companyId, "sms");
+  return c.json({ provider: "twilio", status: "connected", trial: checked.trial, twilio: twilioState(appUrl(c), settings, false) });
+});
+
+/**
+ * Twilio: point the company's number's incoming texts at this Crewtavo (the number's "A message
+ * comes in" webhook), so replies land in Messages without anyone pasting the address into Twilio.
+ * Only when asked: it replaces wherever the number sent them before.
+ */
+apps.post("/apps/twilio/webhook", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const base = appUrl(c);
+  if (!base.startsWith("https://")) throw new HttpError(400, "Twilio can only send texts to a public https address, and this Crewtavo doesn't have one yet.");
+  const admin = adminClient(c.env);
+  forgetTwilio(c.var.companyId);
+  const account = await companyTwilio(c.env, c.var.companyId);
+  const { data: row } = await admin.from("integrations").select("settings").match({ company_id: c.var.companyId, provider: "twilio" }).maybeSingle();
+  const settings = (row?.settings ?? null) as unknown as TwilioSettings | null;
+  if (!account || !settings?.phone_sid) throw new HttpError(409, "Connect your Twilio account first.");
+  try {
+    await setSmsWebhook(account, settings.phone_sid, twilioWebhook(base));
+  } catch (error) {
+    if (error instanceof TwilioProblem) throw new HttpError(502, error.message);
+    throw error;
+  }
+  const next: TwilioSettings = { ...settings, sms_url: twilioWebhook(base) };
+  const { error } = await admin.from("integrations").update({ settings: asJson(next) }).match({ company_id: c.var.companyId, provider: "twilio" });
+  if (error) throw dbError(error);
+  return c.json({ twilio: twilioState(base, next, false) });
+});
+
 const PASSWORD = z.object({ password: z.string().min(1).max(200) });
 
 /** The Stripe account the company's own key reaches now (its name as Crewtavo shows it, and its acct_ id), or null without one. */
@@ -647,6 +751,7 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
   const entry = catalogEntry(provider);
   if (!entry || entry.auth !== "api_key") throw new HttpError(400, "That app doesn't use a key.");
   if (provider === "abc_supply") throw new HttpError(400, "ABC Supply takes your app's Client ID and secret.");
+  if (provider === "twilio") throw new HttpError(400, "Twilio takes your Account SID, Auth Token and number.");
   const body = await readJson(c, z.object({ api_key: z.string().trim().min(10).max(500) }));
   const admin = adminClient(c.env);
   if (provider === "stripe") {

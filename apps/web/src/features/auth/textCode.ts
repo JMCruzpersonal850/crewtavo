@@ -29,19 +29,25 @@ export function afterAsking(answer: { sent: boolean }, address: string, now: num
   return answer.sent ? { step: "code", address, sentAt: now } : { step: "off" };
 }
 
-type CodeFeatures = Partial<Pick<AppConfig["features"], "sms" | "emailCodes" | "email">> | undefined;
+type CodeFeatures = Partial<Pick<AppConfig["features"], "sms" | "smsCodes" | "emailCodes" | "email">> | undefined;
+
+/**
+ * Whether this Crewtavo texts sign-in codes at all, before anyone is known: its own Twilio account
+ * or any company's (features.smsCodes). A server from before companies had their own says only `sms`.
+ */
+const textsCodes = (features: CodeFeatures) => Boolean(features?.smsCodes ?? features?.sms);
 
 /**
  * What the sign-in page offers someone on a new phone: a code by text, by email (this Crewtavo can't
  * text but can email), or asking the office. It goes by the whole Crewtavo, since nobody is known yet.
  */
 export function newPhoneOffer(features: CodeFeatures): CodeWay | "ask_office" {
-  if (features?.sms) return "text";
+  if (textsCodes(features)) return "text";
   return features?.emailCodes ? "email" : "ask_office";
 }
 
 /** With texting on, the code by text comes first, and email is there for a sub with no phone on file. */
-export const emailInstead = (features: CodeFeatures) => Boolean(features?.sms && features.emailCodes);
+export const emailInstead = (features: CodeFeatures) => Boolean(textsCodes(features) && features?.emailCodes);
 
 /**
  * The links under the sign-in form for someone on a new phone, first one first: a code by text and,

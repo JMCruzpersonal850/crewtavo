@@ -430,7 +430,8 @@ describe("asking for a code by text", () => {
       const res = await ask(phone, base);
       expect([res.status, await res.json()]).toEqual([200, { sent: false, reason: "sms_off" }]);
     }
-    expect(sent.calls).toEqual([]);
+    // All it looks up is whether any company texts from its own Twilio account: nothing by the number.
+    expect(sent.calls.filter((c) => c.path !== "integrations")).toEqual([]);
   });
 
   it("wants a whole phone number", async () => {

@@ -19,7 +19,7 @@
 import { byEmail, byText, DEFAULT_NOTIFICATION_PREFS, isPlaceholderEmail, notificationTopic, type NotificationChannel, type NotificationTopic } from "@crewtavo/core";
 import type { Env } from "../env";
 import { renderEmail } from "../lib/email";
-import { sendEmail, sendProblem, sendSms, smsConfigured } from "../lib/notify";
+import { sendEmail, sendProblem, sendSms, smsReady } from "../lib/notify";
 import { reportError } from "../lib/monitoring";
 import { adminClient } from "../lib/supabase";
 import { sendPush } from "../lib/webpush";
@@ -101,8 +101,9 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
 
   // A mailbox or text provider that just failed (refused the sign-in, or didn't answer) isn't asked
   // again for everyone else in this run: theirs wait for the next try, with the same reason.
+  // By company: each sends from its own mailbox and Twilio account, or the server's.
   const emailDown = new Map<string, string>();
-  let smsDown: string | null = null;
+  const smsDown = new Map<string, string>();
 
   for (const group of groups.values()) {
     const { company_id: companyId, user_id: userId } = group[0]!;
@@ -182,10 +183,11 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
       }
 
       const forSms = pick("sms");
-      if (forSms.length && phoneTo && smsConfigured(env)) {
+      if (forSms.length && phoneTo && (await smsReady(env, companyId))) {
         const ids = forSms.map((i) => i.id);
-        if (smsDown) {
-          add(later, ids, "sms", smsDown);
+        const down = smsDown.get(companyId);
+        if (down) {
+          add(later, ids, "sms", down);
         } else {
           const first = forSms[0]!;
           const more = forSms.length > 1 ? ` (+${forSms.length - 1} more)` : "";
@@ -201,7 +203,7 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
               await note(ids, "sms", "failed");
               add(never, ids, "sms", reason);
             } else {
-              smsDown = reason;
+              smsDown.set(companyId, reason);
               add(later, ids, "sms", reason);
             }
           }

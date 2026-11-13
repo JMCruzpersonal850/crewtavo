@@ -313,6 +313,10 @@ insert into public.storage_allowances (company_id, role_key, limit_bytes) values
 insert into public.visit_change_requests (company_id, visit_id, client_id, kind, reason) values (:'co', :'v1', :'c1', 'cancel', 'Rain all week');
 -- Ann and Bob marked not the same client (20261106000100_client_merge.sql): the office's, never a sub's.
 insert into public.client_duplicate_dismissals (company_id, client_a, client_b) values (:'co', least(:'c1'::uuid, :'c2'::uuid), greatest(:'c1'::uuid, :'c2'::uuid));
+-- A number that texted STOP to Oscar, and a text from a number nobody there knows
+-- (20261113000300_contact_messages.sql, 20261113000310_unknown_texts.sql): the office's, never a sub's.
+insert into public.sms_stops (company_id, phone_key, phone) values (:'co', '5405550190', '+15405550190');
+insert into public.unknown_texts (company_id, from_phone, phone_key, body) values (:'co', '+15405550191', '5405550191', 'Do you do gutters?');
 -- A custom field on the business's jobs (20261103000700_custom_fields.sql): the team's, never a sub's.
 insert into public.custom_field_definitions (company_id, record_type, key, label, type) values (:'co', 'job', 'permit', 'Permit number', 'text');
 -- Ann's attic fan at the house Al roofs, serviced on his visit (20261106000200_property_equipment.sql): the team's, never a sub's.
@@ -542,6 +546,8 @@ select t1070.check(array(
   -- The company's switch for AI assistants, for the person's own assistant: on for anyone signed in
   -- themselves, and a business someone only subs for isn't counted (and tells them nothing).
   'assistant_switch()',
+  -- Attaching an unknown number's texts to a client: whoever may edit clients, never a sub.
+  'attach_unknown_texts(uuid, text, uuid, text, text)',
   'automated_campaign_states(uuid)',
   'autopay_pause(uuid, boolean)', 'autopay_set_settings(uuid, jsonb)', 'autopay_vouch(uuid, uuid[], text)', 'call_off_autopay_charge(uuid)',
   'campaign_audience(uuid, jsonb)', 'campaign_audience_choices(uuid)', 'campaign_recipient_results(uuid, integer, integer, text)', 'campaign_results(uuid, uuid)',
@@ -594,7 +600,9 @@ select t1070.check(array(
   'request_manual_charges(uuid, uuid[], numeric[])', 'review_stats(uuid)',
   'search_sops(uuid, text, integer, boolean)', 'send_sub_offer(uuid, timestamp with time zone)',
   -- Runs as the caller: no rule lets a sub link a checklist to an item.
-  'set_checklist_services(uuid, uuid[])', 'set_job_discount_billing(uuid, uuid, boolean)', 'set_next_number(uuid, text, bigint)',
+  'set_checklist_services(uuid, uuid[])',
+  -- Whether a client's contacts get the client's messages: owners and admins only, never a sub.
+  'set_contact_messages(uuid, boolean)', 'set_job_discount_billing(uuid, uuid, boolean)', 'set_next_number(uuid, text, bigint)',
   'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)', 'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',
