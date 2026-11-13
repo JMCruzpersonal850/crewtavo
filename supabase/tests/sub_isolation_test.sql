@@ -566,6 +566,8 @@ select t1070.check(array(
   'drive_clients(uuid, text, integer)', 'drive_list(uuid, text, uuid, text, integer)', 'drive_restore(text, uuid)', 'drive_root(uuid)',
   'drive_set_enabled(uuid, boolean)', 'drive_trash(uuid)', 'drive_trash_file(uuid)', 'drive_trash_folder(uuid)', 'drive_trash_version(uuid)',
   'drive_versions(uuid)', 'duplicate_quote(uuid, text, uuid, uuid, text, jsonb)',
+  -- Editing a sent invoice's lines: owners, admins and the office with invoices only (it checks), never a sub.
+  'edit_invoice(uuid, jsonb, boolean, timestamp with time zone)',
   'equipment_conflicts(uuid, uuid[], date, timestamp with time zone, timestamp with time zone, uuid)', 'global_search(uuid, text, integer)',
   'guide_feedback(uuid, boolean, text)', 'guide_quiz(uuid)',
   -- Bringing work over from Jobber: an owner's or admin's, never a sub's.
@@ -593,7 +595,10 @@ select t1070.check(array(
   -- The quote follow-up after an exact price goes out: the office and estimators with Sales only, never a sub.
   'quote_exact_sent(uuid)',
   'record_photos(uuid, uuid, uuid)', 'referral_auto_apply(uuid, boolean)', 'referral_credits_for(uuid, uuid)', 'referral_give_credit(uuid)', 'referral_no_reward(uuid)',
-  'referral_set_given(uuid)', 'referral_stats(uuid, timestamp with time zone, timestamp with time zone)', 'remove_promo_code(text, uuid)',
+  'referral_set_given(uuid)', 'referral_stats(uuid, timestamp with time zone, timestamp with time zone)',
+  -- Taking a late fee off an invoice: owners, admins and the office with invoices only (it checks), never a sub.
+  'remove_late_fee(uuid)',
+  'remove_promo_code(text, uuid)',
   'remove_quote_option(uuid, uuid)', 'remove_referral_credit(uuid)',
   -- Renewing tags or an inspection sticker: runs as the caller, and only equipment managers can change them, never a sub.
   'renew_equipment_document(uuid, date, text, uuid)',
