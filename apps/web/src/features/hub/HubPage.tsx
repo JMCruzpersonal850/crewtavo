@@ -80,6 +80,7 @@ import {
   rangeWords,
   reviewChange,
   roofTiles,
+  signedThanks,
   TIP_MINIMUM,
   TIP_PERCENTS,
   trustBadges,
@@ -809,12 +810,13 @@ function SignedQuote({ token, data, printing, onPrint }: { token: string; data: 
         action={
           <div className="row wrap" style={{ gap: 8, justifyContent: "center" }}>
             {owed && <a className="hub-btn hub-btn-brand" href={data.deposit!.link}>Pay the {formatMoneyCents(data.deposit!.balance_due)} deposit</a>}
+            {/* Owed, with nothing to pay it with here: its invoice to look at, and the words below say what happens next. */}
+            {data.deposit_due && <a className="btn" href={data.deposit_due.link}>View the deposit invoice</a>}
             <Button icon="printer" onClick={onPrint}>Print or save PDF</Button>
           </div>
         }
       >
-        Thank you. {data.company.name} will be in touch to schedule the work.
-        {data.deposit ? (owed ? " Your deposit is still due: pay it to hold your place on the schedule." : " Your deposit is paid.") : Number(q.deposit_amount) > 0 ? " You'll receive an invoice for the deposit." : ""}
+        {signedThanks(data)}
       </Done>
       {data.autopay_offer && data.home && <AutopayOffer home={data.home} required={data.card_required === true} />}
       <section className="hub-document" aria-label={`${signed ? "Signed estimate" : "Estimate"} #${q.number}`}>

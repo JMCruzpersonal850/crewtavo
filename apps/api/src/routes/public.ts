@@ -524,7 +524,12 @@ publicRoutes.get("/hub/:token", async (c) => {
     // signed, the invoice made for it then, to pay from here until it's paid.
     const waiting = quote.status === "sent" || quote.status === "changes_requested";
     const depositOnline = waiting && exact && !l.pv && Number(quote.deposit_amount) > 0 && Boolean(await stripeAccess(c.env, admin, l.c));
-    const deposit = signed && !l.pv && quote.deposit_invoice_id ? await hubDeposit(c, admin, l, quote.deposit_invoice_id) : null;
+    const depositInvoice = signed && !l.pv && quote.deposit_invoice_id ? await hubDeposit(c, admin, l, quote.deposit_invoice_id) : null;
+    // Owed, and the business takes no payments online: there's nothing to pay from the page, so it
+    // goes as `deposit_due` and the page says the business will be in touch (a page from before
+    // that reads no `deposit` and says an invoice is coming).
+    const depositPayable = !depositInvoice || depositInvoice.balance_due <= 0 || Boolean(await stripeAccess(c.env, admin, l.c));
+    const deposit = depositPayable ? depositInvoice : null;
     return c.json({
       kind: "quote",
       company,
@@ -535,6 +540,7 @@ publicRoutes.get("/hub/:token", async (c) => {
       card_required: autopayOffer && cardRequired,
       deposit_online: depositOnline,
       deposit,
+      deposit_due: depositPayable ? null : depositInvoice,
       quote: {
         id: quote.id, number: quote.number, status: quote.status, title: quote.title, message: quote.message,
         subtotal: exact ? quote.subtotal : null,
@@ -748,22 +754,23 @@ publicRoutes.post("/hub/:token/approve", async (c) => {
 });
 
 /**
- * The deposit, paid as the client approves when the business takes payments online: its invoice
- * (hub_deposit_invoice, made once) and Stripe's page to pay it, as any invoice is paid. The approval
- * is kept whatever happens here, with the deposit owed: when the page can't be made (Stripe is
- * down, or the amount is too small to pay online), `url` is null and they pay from the link, on
- * their signed quote, or as the office asks. Null when nothing is paid online: no online payments,
- * or no deposit.
+ * The deposit, as the client approves: its invoice (hub_deposit_invoice, made once), whether or not
+ * the business takes payments online, so it shows as owed and the office can record cash or a
+ * cheque on it. When the business does take payments online, Stripe's page to pay it too, as any
+ * invoice is paid. The approval is kept whatever happens here, with the deposit owed: when the page
+ * can't be made (Stripe is down, or the amount is too small to pay online), `url` is null and they
+ * pay from the link, on their signed quote, or as the office asks. Null when nothing is paid
+ * online: no online payments (the office is told on the bell that it's owed), or no deposit.
  */
 async function collectDeposit(c: Parameters<typeof appUrl>[0], admin: ReturnType<typeof adminClient>, l: ClientLink): Promise<{ url: string | null; link: string } | null> {
-  if (!(await stripeAccess(c.env, admin, l.c))) return null;
-  const { data: invoiceId, error } = await admin.rpc("hub_deposit_invoice", { p_company: l.c, p_quote: l.id });
+  const online = Boolean(await stripeAccess(c.env, admin, l.c));
+  const { data: invoiceId, error } = await admin.rpc("hub_deposit_invoice", { p_company: l.c, p_quote: l.id, p_online: online });
   if (error) {
     // Approved all the same: the office bills the deposit as it did before.
     console.error("Couldn't make the deposit invoice", error);
     return null;
   }
-  if (!invoiceId) return null;
+  if (!invoiceId || !online) return null;
   const link = await clientLink(c.env, appUrl(c), { c: l.c, t: "invoice", id: invoiceId, ...keepVia(l) });
   try {
     return { url: await stripeCheckout(c.env, admin, l.c, invoiceId, 0), link };

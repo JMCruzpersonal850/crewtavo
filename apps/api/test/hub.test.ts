@@ -2031,9 +2031,10 @@ describe("autopay facts from the business's saved cards and agreements", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// The deposit, paid as the client approves when the business takes payments online
-// (20261104000500_deposit_percent.sql hub_deposit_invoice), and a quote template, which never
-// reaches the Client Hub.
+// The deposit, invoiced as the client approves and paid then when the business takes payments
+// online (hub_deposit_invoice: 20261104000500_deposit_percent.sql, and
+// 20261113000410_deposit_invoice_at_every_approval.sql), and a quote template, which never reaches
+// the Client Hub.
 // ---------------------------------------------------------------------------------------------
 
 const DEPOSIT = "00000000-0000-4000-8000-0000000000e1";
@@ -2063,7 +2064,7 @@ describe("the deposit, as the client approves", () => {
     expect(await linkOf(body.deposit.link)).toMatchObject({ c: ROOFER, t: "invoice", id: DEPOSIT, own: 1 });
     const names = state.calls.map((c) => c.name);
     expect(names.indexOf("hub_deposit_invoice")).toBeGreaterThan(names.indexOf("approve_hub_quote"));
-    expect(state.calls.find((c) => c.name === "hub_deposit_invoice")!.args).toEqual({ p_company: ROOFER, p_quote: QUOTE });
+    expect(state.calls.find((c) => c.name === "hub_deposit_invoice")!.args).toEqual({ p_company: ROOFER, p_quote: QUOTE, p_online: true });
     // No tip on a deposit.
     expect(vi.mocked(stripeCheckout).mock.calls.map((call) => call.slice(2))).toEqual([[ROOFER, DEPOSIT, 0]]);
   });
@@ -2091,14 +2092,19 @@ describe("the deposit, as the client approves", () => {
     expect(stripeCheckout).not.toHaveBeenCalled();
   });
 
-  it("approves as before when the business doesn't take payments online", async () => {
+  it("makes the deposit's invoice all the same when the business doesn't take payments online, with nothing to pay next", async () => {
     delete shared.STRIPE_SECRET_KEY;
     expect((await (await hub({ t: "quote", id: QUOTE })).json()).deposit_online).toBe(false);
     const res = await approve();
     expect(res.status).toBe(200);
+    // No page to go on to: the quote reloads signed, and says the deposit is due.
     expect(await res.json()).toEqual({ status: "approved" });
-    expect(state.calls.some((c) => c.name === "hub_deposit_invoice")).toBe(false);
+    // The database is told it isn't being paid online, so it tells the office on the bell at once.
+    expect(state.calls.find((c) => c.name === "hub_deposit_invoice")!.args).toEqual({ p_company: ROOFER, p_quote: QUOTE, p_online: false });
     expect(stripeCheckout).not.toHaveBeenCalled();
+    // Its invoice couldn't be made: approved all the same.
+    state.rpcs.hub_deposit_invoice = () => ({ data: null, error: { message: "boom" } });
+    expect(await (await approve()).json()).toEqual({ status: "approved" });
   });
 
   it("sends a percent, so the page asks for it on what they choose", async () => {
@@ -2130,6 +2136,34 @@ describe("the deposit, as the client approves", () => {
     expect((await (await hub({ t: "quote", id: QUOTE })).json()).deposit).toBeNull();
     Object.assign(state.tables.invoices[0]!, { status: "sent", balance_due: 1000 });
     expect((await (await hub({ t: "quote", id: QUOTE, pv: 1 })).json()).deposit).toBeNull();
+  });
+
+  it("shows as due, with nothing to pay from the page, when the business takes no payments online", async () => {
+    delete shared.STRIPE_SECRET_KEY;
+    roofer({
+      status: "approved", approved_at: "2026-10-25T18:00:00Z", range_low: null, range_high: null, deposit_invoice_id: DEPOSIT,
+      approval: { name: "Dana Whitfield", signature: PNG, signed_at: "2026-10-25T18:00:00Z", total: 18304 },
+    });
+    state.tables.invoices = [{ id: DEPOSIT, company_id: ROOFER, status: "sent", total: 1000, balance_due: 1000 }];
+    const owed = await (await hub({ t: "quote", id: QUOTE })).json();
+    // No `deposit`, so a page from before this one offers no Pay button either.
+    expect(owed.deposit).toBeNull();
+    expect(owed.deposit_due).toMatchObject({ amount: 1000, balance_due: 1000 });
+    expect(await linkOf(owed.deposit_due.link)).toMatchObject({ t: "invoice", id: DEPOSIT });
+    // Part of it recorded by the office: what's left is due.
+    Object.assign(state.tables.invoices[0]!, { status: "partially_paid", balance_due: 400 });
+    expect((await (await hub({ t: "quote", id: QUOTE })).json()).deposit_due).toMatchObject({ amount: 1000, balance_due: 400 });
+    // Paid by cash or cheque, recorded by the office: it reads as paid, as one paid online does.
+    Object.assign(state.tables.invoices[0]!, { status: "paid", balance_due: 0 });
+    const paid = await (await hub({ t: "quote", id: QUOTE })).json();
+    expect(paid.deposit).toMatchObject({ amount: 1000, balance_due: 0 });
+    expect(paid.deposit_due).toBeNull();
+    // With online payments, an owed deposit is paid from the page, as before.
+    shared.STRIPE_SECRET_KEY = "sk_test_shared";
+    Object.assign(state.tables.invoices[0]!, { status: "sent", balance_due: 1000 });
+    const online = await (await hub({ t: "quote", id: QUOTE })).json();
+    expect(online.deposit).toMatchObject({ balance_due: 1000 });
+    expect(online.deposit_due).toBeNull();
   });
 });
 

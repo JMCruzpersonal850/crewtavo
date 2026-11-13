@@ -23,6 +23,7 @@ import {
   quoteDocument,
   rangeWords,
   reviewChange,
+  signedThanks,
   unpickedGroup,
   waitingInvoices,
   type HubOption,
@@ -264,6 +265,27 @@ describe("an open quote that offers options", () => {
     expect(depositToBook(1000, 14290.5)).toBe(1000);
     expect(depositToBook("5000.00", 4200)).toBe(4200);
     expect(depositToBook(null, 4200)).toBe(0);
+  });
+
+  // The deposit's invoice is made as they approve, with or without online payments
+  // (20261113000410_deposit_invoice_at_every_approval.sql).
+  it("says where the deposit stands on a signed quote", () => {
+    const signed = { company: { name: "Summit Roofing" }, quote: { deposit_amount: 500 } };
+    const link = "https://app.test/hub/t";
+    // Owed, and the business takes no payments online: the amount, and who'll be in touch.
+    expect(signedThanks({ ...signed, deposit: null, deposit_due: { amount: 500, balance_due: 500, link } })).toBe(
+      "Thank you. Your $500.00 deposit is due, and Summit Roofing will be in touch about paying it and scheduling the work.",
+    );
+    // Part of it recorded since: what's left.
+    expect(signedThanks({ ...signed, deposit: null, deposit_due: { amount: 500, balance_due: 200, link } })).toContain("Your $200.00 deposit is due");
+    // Paid online from the page's button, or already paid.
+    expect(signedThanks({ ...signed, deposit: { amount: 500, balance_due: 500, link } })).toBe(
+      "Thank you. Summit Roofing will be in touch to schedule the work. Your deposit is still due: pay it to hold your place on the schedule.",
+    );
+    expect(signedThanks({ ...signed, deposit: { amount: 500, balance_due: 0, link }, deposit_due: null })).toBe("Thank you. Summit Roofing will be in touch to schedule the work. Your deposit is paid.");
+    // No invoice for it (the office approved it for them): one is coming. And no deposit: just thanks.
+    expect(signedThanks(signed)).toBe("Thank you. Summit Roofing will be in touch to schedule the work. You'll receive an invoice for the deposit.");
+    expect(signedThanks({ company: signed.company, quote: { deposit_amount: 0 } })).toBe("Thank you. Summit Roofing will be in touch to schedule the work.");
   });
 
   it("compares the options while choosing, then prints the copy being signed for the one picked", () => {

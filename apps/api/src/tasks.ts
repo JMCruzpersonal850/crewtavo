@@ -382,7 +382,8 @@ async function materializeRecurringVisits(env: Env) {
 
 /**
  * Hourly upkeep: invoices past their due date flip to overdue (which fires "invoice past due"
- * automations) and get their late fee once past the grace days (when the business charges one), monthly
+ * automations) and get their late fee once past the grace days (when the business charges one), the
+ * office hears about a deposit a client approved with and left unpaid online, monthly
  * jobs get their month's invoice reminder on their invoice day (a monthly plan on autopay its charge),
  * day-before visit reminder events are emitted for companies that use them, job offers
  * to subs past their time to answer by run out, subs' certificates running out are flagged, saved
@@ -405,6 +406,9 @@ async function hourlyUpkeep(env: Env) {
   const overdue = await step("mark_overdue_invoices", admin.rpc("mark_overdue_invoices"));
   // Once each: the database marks every invoice it adds a fee to, so a second run adds none.
   const lateFees = await step("add_late_fees", admin.rpc("add_late_fees"));
+  // A deposit a client was sent on to pay online as they approved, still unpaid an hour later: the
+  // office is told on the bell, once (the database marks each one it has looked at).
+  const deposits = await step("tell_unpaid_deposits", admin.rpc("tell_unpaid_deposits"));
   // On a monthly job's invoice day, from 8 in the morning where the company is: one reminder a job a
   // month (the database keeps it to one, so a second run makes none) and one note to the office, or
   // a monthly plan on autopay queued to be charged by the autopay task.
@@ -466,7 +470,7 @@ async function hourlyUpkeep(env: Env) {
   // for looking into a run of requests.
   const codes = await step("tidy_sign_in_codes", admin.rpc("tidy_sign_in_codes"));
   return {
-    overdue: overdue ?? 0, late_fees: lateFees ?? 0, invoice_reminders: invoiceReminders ?? 0, reminders: reminders ?? 0, equipment: equipment ?? 0, paperwork: paperwork ?? 0, guide_reviews: guideReviews ?? 0, offers: offers ?? 0, subs: { alerts: subAlerts?.length ?? 0, reminded },
+    overdue: overdue ?? 0, late_fees: lateFees ?? 0, deposits: deposits ?? 0, invoice_reminders: invoiceReminders ?? 0, reminders: reminders ?? 0, equipment: equipment ?? 0, paperwork: paperwork ?? 0, guide_reviews: guideReviews ?? 0, offers: offers ?? 0, subs: { alerts: subAlerts?.length ?? 0, reminded },
     cards: cards ?? 0, autopay_processing: autopayProcessing, bank_payments: bankPayments, clocks, codes: codes ?? 0, problems,
   };
 }

@@ -12,7 +12,7 @@ import { addDaysIso, formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { ClientPicker, PropertySelect, type PickedClient } from "../clients/ClientForm";
 import { CustomFieldInputs, customFieldsToSave, useCustomFields } from "../customFields/CustomFields";
-import { firstInvoiceKind, invoiceChoices, type InvoiceJob, type InvoiceKind } from "./invoiceChoices";
+import { firstInvoiceKind, invoiceChoices, startingAmount, type InvoiceJob, type InvoiceKind } from "./invoiceChoices";
 import { RecurrenceEditor, type Recurrence } from "./RecurrenceEditor";
 
 export function useCrews() {
@@ -432,8 +432,8 @@ export function InvoiceJobDialog({ job, onClose, onCreated }: { job: InvoiceJob;
   const leftToBill = Math.max(Number(job.contract_total) - job.billed, 0);
   const [kind, setKind] = useState<InvoiceKind>(() => firstInvoiceKind(job));
   const [mode, setMode] = useState<"percent" | "amount">("percent");
-  const [value, setValue] = useState(kind === "deposit" && job.deposit ? String(job.deposit) : "");
-  useEffect(() => setValue(kind === "deposit" && job.deposit ? String(job.deposit) : ""), [kind, job.deposit]);
+  const [value, setValue] = useState(() => startingAmount(job, kind));
+  useEffect(() => setValue(startingAmount(job, kind)), [kind, job.deposit, job.depositInvoice]);
   const amount = kind === "progress" && mode === "percent" ? (Number(value) / 100) * Number(job.contract_total) : Number(value);
   const needsAmount = kind === "deposit" || kind === "progress";
   const overLimit = needsAmount && job.kind !== "recurring" && amount > leftToBill + 0.005;

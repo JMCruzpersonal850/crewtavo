@@ -144,6 +144,11 @@ export interface QuoteView {
   deposit_online?: boolean;
   /** Signed: the deposit's invoice made as they approved, what's left on it, and its link to pay it. */
   deposit?: { amount: number; balance_due: number; link: string } | null;
+  /**
+   * Signed: that invoice while it's owed and the business takes no payments online, so there's
+   * nothing to pay from here (`deposit` is null then). Servers before it send neither.
+   */
+  deposit_due?: { amount: number; balance_due: number; link: string } | null;
   /** The estimate template (core documents.ts); read through templateSettings(). */
   template?: unknown;
   /** Null with a price range (it would say the price), and from servers before contracts. */
@@ -432,6 +437,22 @@ export function promoShortfall(promo: HubPromoInfo, lines: ReadonlyArray<Pick<Hu
  * never more than it comes to (a cheaper option can come to less).
  */
 export const depositToBook = (deposit: Amount | null | undefined, total: Amount, percent?: Amount | null) => Math.max(0, Number(depositFor(deposit ?? 0, total, percent)));
+
+/**
+ * What a signed quote says under "Signed on …": thanks, and where its deposit stands. Paid online
+ * (`deposit`): still due, with the page's Pay button, or paid. Owed with no way to pay online
+ * (`deposit_due`): the amount, and that the business will be in touch about it. A deposit with no
+ * invoice yet (approved by the office, or before every approval made one): an invoice is coming.
+ */
+export function signedThanks(data: Pick<QuoteView, "deposit" | "deposit_due"> & { company: { name: string }; quote: { deposit_amount: Amount | null } }): string {
+  const business = data.company.name;
+  if (data.deposit_due && data.deposit_due.balance_due > 0) {
+    return `Thank you. Your ${formatMoneyCents(data.deposit_due.balance_due)} deposit is due, and ${business} will be in touch about paying it and scheduling the work.`;
+  }
+  const thanks = `Thank you. ${business} will be in touch to schedule the work.`;
+  if (data.deposit) return `${thanks} ${data.deposit.balance_due > 0 ? "Your deposit is still due: pay it to hold your place on the schedule." : "Your deposit is paid."}`;
+  return Number(data.quote.deposit_amount) > 0 ? `${thanks} You'll receive an invoice for the deposit.` : thanks;
+}
 
 /** The "Good", "Better" and "Best" chips on the add-on groups, but not when the quote offers options (their tiers are the options'). */
 export const groupTiers = (view: QuoteView) => ((view.quote.options?.length ?? 0) > 0 ? new Map<string, string>() : optionLabels(view.quote.lines));

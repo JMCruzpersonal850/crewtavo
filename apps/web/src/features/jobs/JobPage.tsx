@@ -264,6 +264,8 @@ export function JobPage() {
     live.filter((i) => i.kind !== "retainage").reduce((s, i) => s + Number(i.retainage_amount), 0) -
     live.filter((i) => i.kind === "retainage").reduce((s, i) => s + Number(i.subtotal), 0);
   const finalInvoice = j.kind !== "recurring" ? live.find((i) => i.kind === "standard")?.number ?? null : null;
+  // Made by hand, or as the client approved the quote in the Client Hub: Create invoice says so rather than offer the quote's deposit again.
+  const depositInvoice = live.find((i) => i.kind === "deposit")?.number ?? null;
   // Work that repeats takes a once-per-job promo code off its first invoice only, which the job says.
   const repeats = j.kind === "recurring" || j.billing_mode === "per_visit";
   const contractNote = repeats ? contractDiscountNote(j.lines) : null;
@@ -596,7 +598,7 @@ export function JobPage() {
       {dialog === "pause" && <PauseJobDialog jobId={j.id} canSchedule={canDispatch} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "invoice" && (
         <InvoiceJobDialog
-          job={{ id: j.id, contract_total: contract, deposit: Number(j.quote?.deposit_amount ?? 0), billed, uninvoicedVisits: uninvoiced, kind: j.kind, fixed: j.kind === "recurring" && j.pricing === "fixed", byVisit: billsByVisit(j), retainageHeld, finalInvoice }}
+          job={{ id: j.id, contract_total: contract, deposit: Number(j.quote?.deposit_amount ?? 0), depositInvoice, billed, uninvoicedVisits: uninvoiced, kind: j.kind, fixed: j.kind === "recurring" && j.pricing === "fixed", byVisit: billsByVisit(j), retainageHeld, finalInvoice }}
           onClose={() => setDialog(null)}
           onCreated={(invoiceId) => {
             refresh();

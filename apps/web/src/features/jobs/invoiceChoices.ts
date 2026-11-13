@@ -11,6 +11,11 @@ export interface InvoiceJob {
   contract_total: number;
   /** What the quote asked for up front; 0 when it asked for none. */
   deposit: number;
+  /**
+   * The job's deposit invoice, once it has one that isn't void: made by hand here, or as the client
+   * approved the quote in the Client Hub (hub_deposit_invoice).
+   */
+  depositInvoice: number | null;
   /** Deposits and progress invoices so far (not void), before tax. */
   billed: number;
   uninvoicedVisits: number;
@@ -40,6 +45,12 @@ export function firstInvoiceKind(job: InvoiceJob): InvoiceKind {
   return job.retainageHeld > 0.005 ? "retainage" : "progress";
 }
 
+/**
+ * The amount a choice's field starts with: the deposit the quote asked for, until it's been
+ * invoiced (a second one is never filled in for them). Empty for everything else.
+ */
+export const startingAmount = (job: InvoiceJob, kind: InvoiceKind) => (kind === "deposit" && job.deposit && !job.depositInvoice ? String(job.deposit) : "");
+
 /** The choices shown, in order. */
 export function invoiceChoices(job: InvoiceJob): InvoiceChoice[] {
   const visits = job.uninvoicedVisits;
@@ -58,7 +69,13 @@ export function invoiceChoices(job: InvoiceJob): InvoiceChoice[] {
       body: visits ? `${visits} completed ${visits === 1 ? "visit isn't" : "visits aren't"} invoiced yet.` : "No completed visits are waiting to be invoiced.",
       hidden: !job.byVisit || (job.kind !== "recurring" && !visits),
     },
-    { kind: "deposit", title: "Deposit", body: job.deposit ? `The quote asked for ${formatMoneyCents(job.deposit)}.` : "Bill an amount up front." },
+    {
+      kind: "deposit",
+      title: "Deposit",
+      body: job.depositInvoice ? `Deposit already invoiced (#${job.depositInvoice}). Enter an amount only to bill another.`
+        : job.deposit ? `The quote asked for ${formatMoneyCents(job.deposit)}.`
+          : "Bill an amount up front.",
+    },
     { kind: "progress", title: "Progress payment", body: "Bill part of the contract now (a pay application).", hidden: Boolean(job.finalInvoice) },
     { kind: "retainage", title: "Retainage", body: `Bill the ${formatMoneyCents(job.retainageHeld)} held back on earlier invoices.`, hidden: !(job.retainageHeld > 0.005) },
   ];
