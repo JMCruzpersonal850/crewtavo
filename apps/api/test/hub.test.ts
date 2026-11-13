@@ -2294,6 +2294,8 @@ describe("moving or cancelling a visit from the Client Hub", () => {
     expect(result).toEqual({ status: "approved", emailed: true });
     // The visit keeps its hour's length and the date it was made for, so the recurrence doesn't add it again.
     expect(state.tables.visits![0]).toMatchObject({ starts_at: at(day, "11:00"), ends_at: at(day, "12:00"), recurrence_key: day, route_order: null });
+    // The client picked that time, so organizing the route leaves it there.
+    expect(state.tables.visits![0]!.time_fixed).toBe(true);
     expect(state.tables.visits![1]).toMatchObject({ starts_at: at(addDays(day, 7), "09:00") });
     expect(row.status).toBe("approved");
     expect(sent).toHaveLength(1);
@@ -2303,6 +2305,13 @@ describe("moving or cancelling a visit from the Client Hub", () => {
     expect(state.tables.messages).toMatchObject([{ client_id: CLIENT, channel: "email", direction: "out", related_type: "visit", related_id: MINE }]);
     // An answer is given once.
     await expect(answerVisitChange(office, env, "ask-1", { approve: true }, null)).rejects.toThrow(/isn't waiting/);
+  });
+
+  it("approving a move to a whole day keeps the visit's own time, which the route may still move", async () => {
+    request({ kind: "reschedule", scheduled_on: addDays(day, 1) });
+    expect(await answerVisitChange(office, env, "ask-1", { approve: true }, null)).toEqual({ status: "approved", emailed: false });
+    expect(state.tables.visits![0]).toMatchObject({ starts_at: at(addDays(day, 1), "09:00"), ends_at: at(addDays(day, 1), "10:00") });
+    expect(state.tables.visits![0]!.time_fixed ?? false).toBe(false);
   });
 
   it("won't approve a move to a time the crew has been booked into since, and the request keeps waiting", async () => {

@@ -46,7 +46,7 @@ export async function answerVisitChange(s: Scope, env: Env, id: string, answer: 
   );
   const visit = ask.visit as unknown as Visit;
   // Without a time ("Tell us what suits you"), the office moves the visit itself: approving tells the client.
-  let move: { starts_at: string; ends_at: string } | { scheduled_on: string } | null = null;
+  let move: { starts_at: string; ends_at: string; time_fixed?: boolean } | { scheduled_on: string } | null = null;
   if (answer.approve) {
     if (visit.status !== "scheduled") throw new HttpError(409, "This visit has started or changed since. Decline the request, or change the visit yourself.");
     if (ask.kind === "reschedule" && ask.scheduled_on) {
@@ -59,7 +59,8 @@ export async function answerVisitChange(s: Scope, env: Env, id: string, answer: 
         const end = new Date(start.getTime() + ms);
         // The time was open when the client asked; the crew may have been booked into it since.
         if (await booked(env, s.companyId, visit.id, start, end)) throw new HttpError(409, "The crew or people on this visit are booked then now. Decline the request, or move the visit yourself.");
-        move = { starts_at: start.toISOString(), ends_at: end.toISOString() };
+        // A time the client picked is one they were promised: organizing the route never moves it.
+        move = { starts_at: start.toISOString(), ends_at: end.toISOString(), ...(ask.starts_at && { time_fixed: true }) };
       } else move = { scheduled_on: ask.scheduled_on };
     }
   }
