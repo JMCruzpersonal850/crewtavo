@@ -168,7 +168,7 @@ export interface BackInput {
 export function backHtml({ size, message, returnAddress }: BackInput): string {
   const info = POSTCARD_SIZE_INFO[size];
   const inset = BLEED_IN + 0.25;
-  const column = info.width - ADDRESS_ZONE_IN.width - 0.5;
+  const column = Math.round((info.width - ADDRESS_ZONE_IN.width - 0.5) * 1000) / 1000;
   const paragraphs = message
     .trim()
     .split(/\n{2,}/)

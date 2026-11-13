@@ -24,6 +24,7 @@ import { processAutomations } from "./services/automations";
 import { processCampaigns } from "./services/campaigns";
 import { syncDueReviews } from "./services/googleReviews";
 import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/social";
+import { processPostcards } from "./services/postcards";
 import { sendDueReminders } from "./services/reviews";
 import { deliverNotifications } from "./services/delivery";
 import { remindSubs } from "./services/subs";
@@ -31,13 +32,18 @@ import { dailyOutlook } from "./services/external";
 import { autoRoutes } from "./services/routes";
 import { sendScheduledPayments } from "./services/installments";
 
-export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups", "profits", "installments"] as const;
+export const TASKS = [
+  "automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address",
+  "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync",
+  "social", "backups", "profits", "installments", "postcards",
+] as const;
 export type TaskName = (typeof TASKS)[number];
 
 /** Cron expressions -> tasks, run by server.ts's scheduler. */
 export const CRON_TASKS: Record<string, TaskName[]> = {
-  // Social posts whose time has come (services/social.ts), one claim at a time.
-  "* * * * *": ["automations", "campaigns", "notify", "social"],
+  // Social posts whose time has come (services/social.ts), one claim at a time. Postcard campaigns
+  // being mailed make their next cards (services/postcards.ts).
+  "* * * * *": ["automations", "campaigns", "notify", "social", "postcards"],
   "*/2 * * * *": ["address"],
   // Review reminders go at 1:30pm in each company's time zone (services/reviews.ts). Autopay charges
   // what's due (services/autopay.ts); its receipts and notices go out through the outbox.
@@ -130,6 +136,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return checkJobProfits(adminClient(env));
     case "installments":
       return sendScheduledPayments(env);
+    case "postcards":
+      return processPostcards(env);
   }
 }
 

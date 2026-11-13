@@ -26,6 +26,7 @@ import { ConnectEmailHint } from "../settings/ConnectEmailHint";
 import { AutomatedCampaigns, useAutomatedStates } from "./AutomatedCampaigns";
 import { emailsSentHint } from "./automatedForm";
 import { resultsSummary, useCampaignResults } from "./CampaignResults";
+import { PostcardCampaigns } from "./PostcardCampaigns";
 import { PromoCodes } from "./PromoCodes";
 import { EARNED_HINT, Referrals } from "./Referrals";
 import { Reviews } from "./Reviews";
@@ -235,6 +236,7 @@ function Campaigns() {
           </div>
         )}
       </section>
+      <PostcardCampaigns />
     </div>
   );
 }

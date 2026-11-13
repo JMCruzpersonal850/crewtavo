@@ -415,7 +415,11 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   in Messages to add to a client.
 - **Automations and marketing:** rules like "when a quote is sent, wait 3 days, then email the
   client" or "when a visit is moved, text the client", campaigns, promo codes, Google review
-  requests and referrals.
+  requests and referrals. A campaign can be a postcard: a job photo (or any picture) on the front,
+  a note with the campaign merge fields on the back, previewed at its real size, printed and mailed
+  by Lob through the business's own Lob account (Apps → Lob; a test key makes the cards without
+  mailing anything) to the clients in the segment with a full mailing address, never archived or
+  opted-out ones, with what each card brought in.
 - **Claude and ChatGPT:** a built-in connector that can look things up or run the business:
   import customers and recurring services (with a preview first, and no duplicates on a second
   run), manage the schedule, quotes, invoices and payments, read the money figures, invite people

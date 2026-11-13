@@ -414,7 +414,9 @@ describe("the automated campaign cards' words", () => {
     const page = source("../src/features/marketing/CampaignPage.tsx");
     expect(page.indexOf("<CampaignStats")).toBeLessThan(page.indexOf('<div className="two-col">'));
     expect(page).toContain('queryKey: ["campaign-first-recipient", id]');
-    expect(page).toContain("options={choices.data?.cities}");
+    // The segment's fields are the ones postcards use too (AudienceFields), offering the company's own cities.
+    expect(page).toContain("<AudienceFields audience={draft.audience} onChange={(audience) => set({ audience })} choices={choices.data} />");
+    expect(source("../src/features/marketing/AudienceFields.tsx")).toContain("options={choices?.cities}");
   });
 });
 
@@ -441,7 +443,7 @@ describe("the Campaigns tab and a campaign's page", () => {
     expect(page).toContain("audienceSummary(shown.audience, choices.data)");
     expect(page).toContain("subject={shown.subject} body={shown.body}");
     // Their labels load for a sent campaign too, not only while it's a draft.
-    expect(page).toContain('enabled: Boolean(c) && c?.kind !== "automated",');
+    expect(page).toContain('useAudienceChoices(Boolean(c) && c?.kind !== "automated")');
   });
 
   it("shows an automated campaign as its results, and says opens are approximate", () => {

@@ -4,7 +4,7 @@
  * it's set (Marketing → Campaigns).
  */
 import { greetingName } from "@crewtavo/core/automations";
-import { audienceKeys, hasTrackableLink, HUB_HOME_BUTTON, RECURRING_CHOICES, recurringChoice, withRecurringChoice, type CampaignAudience } from "@crewtavo/core/campaigns";
+import { audienceKeys, hasTrackableLink, HUB_HOME_BUTTON, RECURRING_CHOICES, recurringChoice, type CampaignAudience } from "@crewtavo/core/campaigns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -20,12 +20,11 @@ import { BackLink, PageHeader } from "@/components/ui/PageHeader";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { NoAccess, PageError } from "@/components/ui/States";
 import { EntityStatus, statusText } from "@/components/ui/StatusPill";
-import { TagInput } from "@/components/ui/TagInput";
 import { api, supabase, unwrap, unwrapOne } from "@/lib/api";
 import { formatDateTime, todayIn } from "@/lib/format";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
-import { useClientTags } from "../clients/ClientForm";
+import { AudienceFields, labelOf, useAudienceChoices, VISIT_OPTIONS, type Choice } from "./AudienceFields";
 import { CampaignRecipients, CampaignResults, CampaignStats } from "./CampaignResults";
 import { companyAddressLine, EmailPreview, MessageField, SubjectField, TestEmailDialog } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
@@ -38,8 +37,6 @@ interface Draft {
   audience: CampaignAudience;
 }
 
-const STATUS_OPTIONS = [["active", "Active clients"], ["lead", "Leads"], ["archived", "Archived"]] as const;
-const VISIT_OPTIONS = [["90", "3 months"], ["180", "6 months"], ["365", "12 months"], ["730", "2 years"]] as const;
 const TOKENS = [
   { token: "client.first_name", label: "First name" },
   { token: "client.name", label: "Full name" },
@@ -52,15 +49,6 @@ const TEMPLATES = [
   { label: "We miss you", subject: "It's been a while, {{client.first_name}}", body: "Hi {{client.first_name}},\n\nIt's been a while since we last worked together, and we'd love to help again. If anything around the property needs attention, you can ask for a visit online, or just reply and we'll put together a quote.\n\n{{link}}\n\nThanks,\n{{company.name}}" },
   { label: "Thank you", subject: "Thank you from {{company.name}}", body: "Hi {{client.first_name}},\n\nThank you for trusting us with your property this year. If you know anyone who could use our help, we'd be grateful for the introduction.\n\nThanks again,\n{{company.name}}" },
 ];
-
-interface Choice {
-  value: string;
-  label: string;
-  count: number;
-}
-
-/** A city or service as the business writes it: the picker's label for it, or as it was saved. */
-const labelOf = (list: Choice[] | undefined) => (value: string) => list?.find((x) => x.value === value.trim().toLowerCase())?.label ?? value;
 
 /** Who a sent campaign went to, in words: the audience it was sent with, its cities and services as the business writes them. */
 export function audienceSummary(audience: CampaignAudience, choices?: { cities?: Choice[]; services?: Choice[] }): string {
@@ -95,7 +83,6 @@ function CampaignPageScreen() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [dialog, setDialog] = useState<null | "send" | "ai" | "test">(null);
-  const tags = useClientTags();
 
   const campaign = useQuery({
     queryKey: ["campaign", id],
@@ -150,13 +137,7 @@ function CampaignPageScreen() {
     queryFn: async () => unwrap(await supabase().from("campaign_recipients").select("name").eq("campaign_id", id).order("id").limit(1))[0]?.name ?? null,
   });
   // A sent campaign's summary reads its cities and services with the business's own spelling too.
-  const choices = useQuery({
-    queryKey: ["campaign-audience-choices", session.company.id],
-    enabled: Boolean(c) && c?.kind !== "automated",
-    meta: { silent: true },
-    staleTime: 60_000,
-    queryFn: async () => unwrap(await supabase().rpc("campaign_audience_choices", { p_company: session.company.id })) as unknown as { cities: Choice[]; services: Choice[] },
-  });
+  const choices = useAudienceChoices(Boolean(c) && c?.kind !== "automated");
 
   // Autosave drafts a moment after typing stops, and say so beside the status.
   const saving = useSaveStatus();
@@ -225,7 +206,6 @@ function CampaignPageScreen() {
   const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
   // Once it's sent (or sending, or scheduled), what it says is the campaign's own, as saved.
   const shown: Draft = editable ? draft : { name: c.name, subject: c.subject, body: c.body, audience: (c.audience ?? {}) as CampaignAudience };
-  const setAudience = (patch: Partial<CampaignAudience>) => setDraft((d) => (d ? { ...d, audience: { ...d.audience, ...patch } } : d));
   const count = recipients.data?.length ?? 0;
   const sampleName = editable ? recipients.data?.[0]?.display_name : firstRecipient.data;
   const vars = {
@@ -306,35 +286,7 @@ function CampaignPageScreen() {
             <div className="row-between"><strong>Audience</strong>{editable && (recipients.isFetching ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <span className="badge badge-green">{count}</span>)}</div>
             {editable ? (
               <>
-                <div className="field">
-                  <span>Client status</span>
-                  <div className="row wrap" style={{ gap: 6 }}>
-                    {STATUS_OPTIONS.map(([value, text]) => {
-                      const on = draft.audience.statuses?.includes(value) ?? false;
-                      return <button key={value} type="button" className="tab" aria-pressed={on} onClick={() => setAudience({ statuses: on ? (draft.audience.statuses ?? []).filter((x) => x !== value) : [...(draft.audience.statuses ?? []), value] })}>{text}</button>;
-                    })}
-                  </div>
-                  <span className="hint">None selected means every status.</span>
-                </div>
-                <Field label="Has any of these tags" optional><TagInput value={draft.audience.tags_any ?? []} onChange={(t) => setAudience({ tags_any: t })} suggestions={tags.data} placeholder="Any client" /></Field>
-                <Field label="But none of these tags" optional><TagInput value={draft.audience.tags_none ?? []} onChange={(t) => setAudience({ tags_none: t })} suggestions={tags.data} placeholder="No exclusions" /></Field>
-                <Field label="City" optional hint="From their properties or billing address.">
-                  <TagInput value={(draft.audience.cities ?? []).map(labelOf(choices.data?.cities))} onChange={(t) => setAudience({ cities: t })} options={choices.data?.cities} placeholder="Any city" />
-                </Field>
-                <Field label="Had any of these services" optional hint="On jobs that are done, or have had a visit.">
-                  <TagInput value={(draft.audience.services ?? []).map(labelOf(choices.data?.services))} onChange={(t) => setAudience({ services: t })} options={choices.data?.services} placeholder="Any service" />
-                </Field>
-                <Field label="Recurring work" optional>
-                  <select className="select" value={recurringChoice(draft.audience)} onChange={(e) => set({ audience: withRecurringChoice(draft.audience, e.target.value as ReturnType<typeof recurringChoice>) })}>
-                    {RECURRING_CHOICES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-                  </select>
-                </Field>
-                <Field label="No completed visit in the last" optional>
-                  <select className="select" value={draft.audience.no_visit_days ?? ""} onChange={(e) => setAudience({ no_visit_days: e.target.value ? Number(e.target.value) : null })}>
-                    <option value="">Don't filter by visits</option>
-                    {VISIT_OPTIONS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-                  </select>
-                </Field>
+                <AudienceFields audience={draft.audience} onChange={(audience) => set({ audience })} choices={choices.data} />
                 <div className="stack-sm" style={{ borderTop: "1px solid var(--divider)", paddingTop: 12 }}>
                   <span className="text-sm"><strong>{count}</strong> {count === 1 ? "client" : "clients"} will get this.</span>
                   {recipients.data?.slice(0, 5).map((r) => <span key={r.client_id} className="small ellipsis">{r.display_name} · <span className="muted">{r.email}</span></span>)}

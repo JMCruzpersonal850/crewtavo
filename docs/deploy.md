@@ -220,7 +220,7 @@ lists them all).
 
 | Name | Turns on |
 | --- | --- |
-| `APP_URL` | Your own domain (see above; **Settings → Web address** sets it on Railway). Defaults to the instance's address. |
+| `APP_URL` | Your own domain (see above; **Settings → Web address** sets it on Railway). Defaults to the instance's address. Postcard campaigns need it to be a public https address: Lob fetches each card's front picture from it while it makes the cards. Lob itself needs nothing here: each business connects its own Lob account under **Apps → Lob**. |
 | `ENCRYPTION_KEY` | A separate key for encrypting app tokens and signing client links: 32+ random bytes in base64, or any 32+ characters. Without it, one is derived from the instance's secret. **Keep it stable once set**: changing it disconnects every app and invalidates links already sent to clients. |
 | `ANTHROPIC_API_KEY` (optional `AI_MODEL`) | AI rewrite and SOP answers. Companies can also add their own key on the Apps page. |
 | `GOOGLE_MAPS_BROWSER_KEY` | Optional. Measure works without any key (free US and state imagery); this adds Google satellite as a choice for every company. Enable the Map Tiles API and restrict the key to it and your domain. Companies can instead add Esri or Google keys themselves in **Settings → Maps**. |
