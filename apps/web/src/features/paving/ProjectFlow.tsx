@@ -61,8 +61,8 @@ export interface Quote {
   options: QuoteOptionRow[];
   jobs: Array<{ id: string; number: number | null; status: string }>;
 }
-export interface Service { id: string; name: string; unit: string; unit_price: number; unit_cost: number | null; taxable: boolean; formula: string | null; formula_target: string; category: string | null }
-export const SERVICE_FIELDS = "id, name, unit, unit_price, unit_cost, taxable, formula, formula_target, category";
+export interface Service { id: string; name: string; unit: string; unit_price: number; unit_cost: number | null; taxable: boolean; formula: string | null; formula_target: string; category: string | null; default_depth_in: number | null }
+export const SERVICE_FIELDS = "id, name, unit, unit_price, unit_cost, taxable, formula, formula_target, category, default_depth_in";
 
 /** Quotes whose lines can still change. */
 export const EDITABLE = ["draft", "sent", "changes_requested"];

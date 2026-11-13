@@ -5,7 +5,7 @@
  * (features/roofing) are the same records with a roof for the takeoff, so they share these.
  */
 import { marginPct } from "@crewtavo/core/estimates";
-import { evaluateFormula, formulaVariables, type FormulaVariable } from "@crewtavo/core/formulas";
+import { evaluateFormula, formulaVariables, usesDepth, type FormulaVariable } from "@crewtavo/core/formulas";
 import { drawingPitchFactor, edgeLengths, type Section } from "@crewtavo/core/geo";
 import { countsOn, lineTotal, optionTotals, toCents, type Amount, type OptionLine, type TotalsPromo } from "@crewtavo/core/money";
 import { isPavingTakeoff, pavingQuantities } from "@crewtavo/core/paving";
@@ -120,13 +120,7 @@ export function pavesAsphalt(formula: string | null, name = ""): boolean {
     return false;
   }
 }
-export const usesDepth = (formula: string | null) => {
-  try {
-    return Boolean(formula && formulaVariables(formula).has("depth_in"));
-  } catch {
-    return false;
-  }
-};
+export { usesDepth };
 
 export interface QuoteForFlow {
   status: string;

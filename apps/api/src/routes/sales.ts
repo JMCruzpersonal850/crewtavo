@@ -46,12 +46,16 @@ sales.post("/requests/:id/quote", requireUser, requireCompany(SALES, "sales"), a
  * Fill quote line quantities (or prices) from a measurement using each line's formula.
  * Variables: FORMULA_VARIABLES (area_sqft, length_ft, pitch_factor, the roof edges and so on).
  * `line_ids` fills only those lines (one just added or changed on a roof estimate); without it,
- * every line with a formula follows the measurement ("Update from the roof").
+ * every line with a formula follows the measurement ("Update from the roof"). A line whose formula
+ * reads a depth gets its own: `depths` by line id (what the office confirmed), else with
+ * `item_depths` its item's default before `depth_in`. `depth_in` alone is one depth for every line,
+ * as it always was.
  */
 sales.post("/quotes/:id/apply-measurement", requireUser, requireCompany(SALES, "sales"), async (c) => {
   const id = param(c, "id");
-  const body = await readJson(c, z.object({ measurement_id: uuid, depth_in: z.number().positive().max(48).optional(), line_ids: z.array(uuid).min(1).max(500).optional() }));
-  return c.json(await applyMeasurement(c.var.db, c.var.companyId, id, body.measurement_id, body.depth_in, body.line_ids));
+  const depth = z.number().positive().max(48);
+  const body = await readJson(c, z.object({ measurement_id: uuid, depth_in: depth.optional(), depths: z.record(uuid, depth).optional(), item_depths: z.boolean().optional(), line_ids: z.array(uuid).min(1).max(500).optional() }));
+  return c.json(await applyMeasurement(c.var.db, c.var.companyId, id, body.measurement_id, body.depth_in, body.line_ids, { depths: body.depths, itemDepths: body.item_depths }));
 });
 
 /**

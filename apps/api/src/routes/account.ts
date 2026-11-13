@@ -361,6 +361,7 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
           category: s.category ?? null,
           formula: formula?.formula ?? null,
           formula_target: formula?.sets ?? "quantity",
+          default_depth_in: s.default_depth_in ?? null,
           sort: i,
         };
       }),

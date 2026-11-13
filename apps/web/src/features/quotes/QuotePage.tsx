@@ -13,6 +13,7 @@
  */
 import { depositFor } from "@crewtavo/core/contracts";
 import { shownCustomFields } from "@crewtavo/core/customFields";
+import { usesDepth } from "@crewtavo/core/formulas";
 import type { Json, TablesUpdate } from "@crewtavo/core/database";
 import type { TemplateSettings } from "@crewtavo/core/documents";
 import { inRangeMode, sitePriceSet } from "@crewtavo/core/estimates";
@@ -88,6 +89,7 @@ import { PackagePicture } from "../roofing/PackageCards";
 import { lineSums, LineItems, visibleLines } from "./LineItems";
 import { ALREADY_ANSWERED, duplicateQuote, optionsOpen, optionTabs, quoteOptionsKey, showOption, sortOptions, useQuoteOptions, viewedOption, type OptionsQuote, type QuoteOptionRow } from "./options";
 import styles from "./QuotePage.module.css";
+import { depthLines, lineDepths, type DepthLine } from "./depths";
 import { AddOptionsDialog, QuoteOptions } from "./QuoteOptions";
 import { QuoteSections } from "./QuoteSections";
 import { DiscountRows } from "./PromoRow";
@@ -1433,17 +1435,42 @@ function MessageCard({ value, editable, onEdit, onUnchanged, onSave }: { value: 
   );
 }
 
+/**
+ * The quote's drawings, and Fill quantities: each line's formula worked out from a drawing. Lines
+ * whose formula reads a depth are shown first, each with its own to confirm (its price list item's
+ * default, else the drawing's), so 6 inches of stone isn't priced at the asphalt's 2.
+ */
 function MeasurementsCard({ quoteId, propertyId, lat, lng, editable, onApplied }: { quoteId: string; propertyId: string | null; lat: number | null; lng: number | null; editable: boolean; onApplied: () => void }) {
-  const [depth, setDepth] = useState("");
+  const [asking, setAsking] = useState<{ measurementId: string; lines: DepthLine[] } | null>(null);
   const apply = useMutation({
-    meta: { success: (r: { lines: unknown[] }) => (r.lines.length ? "Quantities filled from the drawing" : null), tone: "quote" },
-    mutationFn: (measurementId: string) =>
-      api.post<{ lines: Array<{ name: string; field?: string; value?: number; error?: string }> }>(`/quotes/${quoteId}/apply-measurement`, {
+    meta: { inline: true, success: (r: { lines: unknown[] }) => (r.lines.length ? "Quantities filled from the drawing" : null), tone: "quote" },
+    mutationFn: ({ measurementId, depths }: { measurementId: string; depths?: Record<string, number> }) =>
+      api.post<{ lines: Array<{ name: string; field?: string; value?: number; depth_in?: number | null; error?: string }> }>(`/quotes/${quoteId}/apply-measurement`, {
         measurement_id: measurementId,
-        depth_in: depth ? Number(depth) : undefined,
+        item_depths: true,
+        ...(depths ? { depths } : {}),
       }),
-    onSuccess: onApplied,
+    onSuccess: () => {
+      setAsking(null);
+      onApplied();
+    },
   });
+  // With no line that reads a depth, the drawing fills the quote straight away.
+  const start = useMutation({
+    mutationFn: async (measurementId: string) => {
+      const db = supabase();
+      const [lines, drawing] = await Promise.all([
+        db.from("quote_line_items").select("id, name, formula, service:services(default_depth_in)").eq("quote_id", quoteId).order("sort"),
+        db.from("measurements").select("sections").eq("id", measurementId).maybeSingle(),
+      ]);
+      const deep = depthLines(unwrap(lines), null, usesDepth);
+      if (!deep.length) return void (await apply.mutateAsync({ measurementId }).catch(() => undefined));
+      const sections = unwrap(drawing)?.sections;
+      const drawn = (Array.isArray(sections) ? (sections as Array<{ depth_in?: number | null }>) : []).find((s) => s?.depth_in)?.depth_in;
+      setAsking({ measurementId, lines: depthLines(unwrap(lines), drawn, usesDepth) });
+    },
+  });
+
   const measureUrl = `/measure?quote=${quoteId}${propertyId ? `&property=${propertyId}` : ""}${lat != null ? `&lat=${lat}&lng=${lng}` : ""}`;
   return (
     <DrawingsCard
@@ -1454,20 +1481,47 @@ function MeasurementsCard({ quoteId, propertyId, lat, lng, editable, onApplied }
       editable
       rowExtra={(m) =>
         editable && (
-          <Button size="sm" style={{ justifySelf: "start" }} loading={apply.isPending && apply.variables === m.id} onClick={() => apply.mutate(m.id)}>Fill quantities</Button>
+          <Button size="sm" style={{ justifySelf: "start" }} loading={(start.isPending && start.variables === m.id) || (!asking && apply.isPending && apply.variables?.measurementId === m.id)} onClick={() => start.mutate(m.id)}>Fill quantities</Button>
         )
       }
     >
-      {editable && (
-        <Field label="Depth (inches)" hint="Used by formulas that need a depth, like mulch or asphalt.">
-          <input className="input" inputMode="decimal" value={depth} onChange={(e) => setDepth(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="2" />
-        </Field>
-      )}
+      {!asking && <FormError error={apply.error} />}
       {apply.data && (
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-          {apply.data.lines.map((l) => <li key={l.name}>{l.name}: {l.error ? <span className="error-text">{l.error}</span> : `${l.field === "unit_price" ? "price" : "qty"} ${l.value}`}</li>)}
+          {apply.data.lines.map((l, i) => <li key={`${i}-${l.name}`}>{l.name}: {l.error ? <span className="error-text">{l.error}</span> : `${l.field === "unit_price" ? "price" : "qty"} ${l.value}${l.depth_in != null ? ` at ${l.depth_in} in deep` : ""}`}</li>)}
           {apply.data.lines.length === 0 && <li className="muted">No lines on this quote use a formula.</li>}
         </ul>
+      )}
+      {asking && (
+        <Dialog open onClose={() => setAsking(null)} title="Depth for each line">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const depths = lineDepths(asking.lines);
+              if (depths) apply.mutate({ measurementId: asking.measurementId, depths });
+            }}
+          >
+            <p className="muted" style={{ margin: 0 }}>These lines work out their amount from a depth. Each starts with its price list item's own depth, or the drawing's. Check them, then fill the quantities.</p>
+            {asking.lines.map((line, i) => (
+              <Field key={line.id} label={`${line.name} (inches deep)`}>
+                <input
+                  className="input"
+                  inputMode="decimal"
+                  value={line.depth}
+                  autoFocus={i === 0}
+                  required
+                  onChange={(e) => setAsking({ ...asking, lines: asking.lines.map((l) => (l.id === line.id ? { ...l, depth: e.target.value.replace(/[^0-9.]/g, "") } : l)) })}
+                />
+              </Field>
+            ))}
+            {!lineDepths(asking.lines) && <span className="muted small">Each depth is more than 0 and at most 48 inches.</span>}
+            <FormError error={apply.error} />
+            <div className="form-actions">
+              <Button onClick={() => setAsking(null)}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={!lineDepths(asking.lines)} loading={apply.isPending}>Fill quantities</Button>
+            </div>
+          </form>
+        </Dialog>
       )}
     </DrawingsCard>
   );

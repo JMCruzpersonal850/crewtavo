@@ -3,7 +3,7 @@ import { FORMULA_VARIABLES, validateFormula } from "@crewtavo/core";
 import { z } from "zod";
 import { changed, companyArg, rows, tool } from "./tool";
 
-const COLUMNS = "id, name, category, description, unit, unit_price, unit_cost, taxable, formula, formula_target, active, add_to_every_job";
+const COLUMNS = "id, name, category, description, unit, unit_price, unit_cost, taxable, formula, formula_target, default_depth_in, active, add_to_every_job";
 
 const fields = {
   name: z.string().trim().min(1).max(200),
@@ -21,6 +21,7 @@ const fields = {
     .optional()
     .describe(`Works out the quantity (or price) from a measurement, e.g. "area_sqyd * depth_in * 110 / 2000". It can use ${FORMULA_VARIABLES.join(", ")}.`),
   formula_target: z.enum(["quantity", "unit_price"]).describe("What the formula sets."),
+  default_depth_in: z.number().positive().max(48).nullable().optional().describe("For a formula that uses depth_in: the depth, in inches, this item starts with when a measurement fills a quote (6 for a stone base, 2 for an asphalt surface)."),
   active: z.boolean().describe("Turned off, it's kept but not offered on new quotes."),
   add_to_every_job: z
     .boolean()

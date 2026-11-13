@@ -96,7 +96,8 @@
       "unit": "ton",
       "unit_price": 46.8,
       "unit_cost": 28,
-      "formula_name": "Stone base tons"
+      "formula_name": "Stone base tons",
+      "default_depth_in": 6
     },
     {
       "name": "Hot-mix asphalt surface",
@@ -104,7 +105,8 @@
       "unit": "ton",
       "unit_price": 143,
       "unit_cost": 92,
-      "formula_name": "Hot-mix asphalt tons"
+      "formula_name": "Hot-mix asphalt tons",
+      "default_depth_in": 2
     },
     {
       "name": "Gravel surface",
@@ -112,7 +114,8 @@
       "unit": "ton",
       "unit_price": 48,
       "unit_cost": 29,
-      "formula_name": "Gravel tons"
+      "formula_name": "Gravel tons",
+      "default_depth_in": 4
     },
     {
       "name": "Tar and chip surface",

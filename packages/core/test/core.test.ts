@@ -77,6 +77,7 @@ import {
   sqmToSqft,
   summarizeFeatureCollection,
   validateFormula,
+  usesDepth,
   weatherRisks,
   weatherRuleSummary,
   zonedTimeToUtc,
@@ -361,6 +362,10 @@ describe("presets", () => {
     expect(evaluateFormula(formula("Stone base tons"), { asphalt_sqyd: 400, depth_in: 6 })).toBe(132);
     expect(evaluateFormula(formula("Gravel tons"), { gravel_sqft: 3600, depth_in: 4 })).toBe(88);
     expect(services.find((s) => s.name === "Mobilization and trucking")).toMatchObject({ unit: "ea", unit_price: 450 });
+    // Each item whose formula reads a depth comes with its own, and no other item has one.
+    const depthOf = (s: (typeof services)[number]) => formulas.find((f) => f.name === s.formula_name)?.formula;
+    expect(services.filter((s) => usesDepth(depthOf(s))).map((s) => [s.name, s.default_depth_in])).toEqual([["Grade and compact stone base", 6], ["Hot-mix asphalt surface", 2], ["Gravel surface", 4]]);
+    expect(services.filter((s) => s.default_depth_in !== undefined && !usesDepth(depthOf(s)))).toEqual([]);
     // Every value a paving takeoff counts that a paver bills for is used by some item's formula.
     const used = new Set(formulas.flatMap((f) => [...formulaVariables(f.formula)]));
     for (const name of ["stalls", "gravel_sqft", "asphalt_sqyd", "sealcoat_sqft", "stripe_ft", "ada_stalls", "curb_ft"]) expect(used.has(name), name).toBe(true);

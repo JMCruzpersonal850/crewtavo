@@ -104,3 +104,75 @@ describe("filling a roof estimate's lines from the roof", () => {
     expect(lineWrites()).toEqual([]);
   });
 });
+
+describe("a depth for each line that uses one", () => {
+  const STONE = "00000000-0000-4000-8000-0000000000e1";
+  const HOT_MIX = "00000000-0000-4000-8000-0000000000e2";
+  const MULCH = "00000000-0000-4000-8000-0000000000e3";
+  const SEAL = "00000000-0000-4000-8000-0000000000e4";
+  const TONS = "asphalt_sqyd * depth_in * 110 / 2000";
+  // A 3,600 sq ft driveway (400 sq yd), drawn with a depth of 3 inches. The stone base and hot mix
+  // have depths of their own in the price list; the mulch has none.
+  const driveway = (drawn: number | null = 3) => {
+    state.measurement = { total_area_sqft: 3600, total_area_sqyd: 400, total_length_ft: 0, sections: [{ feature_id: "a", kind: "Area", label: "Drive", value: 3600, unit: "sq ft", depth_in: drawn }], roof_pitch: null, waste_pct: 0 };
+    state.lines = [
+      { id: STONE, name: "Grade and compact stone base", formula: TONS, service: { formula_target: "quantity", default_depth_in: 6 } },
+      { id: HOT_MIX, name: "Hot-mix asphalt surface", formula: TONS, service: { formula_target: "quantity", default_depth_in: 2 } },
+      { id: MULCH, name: "Mulch", formula: "area_sqft * depth_in / 324", service: { formula_target: "quantity", default_depth_in: null } },
+      { id: SEAL, name: "Sealcoat", formula: "sealcoat_sqft", service: null },
+    ];
+  };
+  const filled = async (body: Record<string, unknown>) => {
+    const res = await post(`/quotes/${QUOTE}/apply-measurement`, { measurement_id: MEASUREMENT, ...body });
+    expect(res.status).toBe(200);
+    return Object.fromEntries(((await res.json()).lines as Array<{ id: string; value?: number; depth_in?: number | null; error?: string }>).map((l) => [l.id, l]));
+  };
+
+  it("gives each line the depth confirmed for it: 6 inches of stone under 2 of asphalt", async () => {
+    driveway();
+    const lines = await filled({ depths: { [STONE]: 6, [HOT_MIX]: 2.5, [MULCH]: 3 } });
+    expect(lines[STONE]).toMatchObject({ value: 132, depth_in: 6 });
+    expect(lines[HOT_MIX]).toMatchObject({ value: 55, depth_in: 2.5 });
+    expect(lines[MULCH]).toMatchObject({ value: 33.333, depth_in: 3 });
+    // A line that reads no depth says nothing about one.
+    expect(lines[SEAL]).toEqual({ id: SEAL, name: "Sealcoat", field: "quantity", value: 3600 });
+    expect(state.writes.filter((w) => w.table === "quote_line_items" && w.id === STONE)).toEqual([{ table: "quote_line_items", op: "update", row: { quantity: 132 }, id: STONE }]);
+  });
+
+  it("starts from each item's own depth when asked to, with the one depth for the rest", async () => {
+    driveway();
+    const lines = await filled({ item_depths: true, depth_in: 4 });
+    expect([lines[STONE]!.depth_in, lines[HOT_MIX]!.depth_in, lines[MULCH]!.depth_in]).toEqual([6, 2, 4]);
+    // And the drawing's depth for a line with neither.
+    expect((await filled({ item_depths: true }))[MULCH]).toMatchObject({ depth_in: 3, value: 33.333 });
+    // A depth confirmed for one line wins over its item's.
+    expect((await filled({ item_depths: true, depths: { [STONE]: 8 } }))[STONE]).toMatchObject({ depth_in: 8, value: 176 });
+  });
+
+  it("still applies one depth to every line when that's all that's sent, as an app from before sends it", async () => {
+    driveway();
+    const lines = await filled({ depth_in: 2 });
+    expect([lines[STONE]!.value, lines[HOT_MIX]!.value, lines[MULCH]!.depth_in]).toEqual([44, 44, 2]);
+    // Nothing sent: the drawing's depth for all, as before.
+    const drawn = await filled({});
+    expect([drawn[STONE]!.depth_in, drawn[HOT_MIX]!.depth_in, drawn[MULCH]!.depth_in]).toEqual([3, 3, 3]);
+  });
+
+  it("uses an item's own depth where there was none at all, and says so when there's still none", async () => {
+    driveway(null);
+    const lines = await filled({});
+    expect(lines[STONE]).toMatchObject({ value: 132, depth_in: 6 });
+    expect(lines[HOT_MIX]).toMatchObject({ value: 44, depth_in: 2 });
+    expect(lines[MULCH]!.error).toBeTruthy();
+    expect(lines[MULCH]!.value).toBeUndefined();
+  });
+
+  it("turns away a depth that isn't one, or isn't for a line", async () => {
+    driveway();
+    for (const depths of [{ [STONE]: 0 }, { [STONE]: 60 }, { [STONE]: "6" }, { stone: 6 }]) {
+      const res = await post(`/quotes/${QUOTE}/apply-measurement`, { measurement_id: MEASUREMENT, depths });
+      expect(res.status, JSON.stringify(depths)).toBe(400);
+    }
+    expect(state.writes.filter((w) => w.table === "quote_line_items")).toEqual([]);
+  });
+});

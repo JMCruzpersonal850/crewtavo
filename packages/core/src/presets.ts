@@ -26,6 +26,8 @@ export interface PresetService {
   unit_cost?: number;
   category?: string;
   formula_name?: string;
+  /** The depth, in inches, its formula starts with when a measurement fills a quote (services.default_depth_in). */
+  default_depth_in?: number;
 }
 
 export interface PresetFormula {
