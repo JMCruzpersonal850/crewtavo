@@ -91,7 +91,7 @@ export function ContactMessagesSwitch() {
         <span>
           Send to a client's other contacts too
           <span className="muted small" style={{ display: "block", fontWeight: 400 }}>
-            A contact ticked for emails or texts on the client's page gets the client's visit reminders, on-my-way texts, quotes, invoices, follow-ups and receipts. Marketing emails,
+            A contact ticked for emails or texts on the client's page gets what the client gets about their visits (booked, moved, cancelled, reminders, on-my-way texts), and their quotes, invoices, follow-ups and receipts. Marketing emails,
             review requests and referral asks only ever go to the client.
           </span>
         </span>

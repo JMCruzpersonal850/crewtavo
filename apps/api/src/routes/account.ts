@@ -286,6 +286,14 @@ account.post("/companies", requireUser, async (c) => {
     if (set.error) console.error("Couldn't set the currency", set.error.message);
   }
   await applyPreset(db, companyId as string, preset);
+  // Where texting is connected (a business this new has no Twilio account of its own yet, so the
+  // server's), the starters that tell clients about their visits text as well as email, and the
+  // on-my-way text starts on. If this fails they're as every company's start, and can be changed
+  // in Settings → Client notifications.
+  if (smsConfigured(c.env)) {
+    const texting = await adminClient(c.env).rpc("texting_starters", { p_company: companyId as string });
+    if (texting.error) console.error("Couldn't add texts to the starter rules", texting.error.message);
+  }
   // An instance on Railway: the next screen offers to connect Railway and set up a web address.
   if (c.env.CREWTAVO_SINGLE_COMPANY === "1" && platformOf(c.env) === "railway") await setRailwaySetup(adminClient(c.env), companyId as string, "pending");
   // The business exists either way; if this fails, the owner is asked to agree again when it opens.

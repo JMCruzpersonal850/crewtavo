@@ -354,12 +354,19 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   report. Subs sign in with a link or a code by text or email, no password.
 - **Communication:** email from your own mailbox, two-way texting through your own Twilio account
   (connected on the Apps page, no server settings), a message center, and notifications in the app,
-  by email, by text or as phone push, each person's choice. A client's other contacts (a spouse, a
+  by email, by text or as phone push, each person's choice. Clients are told when a visit is
+  booked, moved or cancelled, reminded the day before and texted when the crew is on the way; each
+  message is a switch in Settings → Client notifications. A booking, move or cancelling goes ten
+  minutes after the change, so a visit dragged twice is one message and one put back is none, and a
+  route being re-ordered or a recurring job's whole schedule changing messages nobody. (A business
+  that was running before these three messages existed has them off until it turns them on.) A
+  client's other contacts (a spouse, a
   property manager) can be ticked to get their reminders, quotes, invoices and receipts too, a
   quote or invoice can go to several people at once, and a text from a number nobody knows is kept
   in Messages to add to a client.
 - **Automations and marketing:** rules like "when a quote is sent, wait 3 days, then email the
-  client", campaigns, promo codes, Google review requests and referrals.
+  client" or "when a visit is moved, text the client", campaigns, promo codes, Google review
+  requests and referrals.
 - **Claude and ChatGPT:** a built-in connector that can look things up or run the business:
   import customers and recurring services (with a preview first, and no duplicates on a second
   run), manage the schedule, quotes, invoices and payments, read the money figures, invite people

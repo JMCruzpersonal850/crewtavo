@@ -150,7 +150,7 @@ describe("setting up a business", () => {
   const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const token = `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub: "user-1", role: "authenticated", exp: Math.floor(Date.now() / 1000) + 600 })}.c2ln`;
 
-  const create = (timezone: string) => {
+  const create = (timezone: string, on: Env = env) => {
     const rpcs: Array<{ name: string; body: unknown }> = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
@@ -159,7 +159,7 @@ describe("setting up a business", () => {
       return Response.json(url.pathname === "/rest/v1/rpc/create_company" ? "company-1" : []);
     });
     const body = { name: "Acme Lawn", trade_preset: "lawn_exterior", timezone, terms_version: TERMS_VERSION };
-    const res = request("/api/companies", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = app.request("/api/companies", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }, on);
     return { rpcs, res };
   };
 
@@ -167,6 +167,14 @@ describe("setting up a business", () => {
     const { rpcs, res } = create("America/Chicago");
     expect((await res).status).toBe(201);
     expect(rpcs[0]).toEqual({ name: "create_company", body: { p_name: "Acme Lawn", p_trade_preset: "lawn_exterior", p_timezone: "America/Chicago" } });
+    // No texting on this server: the starter rules stay as every company's start, emails only.
+    expect(rpcs.map((r) => r.name)).not.toContain("texting_starters");
+  });
+
+  it("adds texts to the starters that tell clients about their visits where the server can text", async () => {
+    const { rpcs, res } = create("America/Chicago", { ...env, TWILIO_ACCOUNT_SID: "AC123", TWILIO_AUTH_TOKEN: "twilio-token", TWILIO_FROM_NUMBER: "+15405550000" });
+    expect((await res).status).toBe(201);
+    expect(rpcs.filter((r) => r.name === "texting_starters")).toEqual([{ name: "texting_starters", body: { p_company: "company-1" } }]);
   });
 
   it("loads the preset into the settings the company started with, so Marketing stays installed", async () => {

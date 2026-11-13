@@ -16,7 +16,9 @@ import {
   variablesForTrigger,
   VISIT_MOVED_WORDS,
   VISIT_NOTICE_SETTLE_MIN,
+  VISIT_NOTICE_STARTERS,
   VISIT_NOTICE_TRIGGERS,
+  visitNoticesPending,
   type Action,
 } from "../src/automations";
 
@@ -67,6 +69,15 @@ describe("a visit booked, moved or cancelled", () => {
   it("is told apart from everything else that happens to a visit", () => {
     expect(VISIT_NOTICE_TRIGGERS.every(isVisitNotice)).toBe(true);
     for (const verb of ["visit.reminder", "visit.en_route", "visit.completed", "visit.reschedule_requested", "visit.cancel_requested", "job.created", "", null, undefined]) expect(isVisitNotice(verb)).toBe(false);
+  });
+
+  it("has a note to answer only for a business that was running before these messages", () => {
+    expect(VISIT_NOTICE_STARTERS).toEqual(["visit_scheduled", "visit_rescheduled", "visit_cancelled"]);
+    expect(visitNoticesPending({ visit_notices: { pending: true } })).toBe(true);
+    // Answered, a business made since (nothing saved), and anything that isn't the setting.
+    for (const settings of [{ visit_notices: { pending: false, answered_at: "2026-11-13T12:00:00Z" } }, {}, null, undefined, { visit_notices: null }, { visit_notices: "pending" }, { visit_notices: { pending: "true" } }]) {
+      expect(visitNoticesPending(settings)).toBe(false);
+    }
   });
 
   it("says in words what a move is and how long a message waits", () => {

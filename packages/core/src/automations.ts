@@ -145,6 +145,16 @@ export const VISIT_NOTICE_SETTLE_MIN = 10;
 export const VISIT_MOVED_WORDS =
   "A visit counts as moved when its day changes, or its start time changes by an hour or more. A later start that's still inside the arrival window you give clients doesn't count, so organizing a route doesn't message anyone.";
 
+/** The starter rules for them (private.install_visit_notice_rules), in the order they happen. */
+export const VISIT_NOTICE_STARTERS = ["visit_scheduled", "visit_rescheduled", "visit_cancelled"] as const;
+/**
+ * Whether a company still has the note to answer about them (companies.settings.visit_notices): one
+ * that existed before these messages got them switched off, and its office is asked once whether to
+ * turn them on (public.set_visit_notices). A company made since has them on and nothing to answer.
+ */
+export const visitNoticesPending = (settings: Record<string, unknown> | null | undefined) =>
+  (settings?.visit_notices as { pending?: unknown } | null | undefined)?.pending === true;
+
 /** Whether a trigger is about autopay: its rules' emails and texts are kept from the crew, and it never adds a client note. */
 export const isAutopayTrigger = (verb: string | null | undefined) => Boolean(verb && (verb.startsWith("autopay.") || verb.startsWith("payment_method.")));
 
