@@ -1,3 +1,4 @@
+import { pavingWorkOn } from "@crewtavo/core/paving";
 import { describe, expect, it } from "vitest";
 import {
   applyJob,
@@ -8,7 +9,9 @@ import {
   newInput,
   parseSetup,
   parseWorksheet,
+  partsOf,
   pricesDiffer,
+  quoteLine,
   scopeText,
   withPrices,
   type CalcInput,
@@ -148,5 +151,40 @@ describe("Paving calculator", () => {
   it("describes the job for the client without prices, days or profit", () => {
     const calc = calculate(DEFAULT_SETUP, { ...SHEET_1, values: { ...SHEET_1.values, stone8: 0, liquid: 0.1, sawCut: 120 } }, { stone21a: 13 });
     expect(scopeText(calc)).toBe('12,000 sq ft (1,333 sq yd). Top coat asphalt, 2" deep: 147 tons. Base stone (21A): 13 tons. Liquid asphalt (CRS-2): 134 gal. Milling (2"). Saw cutting: 120 ft.');
+  });
+
+  it("keeps on the quote line what the job is made of, so weather rules and checklists know its work", () => {
+    const calc = calculate(DEFAULT_SETUP, SHEET_1, { top: 150 });
+    const line = quoteLine(DEFAULT_SETUP, SHEET_1, calc);
+    expect(line).toMatchObject({ name: "Paving", quantity: 1, unit: "job", unit_price: calc.total, unit_cost: calc.cost });
+    // Each item the bid has any of, with the amount as bid (typed over or worked out) and what one costs.
+    expect(line.parts).toEqual([
+      { id: "top", name: "Top coat asphalt", unit: "ton", quantity: 150, unit_cost: 100, material: true, work: "asphalt" },
+      { id: "stone21a", name: "Base stone (21A)", unit: "ton", quantity: lineOf(calc, "stone21a").quantity, unit_cost: 30, material: true, work: "stone" },
+      { id: "stone8", name: "#8 stone (top layer)", unit: "ton", quantity: 24, unit_cost: 30, material: true, work: "tar_chip" },
+      { id: "mill", name: "Milling", unit: "sq yd", quantity: 1333.333, unit_cost: 6, work: "milling" },
+      { id: "fullCrew", name: "Full crew", unit: "day", quantity: 3, unit_cost: 5000 },
+    ]);
+    expect(pavingWorkOn([line])).toEqual(["asphalt", "stone", "tar_chip", "milling"]);
+    expect(partsOf(calculate(DEFAULT_SETUP, at(DEFAULT_SETUP, {})))).toEqual([]);
+  });
+
+  it("works out the kind of work of a setup saved before items said, and keeps what the business picks", () => {
+    const saved = parseSetup({
+      items: [
+        // The standard top coat under the business's own name, a standard id figured another way, and its own items.
+        { id: "top", name: "Surface mix", section: "Asphalt", basis: "depth", price: 96, weight: 110 },
+        { id: "base", name: "Base, by the load", section: "Asphalt", basis: "count", price: 900 },
+        { id: "item-1", name: "Sealer", section: "Seal", basis: "area_sqft", price: 0.18, work: "sealcoat" },
+        { id: "item-2", name: "Crusher run", section: "Stone", basis: "depth", price: 28, weight: 110 },
+        { id: "intermediate", name: "Binder", section: "Asphalt", basis: "depth", price: 90, weight: 110, work: null },
+        { id: "mill", name: "Milling", section: "Prep", basis: "area_sqyd", price: 5, work: "made up" },
+      ],
+    });
+    expect(saved.items.map((i) => [i.id, i.work])).toEqual([["top", "asphalt"], ["base", undefined], ["item-1", "sealcoat"], ["item-2", undefined], ["intermediate", null], ["mill", "milling"]]);
+    // Saved again, it reads back the same.
+    expect(parseSetup(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+    const calc = calculate(saved, at(saved, { top: 2, "item-1": 1, intermediate: 3 }, { sqft: 9000 }));
+    expect(pavingWorkOn([{ parts: partsOf(calc) }])).toEqual(["asphalt", "sealcoat"]);
   });
 });

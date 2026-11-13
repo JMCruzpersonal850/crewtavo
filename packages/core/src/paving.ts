@@ -167,3 +167,63 @@ export function itemTotal(sections: readonly Section[], id: string): { value: nu
 
 /** Whether a drawing is a paving takeoff: any shape marked as a paving item. */
 export const isPavingTakeoff = (sections: readonly Pick<Section, "item">[]) => sections.some((s) => pavingItem(s.item));
+
+// ---------------------------------------------------------------------------------------------
+// Kinds of work on a job priced with the paving calculator
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A job priced with the paving calculator has one line with no price list item behind it, so a
+ * weather rule or a checklist for "Hot-mix asphalt surface" would never find it. Each calculator
+ * item says which of these kinds of work it is (Paving → Calculator → Set up), the line keeps the
+ * kinds it has (quote_line_items.parts, job_line_items.parts), and a weather rule or a checklist can
+ * be for a kind. The database knows the same list (private.paving_work_label).
+ */
+export const PAVING_WORK = {
+  asphalt: "Hot-mix asphalt",
+  tar_chip: "Tar and chip",
+  sealcoat: "Sealcoat",
+  striping: "Striping",
+  stone: "Stone base and gravel",
+  milling: "Milling",
+} as const;
+export type PavingWork = keyof typeof PAVING_WORK;
+export const PAVING_WORK_IDS = Object.keys(PAVING_WORK) as PavingWork[];
+export const isPavingWork = (value: unknown): value is PavingWork => typeof value === "string" && Object.hasOwn(PAVING_WORK, value);
+/** What a weather rule for a kind of calculator work is called: "Hot-mix asphalt (paving calculator)". */
+export const pavingWorkLabel = (work: PavingWork) => `${PAVING_WORK[work]} (paving calculator)`;
+
+/**
+ * One of the calculator's items on a quote or job line, as the line keeps it (`parts`): how much of
+ * it the bid has and what one costs. Weather rules and checklists go by `work`; job costs compare
+ * logged materials with the ones marked `material`.
+ */
+export interface LinePart {
+  id: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  unit_cost: number;
+  /** Bought by the ton or gallon, so load tickets can be checked against it. */
+  material?: boolean;
+  work?: PavingWork;
+}
+
+/** A line's parts as saved, with anything that isn't one dropped: they're JSON the office can write. */
+export function lineParts(raw: unknown): LinePart[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((p): LinePart[] => {
+    if (!p || typeof p !== "object") return [];
+    const { id, name, unit, quantity, unit_cost, material, work } = p as Record<string, unknown>;
+    if (typeof name !== "string" || !name.trim() || typeof unit !== "string") return [];
+    const amount = Number(quantity);
+    const cost = Number(unit_cost);
+    if (!Number.isFinite(amount) || amount < 0 || !Number.isFinite(cost) || cost < 0) return [];
+    return [{ id: typeof id === "string" ? id : name.trim(), name: name.trim(), unit, quantity: amount, unit_cost: cost, ...(material === true ? { material: true } : {}), ...(isPavingWork(work) ? { work } : {}) }];
+  });
+}
+
+/** The kinds of calculator work on a job's or quote's lines. */
+export function pavingWorkOn(lines: ReadonlyArray<{ parts?: unknown }>): PavingWork[] {
+  return [...new Set(lines.flatMap((l) => lineParts(l.parts).flatMap((p) => (p.work && p.quantity > 0 ? [p.work] : []))))];
+}

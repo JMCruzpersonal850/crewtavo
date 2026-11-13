@@ -2,13 +2,14 @@
  * Weather rules (Settings → Weather rules): the work that needs good weather, and how good. Saved
  * all at once with set_weather_rules, which checks them, as a change to the price list.
  */
-import { namedWeatherRules, weatherRuleSummary, type WeatherRule } from "@crewtavo/core";
+import { namedWeatherRules, PAVING_WORK_IDS, weatherRuleSummary, type WeatherRule } from "@crewtavo/core";
 import { z } from "zod";
 import { companyArg, friendly, one, tool } from "./tool";
 
 const rule = z.object({
   service_id: z.uuid().optional().describe("The price list item's id (from list_services): visits for jobs with it are checked. Better than applies_to: it keeps working when the item is renamed."),
   applies_to: z.string().trim().max(200).optional().describe("A price list item's name, when there's no service_id. Both left out: every job."),
+  work: z.enum(PAVING_WORK_IDS).optional().describe("Instead of a price list item: a kind of work on jobs priced with the paving calculator, which have no price list item (a paving business usually wants its asphalt and sealcoat rules both ways, as two rules)."),
   max_rain_pct: z.number().min(0).max(100).optional().describe("Most chance of rain, in percent."),
   min_temp_f: z.number().min(-40).max(130).optional().describe("Lowest temperature (the day's low), °F."),
   max_temp_f: z.number().min(-40).max(130).optional().describe("Highest temperature (the day's high), °F."),

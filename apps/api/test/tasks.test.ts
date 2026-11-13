@@ -94,6 +94,30 @@ describe("weather holds", () => {
     expect(calls.find((c) => c.method === "GET" && c.path === "visits")?.url.searchParams.get("select")).toContain("lines:job_line_items(name,service_id,");
   });
 
+  it("holds an asphalt job priced with the paving calculator, whose one line has no price list item", async () => {
+    // What the Paving preset saves at signup: its asphalt and sealcoat rules by item, and for the calculator.
+    const paving = {
+      weather_rules: [
+        { applies_to: "Hot-mix asphalt surface", service_id: "svc-hot", min_temp_f: 50, max_rain_pct: 40 },
+        { work: "asphalt", applies_to: "Hot-mix asphalt (paving calculator)", min_temp_f: 50, max_rain_pct: 40 },
+        { work: "sealcoat", applies_to: "Sealcoat (paving calculator)", min_temp_f: 50, requires_dry_hours: 24 },
+      ],
+    };
+    const parts = (work: string) => [{ id: "x", name: "Item", unit: "ton", quantity: 40, unit_cost: 100, work }, { id: "crew", name: "Full crew", unit: "day", quantity: 1, unit_cost: 5000 }];
+    const visits = [
+      { ...visit("pave", { weather_rules: [], lines: [{ name: "New asphalt paving", service_id: null, service: null, parts: parts("asphalt") }] }), company: paving },
+      { ...visit("gravel", { weather_rules: [], lines: [{ name: "Gravel", service_id: null, service: null, parts: parts("stone") }] }), company: paving },
+      // A calculator line from before lines kept their parts: no rule finds it, as before.
+      { ...visit("old", { weather_rules: [], lines: [{ name: "New asphalt paving", service_id: null, service: null, parts: null }] }), company: paving },
+    ];
+    const calls = serve((call) => (call.url.host === "api.open-meteo.com" ? forecast : call.method === "GET" && call.path === "visits" ? visits : []));
+    expect(await runTask("weather", env)).toEqual({ checked: 3, flagged: 1, unknown: 0 });
+    expect(calls.filter((c) => c.method === "PATCH" && c.path === "visits").map((c) => [c.url.searchParams.get("id"), c.body.hold_reason])).toEqual([
+      ["eq.pave", "Hot-mix asphalt (paving calculator): low of 35°F is below 50°F; Hot-mix asphalt (paving calculator): 90% chance of rain"],
+    ]);
+    expect(calls.find((c) => c.method === "GET" && c.path === "visits")?.url.searchParams.get("select")).toContain("lines:job_line_items(name,service_id,parts,");
+  });
+
   it("reads every visit a page at a time, in a fixed order", async () => {
     const page = (start: number, n: number) => Array.from({ length: n }, (_, i) => visit(`v${start + i}`, { weather_rules: [], lines: [] }));
     const calls = serve((call) => {

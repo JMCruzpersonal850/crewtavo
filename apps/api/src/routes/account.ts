@@ -1,5 +1,5 @@
 /** Public config, the signed-in user, onboarding (company + trade preset), the license and team invites. */
-import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetSummaries, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
+import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv, Env } from "../env";
@@ -346,7 +346,7 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
   // The price list's ids, made here so the weather rules can name their items by id in the same go.
   const ids = preset.services.map(() => crypto.randomUUID());
   const idOf = (name: string | undefined) => ids[preset.services.findIndex((s) => s.name === name)];
-  const weatherRules = preset.weather_rules.map((r) => (idOf(r.applies_to) ? { ...r, service_id: idOf(r.applies_to) } : r));
+  const weatherRules = presetWeatherRules(preset, idOf);
   const [services, checklists, ...rest] = await Promise.all([
     db.from("services").insert(
       preset.services.map((s, i) => {
@@ -365,7 +365,7 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
         };
       }),
     ).select("id, name"),
-    db.from("checklist_templates").insert(preset.checklists.map((cl) => ({ company_id: companyId, name: cl.name, items: asJson(cl.items) }))).select("id, name"),
+    db.from("checklist_templates").insert(preset.checklists.map((cl) => ({ company_id: companyId, name: cl.name, items: asJson(cl.items), every_job: cl.every_job === true, work: cl.work ?? [] }))).select("id, name"),
     db.from("intake_forms").insert(
       preset.intake_forms.map((f) => ({
         company_id: companyId,

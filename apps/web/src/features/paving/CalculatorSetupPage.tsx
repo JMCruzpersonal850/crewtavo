@@ -5,6 +5,7 @@
  * types (made on the calculator with Save as a job type, renamed or taken out here). Saved to
  * companies.settings.paving_calculator; worksheets already made keep the setup they were priced with.
  */
+import { isPavingWork, PAVING_WORK, PAVING_WORK_IDS } from "@crewtavo/core/paving";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -195,7 +196,7 @@ export function CalculatorSetupPage() {
   );
 }
 
-/** What else an item's way of figuring takes: a weight per inch, a crew day, dropdown choices. */
+/** The kind of work an item is, and what else its way of figuring takes: a weight per inch, a crew day, dropdown choices. */
 function ItemExtras({ item, onChange }: { item: CalcItem; onChange: (change: Partial<CalcItem>) => void }) {
   const area = item.basis === "area_sqyd" || item.basis === "area_sqft";
   const choices = item.choices ?? [];
@@ -203,9 +204,15 @@ function ItemExtras({ item, onChange }: { item: CalcItem; onChange: (change: Par
   // An area choice (a milling depth) is told apart by its value; a new one takes the next free number.
   const next = choices.reduce((m, c) => Math.max(m, c.value), 0) + 1;
   const per = BASES[item.basis].per;
-  if (!fromArea(item.basis) && item.basis !== "days") return null;
   return (
     <div className="calc-setup-extras">
+      <label className="row small" style={{ gap: 6 }}>
+        Weather rules and checklists treat it as
+        <select className="select input-sm" style={{ width: "auto" }} aria-label={`${item.name || "Item"}: the kind of work it is`} value={item.work ?? ""} onChange={(e) => onChange({ work: isPavingWork(e.target.value) ? e.target.value : null })}>
+          <option value="">Nothing in particular</option>
+          {PAVING_WORK_IDS.map((w) => <option key={w} value={w}>{PAVING_WORK[w]}</option>)}
+        </select>
+      </label>
       {item.basis === "depth" && (
         <span className="row small" style={{ gap: 6 }}>
           Weighs

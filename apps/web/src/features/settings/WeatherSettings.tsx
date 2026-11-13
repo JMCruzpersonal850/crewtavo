@@ -5,9 +5,11 @@
  * in packages/core/src/weather.ts) and saved all at once with set_weather_rules, which the office with
  * Settings may use too, as with the price list and checklists.
  */
+import { isPavingWork, PAVING_WORK, PAVING_WORK_IDS, pavingWorkLabel } from "@crewtavo/core/paving";
 import { namedWeatherRules, weatherRuleSummary, type WeatherRule } from "@crewtavo/core/weather";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { featureOn } from "@/components/shell/nav";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -88,6 +90,7 @@ export function WeatherSettings() {
         <RuleDialog
           rule={editing === "new" ? null : named[editing]!}
           services={services.data ?? []}
+          calculator={featureOn(company.settings, "paving_app")}
           onClose={() => setEditing(null)}
           onSave={async (rule) => {
             await save.mutateAsync(editing === "new" ? [...list, rule] : list.map((r, i) => (i === editing ? rule : r)));
@@ -108,17 +111,28 @@ const LIMITS = [
 ] as const;
 type Limit = (typeof LIMITS)[number][0];
 
-/** Add a rule or change one: the work it's for (a price list item, or every job) and its limits, each optional. */
-function RuleDialog({ rule, services, onClose, onSave }: { rule: WeatherRule | null; services: Service[]; onClose: () => void; onSave: (rule: WeatherRule) => Promise<void> }) {
+/** A kind of paving calculator work as the Work list's value, told apart from an item's id or name. */
+const KIND = "calculator:";
+
+/**
+ * Add a rule or change one: the work it's for (a price list item, every job, or with Paving installed
+ * a kind of work on jobs priced with the paving calculator, which have no price list item) and its
+ * limits, each optional.
+ */
+function RuleDialog({ rule, services, calculator, onClose, onSave }: { rule: WeatherRule | null; services: Service[]; calculator: boolean; onClose: () => void; onSave: (rule: WeatherRule) => Promise<void> }) {
   // The item's id; for a rule whose item isn't found (one from before ids, say), its name.
-  const [work, setWork] = useState(rule?.service_id ?? services.find((s) => s.name === rule?.applies_to)?.id ?? rule?.applies_to ?? "");
+  const [work, setWork] = useState(isPavingWork(rule?.work) ? `${KIND}${rule.work}` : rule?.service_id ?? services.find((s) => s.name === rule?.applies_to)?.id ?? rule?.applies_to ?? "");
+  const picked = work.startsWith(KIND) ? work.slice(KIND.length) : null;
+  const kind = isPavingWork(picked) ? picked : null;
   const [limits, setLimits] = useState<Record<Limit, string>>(() => Object.fromEntries(LIMITS.map(([k]) => [k, rule?.[k] != null ? String(rule[k]) : ""])) as Record<Limit, string>);
   const save = useMutation({
     meta: { inline: true, success: rule ? "Weather rule saved" : "Weather rule added" },
     mutationFn: async () => {
       const item = services.find((s) => s.id === work);
       // An item not found keeps the rule's own: set_weather_rules goes by its name when the id is gone.
-      const next: WeatherRule = item ? { service_id: item.id, applies_to: item.name } : work ? { ...(rule?.service_id && { service_id: rule.service_id }), applies_to: rule?.applies_to } : {};
+      const next: WeatherRule = kind
+        ? { work: kind, applies_to: pavingWorkLabel(kind) }
+        : item ? { service_id: item.id, applies_to: item.name } : work ? { ...(rule?.service_id && { service_id: rule.service_id }), applies_to: rule?.applies_to } : {};
       for (const [k] of LIMITS) if (limits[k].trim()) next[k] = Number(limits[k]);
       if (!LIMITS.some(([k]) => next[k] != null)) throw new Error("Give it at least one limit: rain, temperature, wind or dry hours.");
       if (next.min_temp_f != null && next.max_temp_f != null && next.min_temp_f > next.max_temp_f) throw new Error("The lowest temperature has to be below the highest.");
@@ -127,16 +141,21 @@ function RuleDialog({ rule, services, onClose, onSave }: { rule: WeatherRule | n
   });
   // A rule for an item no longer on the price list (removed, say) keeps it until it's changed.
   const offered = services.filter((s) => s.active || s.id === work);
-  const missing = work && !offered.some((s) => s.id === work);
+  const missing = work && !kind && !offered.some((s) => s.id === work);
   const categories = [...new Set(offered.map((s) => s.category?.trim() || "Other"))];
 
   return (
     <Dialog open onClose={onClose} title={rule ? "Edit weather rule" : "Add a weather rule"}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
-        <Field label="Work" hint="Visits for jobs with this on them are checked against the rule.">
+        <Field label="Work" hint={kind ? "Visits for jobs priced with the paving calculator that have this work are checked against the rule. Each calculator item says what kind of work it is in Paving → Calculator → Set up." : "Visits for jobs with this on them are checked against the rule."}>
           <select className="select" value={work} onChange={(e) => setWork(e.target.value)}>
             <option value="">Every job</option>
             {missing && <option value={work}>{rule?.applies_to ?? "An item"} (not on your price list)</option>}
+            {(calculator || kind) && (
+              <optgroup label="Priced with the paving calculator">
+                {PAVING_WORK_IDS.map((w) => <option key={w} value={`${KIND}${w}`}>{PAVING_WORK[w]}</option>)}
+              </optgroup>
+            )}
             {categories.map((c) => (
               <optgroup key={c} label={c}>
                 {offered.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

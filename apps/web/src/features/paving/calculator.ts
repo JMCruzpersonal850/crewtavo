@@ -12,6 +12,7 @@
  * priced with, so a price changed later never changes an old bid.
  */
 import { lineTotal, toCents } from "@crewtavo/core/money";
+import { isPavingWork, type LinePart, type PavingWork } from "@crewtavo/core/paving";
 
 /** How an item's amount is figured. Tons and gallons come from the area, trucking from the tons; the rest are typed. */
 export const BASES = {
@@ -60,6 +61,12 @@ export interface CalcItem {
   choices?: Choice[];
   /** Days only: a day the crew is out, which profit by the day counts. */
   crew?: boolean;
+  /**
+   * The kind of work it is (PAVING_WORK), which weather rules and checklists go by on a job priced
+   * here. null: none, said outright. Left out of a setup saved before kinds, it's worked out from
+   * the standard items (STANDARD_WORK).
+   */
+  work?: PavingWork | null;
 }
 
 /** A kind of job: the depths and rates (by item id) it usually takes. */
@@ -89,11 +96,11 @@ export interface CalcSetup {
 /** Until a business sets up its own: a working paver's sheet. A 0 price is one nobody has set yet. */
 export const DEFAULT_SETUP: CalcSetup = {
   items: [
-    { id: "top", name: "Top coat asphalt", section: "Asphalt", basis: "depth", price: 100, weight: DEFAULT_WEIGHT },
-    { id: "intermediate", name: "Intermediate asphalt", section: "Asphalt", basis: "depth", price: 92, weight: DEFAULT_WEIGHT },
-    { id: "base", name: "Base asphalt", section: "Asphalt", basis: "depth", price: 91, weight: DEFAULT_WEIGHT },
-    { id: "stone21a", name: "Base stone (21A)", section: "Stone and tar", basis: "depth", price: 30, weight: DEFAULT_WEIGHT },
-    { id: "stone8", name: "#8 stone (top layer)", section: "Stone and tar", basis: "spread_lb", price: 30 },
+    { id: "top", name: "Top coat asphalt", section: "Asphalt", basis: "depth", price: 100, weight: DEFAULT_WEIGHT, work: "asphalt" },
+    { id: "intermediate", name: "Intermediate asphalt", section: "Asphalt", basis: "depth", price: 92, weight: DEFAULT_WEIGHT, work: "asphalt" },
+    { id: "base", name: "Base asphalt", section: "Asphalt", basis: "depth", price: 91, weight: DEFAULT_WEIGHT, work: "asphalt" },
+    { id: "stone21a", name: "Base stone (21A)", section: "Stone and tar", basis: "depth", price: 30, weight: DEFAULT_WEIGHT, work: "stone" },
+    { id: "stone8", name: "#8 stone (top layer)", section: "Stone and tar", basis: "spread_lb", price: 30, work: "tar_chip" },
     { id: "stone68", name: "#68 stone (prime coat)", section: "Stone and tar", basis: "spread_lb", price: 31 },
     {
       id: "liquid",
@@ -110,6 +117,7 @@ export const DEFAULT_SETUP: CalcSetup = {
       basis: "area_sqyd",
       price: 0,
       choices: [{ label: '1"', value: 1, price: 0 }, { label: '1.5"', value: 1.5, price: 5 }, { label: '2"', value: 2, price: 6 }, { label: '3"', value: 3, price: 0 }, { label: '4"', value: 4, price: 0 }],
+      work: "milling",
     },
     { id: "fabric", name: "Fabric", section: "Milling and prep", basis: "area_sqyd", price: 2.75 },
     { id: "sawCut", name: "Saw cutting", section: "Milling and prep", basis: "length", price: 0 },
@@ -129,6 +137,13 @@ export const DEFAULT_SETUP: CalcSetup = {
   waste: 0,
   minimum: 0,
 };
+
+/**
+ * The kind of work each standard item is, for a setup saved before items said: an item still figured
+ * the way the standard one is takes its kind. Anything a business added or changed has none until
+ * they pick one in Set up.
+ */
+const STANDARD_WORK = new Map(DEFAULT_SETUP.items.flatMap((i) => (i.work ? [[i.id, { basis: i.basis, work: i.work }] as const] : [])));
 
 export interface Side {
   length: number;
@@ -296,6 +311,16 @@ export const sectionsOf = (setup: CalcSetup) => [...new Set(setup.items.map((i) 
 /** What the quote line is called: the job type, or plain "Paving". */
 export const jobName = (setup: CalcSetup, input: CalcInput) => setup.jobs.find((j) => j.id === input.job)?.name ?? "Paving";
 
+/**
+ * What the quote line is made of, kept on it (quote_line_items.parts) and on the job's line after:
+ * each item the bid has any of, with its amount, what one costs and the kind of work it is. The
+ * line itself has no price list item, so this is what weather rules, checklists and job costs go by.
+ */
+export const partsOf = (calc: Calc): LinePart[] =>
+  calc.lines
+    .filter((l) => l.quantity > 0)
+    .map((l) => ({ id: l.item.id, name: l.item.name, unit: l.unit, quantity: l.quantity, unit_cost: l.price, ...(BASES[l.item.basis].material ? { material: true } : {}), ...(l.item.work ? { work: l.item.work } : {}) }));
+
 // ---------------------------------------------------------------------------------------------
 // Prices kept for every job
 // ---------------------------------------------------------------------------------------------
@@ -343,8 +368,11 @@ function parseItem(raw: unknown, i: number): CalcItem | null {
         return [{ label: text(o.label, String(value), 40), value, ...(o.price !== undefined && amount(o.price, -1) >= 0 ? { price: amount(o.price) } : {}) }];
       })
     : [];
+  const id = text(r.id, `item-${i}`, 40);
+  const standard = STANDARD_WORK.get(id);
+  const work = isPavingWork(r.work) ? r.work : r.work === null ? null : standard?.basis === basis ? standard.work : undefined;
   return {
-    id: text(r.id, `item-${i}`, 40),
+    id,
     name: text(r.name, "Item"),
     section: text(r.section, "Other", 40),
     basis,
@@ -352,6 +380,7 @@ function parseItem(raw: unknown, i: number): CalcItem | null {
     ...(basis === "depth" ? { weight: amount(r.weight, DEFAULT_WEIGHT) || DEFAULT_WEIGHT } : {}),
     ...(choices.length ? { choices } : {}),
     ...(basis === "days" && r.crew === true ? { crew: true } : {}),
+    ...(work !== undefined ? { work } : {}),
   };
 }
 
@@ -424,3 +453,14 @@ export function scopeText(calc: Calc): string {
   });
   return [`${n(calc.sqft)} sq ft (${n(Math.round(calc.sqyd))} sq yd)`, ...parts].join(". ") + ".";
 }
+
+/** The quote line for the whole job: priced at the bid, costed at the bid before profit, with what it's made of. */
+export const quoteLine = (setup: CalcSetup, input: CalcInput, calc: Calc) => ({
+  name: jobName(setup, input),
+  description: scopeText(calc),
+  quantity: 1,
+  unit: "job",
+  unit_price: calc.total,
+  unit_cost: calc.cost,
+  parts: partsOf(calc),
+});

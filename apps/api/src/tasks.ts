@@ -2,7 +2,7 @@
  * Background tasks, run by server.ts's built-in scheduler (or by hand: GET/POST /api/cron/:task
  * with CRON_SECRET). Each is safe to run twice.
  */
-import { addDays, jobWeatherRules, lastDate, localDate, occurrenceDates, VISIT_HORIZON_DAYS, weatherRisks, zonedTimeToUtc } from "@crewtavo/core";
+import { addDays, jobWeatherRules, lastDate, localDate, occurrenceDates, pavingWorkOn, VISIT_HORIZON_DAYS, weatherRisks, zonedTimeToUtc } from "@crewtavo/core";
 import type { Env } from "./env";
 import { OtherBooks, runAccountingJob, SentButUnrecorded } from "./integrations/accounting";
 import { pushNewlyUpcomingVisits, runCalendarJob, syncDueCalendars } from "./integrations/calendars";
@@ -481,7 +481,7 @@ async function hourlyUpkeep(env: Env) {
 }
 
 const WEATHER_FIELDS =
-  "id, scheduled_on, hold_reason, job:jobs(weather_rules, lines:job_line_items(name, service_id, service:services(name))), company:companies(weather_rules:settings->weather_rules), property:properties(lat, lng)";
+  "id, scheduled_on, hold_reason, job:jobs(weather_rules, lines:job_line_items(name, service_id, parts, service:services(name))), company:companies(weather_rules:settings->weather_rules), property:properties(lat, lng)";
 
 /**
  * Flag tomorrow's visits whose weather rules fail (rain, cold for asphalt, sealcoat dry time): the
@@ -514,7 +514,8 @@ async function weatherHolds(env: Env) {
     const services = (v.job?.lines ?? []).flatMap((l) => [l.name, l.service?.name ?? ""]);
     // The job's price list items by id, as they're called now: a rule follows its item when it's renamed.
     const ids = new Map((v.job?.lines ?? []).flatMap((l) => (l.service_id ? [[l.service_id, l.service?.name ?? l.name] as const] : [])));
-    const rules = v.job ? jobWeatherRules(v.job.weather_rules, v.company?.weather_rules, services, ids) : [];
+    // A line priced with the paving calculator has no item: its kinds of work stand in (rules for "Hot-mix asphalt (paving calculator)").
+    const rules = v.job ? jobWeatherRules(v.job.weather_rules, v.company?.weather_rules, services, ids, pavingWorkOn(v.job.lines ?? [])) : [];
     const p = v.property as { lat: number | null; lng: number | null } | null;
     if (!rules.length || !v.scheduled_on || p?.lat == null || p?.lng == null) continue;
     const key = `${p.lat.toFixed(2)},${p.lng.toFixed(2)}`;

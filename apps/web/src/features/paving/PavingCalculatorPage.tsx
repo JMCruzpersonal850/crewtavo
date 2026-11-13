@@ -42,12 +42,12 @@ import {
   workedOut,
   jobFrom,
   jobName,
+  quoteLine,
   keptOverrides,
   newInput,
   parseSetup,
   parseWorksheet,
   pricesDiffer,
-  scopeText,
   sectionsOf,
   setupFrom,
   withPrices,
@@ -222,6 +222,8 @@ export function PavingCalculatorPage() {
       unwrap(await db.rpc("apply_quote_options", { p_quote: quoteId, p_options: [{ name: line.name, lines: [{ ...line, sort: 0 }] }], p_mode: "add", ...(first ? { p_current: { name: first } } : {}) }));
       const added = unwrap(await db.from("quote_line_items").select("id, option_id").eq("quote_id", quoteId)).find((l) => !before.has(l.id));
       if (!added?.option_id) throw new Error("The option was added, but its line wasn't found. Open the quote to check it.");
+      // Options are made from the fields every line has; what this one is made of goes on after.
+      unwrap(await db.from("quote_line_items").update({ parts: line.parts }).eq("id", added.id));
       const kept = await db.from("paving_worksheets").insert({ company_id: company.id, quote_id: quoteId, line_id: added.id, name: line.name, notes: notes.trim() || null, data: data as never });
       if (kept.error) {
         // Without its worksheet, the option comes back off (and a quote left with one goes back to a single estimate).
@@ -425,15 +427,11 @@ function priceSet(setup: CalcSetup, line: CalcLine, price: number): CalcSetup {
 // Onto a quote: one line for the job, and the worksheet behind it
 // ---------------------------------------------------------------------------------------------
 
-/** The quote line for the whole job: priced at the bid, costed at the bid before profit. */
-const lineFields = (setup: CalcSetup, input: CalcInput, calc: Calc) => ({
-  name: jobName(setup, input),
-  description: scopeText(calc),
-  quantity: 1,
-  unit: "job",
-  unit_price: calc.total,
-  unit_cost: calc.cost,
-});
+/** The quote line for the whole job (calculator.ts quoteLine), as the database takes it. */
+const lineFields = (setup: CalcSetup, input: CalcInput, calc: Calc) => {
+  const line = quoteLine(setup, input, calc);
+  return { ...line, parts: line.parts as never };
+};
 
 /** A line after the quote's others; its id. */
 async function addLine(companyId: string, quoteId: string, line: ReturnType<typeof lineFields>): Promise<string> {

@@ -14,6 +14,7 @@ import pestControl from "./presets/pest_control.json";
 import plumbing from "./presets/plumbing.json";
 import poolService from "./presets/pool_service.json";
 import roofingExteriors from "./presets/roofing_exteriors.json";
+import { isPavingWork, pavingWorkLabel, type PavingWork } from "./paving";
 import type { WeatherRule } from "./weather";
 
 export interface PresetService {
@@ -43,8 +44,10 @@ export interface PresetChecklistItem {
 /**
  * A checklist crews fill in on a visit (checklist_templates). `services` names the price list items
  * it goes with, exactly as this preset's `services` name them: a visit whose job has one of them
- * brings the checklist up, ready to fill in. Leave it out for a checklist for any job. Item keys are
- * unique within the checklist (lowercase words joined by _).
+ * brings the checklist up, ready to fill in. Leave it out for a checklist for any job. `every_job`
+ * brings it up on every job; `work` (kinds of paving calculator work, PAVING_WORK) on jobs priced
+ * with the paving calculator that have one of them, which have no price list item to go by. Item
+ * keys are unique within the checklist (lowercase words joined by _).
  *
  *   {
  *     "name": "Snow and salt route stop",
@@ -59,6 +62,8 @@ export interface PresetChecklistItem {
 export interface PresetChecklist {
   name: string;
   services?: string[];
+  every_job?: boolean;
+  work?: PavingWork[];
   items: PresetChecklistItem[];
 }
 
@@ -161,6 +166,19 @@ export function getPreset(id: string): TradePreset {
   const preset = PRESETS[id];
   if (!preset) throw new RangeError(`Unknown trade preset "${id}"`);
   return preset;
+}
+
+/**
+ * A preset's weather rules as a new business's settings keep them: a rule for a price list item
+ * names it by id as well (`idOf`: the id the item was just given), and one for a kind of paving
+ * calculator work is called by its kind, as set_weather_rules would save it.
+ */
+export function presetWeatherRules(preset: TradePreset, idOf: (service: string | undefined) => string | undefined): WeatherRule[] {
+  return preset.weather_rules.map((r) => {
+    if (isPavingWork(r.work)) return { ...r, applies_to: pavingWorkLabel(r.work) };
+    const id = idOf(r.applies_to);
+    return id ? { ...r, service_id: id } : r;
+  });
 }
 
 const EXAMPLE_WARRANTIES = new Set(

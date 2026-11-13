@@ -1,5 +1,5 @@
 /** Checklists crews fill in on a visit (Settings → Checklists): inspections, safety steps, sign-offs. */
-import { CHECKLIST_ITEM_TYPES, checklistAnswers, MAX_CHECKLIST_ITEMS, normalizeChecklist } from "@crewtavo/core";
+import { CHECKLIST_ITEM_TYPES, checklistAnswers, MAX_CHECKLIST_ITEMS, normalizeChecklist, PAVING_WORK_IDS } from "@crewtavo/core";
 import { z } from "zod";
 import { changed, companyArg, friendly, one, rows, tool } from "./tool";
 
@@ -15,10 +15,10 @@ const item = z.object({
 export const checklistTools = {
   list_checklists: tool({
     description:
-      "The company's checklists, with their items and service_ids: the price list items (ids from list_services) each goes with. A visit whose job has one of those items brings the checklist up for the crew; one with none is offered on any job. show_to_client: its finished answers show on the client's past visits and print on the job's invoice.",
+      "The company's checklists, with their items and service_ids: the price list items (ids from list_services) each goes with. A visit whose job has one of those items brings the checklist up for the crew, as does every_job (every job's visits) and paving_work (jobs priced with the paving calculator that have one of those kinds of work); one with none of the three is offered on any job. show_to_client: its finished answers show on the client's past visits and print on the job's invoice.",
     input: z.object({ ...companyArg }),
     run: async (ctx) => {
-      const lists = await rows(ctx.db.from("checklist_templates").select("id, name, items, active, show_to_client, services:checklist_template_services(service_id)").eq("company_id", ctx.companyId).order("name"));
+      const lists = await rows(ctx.db.from("checklist_templates").select("id, name, items, active, show_to_client, every_job, paving_work:work, services:checklist_template_services(service_id)").eq("company_id", ctx.companyId).order("name"));
       return lists.map(({ services, ...list }) => ({ ...list, service_ids: services.map((s) => s.service_id) }));
     },
   }),
@@ -33,6 +33,8 @@ export const checklistTools = {
         .max(200)
         .optional()
         .describe("The price list items it goes with (ids from list_services), replacing the ones it had. [] for any job. Left out, they stay as they are (a new checklist: any job)."),
+      every_job: z.boolean().optional().describe("It comes up by itself on every job's visits. Left out, it stays as it is (a new checklist: off)."),
+      paving_work: z.array(z.enum(PAVING_WORK_IDS)).max(PAVING_WORK_IDS.length).optional().describe("The kinds of paving calculator work it goes with, replacing the ones it had: it comes up on jobs priced with the paving calculator that have one. Left out, they stay as they are."),
       active: z.boolean().optional().describe("A checklist that's turned off isn't offered on visits."),
       show_to_client: z.boolean().optional().describe("Its finished answers show on the client's past visits and print on the job's invoice (photos never do). New checklists: off."),
       ...companyArg,
@@ -40,7 +42,10 @@ export const checklistTools = {
     area: "checklists",
     run: async (ctx, a) => {
       const clean = normalizeChecklist(a);
-      const row = { ...clean, items: clean.items as never, ...(a.active !== undefined && { active: a.active }), ...(a.show_to_client !== undefined && { show_to_client: a.show_to_client }) };
+      const row = {
+        ...clean, items: clean.items as never, ...(a.active !== undefined && { active: a.active }), ...(a.show_to_client !== undefined && { show_to_client: a.show_to_client }),
+        ...(a.every_job !== undefined && { every_job: a.every_job }), ...(a.paving_work && { work: [...new Set(a.paving_work)] }),
+      };
       let id = a.checklist_id;
       if (id) await changed(ctx.db.from("checklist_templates").update(row).eq("id", id).eq("company_id", ctx.companyId).select("id"), "That checklist");
       else id = (await one(ctx.db.from("checklist_templates").insert({ ...row, company_id: ctx.companyId }).select("id").single(), "The checklist")).id;

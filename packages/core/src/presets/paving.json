@@ -190,6 +190,9 @@
         "Grade and compact stone base",
         "Hot-mix asphalt surface"
       ],
+      "work": [
+        "asphalt"
+      ],
       "items": [
         {
           "key": "811_ticket_confirmed",
@@ -293,6 +296,16 @@
     },
     {
       "applies_to": "Sealcoat",
+      "min_temp_f": 50,
+      "requires_dry_hours": 24
+    },
+    {
+      "work": "asphalt",
+      "min_temp_f": 50,
+      "max_rain_pct": 40
+    },
+    {
+      "work": "sealcoat",
       "min_temp_f": 50,
       "requires_dry_hours": 24
     }

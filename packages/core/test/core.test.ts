@@ -49,6 +49,10 @@ import {
   isIsoDate,
   isTimeZoneName,
   jobWeatherRules,
+  lineParts,
+  pavingWorkOn,
+  isPavingWork,
+  presetWeatherRules,
   namedWeatherRules,
   lineLengthM,
   localDate,
@@ -304,6 +308,12 @@ describe("presets", () => {
       for (const name of c.services ?? []) expect(serviceNames.has(name), `${c.name}: ${name}`).toBe(true);
       expect(new Set(c.items.map((i) => i.key)).size, c.name).toBe(c.items.length);
       expect(c).not.toHaveProperty("job_type");
+      for (const w of c.work ?? []) expect(isPavingWork(w), `${c.name}: ${w}`).toBe(true);
+    }
+    // A weather rule is for one of the preset's services, a kind of paving calculator work, or every job.
+    for (const r of preset.weather_rules) {
+      if (r.work !== undefined) expect(isPavingWork(r.work) && !r.applies_to, String(r.work)).toBe(true);
+      else if (r.applies_to) expect(serviceNames.has(r.applies_to), r.applies_to).toBe(true);
     }
     expect(preset).not.toHaveProperty("job_types");
     // What roof_packages allows for a package's card.
@@ -324,6 +334,18 @@ describe("presets", () => {
     if (preset.id !== "lawn_exterior" && preset.id !== "roofing_exteriors") {
       expect(preset.services.some((s) => /service call|trip|mobilization/i.test(s.name))).toBe(true);
     }
+  });
+
+  it("starts a paving business with its asphalt and sealcoat weather rules both ways: by price list item and for the calculator", () => {
+    const rules = presetWeatherRules(PRESETS.paving, (name) => (name ? `id:${name}` : undefined));
+    expect(rules).toEqual([
+      { applies_to: "Hot-mix asphalt surface", service_id: "id:Hot-mix asphalt surface", min_temp_f: 50, max_rain_pct: 40 },
+      { applies_to: "Sealcoat", service_id: "id:Sealcoat", min_temp_f: 50, requires_dry_hours: 24 },
+      { work: "asphalt", applies_to: "Hot-mix asphalt (paving calculator)", min_temp_f: 50, max_rain_pct: 40 },
+      { work: "sealcoat", applies_to: "Sealcoat (paving calculator)", min_temp_f: 50, requires_dry_hours: 24 },
+    ]);
+    // Its paving checklist comes up on calculator jobs with asphalt as well as on its price list items.
+    expect(PRESETS.paving.checklists.find((c) => c.name === "Driveway quality check")).toMatchObject({ services: ["Grade and compact stone base", "Hot-mix asphalt surface"], work: ["asphalt"] });
   });
 
   it("offers the roofing packages as Good, Better and Best, each with highlights and a warranty", () => {
@@ -643,6 +665,37 @@ describe("weather rules", () => {
     expect(weatherRuleSummary({ min_temp_f: 40, max_temp_f: 90, max_wind_mph: 15 })).toBe("Every job: 40°F to 90°F, wind at most 15 mph");
     expect(weatherRuleSummary({ applies_to: "Hot-mix asphalt surface", min_temp_f: 50 })).toBe("Hot-mix asphalt surface: at least 50°F");
     expect(weatherRuleSummary({ max_temp_f: 0, max_rain_pct: 0 })).toBe("Every job: at most 0% rain, at most 0°F");
+    expect(weatherRuleSummary({ work: "asphalt", applies_to: "saved under another name", min_temp_f: 50 })).toBe("Hot-mix asphalt (paving calculator): at least 50°F");
+  });
+
+  it("holds a job priced with the paving calculator by the kinds of work on its line, which has no price list item", () => {
+    const company = [
+      { applies_to: "Hot-mix asphalt surface", service_id: "svc-hot", min_temp_f: 50, max_rain_pct: 40 },
+      { work: "asphalt", applies_to: "Hot-mix asphalt (paving calculator)", min_temp_f: 50, max_rain_pct: 40 },
+      { work: "sealcoat", applies_to: "Sealcoat (paving calculator)", requires_dry_hours: 24 },
+      { max_wind_mph: 30 },
+    ];
+    // The calculator's line: called after the job type, made of asphalt, stone and crew days.
+    const lines = [{ name: "New asphalt paving", parts: [{ id: "top", name: "Top coat asphalt", unit: "ton", quantity: 147, unit_cost: 100, material: true, work: "asphalt" }, { id: "stone21a", name: "Base stone", unit: "ton", quantity: 587, unit_cost: 30, work: "stone" }, { id: "fullCrew", name: "Full crew", unit: "day", quantity: 2, unit_cost: 5000 }] }];
+    expect(pavingWorkOn(lines)).toEqual(["asphalt", "stone"]);
+    expect(jobWeatherRules([], company, ["New asphalt paving"], new Map(), pavingWorkOn(lines))).toEqual([company[1], company[3]]);
+    // The same job before kinds got no rule but the one for every job, and a price list job is as it was.
+    expect(jobWeatherRules([], company, ["New asphalt paving"])).toEqual([company[3]]);
+    expect(jobWeatherRules([], company, ["Hot-mix asphalt surface"], new Map([["svc-hot", "Hot-mix asphalt surface"]]))).toEqual([company[0], company[3]]);
+    // A line literally called what the kind's rule is called isn't that kind of work.
+    expect(jobWeatherRules([], company, ["Sealcoat (paving calculator)"])).toEqual([company[3]]);
+    const outlook = [{ date: "2026-10-20", temp_min_f: 44, temp_max_f: 61, rain_chance_pct: 10 }];
+    expect(weatherRisks(jobWeatherRules([], company, [], new Map(), ["asphalt"]), "2026-10-20", outlook)).toEqual(["Hot-mix asphalt (paving calculator): low of 44°F is below 50°F"]);
+  });
+
+  it("reads a line's parts defensively: they're JSON the office can write", () => {
+    expect(lineParts(null)).toEqual([]);
+    expect(lineParts({ work: "asphalt" })).toEqual([]);
+    expect(lineParts([null, "top", { name: "", unit: "ton", quantity: 1, unit_cost: 1 }, { name: "Top coat", unit: "ton", quantity: -1, unit_cost: 1 }, { name: " Top coat ", unit: "ton", quantity: "12", unit_cost: 100, material: true, work: "roofing" }])).toEqual([
+      { id: "Top coat", name: "Top coat", unit: "ton", quantity: 12, unit_cost: 100, material: true },
+    ]);
+    // A part the bid has none of isn't work on the job.
+    expect(pavingWorkOn([{ parts: [{ name: "Sealer", unit: "gal", quantity: 0, unit_cost: 4, work: "sealcoat" }] }, {}])).toEqual([]);
   });
 });
 
