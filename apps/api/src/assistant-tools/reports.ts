@@ -57,15 +57,19 @@ async function serviceReport(ctx: ToolContext, range: ReportRange) {
   // 200 jobs a request keeps the address short enough.
   const ids = [...new Set(sold.flatMap((l) => (l.invoice?.job_id ? [l.invoice.job_id] : [])))];
   const byJobs = async <T>(read: (jobs: string[]) => PromiseLike<T[]>) => (await Promise.all(Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => read(ids.slice(i * 200, i * 200 + 200))))).flat();
-  const [jobLines, time, expenses, rates, crewPay] = await Promise.all([
+  const [jobLines, time, expenses, rates, crewPay, costLines, materials] = await Promise.all([
     // Everything the jobs have been invoiced, whenever: their labor is split across all of it.
     byJobs((jobs) => all((f, t) => lines().in("invoice.job_id", jobs).order("id").range(f, t))),
     byJobs((jobs) => all((f, t) => ctx.db.from("time_entries").select("id, job_id, started_at, ended_at").in("job_id", jobs).order("id").range(f, t))),
-    byJobs((jobs) => all((f, t) => ctx.db.from("expenses").select("job_id, amount").in("job_id", jobs).order("id").range(f, t))),
+    // As Finance → Services reads them: an expense already in the line items' costs isn't counted again.
+    byJobs((jobs) => all((f, t) => ctx.db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", jobs).order("id").range(f, t))),
     byJobs((jobs) => timeRates(adminClient(ctx.env), ctx.companyId, { job_ids: jobs }).then((r) => [r])).then((r): Record<string, number> => Object.assign({}, ...r)),
     byJobs((jobs) => rows(ctx.db.rpc("job_pay_costs", { p_jobs: jobs }))),
+    // The jobs' own lines and what was logged on them: logged materials over or under the estimate count as they do in Finance.
+    byJobs((jobs) => all((f, t) => ctx.db.from("job_line_items").select("job_id, quantity, unit_cost, unit_labor_cost, service_id, unit, parts").in("job_id", jobs).order("id").range(f, t))),
+    byJobs((jobs) => all((f, t) => ctx.db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", jobs).order("id").range(f, t))),
   ]);
-  const { lines: _, ...figures } = serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (e) => rates[e.id] ?? 0, crewPay });
+  const { lines: _, ...figures } = serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (e) => rates[e.id] ?? 0, crewPay, costLines, materials });
   return { ...figures, costs: "Each item's price list cost (without the labor in it once the job has labor of its own), plus a share of the job's labor (time at its rates, sub and crew pay) and expenses, split by the line's share of everything the job has been invoiced." };
 }
 

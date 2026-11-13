@@ -334,13 +334,131 @@ export function lineCosts(lines: readonly CostedLine[], actualLabor: boolean) {
   return { materials: full - labor, left_out: labor };
 }
 
+/** What a job's time costs: each entry's hours at the rate it's costed at. A clock still running costs nothing yet. */
+export const laborCost = (time: readonly CostedTime[], rateOf: (entry: CostedTime) => number) => sum(time, (t) => hoursBetween(t.started_at, t.ended_at) * rateOf(t));
+
+/** One job's costs as jobCost reads them: its own rows, already picked out. */
+export interface JobCostInput {
+  /** The job's price: its contract total. */
+  price: number;
+  lines: readonly CostedLine[];
+  /** Time on the job at its rates (laborCost). */
+  labor: number;
+  /** Sub and crew pay that's agreed, done or paid (public.job_pay_costs): one row per job pay, nothing when there's none. */
+  crewPay: ReadonlyArray<{ amount: number | string | null }>;
+  expenses: ReadonlyArray<Pick<CostedExpense, "amount" | "in_line_costs">>;
+  /** Materials logged on the job (job_materials). */
+  logged?: readonly CostedMaterial[];
+  /**
+   * Extra work on a repeating job's visits (visitExtras.ts costedExtras): what it's billed at, on top
+   * of the price, and its lines, costed as the job's are.
+   */
+  extras?: { price: number; lines: readonly CostedLine[] };
+}
+
 /**
- * Each job's revenue (contract total), costs and profit. Costs: labor (time at its rates), sub and
- * crew pay (`crewPay`: job pay that's agreed, done or paid, from public.job_pay_costs), expenses, and
- * the lines at cost, without their labor estimate when the job has labor of its own. Two things keep
- * a cost from being counted twice, as on the job page: a material logged against a line counts at
- * the logged amount in place of the line's estimate (`materials`: the jobs' job_materials rows;
- * materialUse), and an expense marked as already in the line items' costs isn't added again.
+ * A job's costs and profit: the one calculation behind the job page, Finance → Profit and Services,
+ * AI assistants' job_profit and the office's job profit alerts. Costs are the lines at cost, labor
+ * (time at its rates), sub and crew pay, and expenses. Once a job has labor of its own that costs
+ * something (time at a rate, or sub and crew pay), its lines count without the labor estimate their
+ * cost has in it, so that labor isn't counted twice. A material logged against a line counts at the
+ * logged amount in place of the line's estimate (materialUse), and an expense marked as already in the
+ * line items' costs isn't added on top of them. Amounts aren't rounded: each screen rounds as it shows.
+ */
+export function jobCost(input: JobCostInput) {
+  const crew = sum(input.crewPay, (p) => Number(p.amount ?? 0));
+  const actualLabor = input.labor > 0 || input.crewPay.length > 0;
+  const lines = lineCosts([...input.lines, ...(input.extras?.lines ?? [])], actualLabor);
+  const logged = materialUse(input.lines, input.logged ?? [], actualLabor);
+  const spent = expenseCosts(input.expenses);
+  const materials = lines.materials + logged.adjustment;
+  const cost = materials + input.labor + crew + spent.counted;
+  const extras = input.extras?.price ?? 0;
+  const price = input.price + extras;
+  const profit = price - cost;
+  return {
+    /** The price with extra work: what the costs are set against. */
+    price,
+    /** What extra work on visits is billed at (counted in `price`). */
+    extras,
+    /** The lines at cost (without their labor estimate when the job has labor of its own), with logged materials in place of their estimate. */
+    materials,
+    /** The lines' labor estimate, left out because the job has labor of its own (0 when it hasn't). */
+    left_out: lines.left_out,
+    labor: input.labor,
+    crew,
+    /** Expenses that count: not those marked as already in the line items' costs. */
+    expenses: spent.counted,
+    expenses_in_lines: spent.in_lines,
+    actual_labor: actualLabor,
+    /** Each logged material against the lines' estimate for it. */
+    material_rows: logged.rows,
+    /** What logged materials changed the lines' costs by. */
+    material_adjustment: logged.adjustment,
+    cost,
+    profit,
+    /** Profit as a percent of the price, unrounded; null without a price. */
+    margin: price > 0 ? (profit / price) * 100 : null,
+    /** Whether anything has actually been spent on it yet: time at a rate, sub or crew pay, an expense or a logged material. */
+    has_actual_costs: actualLabor || input.expenses.length > 0 || (input.logged?.length ?? 0) > 0,
+  };
+}
+export type JobCost = ReturnType<typeof jobCost>;
+
+// ---------------------------------------------------------------------------------------------
+// Job profit alerts
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The company's "Tell me when a job's profit falls below X%" (settings.profit_alert_percent): a whole
+ * percent from 1 to 99, or null when it's off.
+ */
+export function profitAlertPercent(settings: unknown): number | null {
+  const value = Number((settings as { profit_alert_percent?: unknown } | null)?.profit_alert_percent);
+  return Number.isInteger(value) && value >= 1 && value <= 99 ? value : null;
+}
+
+/**
+ * Whether a job is below the company's line: a one-off job (a repeating job's price is for a visit or
+ * a month, so its profit over its life can't be set against it) with a price and something actually
+ * spent on it, whose margin, as the job page shows it (a whole percent), is under the line.
+ */
+export function belowProfitLine(job: { kind: string }, cost: Pick<JobCost, "price" | "margin" | "has_actual_costs">, percent: number | null): boolean {
+  if (percent === null || job.kind === "recurring" || !(cost.price > 0) || !cost.has_actual_costs || cost.margin === null) return false;
+  return Math.round(cost.margin) < percent;
+}
+
+/**
+ * What the hourly check does with one job: whether it's below the line now, and whether to tell the
+ * office. They're told once as a job goes below, and not again until it has come back up and gone
+ * below again. Right after the line changes (`quiet`), jobs already below it are only listed (the
+ * Jobs page's Below your margin), not told about one by one.
+ */
+export function profitAlertDecision(wasBelow: boolean, below: boolean, quiet: boolean): { below: boolean; tell: boolean } {
+  return { below, tell: below && !wasBelow && !quiet };
+}
+
+/** The alert's words: "Job #12 for Maria Lopez is at 8% profit, below your 20%". */
+export function profitAlertText(job: { number: number | null; client: string | null }, margin: number, percent: number): string {
+  const who = job.client?.trim() ? ` for ${job.client.trim()}` : "";
+  return `Job #${job.number ?? "?"}${who} is at ${Math.round(margin)}% profit, below your ${percent}%`;
+}
+
+/** Rows of many jobs, each job's own by its id. */
+function byJob<T extends { job_id?: string | null }>(rows: readonly T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const r of rows) {
+    if (!r.job_id) continue;
+    const mine = out.get(r.job_id);
+    if (mine) mine.push(r);
+    else out.set(r.job_id, [r]);
+  }
+  return out;
+}
+
+/**
+ * Each job's revenue (contract total), costs and profit, as jobCost works them out. `crewPay`: job
+ * pay that's agreed, done or paid, from public.job_pay_costs; `materials`: the jobs' job_materials rows.
  */
 export function jobProfit(
   jobs: ReadonlyArray<{ id: string; number?: number | null; title: string; client?: { display_name: string } | null; financials?: { contract_total: number | string | null } | null; lines: readonly CostedLine[] }>,
@@ -351,38 +469,36 @@ export function jobProfit(
   crewPay: ReadonlyArray<{ job_id: string; amount: number | string | null }> = [],
   materials: readonly CostedMaterial[] = [],
 ) {
+  const [times, pays, spends, logs] = [byJob(time), byJob(crewPay), byJob(expenses), byJob(materials)];
   const costed = jobs.map((j) => {
-    const mine = time.filter((t) => t.job_id === j.id);
-    const pay = crewPay.filter((p) => p.job_id === j.id);
-    const labor = sum(mine, (t) => hoursBetween(t.started_at, t.ended_at) * rateOf(t));
-    const crew = sum(pay, (p) => Number(p.amount ?? 0));
-    const spent = expenseCosts(expenses.filter((e) => e.job_id === j.id));
-    const actualLabor = labor > 0 || pay.length > 0;
-    const lines = lineCosts(j.lines, actualLabor);
-    const logged = materialUse(j.lines, materials.filter((m) => m.job_id === j.id), actualLabor);
-    const lineMaterials = lines.materials + logged.adjustment;
-    const revenue = Number(j.financials?.contract_total ?? 0);
-    const cost = labor + crew + spent.counted + lineMaterials;
+    const c = jobCost({
+      price: Number(j.financials?.contract_total ?? 0),
+      lines: j.lines,
+      labor: laborCost(times.get(j.id) ?? [], rateOf),
+      crewPay: pays.get(j.id) ?? [],
+      expenses: spends.get(j.id) ?? [],
+      logged: logs.get(j.id) ?? [],
+    });
     return {
       id: j.id,
       number: j.number ?? null,
       title: j.title,
       client: j.client?.display_name ?? "",
-      revenue: cents(revenue),
-      labor: cents(labor),
-      crew_pay: cents(crew),
-      expenses: cents(spent.counted),
+      revenue: cents(c.price),
+      labor: cents(c.labor),
+      crew_pay: cents(c.crew),
+      expenses: cents(c.expenses),
       /** Expenses marked as already in the line items' costs, so not in `expenses` or `cost`. */
-      expenses_in_line_costs: cents(spent.in_lines),
-      materials: cents(lineMaterials),
+      expenses_in_line_costs: cents(c.expenses_in_lines),
+      materials: cents(c.materials),
       /** What logged materials changed `materials` by: their cost at the lines' rates, less the lines' estimate for them. */
-      logged_materials_adjustment: logged.adjustment,
+      logged_materials_adjustment: c.material_adjustment,
       /** The lines' labor estimate, left out because the job has labor of its own (0 when it hasn't). */
-      line_labor_left_out: cents(lines.left_out),
-      actual_labor: actualLabor,
-      cost: cents(cost),
-      profit: cents(revenue - cost),
-      margin_percent: revenue > 0 ? Math.round(((revenue - cost) / revenue) * 1000) / 10 : null,
+      line_labor_left_out: cents(c.left_out),
+      actual_labor: c.actual_labor,
+      cost: cents(c.cost),
+      profit: cents(c.profit),
+      margin_percent: c.price > 0 ? Math.round((c.profit / c.price) * 1000) / 10 : null,
     };
   });
   const revenue = sum(costed, (j) => j.revenue);
@@ -484,20 +600,15 @@ export function serviceFigures(
   if (costs) {
     for (const l of lines) if (l.job_id) job(l.job_id).inRange += l.revenue;
     for (const l of serviceLines(costs.jobLines, items)) if (l.job_id && jobs.has(l.job_id)) job(l.job_id).invoiced += l.revenue;
-    for (const t of costs.time) if (t.job_id && jobs.has(t.job_id)) job(t.job_id).labor += hoursBetween(t.started_at, t.ended_at) * costs.rateOf(t);
-    for (const j of jobs.values()) j.actual = j.labor > 0;
-    for (const p of costs.crewPay ?? []) {
-      if (!jobs.has(p.job_id)) continue;
-      job(p.job_id).labor += Number(p.amount ?? 0);
-      job(p.job_id).actual = true;
-    }
-    for (const e of costs.expenses) if (e.job_id && jobs.has(e.job_id) && !e.in_line_costs) job(e.job_id).spent += Number(e.amount);
-    // Logged materials over or under the job's estimate, with the job's other costs that aren't any one line's.
-    if (costs.materials?.length) {
-      for (const [id, j] of jobs) {
-        const logged = costs.materials.filter((m) => m.job_id === id);
-        if (logged.length) j.spent += materialUse((costs.costLines ?? []).filter((l) => l.job_id === id), logged, j.actual).adjustment;
-      }
+    // Each job's own costs as jobCost counts them. Its lines are only read to set logged materials
+    // against: what they came to over or under the job's estimate goes with the job's other costs
+    // that aren't any one line's.
+    const [times, pays, spends, logs, costLines] = [byJob(costs.time), byJob(costs.crewPay ?? []), byJob(costs.expenses), byJob(costs.materials ?? []), byJob(costs.costLines ?? [])];
+    for (const [id, j] of jobs) {
+      const c = jobCost({ price: 0, lines: costLines.get(id) ?? [], labor: laborCost(times.get(id) ?? [], costs.rateOf), crewPay: pays.get(id) ?? [], expenses: spends.get(id) ?? [], logged: logs.get(id) ?? [] });
+      j.labor = c.labor + c.crew;
+      j.actual = c.actual_labor;
+      j.spent = c.expenses + c.material_adjustment;
     }
   }
   const services = new Map<string, { service_id: string | null; name: string; category: string | null; count: number; quantity: number; revenue: number; item_costs: number; labor: number; expenses: number }>();
