@@ -63,6 +63,17 @@ export function billingAnswers(job: JobBilling): { pricing: JobPricing; schedule
   return null;
 }
 
+/**
+ * Whether the job is billed by the visit, so "Completed visits" (the job's lines once for each
+ * finished visit) is a way to invoice it: a recurring job that isn't a fixed price, or a one-off job
+ * invoiced after each visit. Any other job is billed as one job, and create_invoice_for_job refuses
+ * a visits invoice for it (20261113000400_visit_invoices_for_per_visit_jobs.sql).
+ */
+export function billsByVisit(job: JobBilling): boolean {
+  if (job.kind === "recurring") return billingAnswers(job)?.pricing !== "fixed";
+  return job.billing_mode === "per_visit";
+}
+
 /** Whether a job is a monthly plan: recurring, a fixed price, invoiced monthly (the one autopay charges by the month). */
 export function monthlyPlan(job: JobBilling): boolean {
   const a = billingAnswers(job);

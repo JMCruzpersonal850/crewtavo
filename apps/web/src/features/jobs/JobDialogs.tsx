@@ -12,6 +12,7 @@ import { addDaysIso, formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { ClientPicker, PropertySelect, type PickedClient } from "../clients/ClientForm";
 import { CustomFieldInputs, customFieldsToSave, useCustomFields } from "../customFields/CustomFields";
+import { firstInvoiceKind, invoiceChoices, type InvoiceJob, type InvoiceKind } from "./invoiceChoices";
 import { RecurrenceEditor, type Recurrence } from "./RecurrenceEditor";
 
 export function useCrews() {
@@ -427,20 +428,9 @@ export function PauseJobDialog({ jobId, canSchedule, onClose, onSaved }: { jobId
   );
 }
 
-type InvoiceKind = "standard" | "deposit" | "progress" | "visits" | "retainage";
-
-export function InvoiceJobDialog({
-  job,
-  onClose,
-  onCreated,
-}: {
-  /** fixed: a recurring job at a fixed price, whose invoice is its lines once. */
-  job: { id: string; contract_total: number; deposit: number; billed: number; uninvoicedVisits: number; kind: string; fixed?: boolean; retainageHeld: number; finalInvoice: number | null };
-  onClose: () => void;
-  onCreated: (invoiceId: string) => void;
-}) {
+export function InvoiceJobDialog({ job, onClose, onCreated }: { job: InvoiceJob; onClose: () => void; onCreated: (invoiceId: string) => void }) {
   const leftToBill = Math.max(Number(job.contract_total) - job.billed, 0);
-  const [kind, setKind] = useState<InvoiceKind>(job.kind === "recurring" ? (job.fixed ? "standard" : "visits") : job.finalInvoice ? (job.retainageHeld > 0.005 ? "retainage" : "progress") : "standard");
+  const [kind, setKind] = useState<InvoiceKind>(() => firstInvoiceKind(job));
   const [mode, setMode] = useState<"percent" | "amount">("percent");
   const [value, setValue] = useState(kind === "deposit" && job.deposit ? String(job.deposit) : "");
   useEffect(() => setValue(kind === "deposit" && job.deposit ? String(job.deposit) : ""), [kind, job.deposit]);
@@ -461,18 +451,12 @@ export function InvoiceJobDialog({
     },
     onSuccess: (r) => onCreated(r.invoice_id),
   });
-  const options: Array<{ kind: InvoiceKind; title: string; body: string; hidden?: boolean }> = [
-    { kind: "standard", title: job.fixed ? "The job's price" : "Final invoice", body: job.fixed ? "All the job's line items, once." : job.finalInvoice ? `Already created: invoice #${job.finalInvoice}. Void it to bill the job again.` : job.billed ? `All line items, less ${formatMoneyCents(job.billed)} already billed as deposits or progress.` : "All the job's line items." },
-    { kind: "visits", title: "Completed visits", body: job.uninvoicedVisits ? `${job.uninvoicedVisits} completed ${job.uninvoicedVisits === 1 ? "visit isn't" : "visits aren't"} invoiced yet.` : "No completed visits are waiting to be invoiced.", hidden: job.kind !== "recurring" && !job.uninvoicedVisits },
-    { kind: "deposit", title: "Deposit", body: job.deposit ? `The quote asked for ${formatMoneyCents(job.deposit)}.` : "Bill an amount up front." },
-    { kind: "progress", title: "Progress payment", body: "Bill part of the contract now (a pay application).", hidden: Boolean(job.finalInvoice) },
-    { kind: "retainage", title: "Retainage", body: `Bill the ${formatMoneyCents(job.retainageHeld)} held back on earlier invoices.`, hidden: !(job.retainageHeld > 0.005) },
-  ];
+  const options = invoiceChoices(job);
   return (
     <Dialog open onClose={onClose} title="Create invoice">
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (!overLimit) create.mutate(); }}>
         <div className="stack-sm" role="radiogroup" aria-label="Invoice type">
-          {options.filter((o) => !o.hidden).map((o) => (
+          {options.map((o) => (
             <label key={o.kind} className="card card-pad" style={{ display: "flex", gap: 10, cursor: "pointer", padding: 14, borderColor: kind === o.kind ? "var(--green)" : undefined, boxShadow: kind === o.kind ? "var(--ring)" : undefined }}>
               <input type="radio" name="kind" checked={kind === o.kind} onChange={() => setKind(o.kind)} style={{ marginTop: 3 }} />
               <span><strong>{o.title}</strong><span className="muted small" style={{ display: "block" }}>{o.body}</span></span>

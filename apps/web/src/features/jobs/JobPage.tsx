@@ -1,5 +1,5 @@
 import { autopayAllowed, autopayDueText, autopaySettings, methodLabel, type AutopaySettings } from "@crewtavo/core/autopay";
-import { billingText, monthText } from "@crewtavo/core/jobBilling";
+import { billingText, billsByVisit, monthText } from "@crewtavo/core/jobBilling";
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { askRefusal, marketingOn } from "@crewtavo/core/marketing";
 import { contractDiscountNote } from "@crewtavo/core/promos";
@@ -596,7 +596,7 @@ export function JobPage() {
       {dialog === "pause" && <PauseJobDialog jobId={j.id} canSchedule={canDispatch} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "invoice" && (
         <InvoiceJobDialog
-          job={{ id: j.id, contract_total: contract, deposit: Number(j.quote?.deposit_amount ?? 0), billed, uninvoicedVisits: uninvoiced, kind: j.kind, fixed: j.kind === "recurring" && j.pricing === "fixed", retainageHeld, finalInvoice }}
+          job={{ id: j.id, contract_total: contract, deposit: Number(j.quote?.deposit_amount ?? 0), billed, uninvoicedVisits: uninvoiced, kind: j.kind, fixed: j.kind === "recurring" && j.pricing === "fixed", byVisit: billsByVisit(j), retainageHeld, finalInvoice }}
           onClose={() => setDialog(null)}
           onCreated={(invoiceId) => {
             refresh();
