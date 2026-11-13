@@ -38,6 +38,7 @@ import { DrivePanel } from "./DrivePanel";
 import { GoogleBeforeSignIn, GoogleBusinessPanel } from "./GoogleBusinessPanel";
 import { InstallRing, type InstallPhase } from "./InstallRing";
 import { useIsInstalled } from "./installed";
+import { LobPanel } from "./LobPanel";
 import { MarketingPanel } from "./MarketingPanel";
 import { MetaPanel } from "./MetaPanel";
 import { SCREENSHOTS } from "./screenshots";
@@ -415,6 +416,8 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
             <AbcSupplyPanel app={app} onChanged={refresh} />
           ) : app.id === "twilio" ? (
             <TwilioPanel app={app} onChanged={refresh} />
+          ) : app.id === "lob" ? (
+            <LobPanel app={app} onChanged={refresh} />
           ) : app.auth === "connector" || app.id === "anthropic" ? (
             <>
               <ConnectorCard app={app} mcpUrl={mcpUrl} setup />
@@ -440,7 +443,8 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           {app.auth === "link" && <LinkCalendarsPanel app={app.id} appName={app.name} steps={info.steps} />}
           {(app.auth === "connector" || app.id === "anthropic") && <ConnectorCard app={app} mcpUrl={mcpUrl} />}
           {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
-          {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && <KeyCard app={app} onSaved={refresh} />}
+          {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
+          {app.id === "lob" && <LobPanel app={app} onChanged={refresh} />}
           {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
           {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
           {app.id === "website_analytics" && <AnalyticsPanel />}
@@ -592,6 +596,7 @@ function uninstallBody(app: AppRow, counts: { assistants: number; calendars: num
     return `Posts stop going to your Page and Instagram, and Crewtavo's access to them is removed at Meta.${waiting} Posts already made stay, and your app's keys stay, so installing it again is one sign-in.`;
   }
   if (app.id === "abc_supply") return `Estimates stop getting prices from ABC, and your ABC app's keys are removed from Crewtavo. The materials in your price list and the prices already on estimates stay. ${again}`;
+  if (app.id === "lob") return `Postcard campaigns stop, including any being mailed now, and your Lob key is removed from Crewtavo. Cards Lob already made are still mailed. ${again}`;
   if (app.id === "fal") return `Find paving stops working, and your fal.ai key is removed from Crewtavo. Shapes it already found stay on your drawings. ${again}`;
   if (app.category === "AI") {
     const parts = [];

@@ -73,7 +73,8 @@
     "./campaigns": "./src/campaigns.ts",
     "./reviews": "./src/reviews.ts",
     "./social": "./src/social.ts",
-    "./promos": "./src/promos.ts"
+    "./promos": "./src/promos.ts",
+    "./postcards": "./src/postcards.ts"
   },
   "scripts": {
     "test": "vitest run",

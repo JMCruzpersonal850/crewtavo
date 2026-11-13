@@ -23,6 +23,7 @@ import { AbcProblem, chooseAbcAccount, connectAbc, settingsOf as abcSettingsOf }
 import { describeAccount, retryAccounting } from "../integrations/accounting";
 import { deleteVisitsCalendar, describeGoogleAccount, pushUpcomingVisits } from "../integrations/calendars";
 import { checkFalKey } from "../integrations/fal";
+import { checkLobKey, LobProblem, type LobSettings } from "../integrations/lob";
 import { describeGoogleBusiness, findLocation, GoogleBusinessError } from "../integrations/googleBusiness";
 import { badKeys, MetaError, metaAuthorizeUrl, type MetaKeys } from "../integrations/meta";
 import { CATALOG, catalogEntry, isCalendarApp, OAUTH, UntrustedServerError, zohoAccountsServer, type Provider } from "../integrations/registry";
@@ -114,6 +115,9 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   if (!twilioRow) byProvider.delete("twilio");
   if (serverTexts) byProvider.set("twilio", { provider: "twilio", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
   const twilio = twilioState(appUrl(c), twilioRow ? (twilioRow.settings as unknown as TwilioSettings) : null, serverTexts);
+  // Lob: whether its key is a test key (cards made but never mailed) or a live one.
+  const lobRow = integrations.find((r) => r.provider === "lob" && r.status !== "disconnected");
+  const lob = lobRow ? { mode: (lobRow.settings as unknown as LobSettings | null)?.mode ?? null } : null;
   // Without the company's email or the server's, the owners hear about Stripe changes on the bell only.
   const ownersEmailed = await emailReady(c.env, c.var.companyId);
   return c.json({
@@ -135,6 +139,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.id === "stripe" ? { ...(stripe ? { stripe } : {}), owners_emailed: ownersEmailed } : {}),
         ...(entry.id === "abc_supply" && abc ? { supplier: abc } : {}),
         ...(entry.id === "twilio" ? { twilio } : {}),
+        ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
         ...(takesKeys ? { takes_app_keys: true, app_keys: ownKeys } : {}),
@@ -768,17 +773,28 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
     const problem = await checkFalKey(body.api_key);
     if (problem) throw new HttpError(400, problem);
   }
+  // Lob: checked with Lob first (a free read), and kept with whether it's a test key or a live one.
+  let lob: LobSettings | null = null;
+  if (provider === "lob") {
+    try {
+      lob = await checkLobKey(body.api_key);
+    } catch (error) {
+      if (error instanceof LobProblem) throw new HttpError(400, error.message);
+      throw error;
+    }
+  }
   const { error } = await admin.from("integrations").upsert({
     company_id: c.var.companyId,
     provider,
     status: "connected",
-    account_label: `Key ending ${body.api_key.slice(-4)}`,
+    account_label: `${lob ? (lob.mode === "live" ? "Live key" : "Test key") : "Key"} ending ${body.api_key.slice(-4)}`,
     connected_by: c.var.userId,
     connected_at: new Date().toISOString(),
+    ...(lob ? { settings: asJson(lob), last_error: null } : {}),
   });
   if (error) throw dbError(error);
   await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
-  return c.json({ provider, status: "connected" });
+  return c.json({ provider, status: "connected", ...(lob ? { lob } : {}) });
 });
 
 /**

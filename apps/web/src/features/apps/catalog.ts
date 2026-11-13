@@ -49,6 +49,8 @@ export interface AppRow {
   meta?: MetaState;
   /** Twilio: whose account texts go from, and where the number's incoming texts go (routes/apps.ts). */
   twilio?: TwilioState | null;
+  /** Lob, once connected: whether its key is a test key (nothing mailed) or a live one. */
+  lob?: { mode: "test" | "live" | null } | null;
 }
 
 export interface TwilioState {
@@ -669,6 +671,21 @@ export const APP_INFO: Record<string, AppInfo> = {
     connectsWith: "Keys from ABC Supply",
     website: "https://www.abcsupply.com/",
     open: "/roofing/catalog",
+  },
+  lob: {
+    developer: "Lob",
+    tagline: "Postcards to your clients' mailboxes",
+    about:
+      "Turn a campaign into a postcard: pick a size, put one of your job photos or any picture on the front and a short note on the back, and Lob prints and mails one to each client in the segment you choose, with your return address. Connect your own Lob account with its secret key. Start with the test key: Lob makes every card so you can see it in your Lob dashboard, but prints and mails nothing. Switch to the live key when you're ready, and Lob bills your account for each card it mails.",
+    highlights: [
+      { icon: "image", title: "Your photo on the front", text: "A job photo, its drawn-on copy, or any picture you upload." },
+      { icon: "users", title: "The clients you pick", text: "The same segments as email campaigns, with a full mailing address." },
+      { icon: "check", title: "Test before you mail", text: "A test key makes the cards without mailing or charging anything." },
+    ],
+    access: ["Make postcards in your Lob account, one for each client in a campaign", "Read your Lob account to check the key", "Nothing else: it can't see your other mail or billing"],
+    connectsWith: "Key from Lob",
+    website: "https://www.lob.com/",
+    open: "/marketing?tab=campaigns",
   },
   twilio: {
     developer: "Twilio",

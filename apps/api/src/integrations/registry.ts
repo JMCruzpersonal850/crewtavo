@@ -14,6 +14,7 @@
  *   site      - the company's website editor, by its address (Sveltia CMS: companies.settings.website, integrations/website.ts)
  * ABC Supply is an api_key app with two keys: its own app's Client ID and secret (integrations/abcSupply.ts).
  * Twilio is an api_key app with an Account SID, an Auth Token and the number texts go from (lib/twilio.ts).
+ * Lob is an api_key app: its secret key, test or live, mails postcard campaigns (integrations/lob.ts).
  * Google Business Profile signs in like Google Calendar, with the same Google app, and brings the
  * business's reviews into Marketing → Reviews while Marketing is installed (services/googleReviews.ts).
  * Facebook & Instagram signs in with the business's own Meta app only (its App ID and secret pasted
@@ -25,7 +26,7 @@ import type { Env } from "../env";
 import { DIALOG, GRAPH_VERSION, META_SCOPES } from "./metaConfig";
 
 /** Apps with a row in integrations (and maybe integration_secrets). */
-export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "fal" | "railway" | "abc_supply";
+export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "fal" | "railway" | "abc_supply" | "lob";
 /** Apps whose calendars are added by link. They're also the calendar_sources.app values (with google_calendar). */
 export type LinkApp = "zoho_calendar" | "outlook_calendar" | "apple_calendar" | "ics_calendar";
 export type AppId = Provider | LinkApp | "chatgpt" | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "sveltia";
@@ -264,6 +265,16 @@ export const CATALOG: CatalogEntry[] = [
     docs: "https://www.twilio.com/docs/messaging",
     // A company connects its own Twilio account (its Account SID, Auth Token and number: lib/twilio.ts);
     // a deployment can also set one for everyone.
+    available: () => true,
+  },
+  {
+    id: "lob",
+    name: "Lob",
+    category: "Marketing",
+    description: "Postcards printed and mailed for your campaigns, through your own Lob account.",
+    auth: "api_key",
+    docs: "https://docs.lob.com/",
+    // Each business uses its own Lob account and key, so nothing to set up on the server.
     available: () => true,
   },
   {
