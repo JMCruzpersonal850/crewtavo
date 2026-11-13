@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { quoteDocument, quoteSchedule } from "@/features/documents/build";
 import { canInvoiceNow, installmentState } from "@/features/jobs/JobPaymentSchedule";
 import { shownSchedule } from "@/features/quotes/PaymentSchedule";
-import { quoteForm } from "@/features/settings/QuoteSettings";
+import { alertAmount, quoteForm } from "@/features/settings/QuoteSettings";
 
 const rows = [
   { kind: "percent", value: 30, due: "approval" },
@@ -86,5 +86,17 @@ describe("the job's payments", () => {
     expect(canInvoiceNow({ due: "work_done" }, { kind: "to_come" })).toBe(false);
     expect(canInvoiceNow({ due: "approval" }, { kind: "invoiced", invoice: invoice("sent") })).toBe(false);
     expect(canInvoiceNow({ due: "date" }, { kind: "final", invoice: final })).toBe(false);
+  });
+});
+
+describe("quote alerts' amount", () => {
+  it("is off empty, and otherwise an amount above $0 to the cent", () => {
+    expect(quoteForm({}).alertOver).toBe("");
+    expect(quoteForm({ quotes: { alert_over: 10000 } }).alertOver).toBe("10000");
+    expect(quoteForm({ quotes: { alert_over: null } }).alertOver).toBe("");
+    expect(alertAmount("")).toBeNull();
+    expect(alertAmount("  ")).toBeNull();
+    expect(alertAmount("2500.555")).toBe(2500.56);
+    expect(() => alertAmount("0")).toThrow("Enter an amount above $0 for quote alerts, or leave it empty.");
   });
 });
