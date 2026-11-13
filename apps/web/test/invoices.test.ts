@@ -388,6 +388,12 @@ describe("a charge waiting for the office's OK", () => {
     );
   });
 
+  it("says so for an invoice with extra work on one of its visits, which the database holds for a look whatever the amount", () => {
+    expect(asked(invoicePage("needs_approval", { draft: true, last_error: "Includes extra work added to a visit" }))).toBe("It includes extra work added to a visit, so it waits for your OK.");
+    const migration = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261113000900_visit_extras.sql", import.meta.url)), "utf8");
+    expect(migration).toContain("then 'Includes extra work added to a visit'");
+  });
+
   it("and otherwise that it waits, the database giving no reason for the limit", () => {
     // No limit set in this company's settings.
     expect(asked(invoicePage("needs_approval", { draft: true }))).toBe("It waits for your OK before it&#x27;s charged.");
