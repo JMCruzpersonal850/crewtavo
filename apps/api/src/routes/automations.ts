@@ -11,7 +11,7 @@ import { firstName } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson } from "../lib/http";
 import { emailReady, smsReady } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
-import { buildContext, officeVars, processAutomations, withAutopayLink, withEvent } from "../services/automations";
+import { buildContext, officeVars, previewRecipients, processAutomations, withAutopayLink, withEvent } from "../services/automations";
 import { autopayAvailable, autopayInviteText } from "../services/autopay";
 
 export const automations = new Hono<AppEnv>();
@@ -75,17 +75,21 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
   const canEmail = await emailReady(c.env, companyId);
   const canText = await smsReady(c.env, companyId);
   const takesAutopay = (rule.actions as Action[]).some((a) => a.type === "invite_autopay") ? await autopayAvailable(c.env, admin, companyId) : true;
+  // Who an email or a text would go to: the client, and their contacts ticked for it.
+  const uses = (type: Action["type"]) => (rule.actions as Action[]).some((a) => a.type === type);
+  const emailTo = uses("send_email") ? await previewRecipients(admin, ctx, rule.trigger, "email") : [];
+  const textTo = uses("send_sms") ? await previewRecipients(admin, ctx, rule.trigger, "sms") : [];
   const previews = (rule.actions as Action[]).map((a) => {
     switch (a.type) {
       case "notify":
         return { type: a.type, title: r(a.title), body: r(a.body) };
       case "send_email":
         if (!canEmail) warnings.push("Email isn't connected yet (Settings → Email), so email actions will fail until it is.");
-        if (!ctx.client?.email) warnings.push(`${ctx.client?.display_name ?? "This client"} has no email address.`);
-        return { type: a.type, to: ctx.client?.email ?? null, title: r(a.subject), body: r(a.body) };
+        if (!emailTo.length) warnings.push(`${ctx.client?.display_name ?? "This client"} has no email address.`);
+        return { type: a.type, to: emailTo.join(", ") || null, title: r(a.subject), body: r(a.body) };
       case "send_sms":
         if (!canText) warnings.push("Texting isn't set up yet (Apps → Twilio), so text actions will fail until it is.");
-        return { type: a.type, to: ctx.client?.phone ?? null, body: r(a.body) };
+        return { type: a.type, to: textTo.join(", ") || null, body: r(a.body) };
       case "add_note":
         return { type: a.type, body: r(a.body) };
       case "create_task":

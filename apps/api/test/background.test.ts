@@ -1433,6 +1433,19 @@ describe("automation runs", () => {
     expect(rpcs.find((r) => r.fn === "finish_automation_run")!.args.p_result).toEqual([{ type: "send_email", ok: true, detail: "Emailed pat@example.com and mo@example.com" }]);
   });
 
+  it("say in the preview who an email would reach, and keep marketing and card rules to the client alone", async () => {
+    const { loadContext, previewRecipients } = await import("../src/services/automations");
+    const client_contacts = [{ id: "contact-1", name: "Mo Manager", email: "mo@example.com", phone: "540-555-0122", notify_email: true, notify_sms: true }];
+    const { db } = sentRun("invoice", [], { client_contacts });
+    const ctx = (await loadContext(db, COMPANY, "invoice", "invoice-1"))!;
+    expect(await previewRecipients(db, ctx, "invoice.sent", "email")).toEqual(["pat@example.com", "mo@example.com"]);
+    expect(await previewRecipients(db, ctx, "invoice.sent", "sms")).toEqual(["+15405550111", "540-555-0122"]);
+    // A re-engage email is marketing, a referral credit is the client's, and autopay is about their card.
+    for (const trigger of ["client.inactive", "referral.earned", "autopay.failed", "payment_method.expiring"]) {
+      expect(await previewRecipients(db, ctx, trigger, "email"), trigger).toEqual(["pat@example.com"]);
+    }
+  });
+
   it("text the client's contacts ticked for texts, but never a number that texted STOP", async () => {
     const texts: string[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {

@@ -515,6 +515,15 @@ async function peopleFor(admin: Db, ctx: RunContext, client: NonNullable<RunCont
   return clientRecipients(channel, client, [], { contactsOn: false, stopped });
 }
 
+/**
+ * Who a rule's email or text would reach on this record now, for the rule screen's preview: the
+ * addresses or numbers a run would send to (peopleFor), the client's first.
+ */
+export async function previewRecipients(admin: Db, ctx: RunContext, trigger: string, channel: "email" | "sms"): Promise<string[]> {
+  if (!ctx.client) return [];
+  return (await peopleFor(admin, { ...ctx, trigger, campaign: campaignRuleOf({ trigger }) ?? undefined }, ctx.client, channel)).map((person) => person.to);
+}
+
 /** For an action's result when it reached some but not all: "; didn't reach bo@example.com (why)". */
 const missed = (delivery: Delivery) => (delivery.failed.length ? `; didn't reach ${addressList(delivery.failed)} (${delivery.failed[0]!.reason.replace(/\.$/, "")})` : "");
 
