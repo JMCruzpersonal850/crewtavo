@@ -44,6 +44,7 @@ import { refundable, stripeCharge, stripeRefundable, stripeRefundToasts, type St
 import { settle } from "./settle";
 import { autopayBankNote, bankPayment, bankPaymentNote, paidInStripe, paymentAmount, RECORD_IN_STRIPE } from "./stripeInvoices";
 import { chargeOutcomeText, type ChargeResult } from "./charges";
+import { lateFeeControls } from "./lateFees";
 import { CustomFieldsCard, useCustomFields } from "../customFields/CustomFields";
 
 const METHODS: Record<string, string> = { check: "Check", cash: "Cash", card: "Card", ach: "Bank transfer", other: "Other" };
@@ -74,7 +75,7 @@ function InvoicePageScreen() {
       const [row, autopay, credits] = await Promise.all([
         supabase()
           .from("invoices")
-          .select("*, promo:promo_codes(code, kind, value, description), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), job:jobs(id, number, title, po_number, kind, billing_mode, property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, option:quote_options!quotes_option_fkey(name, warranty), package:roof_packages!quotes_roof_package_fkey(name, warranty))), lines:invoice_line_items(id, name, description, quantity, unit, unit_price, taxable, sort, service_id, discount_quote_id, time_entry_ids, material_ids), payments(id, amount, tip_amount, method, received_at, processor, processor_ref, notes, fee_amount, payout:payouts(arrival_on, status)), stripe:stripe_invoices(stripe_id, origin, status, number, hosted_url, livemode, amount_due, created_at, detached_at, processing_at, collection, purpose)")
+          .select("*, promo:promo_codes(code, kind, value, description), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), job:jobs(id, number, title, po_number, kind, billing_mode, property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, option:quote_options!quotes_option_fkey(name, warranty), package:roof_packages!quotes_roof_package_fkey(name, warranty))), lines:invoice_line_items(id, name, description, quantity, unit, unit_price, taxable, sort, service_id, discount_quote_id, time_entry_ids, material_ids, kind), payments(id, amount, tip_amount, method, received_at, processor, processor_ref, notes, fee_amount, payout:payouts(arrival_on, status)), stripe:stripe_invoices(stripe_id, origin, status, number, hosted_url, livemode, amount_due, created_at, detached_at, processing_at, collection, purpose)")
           .eq("id", id)
           .order("sort", { referencedTable: "invoice_line_items" })
           .order("received_at", { referencedTable: "payments" })
@@ -174,6 +175,12 @@ function InvoicePageScreen() {
     },
   });
   // Undone from its toast (see takeOff below), which also says when it fails.
+  // Remove late fee: the fee line comes off and late fees are off for it (the database does both, and says why when it can't).
+  const removeLateFee = useMutation({
+    meta: { success: "Late fee removed", tone: "invoice" },
+    mutationFn: async () => unwrap(await supabase().rpc("remove_late_fee", { p_invoice: id })),
+    onSuccess: refresh,
+  });
   const removePayment = useMutation({
     meta: { inline: true },
     mutationFn: async (paymentId: string) => unwrap(await supabase().from("payments").delete().eq("id", paymentId)),
@@ -269,6 +276,9 @@ function InvoicePageScreen() {
   const editable = draft && !charging;
   // Made in Stripe: paid as Stripe billed it, so its total changes there, not here.
   const fromStripe = inv.stripe.some((s) => s.origin === "stripe");
+  // Remove late fee, the "No late fee on this invoice" tick, and what's said once one was taken off.
+  const fees = lateFeeControls(inv, { feesOn: Boolean(lateFee), fromStripe });
+  const feeTotal = inv.lines.filter((l) => l.kind === "late_fee").reduce((sum, l) => sum + Number(l.quantity) * Number(l.unit_price), 0);
   // And while it's open there, so do its payments.
   const paysInStripe = paidInStripe(inv.stripe);
   // Charge card: not while a charge is going, or a bank payment (in a Stripe account left too, while
@@ -342,6 +352,21 @@ function InvoicePageScreen() {
                   },
                 },
                 { label: "Undo write-off", icon: "undo", hidden: !writtenOff, onSelect: () => writeOff.mutate(false) },
+                {
+                  label: "Remove late fee",
+                  icon: "x",
+                  hidden: !fees.remove || charging,
+                  // The client is paying the amount with the fee in it.
+                  disabled: Boolean(bank) || clearing,
+                  onSelect: async () => {
+                    const ok = await confirm({
+                      title: `Remove the ${formatMoneyCents(feeTotal)} late fee?`,
+                      body: `It comes off invoice #${inv.number}, and no late fee is added to this invoice again.`,
+                      confirmLabel: "Remove late fee",
+                    });
+                    if (ok) removeLateFee.mutate();
+                  },
+                },
                 {
                   label: "Void invoice",
                   icon: "x",
@@ -562,6 +587,13 @@ function InvoicePageScreen() {
                 ))}
               </div>
             )}
+            {/* Late fees for this invoice: off with a tick before one goes on, and said once one was taken off. */}
+            {fees.tick && (
+              <label className="checkbox small">
+                <input type="checkbox" checked={Boolean(inv.no_late_fee)} disabled={edit.isPending} onChange={(e) => saveField({ no_late_fee: e.target.checked })} /> No late fee on this invoice
+              </label>
+            )}
+            {fees.note && <span className="muted small">{fees.note}</span>}
             {inv.sent_at && <span className="muted small">Sent {formatDate(inv.sent_at)}</span>}
             {inv.job?.po_number && <span className="muted small">PO {inv.job.po_number}</span>}
           </div>

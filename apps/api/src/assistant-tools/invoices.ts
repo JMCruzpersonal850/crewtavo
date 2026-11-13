@@ -40,13 +40,13 @@ export const invoiceTools = {
   }),
   get_invoice: tool({
     description:
-      "An invoice in full: client, job, lines, totals, discounts and referral credits, tax, what's been paid (each payment), what's still owed, and its custom_fields (by key, list_custom_fields). A line's kind: minimum (the Minimum charge line, kept right while it's a draft, for minimum_charge) or late_fee (added once, late_fee_at).",
+      "An invoice in full: client, job, lines, totals, discounts and referral credits, tax, what's been paid (each payment), what's still owed, and its custom_fields (by key, list_custom_fields). A line's kind: minimum (the Minimum charge line, kept right while it's a draft, for minimum_charge) or late_fee (added once, late_fee_at; never when no_late_fee is true; remove_late_fee takes it off).",
     input: z.object({ invoice_id: z.uuid(), ...companyArg }),
     run: (ctx, a) =>
       one(
         ctx.db
           .from("invoices")
-          .select("id, number, kind, status, subtotal, discount_amount, credit_amount, credits:referral_credits(amount, note), tax_amount, total, amount_paid, balance_due, issued_on, due_on, written_off_at, minimum_charge, late_fee_at, custom_fields, job:jobs(id, number, title), client:clients(id, display_name, email, tax_exempt), lines:invoice_line_items(name, description, quantity, unit, unit_price, taxable, kind), payments(id, amount, tip_amount, method, received_at, notes, processor)")
+          .select("id, number, kind, status, subtotal, discount_amount, credit_amount, credits:referral_credits(amount, note), tax_amount, total, amount_paid, balance_due, issued_on, due_on, written_off_at, minimum_charge, late_fee_at, no_late_fee, custom_fields, job:jobs(id, number, title), client:clients(id, display_name, email, tax_exempt), lines:invoice_line_items(name, description, quantity, unit, unit_price, taxable, kind), payments(id, amount, tip_amount, method, received_at, notes, processor)")
           .eq("id", a.invoice_id)
           .eq("company_id", ctx.companyId)
           .maybeSingle(),
@@ -120,13 +120,29 @@ export const invoiceTools = {
     },
   }),
   update_invoice: tool({
-    description: "Change an invoice's custom fields (list_custom_fields), by key. Its lines, dates and amounts are changed in Crewtavo.",
-    input: z.object({ invoice_id: z.uuid(), custom_fields: customFieldsArg.custom_fields.unwrap(), ...companyArg }),
+    description:
+      "Change an invoice's custom fields (list_custom_fields), by key, or turn late fees off for it (no_late_fee true: the hourly run never adds one; false turns them back on for an invoice that hasn't had one). Its lines, dates and amounts are changed in Crewtavo.",
+    input: z.object({ invoice_id: z.uuid(), custom_fields: customFieldsArg.custom_fields, no_late_fee: z.boolean().optional(), ...companyArg }),
     area: "invoices",
     run: async (ctx, a) => {
+      if (!a.custom_fields && a.no_late_fee === undefined) throw new Error("Give the custom fields to change, or no_late_fee.");
       const fields = await customFieldsPatch(ctx, "invoice", { id: a.invoice_id }, a.custom_fields);
-      if (fields.custom_fields) await changed(ctx.db.from("invoices").update(fields).eq("id", a.invoice_id).eq("company_id", ctx.companyId).select("id"), "That invoice");
-      return { saved: true, custom_fields: fields.custom_fields ?? null };
+      const patch = { ...(fields.custom_fields && { custom_fields: fields.custom_fields }), ...(a.no_late_fee !== undefined && { no_late_fee: a.no_late_fee }) };
+      if (Object.keys(patch).length) await changed(ctx.db.from("invoices").update(patch).eq("id", a.invoice_id).eq("company_id", ctx.companyId).select("id"), "That invoice");
+      return { saved: true, custom_fields: fields.custom_fields ?? null, ...(a.no_late_fee !== undefined && { no_late_fee: a.no_late_fee }) };
+    },
+  }),
+  remove_late_fee: tool({
+    description:
+      "Take the late fee off an invoice (partly paid ones too) and turn late fees off for it, so the hourly run doesn't add one again. Not while the client is being charged or a bank payment is on its way, on a void or written-off invoice, or when the fee has been paid (refund the difference first).",
+    input: z.object({ invoice_id: z.uuid(), ...companyArg }),
+    area: "invoices",
+    run: async (ctx, a) => {
+      // The invoice is this company's (the database checks the person's role for it).
+      await one(ctx.db.from("invoices").select("id").eq("id", a.invoice_id).eq("company_id", ctx.companyId).maybeSingle(), "That invoice");
+      const { data, error } = await ctx.db.rpc("remove_late_fee", { p_invoice: a.invoice_id });
+      if (error) throw new Error(friendly(error.message));
+      return { removed: Number(data ?? 0), invoice: await one(ctx.db.from("invoices").select("id, number, status, total, balance_due, no_late_fee").eq("id", a.invoice_id).maybeSingle(), "That invoice") };
     },
   }),
   invoice_jobs: tool({

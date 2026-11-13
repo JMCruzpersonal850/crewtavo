@@ -38,11 +38,12 @@ export function lateFeeAmount(balance: Amount, fee: LateFee): number {
 
 /**
  * The day an invoice's late fee goes on (the first day past its grace days), or null when it
- * never will: it has its fee already (an invoice gets one, once), nothing is owed, it isn't due, or
- * it's a draft, paid, void or written off, or a deposit (paid before the work, so never late).
+ * never will: it has its fee already (an invoice gets one, once), late fees are off for it
+ * (no_late_fee), nothing is owed, it isn't due, or it's a draft, paid, void or written off, or a
+ * deposit (paid before the work, so never late).
  */
-export function lateFeeOn(invoice: { kind: string; status: string; balance_due: Amount; due_on: string | null; late_fee_at?: string | null }, fee: LateFee | null): string | null {
-  if (!fee || invoice.kind === "deposit" || invoice.late_fee_at || !invoice.due_on || toCents(invoice.balance_due) <= 0) return null;
+export function lateFeeOn(invoice: { kind: string; status: string; balance_due: Amount; due_on: string | null; late_fee_at?: string | null; no_late_fee?: boolean | null }, fee: LateFee | null): string | null {
+  if (!fee || invoice.kind === "deposit" || invoice.late_fee_at || invoice.no_late_fee || !invoice.due_on || toCents(invoice.balance_due) <= 0) return null;
   if (!["sent", "partially_paid", "overdue"].includes(invoice.status)) return null;
   const day = new Date(`${invoice.due_on}T12:00:00Z`);
   day.setUTCDate(day.getUTCDate() + fee.grace_days + 1);

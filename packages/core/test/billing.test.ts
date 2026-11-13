@@ -59,6 +59,11 @@ describe("late fees", () => {
     expect(lateFeeOn(owed, null)).toBeNull();
   });
 
+  it("never go on an invoice the office turned them off for", () => {
+    expect(lateFeeOn({ ...owed, no_late_fee: true }, fee)).toBeNull();
+    expect(lateFeeOn({ ...owed, no_late_fee: false }, fee)).toBe("2026-10-07");
+  });
+
   it("never go on a deposit invoice, as the hourly task skips them", () => {
     expect(lateFeeOn({ ...owed, kind: "deposit" }, fee)).toBeNull();
     expect(lateFeeOn(owed, fee)).toBe("2026-10-07");
