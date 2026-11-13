@@ -212,6 +212,9 @@ export function bookingOpenings(look: BookingLook): OpenSlot[] {
   const settings = (look.settings ?? {}) as { working_hours?: { start?: string; end?: string } };
   const most = Number(look.form.max_per_day);
   const soonest = look.now.getTime() + BOOKING_NOTICE_MIN * 60_000;
+  // A clock time that doesn't exist the night the clocks go forward lands on one that does: offered once.
+  const seen = new Set<string>();
+  const once = (slot: OpenSlot) => !seen.has(slot.starts_at!) && Boolean(seen.add(slot.starts_at!));
   return openSlots({
     now: look.now,
     timeZone: look.timeZone,
@@ -223,7 +226,7 @@ export function bookingOpenings(look: BookingLook): OpenSlot[] {
     windowMin: arrivalWindowMin(look.settings),
     leadDays: daysApart(localDate(look.now, look.timeZone), from),
     days,
-  }).filter((slot) => Date.parse(slot.starts_at!) >= soonest && !(Number.isFinite(most) && most > 0 && (look.booked?.[slot.date] ?? 0) >= most));
+  }).filter((slot) => Date.parse(slot.starts_at!) >= soonest && !(Number.isFinite(most) && most > 0 && (look.booked?.[slot.date] ?? 0) >= most) && once(slot));
 }
 
 /** "Eastern Time (New York)": a time zone as a booking page names it, so nobody reads the times as their own. */

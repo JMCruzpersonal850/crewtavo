@@ -2345,6 +2345,61 @@ describe("moving or cancelling a visit from the Client Hub", () => {
     expect(String(change.when).replace(/\s/g, " ")).toMatch(/^\w{3}, \w{3} \d+, 11:00 AM$/);
   });
 
+  describe("a visit the client booked online", () => {
+    const BOOKED = "00000000-0000-4000-8000-0000000000e5";
+    const OFFICE_MADE = "00000000-0000-4000-8000-0000000000e6";
+    const estimate = (id: string, request: string, picked: string | null, more: Row = {}) => ({
+      id, company_id: ROOFER, job_id: null, request_id: request, kind: "assessment", title: "Assessment: Free roof inspection", status: "scheduled",
+      scheduled_on: addDays(day, 1), starts_at: at(addDays(day, 1), "09:00"), ends_at: at(addDays(day, 1), "10:00"), completed_at: null, crew_id: null, property: null, assignees: [],
+      job: null, request: { client_id: CLIENT, asked_starts_at: picked }, company: { name: "Summit Roofing" }, ...more,
+    });
+    beforeEach(() => {
+      state.tables.requests = [
+        { id: "req-online", company_id: ROOFER, client_id: CLIENT, number: 7, title: "Free roof inspection", status: "assessment_scheduled", source: "web_form", asked_starts_at: at(addDays(day, 1), "09:00"), asked_ends_at: at(addDays(day, 1), "10:00") },
+        { id: "req-office", company_id: ROOFER, client_id: CLIENT, number: 8, title: "Gutter estimate", status: "assessment_scheduled", source: "phone", asked_starts_at: null, asked_ends_at: null },
+      ];
+      state.tables.visits!.push(estimate(BOOKED, "req-online", at(addDays(day, 1), "09:00")), estimate(OFFICE_MADE, "req-office", null));
+      state.rpcs.booking_busy_times = () => ({ data: [{ starts_at: at(day, "08:00"), ends_at: at(day, "09:00") }], error: null });
+    });
+    afterEach(() => {
+      delete state.rpcs.booking_busy_times;
+      state.tables.requests = [];
+    });
+
+    it("is on their home with the rest, in order, to move or cancel; an assessment the office made isn't", async () => {
+      const home = await (await hub({ t: "client", id: CLIENT })).json();
+      expect(home.visits.map((v: { id: string }) => v.id)).toEqual([TODAYS, MINE, BOOKED, NEXT]);
+      expect(home.visits.find((v: { id: string }) => v.id === BOOKED)).toMatchObject({ title: "Assessment: Free roof inspection", can_change: true, change_requested: null });
+      expect((await slotsOf(OFFICE_MADE)).status).toBe(404);
+      expect((await ask(OFFICE_MADE, { kind: "cancel" })).status).toBe(404);
+      expect((await hub({ t: "client", id: CLIENT }, `/visits/${OFFICE_MADE}.ics`)).status).toBe(404);
+      expect((await hub({ t: "client", id: CLIENT }, `/visits/${BOOKED}.ics`)).status).toBe(200);
+    });
+
+    it("moves against the whole schedule when it has no crew, as its form booked it, and its own time isn't in its way", async () => {
+      const body = await (await slotsOf(BOOKED)).json();
+      expect(state.calls.find((c) => c.name === "booking_busy_times")?.args).toMatchObject({ p_company: ROOFER, p_crew: null, p_except_visit: BOOKED });
+      expect(state.calls.some((c) => c.name === "visit_busy_times")).toBe(false);
+      expect(body.slots.filter((s: { date: string }) => s.date === day).map((s: { starts_at: string }) => localTime(new Date(s.starts_at), CHICAGO))).toEqual(["09:00", "09:30", "10:00", "10:30", "11:00"]);
+      expect((await ask(BOOKED, { kind: "reschedule", starts_at: at(day, "08:00") })).status).toBe(409);
+      expect((await ask(BOOKED, { kind: "reschedule", starts_at: at(day, "10:00") })).status).toBe(201);
+      expect(state.tables.visit_change_requests).toMatchObject([{ visit_id: BOOKED, client_id: CLIENT, kind: "reschedule", starts_at: at(day, "10:00") }]);
+    });
+
+    it("with a crew, moves around that crew's time like any visit", async () => {
+      state.tables.visits!.find((v) => v.id === BOOKED)!.crew_id = "crew-1";
+      await slotsOf(BOOKED);
+      expect(state.calls.find((c) => c.name === "visit_busy_times")?.args).toMatchObject({ p_visit: BOOKED });
+      expect(state.calls.some((c) => c.name === "booking_busy_times")).toBe(false);
+    });
+
+    it("gives the office's rules the time picked, and whether it's booked", async () => {
+      const ctx = (await loadContext(adminClient(env), ROOFER, "request", "req-online"))!;
+      expect(ctx.asked).toEqual({ status: "assessment_scheduled", asked_starts_at: at(addDays(day, 1), "09:00"), asked_ends_at: at(addDays(day, 1), "10:00") });
+      expect((await loadContext(adminClient(env), ROOFER, "request", "req-office"))!.asked).toBeUndefined();
+    });
+  });
+
   it("won't approve a move for a visit that has started since", async () => {
     request({ kind: "reschedule", starts_at: at(day, "11:00"), ends_at: at(day, "12:00"), scheduled_on: day });
     state.tables.visits![0]!.status = "in_progress";
