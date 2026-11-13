@@ -29,7 +29,7 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
     {
       title: "Business",
       items: [
-        isAdmin && { tab: "company", label: "Company", icon: "home", keywords: "business name address phone email website brand color sales tax time zone workday hours quotes valid invoice due jobs last visit finished mark work complete requires invoicing" },
+        isAdmin && { tab: "company", label: "Company", icon: "home", keywords: "business name address phone email website brand color sales tax time zone workday hours quotes valid invoice due jobs last visit finished mark work complete requires invoicing numbering next number invoice number quote number job number starting number" },
         // Autopay's terms, timing and cap, and the cards brought in from Stripe: for the people who look after money.
         isAdmin && can(session, "invoices") && { tab: "payments", label: "Payments", icon: "card", keywords: "payments autopay automatic charge card on file saved card bank receipts tips tip stripe limit cap terms refund" },
         isAdmin && { tab: "schedule", label: "Schedule and routes", icon: "navigation", keywords: "routes route optimize organize order stops lawn mowing drive time driving speed shop automatic time steps 5 minutes 15 minutes precision calendar snap" },

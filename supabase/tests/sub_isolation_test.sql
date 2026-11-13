@@ -580,7 +580,10 @@ select t1070.check(array(
   'marketing_set_enabled(uuid, boolean)', 'marketing_summary(uuid)', 'material_choices(uuid)', 'merge_clients(uuid, uuid, uuid)',
   -- Saving a screen's own settings: runs as the caller, so owners and admins only, never a sub.
   'merge_company_settings(uuid, jsonb)', 'my_crew_ids(uuid)', 'my_sub_offers(boolean, uuid)',
-  'my_sub_pay_totals(uuid)', 'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
+  'my_sub_pay_totals(uuid)',
+  -- The next request, quote, job and invoice numbers (and set_next_number below): owners and admins only, never a sub.
+  'next_numbers(uuid)',
+  'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
   -- The quote follow-up after an exact price goes out: the office and estimators with Sales only, never a sub.
   'quote_exact_sent(uuid)',
   'record_photos(uuid, uuid, uuid)', 'referral_auto_apply(uuid, boolean)', 'referral_credits_for(uuid, uuid)', 'referral_give_credit(uuid)', 'referral_no_reward(uuid)',
@@ -591,7 +594,7 @@ select t1070.check(array(
   'request_manual_charges(uuid, uuid[], numeric[])', 'review_stats(uuid)',
   'search_sops(uuid, text, integer, boolean)', 'send_sub_offer(uuid, timestamp with time zone)',
   -- Runs as the caller: no rule lets a sub link a checklist to an item.
-  'set_checklist_services(uuid, uuid[])', 'set_job_discount_billing(uuid, uuid, boolean)',
+  'set_checklist_services(uuid, uuid[])', 'set_job_discount_billing(uuid, uuid, boolean)', 'set_next_number(uuid, text, bigint)',
   'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)', 'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',

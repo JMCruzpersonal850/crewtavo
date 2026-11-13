@@ -104,7 +104,7 @@ export function ImportJobberDialog({ onClose }: { onClose: () => void }) {
               <Icon name="info" size={20} />
               <div className="grow small" style={{ fontWeight: 400 }}>
                 <div>Nothing is sent or charged</div>
-                No emails or texts go to clients as it comes in, and no trip charge, minimum charge or late fee is added: each invoice owes what it owed in Jobber, with what was paid there as one payment. Crewtavo gives each its own number and keeps Jobber&apos;s beside it. Importing the same files again adds nothing. After that they&apos;re like the rest: an invoice that falls past due later gets your usual reminder.
+                No emails or texts go to clients as it comes in, and no trip charge, minimum charge or late fee is added: each invoice owes what it owed in Jobber, with what was paid there as one payment. Crewtavo gives each its own number and keeps Jobber&apos;s beside it. To carry on from Jobber&apos;s numbers afterwards, set your next quote, job and invoice numbers under Settings → Company. Importing the same files again adds nothing. After that they&apos;re like the rest: an invoice that falls past due later gets your usual reminder.
               </div>
             </div>
             {run.isPending && (

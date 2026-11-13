@@ -16,6 +16,7 @@ import { CURRENCIES, timeZoneChoices } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { CompanyLogo } from "./CompanyLogo";
+import { NextNumbers } from "./NextNumbers";
 
 const BREAK_HINTS: Record<BreakPay, string> = {
   short_paid: "Breaks of 20 minutes or less count as paid time; longer ones, like lunch, don't. This follows federal rules.",
@@ -128,7 +129,8 @@ export function CompanySettings() {
   const set = (key: string) => (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value });
 
   return (
-    <form className="stack" style={{ maxWidth: 860 }} onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
+    <div className="stack" style={{ maxWidth: 860 }}>
+    <form className="stack" onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
       <div className="card card-pad stack">
         <strong>Business</strong>
         <div className="form-grid">
@@ -256,5 +258,8 @@ export function CompanySettings() {
       <FormError error={save.error} />
       <div className="form-actions" style={{ justifyContent: "flex-start" }}><FormChecks /><Button type="submit" variant="primary" loading={save.isPending} done={saved}>Save company settings</Button></div>
     </form>
+    {/* Saved by itself, through the database's own function: not one of the settings above. */}
+    <NextNumbers />
+    </div>
   );
 }
