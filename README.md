@@ -343,9 +343,16 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   and a late fee can be taken off or turned off for one invoice. Invoices go through Stripe for
   card and bank payments; invoices made in Stripe come in too, with the fees and bank deposits
   behind every payment. Refunds (by hand or through Stripe, taken off the invoice or left owing),
-  write-offs for invoices that won't be paid, expenses and job costing, timesheets and pay.
-  Request, quote, job and invoice numbers can carry on from the system you're moving from
-  (Settings → Company).
+  write-offs for invoices that won't be paid, expenses and job costing, timesheets and pay. A job
+  costs the same everywhere: on its page, in Finance and to an AI assistant. Set a margin (Settings
+  → Company → Job costing) and the people who see job costs are told when a one-off job's profit
+  falls below it, once, and the job's page warns while it stays there; after you change the margin,
+  the jobs already below it are listed under Below your margin on the Jobs page. Turn on reading
+  receipts (Settings → Company → Receipts, with your own Claude key) and a receipt photo or a
+  supplier's invoice fills in the expense for you to check, with its tax and lines, suggests the job
+  it names and the job's materials its lines match (to log as materials used in the same save), and
+  the office can drop a stack at once to check and save one by one. Request, quote, job and invoice
+  numbers can carry on from the system you're moving from (Settings → Company).
 - **Online booking:** request, estimate and booking forms to link to or embed in your website,
   with your own questions, a service area by ZIP or postal code, file and photo uploads and promo
   codes. Turn on "Let clients pick a time" for an estimate or booking form (Settings → Online
@@ -401,7 +408,9 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   what the earlier didn't pay. Finishing a visit clocks out everyone still on its clock. On the
   whole-day clock (Settings → Company → Time clock; new businesses start on it) they go on to
   Driving instead, from On my way until Stop for the day: travel is paid time, on no job's costs.
-  Subs are paid by the job instead, under Subcontractors. Crewtavo doesn't move the money.
+  Subs are paid by the job instead, under Subcontractors. A receipt someone paid with their own
+  money is marked to reimburse; with reading on, the one they add from a visit fills itself in for
+  them to check. Crewtavo doesn't move the money.
 - **Every trade:** trade presets ([`packages/core/src/presets`](packages/core/src/presets)) load
   starter services, quote formulas, checklists, weather rules, booking forms, custom fields and SOP
   categories when a company signs up (a trade's estimate or booking form starts with its visit
