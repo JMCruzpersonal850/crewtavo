@@ -1106,14 +1106,14 @@ isOneToOne: false
                   ]
                 },"intake_forms": {
                   Row: {
-                    "active": boolean,"company_id": string,"created_at": string,"id": string,"kind": string,"lead_time_days": number,"max_per_day": number | null,"name": string,"questions": NonNullable<Json>,"requires_approval": boolean,"service_area_zips": (string)[],"service_ids": (string)[],"slot_minutes": number | null,"slug": string,"updated_at": string
+                    "active": boolean,"company_id": string,"created_at": string,"crew_id": string | null,"id": string,"kind": string,"lead_time_days": number,"max_per_day": number | null,"name": string,"pick_time": boolean,"questions": NonNullable<Json>,"requires_approval": boolean,"service_area_zips": (string)[],"service_ids": (string)[],"slot_minutes": number | null,"slug": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"company_id": string,"created_at"?: string,"id"?: string,"kind"?: string,"lead_time_days"?: number,"max_per_day"?: number | null,"name": string,"questions"?: NonNullable<Json>,"requires_approval"?: boolean,"service_area_zips"?: (string)[],"service_ids"?: (string)[],"slot_minutes"?: number | null,"slug": string,"updated_at"?: string
+                    "active"?: boolean,"company_id": string,"created_at"?: string,"crew_id"?: string | null,"id"?: string,"kind"?: string,"lead_time_days"?: number,"max_per_day"?: number | null,"name": string,"pick_time"?: boolean,"questions"?: NonNullable<Json>,"requires_approval"?: boolean,"service_area_zips"?: (string)[],"service_ids"?: (string)[],"slot_minutes"?: number | null,"slug": string,"updated_at"?: string
                   }
                   Update: {
-                    "active"?: boolean,"company_id"?: string,"created_at"?: string,"id"?: string,"kind"?: string,"lead_time_days"?: number,"max_per_day"?: number | null,"name"?: string,"questions"?: NonNullable<Json>,"requires_approval"?: boolean,"service_area_zips"?: (string)[],"service_ids"?: (string)[],"slot_minutes"?: number | null,"slug"?: string,"updated_at"?: string
+                    "active"?: boolean,"company_id"?: string,"created_at"?: string,"crew_id"?: string | null,"id"?: string,"kind"?: string,"lead_time_days"?: number,"max_per_day"?: number | null,"name"?: string,"pick_time"?: boolean,"questions"?: NonNullable<Json>,"requires_approval"?: boolean,"service_area_zips"?: (string)[],"service_ids"?: (string)[],"slot_minutes"?: number | null,"slug"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1122,6 +1122,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "companies"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "intake_forms_crew_fkey"
+      columns: ["company_id","crew_id"]
+isOneToOne: false
+      referencedRelation: "crews"
+      referencedColumns: ["company_id","id"]
     }
                   ]
                 },"integration_secrets": {
@@ -2384,14 +2390,14 @@ isOneToOne: false
                   ]
                 },"requests": {
                   Row: {
-                    "answers": NonNullable<Json>,"assigned_to": string | null,"client_id": string,"company_id": string,"created_at": string,"created_by": string | null,"details": string | null,"id": string,"intake_form_id": string | null,"number": number | null,"preferred_times": NonNullable<Json>,"promo_code": string | null,"promo_problem": string | null,"property_id": string | null,"rejected_promo_code": string | null,"source": string,"status": string,"title": string,"updated_at": string,"web_visit": Json | null,"website_form_id": string | null
+                    "answers": NonNullable<Json>,"asked_ends_at": string | null,"asked_starts_at": string | null,"assigned_to": string | null,"client_id": string,"company_id": string,"created_at": string,"created_by": string | null,"details": string | null,"id": string,"intake_form_id": string | null,"number": number | null,"preferred_times": NonNullable<Json>,"promo_code": string | null,"promo_problem": string | null,"property_id": string | null,"rejected_promo_code": string | null,"source": string,"status": string,"title": string,"updated_at": string,"web_visit": Json | null,"website_form_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "answers"?: NonNullable<Json>,"assigned_to"?: string | null,"client_id": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"details"?: string | null,"id"?: string,"intake_form_id"?: string | null,"number"?: number | null,"preferred_times"?: NonNullable<Json>,"promo_code"?: string | null,"promo_problem"?: string | null,"property_id"?: string | null,"rejected_promo_code"?: string | null,"source"?: string,"status"?: string,"title": string,"updated_at"?: string,"web_visit"?: Json | null,"website_form_id"?: string | null
+                    "answers"?: NonNullable<Json>,"asked_ends_at"?: string | null,"asked_starts_at"?: string | null,"assigned_to"?: string | null,"client_id": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"details"?: string | null,"id"?: string,"intake_form_id"?: string | null,"number"?: number | null,"preferred_times"?: NonNullable<Json>,"promo_code"?: string | null,"promo_problem"?: string | null,"property_id"?: string | null,"rejected_promo_code"?: string | null,"source"?: string,"status"?: string,"title": string,"updated_at"?: string,"web_visit"?: Json | null,"website_form_id"?: string | null
                   }
                   Update: {
-                    "answers"?: NonNullable<Json>,"assigned_to"?: string | null,"client_id"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"details"?: string | null,"id"?: string,"intake_form_id"?: string | null,"number"?: number | null,"preferred_times"?: NonNullable<Json>,"promo_code"?: string | null,"promo_problem"?: string | null,"property_id"?: string | null,"rejected_promo_code"?: string | null,"source"?: string,"status"?: string,"title"?: string,"updated_at"?: string,"web_visit"?: Json | null,"website_form_id"?: string | null
+                    "answers"?: NonNullable<Json>,"asked_ends_at"?: string | null,"asked_starts_at"?: string | null,"assigned_to"?: string | null,"client_id"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"details"?: string | null,"id"?: string,"intake_form_id"?: string | null,"number"?: number | null,"preferred_times"?: NonNullable<Json>,"promo_code"?: string | null,"promo_problem"?: string | null,"property_id"?: string | null,"rejected_promo_code"?: string | null,"source"?: string,"status"?: string,"title"?: string,"updated_at"?: string,"web_visit"?: Json | null,"website_form_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -3610,6 +3616,19 @@ isOneToOne: false
                            },
 "begin_social_network":
 { Args: { "p_claim": string,"p_network": string,"p_post": string }; Returns: boolean
+                           },
+"book_form_time":
+{ Args: { "p_address": Json,"p_answers": Json,"p_company": string,"p_email": string,"p_form": string,"p_name": string,"p_phone": string,"p_promo"?: string,"p_starts_at": string,"p_web_visit"?: Json }; Returns: Json
+                           },
+"booking_busy_times":
+{ Args: { "p_company": string,"p_crew": string,"p_except_request"?: string,"p_except_visit"?: string,"p_from": string,"p_to": string }; Returns: {
+              "ends_at": string,"starts_at": string
+            }[]
+                           },
+"booking_day_counts":
+{ Args: { "p_company": string,"p_form": string,"p_from": string,"p_to": string }; Returns: {
+              "booked": number,"day": string
+            }[]
                            },
 "booking_form_client":
 { Args: { "p_address"?: Json,"p_company": string,"p_email"?: string,"p_name": string,"p_phone"?: string }; Returns: Json
