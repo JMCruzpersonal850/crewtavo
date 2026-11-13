@@ -32,6 +32,7 @@ import { handlesSubPay, useJobPays } from "../subs/payData";
 import { ChangeOrders, useStartChangeOrder } from "./ChangeOrders";
 import { closeQuestion } from "./closing";
 import { ExpensesCard, useJobExpenses } from "./ExpensesCard";
+import { useReceiptDrafts } from "./ReceiptDrafts";
 import { MaterialsCard, useJobMaterials } from "./JobMaterials";
 import { PhotosCard } from "../files/PhotosCard";
 import { JobChecklists } from "./FilledChecklists";
@@ -102,6 +103,8 @@ export function JobPage() {
   // The same queries the sections use, to know which ones this job has anything in.
   const materialRows = useJobMaterials(id);
   const expenseRows = useJobExpenses(id, seesCosts);
+  // Receipts dropped in to confirm keep the Expenses card in sight too.
+  const receiptDrafts = useReceiptDrafts(id);
   const payRows = useJobPays(session.company.id, id, seesPay);
   const team = useTeam(session.company.id);
 
@@ -324,7 +327,7 @@ export function JobPage() {
   // say so). Until then they're small add buttons under the line items, each opening the same dialog
   // as the section's own button and showing the section while it's open.
   const used = (extra: Extra, rows: { data?: readonly unknown[]; error: unknown }) => Boolean(rows.data?.length) || Boolean(rows.error) || adding === extra;
-  const shows = { materials: used("materials", materialRows), expenses: seesCosts && used("expenses", expenseRows), pay: seesPay && used("pay", payRows) };
+  const shows = { materials: used("materials", materialRows), expenses: seesCosts && (used("expenses", expenseRows) || Boolean(receiptDrafts.data?.length)), pay: seesPay && used("pay", payRows) };
   const offers: Array<{ key: Extra; label: string; name: string }> = [];
   if (materialRows.data?.length === 0 && !shows.materials) offers.push({ key: "materials", label: "Materials", name: "Log materials" });
   if (seesCosts && expenseRows.data?.length === 0 && !shows.expenses) offers.push({ key: "expenses", label: "Expense", name: "Add an expense" });

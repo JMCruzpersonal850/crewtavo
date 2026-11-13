@@ -26,6 +26,7 @@ import { googleReviews } from "./routes/googleReviews";
 import { jobPay } from "./routes/jobPay";
 import { marketing } from "./routes/marketing";
 import { materials } from "./routes/materials";
+import { receipts } from "./routes/receipts";
 import { messages } from "./routes/messages";
 import { packages } from "./routes/packages";
 import { pay } from "./routes/pay";
@@ -65,11 +66,13 @@ const calendarFile = bodyLimit({ maxSize: 12 * 1024 * 1024, onError: tooLarge })
 const CALENDAR_FILE = /^\/api\/calendars\/(file|[0-9a-f-]{36}\/file)$/i;
 // A document to make into a PDF carries its signatures as drawn (services/documentPdf.ts).
 const DOCUMENT_PDF = /^\/api\/public\/documents\/[^/]+$/;
+// A receipt to read is sent with it (up to 8 MB, as base64: routes/receipts.ts): it isn't stored until the expense is saved.
+const RECEIPT_READ = /^\/api\/receipts\/read$/;
 const formPost = bodyLimit({ maxSize: 32 * 1024 * 1024, onError: (c) => formTooLarge(c) });
 const FORM_ADDRESS = /^\/f\/[a-z0-9]{8,32}$/;
 app.use(async (c, next) => {
   if (c.req.method !== "POST") return smallBody(c, next);
-  if (CALENDAR_FILE.test(c.req.path) || DOCUMENT_PDF.test(c.req.path)) return calendarFile(c, next);
+  if (CALENDAR_FILE.test(c.req.path) || DOCUMENT_PDF.test(c.req.path) || RECEIPT_READ.test(c.req.path)) return calendarFile(c, next);
   if (!FORM_ADDRESS.test(c.req.path)) return smallBody(c, next);
   // A form's post is the biggest anyone can send without signing in, so the visitor's limit comes
   // before any of it is read: by the size limit here, or by the form's own route.
@@ -101,6 +104,7 @@ app.route("/api", paving);
 app.route("/api", roofing);
 app.route("/api", packages);
 app.route("/api", materials);
+app.route("/api", receipts);
 app.route("/api", signing);
 app.route("/api", subs);
 app.route("/api", subOffers);

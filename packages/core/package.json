@@ -55,6 +55,7 @@
     "./jobberImport": "./src/jobberImport.ts",
     "./jobBilling": "./src/jobBilling.ts",
     "./reports": "./src/reports.ts",
+    "./receipts": "./src/receipts.ts",
     "./analytics": "./src/analytics.ts",
     "./pay": "./src/pay.ts",
     "./video": "./src/video.ts",

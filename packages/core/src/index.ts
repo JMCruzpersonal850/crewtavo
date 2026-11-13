@@ -39,6 +39,7 @@ export * from "./privacy";
 export * from "./recipients";
 export * from "./recurrence";
 export * from "./reviews";
+export * from "./receipts";
 export * from "./reports";
 export * from "./roofing";
 export * from "./roles";
