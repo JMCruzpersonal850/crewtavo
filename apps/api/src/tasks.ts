@@ -279,16 +279,19 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
       for (const r of kept) for (const k of r.data ?? []) if (k.visit_id) keep.add(k.visit_id);
     }
     drop = drop.filter((id) => !keep.has(id));
-    for (const ids of chunks(drop)) {
-      const { error: dropError } = await admin.from("visits").delete().in("id", ids);
+    if (drop.length) {
+      // In one go, by the database: the people who were on them (their crew's members, mostly) hear
+      // once that the job's visits changed, not once for every visit (remove_recurring_visits).
+      const { data: gone, error: dropError } = await admin.rpc("remove_recurring_visits", { p_job: job.id, p_visits: drop });
       if (dropError) throw new Error(dropError.message);
-      removed += ids.length;
+      removed = gone ?? 0;
     }
   }
   let updated = 0;
   if (refresh) {
     // Only visits still waiting: done or started ones stay as they were, and one moved to another
-    // day keeps that day (its time comes from the job, worked out as times() does). One update.
+    // day keeps that day (its time comes from the job, worked out as times() does). One update,
+    // and one line to each person on them when a time or the crew changed.
     const { data, error } = await admin.rpc("refresh_upcoming_visits", { p_job: job.id });
     if (error) throw new Error(error.message);
     updated = data ?? 0;

@@ -123,6 +123,9 @@ function fakeChain(rows: unknown, single: { data: unknown } = { data: rows }): u
 const upsertedKeys = (queries: Query[]) =>
   queries.filter((q) => verb(q) === "upsert").flatMap((q) => (call(q, "upsert")![1] as Array<{ recurrence_key: string }>).map((r) => r.recurrence_key));
 
+/** The database taking a job's waiting visits off (remove_recurring_visits): it answers with how many. */
+const removesThem = (fn: string, args: Record<string, any>): Answer => (fn === "remove_recurring_visits" ? { data: args.p_visits.length } : {});
+
 const recurringJob = (id: string, rule: string, startsOn: string) => ({
   id,
   company_id: COMPANY,
@@ -221,11 +224,19 @@ describe("recurring visits", () => {
   it("take a year of a paused job's waiting visits off without naming them all in one address", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-10T15:00:00Z") });
     const waiting = Array.from({ length: 250 }, (_, i) => ({ id: `v-${String(i).padStart(3, "0")}`, recurrence_key: addDays("2026-01-10", i) }));
-    const { db, queries } = fakeDb((q) => (q.table === "visits" && verb(q) === "select" ? { data: waiting } : q.table === "time_entries" ? { data: [{ visit_id: "v-120" }] } : { data: [] }));
+    const { db, queries, rpcs } = fakeDb(
+      (q) => (q.table === "visits" && verb(q) === "select" ? { data: waiting } : q.table === "time_entries" ? { data: [{ visit_id: "v-120" }] } : { data: [] }),
+      removesThem,
+    );
     const job = { ...recurringJob("job-1", "FREQ=DAILY", "2026-01-01"), paused_at: "2026-01-09T20:00:00Z", resume_on: null };
     expect(await materializeJob(db, job)).toEqual({ created: 0, removed: 249, updated: 0 });
-    const removed = queries.filter((q) => q.table === "visits" && verb(q) === "delete").map((q) => (call(q, "in")![2] as string[]).length);
-    expect(removed).toEqual([100, 100, 49]);
+    // The database takes them off in one go (and tells the people on them once); what it's asked
+    // about them first is read a hundred at a time.
+    expect(rpcs).toHaveLength(1);
+    expect(rpcs[0]).toMatchObject({ fn: "remove_recurring_visits", args: { p_job: "job-1" } });
+    expect(rpcs[0]!.args.p_visits).toHaveLength(249);
+    expect(rpcs[0]!.args.p_visits).not.toContain("v-120");
+    expect(queries.some((q) => q.table === "visits" && verb(q) === "delete")).toBe(false);
     expect(queries.filter((q) => q.table === "time_entries").map((q) => (call(q, "in")![2] as string[]).length)).toEqual([100, 100, 50]);
   });
 
@@ -239,17 +250,18 @@ describe("recurring visits", () => {
   it("keep a visit that done job pay covers when the schedule drops it, and remove the rest", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-17T15:00:00Z") });
     // A weekly schedule on Mondays now: the Tuesday and Wednesday visits are stale; job pay whose work is done covers the Tuesday's.
-    const { db, queries } = fakeDb((q) =>
-      q.table === "visits" && verb(q) === "select"
-        ? { data: [{ id: "v-tue", recurrence_key: "2026-10-20" }, { id: "v-wed", recurrence_key: "2026-10-21" }] }
-        : q.table === "job_pay_visits" ? { data: [{ visit_id: "v-tue", pay: { status: "done" } }] } : { data: [] },
+    const { db, queries, rpcs } = fakeDb(
+      (q) =>
+        q.table === "visits" && verb(q) === "select"
+          ? { data: [{ id: "v-tue", recurrence_key: "2026-10-20" }, { id: "v-wed", recurrence_key: "2026-10-21" }] }
+          : q.table === "job_pay_visits" ? { data: [{ visit_id: "v-tue", pay: { status: "done" } }] } : { data: [] },
+      removesThem,
     );
     expect(await materializeJob(db, recurringJob("job-1", "FREQ=WEEKLY;BYDAY=MO", "2026-10-19"), true)).toMatchObject({ removed: 1 });
     const covered = queries.find((q) => q.table === "job_pay_visits")!;
     expect(covered.calls).toContainEqual(["in", "visit_id", ["v-tue", "v-wed"]]);
     expect(covered.calls).toContainEqual(["in", "pay.status", ["done", "paid"]]);
-    const removed = queries.find((q) => q.table === "visits" && verb(q) === "delete")!;
-    expect(removed.calls).toContainEqual(["in", "id", ["v-wed"]]);
+    expect(rpcs).toEqual([{ fn: "remove_recurring_visits", args: { p_job: "job-1", p_visits: ["v-wed"] } }]);
   });
 
   it("give the visits already made the job's new title, crew and time only when asked, keeping a moved visit's day", async () => {
@@ -272,9 +284,9 @@ describe("recurring visits", () => {
 
   it("say so when removing stale visits fails, instead of counting them removed", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-17T15:00:00Z") });
-    const { db } = fakeDb((q) =>
-      q.table === "visits" && verb(q) === "select" ? { data: [{ id: "v-wed", recurrence_key: "2026-10-21" }] }
-        : q.table === "visits" && verb(q) === "delete" ? { error: { message: "This pay's work is done, so the visits it covers stay as they are." } } : { data: [] },
+    const { db } = fakeDb(
+      (q) => (q.table === "visits" && verb(q) === "select" ? { data: [{ id: "v-wed", recurrence_key: "2026-10-21" }] } : { data: [] }),
+      (fn) => (fn === "remove_recurring_visits" ? { error: { message: "This pay's work is done, so the visits it covers stay as they are." } } : {}),
     );
     await expect(materializeJob(db, recurringJob("job-1", "FREQ=WEEKLY;BYDAY=MO", "2026-10-19"), true)).rejects.toThrow("visits it covers stay");
   });
@@ -282,16 +294,17 @@ describe("recurring visits", () => {
   it("make none while the job is paused, and take off the waiting ones that have no work logged", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-17T15:00:00Z") });
     // Both Mondays are still on the schedule; time was logged on the second.
-    const { db, queries } = fakeDb((q) =>
-      q.table === "visits" && verb(q) === "select" ? { data: [{ id: "v-19", recurrence_key: "2026-10-19" }, { id: "v-26", recurrence_key: "2026-10-26" }] }
-        : q.table === "time_entries" ? { data: [{ visit_id: "v-26" }] } : { data: [] },
+    const { db, queries, rpcs } = fakeDb(
+      (q) =>
+        q.table === "visits" && verb(q) === "select" ? { data: [{ id: "v-19", recurrence_key: "2026-10-19" }, { id: "v-26", recurrence_key: "2026-10-26" }] }
+          : q.table === "time_entries" ? { data: [{ visit_id: "v-26" }] } : { data: [] },
+      removesThem,
     );
     const job = { ...recurringJob("job-1", "FREQ=WEEKLY;BYDAY=MO", "2026-10-19"), paused_at: "2026-10-16T20:00:00Z", resume_on: "2026-11-02" };
 
     expect(await materializeJob(db, job)).toEqual({ created: 0, removed: 1, updated: 0 });
     expect(queries.some((q) => verb(q) === "upsert")).toBe(false);
-    const removed = queries.find((q) => q.table === "visits" && verb(q) === "delete")!;
-    expect(removed.calls).toContainEqual(["in", "id", ["v-19"]]);
+    expect(rpcs).toEqual([{ fn: "remove_recurring_visits", args: { p_job: "job-1", p_visits: ["v-19"] } }]);
     for (const table of ["job_pay_visits", "time_entries", "job_materials", "checklist_responses"]) {
       expect(queries.find((q) => q.table === table)!.calls).toContainEqual(["in", "visit_id", ["v-19", "v-26"]]);
     }
