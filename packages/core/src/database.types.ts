@@ -602,14 +602,14 @@ isOneToOne: false
                   ]
                 },"checklist_templates": {
                   Row: {
-                    "active": boolean,"company_id": string,"created_at": string,"id": string,"items": NonNullable<Json>,"name": string,"show_to_client": boolean,"updated_at": string
+                    "active": boolean,"company_id": string,"created_at": string,"every_job": boolean,"id": string,"items": NonNullable<Json>,"name": string,"show_to_client": boolean,"updated_at": string,"work": (string)[]
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"company_id": string,"created_at"?: string,"id"?: string,"items"?: NonNullable<Json>,"name": string,"show_to_client"?: boolean,"updated_at"?: string
+                    "active"?: boolean,"company_id": string,"created_at"?: string,"every_job"?: boolean,"id"?: string,"items"?: NonNullable<Json>,"name": string,"show_to_client"?: boolean,"updated_at"?: string,"work"?: (string)[]
                   }
                   Update: {
-                    "active"?: boolean,"company_id"?: string,"created_at"?: string,"id"?: string,"items"?: NonNullable<Json>,"name"?: string,"show_to_client"?: boolean,"updated_at"?: string
+                    "active"?: boolean,"company_id"?: string,"created_at"?: string,"every_job"?: boolean,"id"?: string,"items"?: NonNullable<Json>,"name"?: string,"show_to_client"?: boolean,"updated_at"?: string,"work"?: (string)[]
                   }
                   Relationships: [
                     {
@@ -1036,14 +1036,14 @@ isOneToOne: false
                   ]
                 },"expenses": {
                   Row: {
-                    "amount": number,"category": string | null,"company_id": string,"created_at": string,"description": string | null,"equipment_id": string | null,"id": string,"incurred_on": string,"job_id": string | null,"receipt_path": string | null,"reimbursable": boolean,"reimbursed_at": string | null,"updated_at": string,"user_id": string | null,"vendor": string | null
+                    "amount": number,"category": string | null,"company_id": string,"created_at": string,"description": string | null,"equipment_id": string | null,"id": string,"in_line_costs": boolean,"incurred_on": string,"job_id": string | null,"receipt_path": string | null,"reimbursable": boolean,"reimbursed_at": string | null,"updated_at": string,"user_id": string | null,"vendor": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount": number,"category"?: string | null,"company_id": string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"incurred_on"?: string,"job_id"?: string | null,"receipt_path"?: string | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
+                    "amount": number,"category"?: string | null,"company_id": string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"in_line_costs"?: boolean,"incurred_on"?: string,"job_id"?: string | null,"receipt_path"?: string | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
                   }
                   Update: {
-                    "amount"?: number,"category"?: string | null,"company_id"?: string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"incurred_on"?: string,"job_id"?: string | null,"receipt_path"?: string | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
+                    "amount"?: number,"category"?: string | null,"company_id"?: string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"in_line_costs"?: boolean,"incurred_on"?: string,"job_id"?: string | null,"receipt_path"?: string | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
                   }
                   Relationships: [
                     {
@@ -1328,14 +1328,14 @@ isOneToOne: true
                   ]
                 },"job_line_items": {
                   Row: {
-                    "added_in_field_at": string | null,"added_in_field_by": string | null,"company_id": string,"description": string | null,"discount_billing": string | null,"discount_key": string | null,"id": string,"job_id": string,"name": string,"quantity": number,"service_id": string | null,"sort": number,"source_quote_id": string | null,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_labor_cost": number | null,"unit_price": number
+                    "added_in_field_at": string | null,"added_in_field_by": string | null,"company_id": string,"description": string | null,"discount_billing": string | null,"discount_key": string | null,"id": string,"job_id": string,"name": string,"parts": Json | null,"quantity": number,"service_id": string | null,"sort": number,"source_quote_id": string | null,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_labor_cost": number | null,"unit_price": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "added_in_field_at"?: string | null,"added_in_field_by"?: string | null,"company_id": string,"description"?: string | null,"discount_billing"?: string | null,"discount_key"?: string | null,"id"?: string,"job_id": string,"name": string,"quantity"?: number,"service_id"?: string | null,"sort"?: number,"source_quote_id"?: string | null,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number
+                    "added_in_field_at"?: string | null,"added_in_field_by"?: string | null,"company_id": string,"description"?: string | null,"discount_billing"?: string | null,"discount_key"?: string | null,"id"?: string,"job_id": string,"name": string,"parts"?: Json | null,"quantity"?: number,"service_id"?: string | null,"sort"?: number,"source_quote_id"?: string | null,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number
                   }
                   Update: {
-                    "added_in_field_at"?: string | null,"added_in_field_by"?: string | null,"company_id"?: string,"description"?: string | null,"discount_billing"?: string | null,"discount_key"?: string | null,"id"?: string,"job_id"?: string,"name"?: string,"quantity"?: number,"service_id"?: string | null,"sort"?: number,"source_quote_id"?: string | null,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number
+                    "added_in_field_at"?: string | null,"added_in_field_by"?: string | null,"company_id"?: string,"description"?: string | null,"discount_billing"?: string | null,"discount_key"?: string | null,"id"?: string,"job_id"?: string,"name"?: string,"parts"?: Json | null,"quantity"?: number,"service_id"?: string | null,"sort"?: number,"source_quote_id"?: string | null,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number
                   }
                   Relationships: [
                     {
@@ -1936,6 +1936,52 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     }
                   ]
+                },"price_change_lines": {
+                  Row: {
+                    "applied_at": string,"change_id": string,"company_id": string,"id": string,"job_id": string,"line_id": string,"name": string,"new_price": number,"old_price": number,"quantity": number,"restored_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "applied_at"?: string,"change_id": string,"company_id": string,"id"?: string,"job_id": string,"line_id": string,"name": string,"new_price": number,"old_price": number,"quantity": number,"restored_at"?: string | null
+                  }
+                  Update: {
+                    "applied_at"?: string,"change_id"?: string,"company_id"?: string,"id"?: string,"job_id"?: string,"line_id"?: string,"name"?: string,"new_price"?: number,"old_price"?: number,"quantity"?: number,"restored_at"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_change_lines_company_id_change_id_fkey"
+      columns: ["company_id","change_id"]
+isOneToOne: false
+      referencedRelation: "price_changes"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "price_change_lines_company_id_job_id_fkey"
+      columns: ["company_id","job_id"]
+isOneToOne: false
+      referencedRelation: "jobs"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"price_changes": {
+                  Row: {
+                    "change": NonNullable<Json>,"company_id": string,"created_at": string,"created_by": string | null,"id": string,"jobs": number,"lines": number,"summary": string,"undone_at": string | null,"undone_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "change": NonNullable<Json>,"company_id": string,"created_at"?: string,"created_by"?: string | null,"id": string,"jobs"?: number,"lines"?: number,"summary": string,"undone_at"?: string | null,"undone_by"?: string | null
+                  }
+                  Update: {
+                    "change"?: NonNullable<Json>,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"jobs"?: number,"lines"?: number,"summary"?: string,"undone_at"?: string | null,"undone_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_changes_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"profiles": {
                   Row: {
                     "avatar_url": string | null,"color": string | null,"created_at": string,"email": string | null,"full_name": string,"phone": string | null,"updated_at": string,"user_id": string
@@ -2046,14 +2092,14 @@ isOneToOne: false
                   ]
                 },"quote_line_items": {
                   Row: {
-                    "company_id": string,"description": string | null,"formula": string | null,"id": string,"material_cost": number | null,"materials": Json | null,"name": string,"option_group": string | null,"option_id": string | null,"optional": boolean,"quantity": number,"quote_id": string,"selected": boolean,"service_id": string | null,"sort": number,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_price": number
+                    "company_id": string,"description": string | null,"formula": string | null,"id": string,"material_cost": number | null,"materials": Json | null,"name": string,"option_group": string | null,"option_id": string | null,"optional": boolean,"parts": Json | null,"quantity": number,"quote_id": string,"selected": boolean,"service_id": string | null,"sort": number,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_labor_cost": number | null,"unit_price": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "company_id": string,"description"?: string | null,"formula"?: string | null,"id"?: string,"material_cost"?: number | null,"materials"?: Json | null,"name": string,"option_group"?: string | null,"option_id"?: string | null,"optional"?: boolean,"quantity"?: number,"quote_id": string,"selected"?: boolean,"service_id"?: string | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_price"?: number
+                    "company_id": string,"description"?: string | null,"formula"?: string | null,"id"?: string,"material_cost"?: number | null,"materials"?: Json | null,"name": string,"option_group"?: string | null,"option_id"?: string | null,"optional"?: boolean,"parts"?: Json | null,"quantity"?: number,"quote_id": string,"selected"?: boolean,"service_id"?: string | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number
                   }
                   Update: {
-                    "company_id"?: string,"description"?: string | null,"formula"?: string | null,"id"?: string,"material_cost"?: number | null,"materials"?: Json | null,"name"?: string,"option_group"?: string | null,"option_id"?: string | null,"optional"?: boolean,"quantity"?: number,"quote_id"?: string,"selected"?: boolean,"service_id"?: string | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_price"?: number
+                    "company_id"?: string,"description"?: string | null,"formula"?: string | null,"id"?: string,"material_cost"?: number | null,"materials"?: Json | null,"name"?: string,"option_group"?: string | null,"option_id"?: string | null,"optional"?: boolean,"parts"?: Json | null,"quantity"?: number,"quote_id"?: string,"selected"?: boolean,"service_id"?: string | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number
                   }
                   Relationships: [
                     {
@@ -2648,14 +2694,14 @@ isOneToOne: false
                   ]
                 },"services": {
                   Row: {
-                    "active": boolean,"add_to_every_job": boolean,"category": string | null,"company_id": string,"created_at": string,"description": string | null,"formula": string | null,"formula_target": string,"id": string,"labor_cost": number | null,"name": string,"picture": string | null,"picture_height": number | null,"picture_width": number | null,"sort": number,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_price": number,"updated_at": string
+                    "active": boolean,"add_to_every_job": boolean,"category": string | null,"company_id": string,"created_at": string,"default_depth_in": number | null,"description": string | null,"formula": string | null,"formula_target": string,"id": string,"labor_cost": number | null,"name": string,"picture": string | null,"picture_height": number | null,"picture_width": number | null,"sort": number,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_price": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active"?: boolean,"add_to_every_job"?: boolean,"category"?: string | null,"company_id": string,"created_at"?: string,"description"?: string | null,"formula"?: string | null,"formula_target"?: string,"id"?: string,"labor_cost"?: number | null,"name": string,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_price"?: number,"updated_at"?: string
+                    "active"?: boolean,"add_to_every_job"?: boolean,"category"?: string | null,"company_id": string,"created_at"?: string,"default_depth_in"?: number | null,"description"?: string | null,"formula"?: string | null,"formula_target"?: string,"id"?: string,"labor_cost"?: number | null,"name": string,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_price"?: number,"updated_at"?: string
                   }
                   Update: {
-                    "active"?: boolean,"add_to_every_job"?: boolean,"category"?: string | null,"company_id"?: string,"created_at"?: string,"description"?: string | null,"formula"?: string | null,"formula_target"?: string,"id"?: string,"labor_cost"?: number | null,"name"?: string,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_price"?: number,"updated_at"?: string
+                    "active"?: boolean,"add_to_every_job"?: boolean,"category"?: string | null,"company_id"?: string,"created_at"?: string,"default_depth_in"?: number | null,"description"?: string | null,"formula"?: string | null,"formula_target"?: string,"id"?: string,"labor_cost"?: number | null,"name"?: string,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"sort"?: number,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_price"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -3246,6 +3292,44 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     }
                   ]
+                },"visit_extras": {
+                  Row: {
+                    "added_in_field_at": string | null,"added_in_field_by": string | null,"company_id": string,"created_at": string,"created_by": string | null,"description": string | null,"id": string,"invoice_id": string | null,"job_id": string,"name": string,"quantity": number,"service_id": string | null,"taxable": boolean,"unit": string,"unit_cost": number | null,"unit_labor_cost": number | null,"unit_price": number,"updated_at": string,"visit_id": string | null,"visit_was_on": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "added_in_field_at"?: string | null,"added_in_field_by"?: string | null,"company_id": string,"created_at"?: string,"created_by"?: string | null,"description"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id": string,"name": string,"quantity"?: number,"service_id"?: string | null,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number,"updated_at"?: string,"visit_id"?: string | null,"visit_was_on"?: string | null
+                  }
+                  Update: {
+                    "added_in_field_at"?: string | null,"added_in_field_by"?: string | null,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"description"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string,"name"?: string,"quantity"?: number,"service_id"?: string | null,"taxable"?: boolean,"unit"?: string,"unit_cost"?: number | null,"unit_labor_cost"?: number | null,"unit_price"?: number,"updated_at"?: string,"visit_id"?: string | null,"visit_was_on"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "visit_extras_company_id_invoice_id_fkey"
+      columns: ["company_id","invoice_id"]
+isOneToOne: false
+      referencedRelation: "invoices"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "visit_extras_company_id_job_id_fkey"
+      columns: ["company_id","job_id"]
+isOneToOne: false
+      referencedRelation: "jobs"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "visit_extras_company_id_service_id_fkey"
+      columns: ["company_id","service_id"]
+isOneToOne: false
+      referencedRelation: "services"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "visit_extras_company_id_visit_id_fkey"
+      columns: ["company_id","visit_id"]
+isOneToOne: false
+      referencedRelation: "visits"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
                 },"visits": {
                   Row: {
                     "address": string | null,"company_id": string,"completed_at": string | null,"completed_by": string | null,"created_at": string,"crew_id": string | null,"ends_at": string | null,"eta_at": string | null,"hold_reason": string | null,"id": string,"invoice_id": string | null,"job_id": string | null,"kind": string,"notes": string | null,"property_id": string | null,"recurrence_key": string | null,"request_id": string | null,"route_order": number | null,"scheduled_on": string | null,"series_day": number | null,"series_id": string | null,"series_total": number | null,"starts_at": string | null,"status": string,"time_fixed": boolean,"title": string,"updated_at": string
@@ -3458,6 +3542,9 @@ isOneToOne: false
                            },
 "answer_sub_offer":
 { Args: { "p_accept": boolean,"p_company"?: string,"p_pay": string,"p_reason"?: string,"p_round"?: number }; Returns: boolean
+                           },
+"apply_price_change":
+{ Args: { "p_change": Json,"p_company": string,"p_id": string,"p_lines": Json }; Returns: Json
                            },
 "apply_promo_code":
 { Args: { "p_code": string,"p_id": string,"p_kind": string,"p_option"?: string,"p_selected"?: (string)[] }; Returns: Json
@@ -4013,6 +4100,11 @@ isOneToOne: false
 "job_checklists":
 { Args: { "p_job": string }; Returns: string[]
                            },
+"job_estimated_materials":
+{ Args: { "p_job": string }; Returns: {
+              "name": string,"service_id": string,"unit": string
+            }[]
+                           },
 "job_material_costs":
 { Args: { "p_job": string }; Returns: {
               "cost": number,"name": string,"quantity": number,"unit": string,"unit_cost": number
@@ -4351,6 +4443,12 @@ isOneToOne: false
                            },
 "postpone_automation_run":
 { Args: { "p_busy"?: boolean,"p_id": number,"p_note"?: string,"p_result": Json,"p_token": string,"p_until": string }; Returns: boolean
+                           },
+"price_change_history":
+{ Args: { "p_company": string,"p_limit"?: number }; Returns: Json
+                           },
+"price_change_preview":
+{ Args: { "p_change": Json,"p_company": string }; Returns: Json
                            },
 "promo_code_jobs":
 { Args: { "p_every_visit": boolean,"p_promo": string }; Returns: number
@@ -4692,6 +4790,9 @@ isOneToOne: false
               "company_id": string,"deleted": number,"paths": (string)[],"source": string
             }[]
                            },
+"undo_price_change":
+{ Args: { "p_company": string,"p_id": string }; Returns: Json
+                           },
 "unrecorded_files":
 { Args: { "p_limit"?: number }; Returns: {
               "company_id": string,"paths": (string)[]
@@ -4711,6 +4812,11 @@ isOneToOne: false
 "visit_contact":
 { Args: { "p_visit": string }; Returns: {
               "email": string,"name": string,"phone": string
+            }[]
+                           },
+"visit_extra_scope":
+{ Args: { "p_visit": string }; Returns: {
+              "added_in_field": boolean,"description": string,"id": string,"invoiced": boolean,"name": string,"quantity": number,"unit": string
             }[]
                            },
 "visit_notice_is_repeat":
