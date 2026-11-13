@@ -2,7 +2,7 @@
  * Background tasks, run by server.ts's built-in scheduler (or by hand: GET/POST /api/cron/:task
  * with CRON_SECRET). Each is safe to run twice.
  */
-import { addDays, jobWeatherRules, lastDate, localDate, occurrenceDates, weatherRisks, zonedTimeToUtc } from "@crewtavo/core";
+import { addDays, jobWeatherRules, lastDate, localDate, occurrenceDates, VISIT_HORIZON_DAYS, weatherRisks, zonedTimeToUtc } from "@crewtavo/core";
 import type { Env } from "./env";
 import { OtherBooks, runAccountingJob, SentButUnrecorded } from "./integrations/accounting";
 import { pushNewlyUpcomingVisits, runCalendarJob, syncDueCalendars } from "./integrations/calendars";
@@ -199,10 +199,17 @@ const RECURRING_FIELDS =
   "id, company_id, title, property_id, starts_on, ends_on, recurrence_rule, active_months, visit_start_time, visit_duration_min, visit_time_fixed, default_crew_id, paused_at, resume_on, pauses, company:companies(timezone)";
 
 /**
- * Bring one recurring job's visits in line with its schedule for the next 60 days: add missing
- * visits, (when `prune`) remove untouched future visits the schedule no longer includes, and (when
- * `refresh`) give the upcoming visits already made the job's title, crew and time. A paused job
- * gets none, and its waiting ones come off as with `prune`; on its resume date it resumes, from
+ * How many visits one request reads, removes or adds. A year of a daily job's visits named in one
+ * address is longer than the API takes, and a few hundred rows a time keeps each write short.
+ */
+const VISIT_CHUNK = 100;
+const chunks = <T>(items: T[]): T[][] => Array.from({ length: Math.ceil(items.length / VISIT_CHUNK) }, (_, i) => items.slice(i * VISIT_CHUNK, (i + 1) * VISIT_CHUNK));
+
+/**
+ * Bring one recurring job's visits in line with its schedule for the next year (VISIT_HORIZON_DAYS):
+ * add missing visits, (when `prune`) remove untouched future visits the schedule no longer includes,
+ * and (when `refresh`) give the upcoming visits already made the job's title, crew and time. A paused
+ * job gets none, and its waiting ones come off as with `prune`; on its resume date it resumes, from
  * that day. One that ends after a number of visits keeps its last visit's day as its ends_on,
  * the days it was paused not counting toward them.
  */
@@ -210,7 +217,7 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
   if (!job.recurrence_rule || !job.starts_on) return { created: 0, removed: 0, updated: 0 };
   const tz = (job.company as { timezone?: string } | null)?.timezone ?? "UTC";
   const today = localDate(new Date(), tz);
-  const horizon = addDays(today, 60);
+  const horizon = addDays(today, VISIT_HORIZON_DAYS);
   const resumes = Boolean(job.paused_at && job.resume_on && job.resume_on <= today);
   const paused = Boolean(job.paused_at) && !resumes;
   let pauses = job.pauses ?? [];
@@ -243,33 +250,39 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
   };
   let removed = 0;
   if (prune || paused) {
-    const { data: stale } = await admin
+    // A year of a daily job's visits is under the 1,000 rows one read returns.
+    const { data: stale, error: staleError } = await admin
       .from("visits")
       .select("id, recurrence_key")
       .eq("job_id", job.id)
       .eq("status", "scheduled")
       .not("recurrence_key", "is", null)
-      .gte("scheduled_on", today);
-    let drop = (stale ?? []).filter((v) => !dates.includes(v.recurrence_key!)).map((v) => v.id);
-    if (drop.length) {
-      // A visit that job pay whose work is done (or paid) covers stays: that pay's visits are kept as
-      // they were (20261025003001_job_pay.sql), so deleting it would be refused, and the rest with it.
-      // So does one with work logged on it (time, materials, a checklist), which deleting would lose.
+      .gte("scheduled_on", today)
+      .order("id")
+      .limit(1000);
+    if (staleError) throw new Error(staleError.message);
+    const wanted = new Set(dates);
+    let drop = (stale ?? []).filter((v) => !wanted.has(v.recurrence_key!)).map((v) => v.id);
+    // A visit that job pay whose work is done (or paid) covers stays: that pay's visits are kept as
+    // they were (20261025003001_job_pay.sql), so deleting it would be refused, and the rest with it.
+    // So does one with work logged on it (time, materials, a checklist), which deleting would lose.
+    const keep = new Set<string>();
+    for (const ids of chunks(drop)) {
       const kept = await Promise.all([
-        admin.from("job_pay_visits").select("visit_id, pay:job_pay!inner(status)").in("visit_id", drop).in("pay.status", ["done", "paid"]),
-        admin.from("time_entries").select("visit_id").in("visit_id", drop),
-        admin.from("job_materials").select("visit_id").in("visit_id", drop),
-        admin.from("checklist_responses").select("visit_id").in("visit_id", drop),
+        admin.from("job_pay_visits").select("visit_id, pay:job_pay!inner(status)").in("visit_id", ids).in("pay.status", ["done", "paid"]),
+        admin.from("time_entries").select("visit_id").in("visit_id", ids),
+        admin.from("job_materials").select("visit_id").in("visit_id", ids),
+        admin.from("checklist_responses").select("visit_id").in("visit_id", ids),
       ]);
       const keptError = kept.find((r) => r.error)?.error;
       if (keptError) throw new Error(keptError.message);
-      const keep = new Set(kept.flatMap((r) => (r.data ?? []).map((k) => k.visit_id)));
-      drop = drop.filter((id) => !keep.has(id));
+      for (const r of kept) for (const k of r.data ?? []) if (k.visit_id) keep.add(k.visit_id);
     }
-    if (drop.length) {
-      const { error: dropError } = await admin.from("visits").delete().in("id", drop);
+    drop = drop.filter((id) => !keep.has(id));
+    for (const ids of chunks(drop)) {
+      const { error: dropError } = await admin.from("visits").delete().in("id", ids);
       if (dropError) throw new Error(dropError.message);
-      removed = drop.length;
+      removed += ids.length;
     }
   }
   let updated = 0;
@@ -282,12 +295,13 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
   }
   if (!dates.length) return { created: 0, removed, updated };
   // A date whose visit someone deleted stays deleted (the database remembers it in recurrence_skips).
-  const { data: skips, error: skipError } = await admin.from("recurrence_skips").select("recurrence_key").eq("job_id", job.id).gte("recurrence_key", today);
+  // (At most a year of days, so one read has them all.)
+  const { data: skips, error: skipError } = await admin.from("recurrence_skips").select("recurrence_key").eq("job_id", job.id).gte("recurrence_key", today).limit(1000);
   if (skipError) throw new Error(skipError.message);
   const skipped = new Set((skips ?? []).map((s) => s.recurrence_key));
-  const wanted = dates.filter((date) => !skipped.has(date));
-  if (!wanted.length) return { created: 0, removed, updated };
-  const rows = wanted.map((date) => ({
+  const missing = dates.filter((date) => !skipped.has(date));
+  if (!missing.length) return { created: 0, removed, updated };
+  const rows = missing.map((date) => ({
     company_id: job.company_id,
     job_id: job.id,
     property_id: job.property_id,
@@ -297,9 +311,17 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
     ...times(date),
     crew_id: job.default_crew_id,
   }));
-  const { data, error } = await admin.from("visits").upsert(rows, { onConflict: "job_id,recurrence_key", ignoreDuplicates: true }).select("id");
-  if (error) throw new Error(error.message);
-  return { created: data?.length ?? 0, removed, updated };
+  // The dates it already has are left alone, so on most nights this adds the one new day at the
+  // far end. The first run after the reach grew (or a new job) adds the rest of the year, a hundred
+  // at a time: each is a short write of its own, and one that fails leaves the ones before it made
+  // for the next run to carry on from.
+  let created = 0;
+  for (const batch of chunks(rows)) {
+    const { data, error } = await admin.from("visits").upsert(batch, { onConflict: "job_id,recurrence_key", ignoreDuplicates: true }).select("id");
+    if (error) throw new Error(error.message);
+    created += data?.length ?? 0;
+  }
+  return { created, removed, updated };
 }
 
 export async function recurringJob(admin: Db, jobId: string) {
@@ -308,8 +330,11 @@ export async function recurringJob(admin: Db, jobId: string) {
 }
 
 /**
- * Create visits for active recurring jobs, 60 days ahead. recurrence_key prevents duplicates. A paused
- * one has its waiting visits taken off instead, and resumes on its resume date.
+ * Create visits for active recurring jobs, a year ahead. recurrence_key prevents duplicates. A paused
+ * one has its waiting visits taken off instead, and resumes on its resume date. One job after
+ * another, each in short writes of its own: the first run after the reach grew from 60 days to a
+ * year adds ten months of visits for every job, and a job that fails is reported and tried again
+ * the next night.
  */
 async function materializeRecurringVisits(env: Env) {
   const admin = adminClient(env);

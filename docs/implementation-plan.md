@@ -124,7 +124,7 @@ data:
 
 | Real-world need | Generic feature | Where it lives |
 |---|---|---|
-| Weekly or bi-weekly mowing, season start and end | Recurring jobs: RRULE plus active months; visits generated 60 days ahead | `jobs.recurrence_rule`, `core/recurrence.ts`, recurrence task |
+| Weekly or bi-weekly mowing, season start and end | Recurring jobs: RRULE plus active months; visits generated a year ahead | `jobs.recurrence_rule`, `core/recurrence.ts`, recurrence task |
 | Rain day: shift Friday to Saturday | Weather check plus a bulk "shift day" action | `api/services/weather.ts`, `POST /api/schedule/shift` |
 | Snow events, holiday lights | Bulk-create visits for chosen jobs on a date | `POST /api/schedule/bulk-visits` |
 | Commercial plans, multi-site clients | Many properties per client; fixed-schedule billing | `properties`, `jobs.billing_mode` |
@@ -214,7 +214,7 @@ Inspired by Jobber's calendar, built on our own tables:
 - A **job** holds the work and billing. A **visit** is one trip to a property, with a time window,
   crew, assignees and status. Assessments, tasks and events are visits without a job.
 - **Recurring jobs** store an RRULE (`FREQ=WEEKLY;INTERVAL=2;BYDAY=TU`), optional active months
-  (season), and a default start time and duration. A daily task generates visits 60 days ahead with
+  (season), and a default start time and duration. A daily task generates visits a year ahead with
   a `recurrence_key` (the date), so reruns never duplicate and moved visits stay moved.
 - **Anytime visits** have a date but no fixed time; route optimization orders them (nearest
   neighbor plus 2-opt, real road routing as an upgrade).
@@ -392,7 +392,7 @@ key** restricted to the Solar API.
 | `autopay` | Every 5 minutes | Charges the autopay charges that are due to the client's saved card (`apps/api/src/services/autopay.ts`), each held with a claim token so two runs never charge one twice; stops taking new ones after 4 minutes |
 | `followups` | Hourly | Marks invoices overdue (by each company's local date), emits visit reminders and "A saved card expires next month" events for automations, and reads back from Stripe autopay bank payments on their way for over a day |
 | `weather` | Every 6 hours | Flags visits whose weather rules fail tomorrow |
-| `recurrence` | Daily | Generates visits for recurring jobs 60 days ahead |
+| `recurrence` | Daily | Generates visits for recurring jobs a year ahead |
 
 On Cloudflare these run from Cron Triggers in the same Worker. On Vercel they're Vercel Cron
 requests to `/api/cron/<task>` with `CRON_SECRET`. The Vercel Hobby plan only allows daily crons,

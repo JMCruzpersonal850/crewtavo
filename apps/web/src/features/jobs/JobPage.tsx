@@ -418,7 +418,7 @@ export function JobPage() {
             <div className="card" ref={visitsRef}>
               {visits.length === 0 && (
                 <EmptyState inline title="No visits scheduled">
-                  {j.kind === "recurring" ? "Set how it repeats in Edit details, and visits are made for the next 60 days." : null}
+                  {j.kind === "recurring" ? "Set how it repeats in Edit details, and visits are made for the next year." : null}
                 </EmptyState>
               )}
               {shownVisits.map((v) => {

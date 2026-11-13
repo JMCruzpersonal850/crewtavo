@@ -1,4 +1,4 @@
-import { addDays, driveBetween, etaWords } from "@crewtavo/core";
+import { addDays, driveBetween, etaWords, VISIT_HORIZON_DAYS } from "@crewtavo/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 import type { Env } from "../src/env";
@@ -119,6 +119,10 @@ function fakeChain(rows: unknown, single: { data: unknown } = { data: rows }): u
   return chain;
 }
 
+/** The dates of every visit a run asked the database to add, in order (it adds them a hundred at a time). */
+const upsertedKeys = (queries: Query[]) =>
+  queries.filter((q) => verb(q) === "upsert").flatMap((q) => (call(q, "upsert")![1] as Array<{ recurrence_key: string }>).map((r) => r.recurrence_key));
+
 const recurringJob = (id: string, rule: string, startsOn: string) => ({
   id,
   company_id: COMPANY,
@@ -159,12 +163,70 @@ describe("recurring visits", () => {
 
     const skips = queries.find((q) => q.table === "recurrence_skips")!;
     expect(skips.calls).toContainEqual(["eq", "job_id", "job-1"]);
-    const upsert = queries.find((q) => verb(q) === "upsert")!;
-    const keys = (call(upsert, "upsert")![1] as Array<{ recurrence_key: string }>).map((r) => r.recurrence_key);
+    const keys = upsertedKeys(queries);
     expect(keys).toContain("2026-10-18");
     expect(keys).toContain("2026-10-20");
     expect(keys).not.toContain(deleted);
-    expect(keys).toHaveLength(60); // today and the next 60 days, less the deleted one
+    expect(keys).toHaveLength(VISIT_HORIZON_DAYS); // today and the next year, less the deleted one
+  });
+
+  it("are made a year ahead, a hundred at a time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-10T15:00:00Z") });
+    // The database answers each write with the rows it added.
+    const { db, queries } = fakeDb((q) => (verb(q) === "upsert" ? { data: (call(q, "upsert")![1] as unknown[]).map((_, i) => ({ id: `v-${i}` })) } : { data: [] }));
+    expect(await materializeJob(db, recurringJob("job-1", "FREQ=DAILY", "2026-01-01"))).toEqual({ created: 366, removed: 0, updated: 0 });
+    const writes = queries.filter((q) => verb(q) === "upsert").map((q) => (call(q, "upsert")![1] as unknown[]).length);
+    expect(writes).toEqual([100, 100, 100, 66]);
+    const keys = upsertedKeys(queries);
+    expect([keys[0], keys.at(-1)]).toEqual(["2026-01-10", "2027-01-10"]);
+    expect(new Set(keys).size).toBe(366);
+    // Each write leaves the dates the job already has alone.
+    expect(queries.filter((q) => verb(q) === "upsert").every((q) => (call(q, "upsert")![2] as { ignoreDuplicates: boolean }).ignoreDuplicates)).toBe(true);
+  });
+
+  it("show April's mowing in January: a season's visits are there before it starts, and none out of season", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-10T15:00:00Z") });
+    const { db, queries } = fakeDb(() => ({ data: [] }));
+    await materializeJob(db, { ...recurringJob("job-1", "FREQ=WEEKLY;BYDAY=MO", "2025-04-07"), active_months: [4, 5, 6, 7, 8, 9, 10] });
+    const keys = upsertedKeys(queries);
+    expect(keys[0]).toBe("2026-04-06");
+    expect(keys.at(-1)).toBe("2026-10-26");
+    expect(keys.every((k) => Number(k.slice(5, 7)) >= 4 && Number(k.slice(5, 7)) <= 10)).toBe(true);
+    expect(keys).toHaveLength(30);
+  });
+
+  it("stop at the job's last day, however far ahead visits are made", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-10T15:00:00Z") });
+    const { db, queries } = fakeDb(() => ({ data: [] }));
+    await materializeJob(db, { ...recurringJob("job-1", "FREQ=WEEKLY;BYDAY=MO", "2026-01-05"), ends_on: "2026-06-30" });
+    const keys = upsertedKeys(queries);
+    expect([keys[0], keys.at(-1)]).toEqual(["2026-01-12", "2026-06-29"]);
+  });
+
+  it("end after a number of visits a year away, counting only the ones in season and not the weeks paused", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-10T15:00:00Z") });
+    const { db, queries } = fakeDb(() => ({ data: [] }));
+    // Twenty mowings from the first Monday of April 2026, in season April to October, with two weeks off in July.
+    const job = { ...recurringJob("job-1", "FREQ=WEEKLY;BYDAY=MO;COUNT=20", "2026-04-06"), active_months: [4, 5, 6, 7, 8, 9, 10], pauses: [{ from: "2026-07-06", until: "2026-07-20" }] };
+    await materializeJob(db, job);
+    const keys = upsertedKeys(queries);
+    expect(keys).toHaveLength(20);
+    expect(keys).not.toContain("2026-07-06");
+    expect(keys).not.toContain("2026-07-13");
+    // Apr 6 + 19 weeks is Aug 17; the two weeks off move the last to Aug 31.
+    expect(keys.at(-1)).toBe("2026-08-31");
+    expect(call(queries.find((q) => q.table === "jobs" && verb(q) === "update")!, "update")![1]).toEqual({ ends_on: "2026-08-31" });
+  });
+
+  it("take a year of a paused job's waiting visits off without naming them all in one address", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-10T15:00:00Z") });
+    const waiting = Array.from({ length: 250 }, (_, i) => ({ id: `v-${String(i).padStart(3, "0")}`, recurrence_key: addDays("2026-01-10", i) }));
+    const { db, queries } = fakeDb((q) => (q.table === "visits" && verb(q) === "select" ? { data: waiting } : q.table === "time_entries" ? { data: [{ visit_id: "v-120" }] } : { data: [] }));
+    const job = { ...recurringJob("job-1", "FREQ=DAILY", "2026-01-01"), paused_at: "2026-01-09T20:00:00Z", resume_on: null };
+    expect(await materializeJob(db, job)).toEqual({ created: 0, removed: 249, updated: 0 });
+    const removed = queries.filter((q) => q.table === "visits" && verb(q) === "delete").map((q) => (call(q, "in")![2] as string[]).length);
+    expect(removed).toEqual([100, 100, 49]);
+    expect(queries.filter((q) => q.table === "time_entries").map((q) => (call(q, "in")![2] as string[]).length)).toEqual([100, 100, 50]);
   });
 
   it("create nothing when every upcoming date was deleted", async () => {

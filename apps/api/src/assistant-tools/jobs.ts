@@ -4,7 +4,7 @@
  * and a recurring job's upcoming visits made right away (services/schedule.ts generateVisits).
  * Also importing a whole schedule from another system: repeating series, one-time jobs and tasks.
  */
-import { billingText, buildSimpleRule, describeRule, localDate, normalizeKey, occurrenceDates, parseRule, ruleDay, sameStreet, zonedTimeToUtc } from "@crewtavo/core";
+import { billingText, buildSimpleRule, describeRule, localDate, normalizeKey, occurrenceDates, parseRule, ruleDay, sameStreet, VISIT_HORIZON_DAYS, zonedTimeToUtc } from "@crewtavo/core";
 import { z } from "zod";
 import { createVisits, generateVisits } from "../services/schedule";
 import { customFieldsArg, customFieldsPatch } from "./customFields";
@@ -117,7 +117,8 @@ const jobFields = {
   ...customFieldsArg,
 };
 
-const VISIT_DATES_AHEAD = 60;
+/** A recurring job's visits are made this far ahead (the same year the nightly task keeps). */
+const VISIT_DATES_AHEAD = VISIT_HORIZON_DAYS;
 
 export const jobTools = {
   list_jobs: tool({
@@ -176,7 +177,7 @@ export const jobTools = {
   }),
   create_job: tool({
     description:
-      "Make a job for a client: one-off work, or a recurring service (give repeat). Its lines come from the price list or are custom. A recurring job's visits for the next two months are scheduled right away (needs the Schedule area); a one-off job's visit can be scheduled with visit. A lead becomes an active client.",
+      "Make a job for a client: one-off work, or a recurring service (give repeat). Its lines come from the price list or are custom. A recurring job's visits for the next year are scheduled right away (needs the Schedule area); a one-off job's visit can be scheduled with visit. A lead becomes an active client.",
     input: z.object({
       client_id: z.uuid(),
       property_id: z.uuid().optional().describe("Default: the client's only property."),
@@ -257,7 +258,7 @@ export const jobTools = {
   }),
   import_schedule: tool({
     description:
-      "Bring a schedule in from another system, up to 500 items: repeating series (recurring jobs), one-time jobs with their visit, and tasks or events with no client. Each is placed by client_id or property_id, or found by the address (a property's street) or the client's name. Run it with mode \"preview\" first: it says where each item goes and what it can't place, without changing anything. Then the same items with mode \"commit\". Items already here (same client, title and schedule) are skipped, so running it again adds nothing twice. Recurring jobs get their visits for the next two months.",
+      "Bring a schedule in from another system, up to 500 items: repeating series (recurring jobs), one-time jobs with their visit, and tasks or events with no client. Each is placed by client_id or property_id, or found by the address (a property's street) or the client's name. Run it with mode \"preview\" first: it says where each item goes and what it can't place, without changing anything. Then the same items with mode \"commit\". Items already here (same client, title and schedule) are skipped, so running it again adds nothing twice. Recurring jobs get their visits for the next year.",
     input: z.object({
       mode: z.enum(["preview", "commit"]),
       items: z

@@ -334,6 +334,33 @@ describe("calendar feed queries", () => {
     // No list of visit ids in a URL, however many visits someone has had.
     expect(calls.every((c) => !c.url.search.includes("id.in."))).toBe(true);
   });
+
+  it("fills the whole schedule's feed with what's to come before the last month, when a year of visits is more than it holds", async () => {
+    const token = "b".repeat(43);
+    const visit = (n: number, day: string) => ({ id: `visit-${day}-${String(n).padStart(4, "0")}`, title: `Mow ${n}`, status: "scheduled", scheduled_on: day, starts_at: null, ends_at: null, notes: null, updated_at: null, crew: null, job: null, property: null });
+    const feed = async (coming: number) => {
+      const calls = serve((call) => {
+        if (call.path === "calendar_feeds" && call.method === "GET") return [{ id: "feed-2", company_id: "co-1", user_id: "user-1", scope: "all", last_used_at: new Date().toISOString() }];
+        if (call.path === "memberships") return [{ role: "owner" }];
+        if (call.path === "companies") return Response.json({ name: "Acme", timezone: "UTC" });
+        if (call.path === "visits") {
+          const offset = Number(call.url.searchParams.get("offset") ?? 0);
+          const past = call.url.searchParams.get("order")!.startsWith("scheduled_on.desc");
+          const all = past ? Array.from({ length: 40 }, (_, i) => visit(i, "2020-01-01")) : Array.from({ length: coming }, (_, i) => visit(i, "2999-01-01"));
+          return all.slice(offset, offset + Number(call.url.searchParams.get("limit") ?? 1000));
+        }
+        return [];
+      });
+      const res = await app.request(`/api/calendar/${token}.ics`, {}, env);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      return { events: text.split("BEGIN:VEVENT").length - 1, past: text.split("visit-2020-01-01").length - 1, reads: calls.filter((c) => c.path === "visits").length };
+    };
+    // Room for both: every visit to come, and the last month's.
+    expect(await feed(1500)).toEqual({ events: 1540, past: 40, reads: 3 });
+    // More to come than the feed holds: the soonest 2,000, and the past isn't read at all.
+    expect(await feed(2400)).toEqual({ events: 2000, past: 0, reads: 2 });
+  });
 });
 
 describe("sign-in links", () => {

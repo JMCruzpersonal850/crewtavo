@@ -80,17 +80,17 @@ interface VisitRow {
 const PAGE = 1000; // PostgREST's row limit per request
 const MAX_EVENTS = 2000;
 
-/** Every row up to MAX_EVENTS, a page at a time (each query must have a fixed order). */
-async function pages<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
+/** Every row up to `max` (MAX_EVENTS unless less is wanted), a page at a time (each query must have a fixed order). */
+async function pages<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>, max = MAX_EVENTS): Promise<T[]> {
   const rows: T[] = [];
-  while (rows.length < MAX_EVENTS) {
+  while (rows.length < max) {
     const { data, error } = await page(rows.length, rows.length + PAGE - 1);
     if (error) throw dbError(error);
     const got = (data ?? []) as T[];
     rows.push(...got);
     if (got.length < PAGE) break;
   }
-  return rows.slice(0, MAX_EVENTS);
+  return rows.slice(0, max);
 }
 
 calendar.get("/calendar-feed", requireUser, requireCompany(), async (c) => {
@@ -143,12 +143,17 @@ calendar.get("/calendar/:file", async (c) => {
 
   const from = shift(-30);
   const to = shift(180);
-  const visitsIn = () =>
-    admin.from("visits").select(VISIT_FIELDS).eq("company_id", feed.company_id).gte("scheduled_on", from).lte("scheduled_on", to).neq("status", "unscheduled");
+  const visitsIn = (first = from, last = to) =>
+    admin.from("visits").select(VISIT_FIELDS).eq("company_id", feed.company_id).gte("scheduled_on", first).lte("scheduled_on", last).neq("status", "unscheduled");
 
   let visits: VisitRow[];
   if (everything) {
-    visits = await pages<VisitRow>((a, b) => visitsIn().order("scheduled_on").order("id").range(a, b));
+    // What's to come first, soonest first, then the last month with the room that's left: recurring
+    // visits are on the schedule a year ahead, so a busy schedule can fill the feed, and it's the
+    // weeks ahead a calendar is for.
+    const coming = await pages<VisitRow>((a, b) => visitsIn(today).order("scheduled_on").order("id").range(a, b));
+    const past = await pages<VisitRow>((a, b) => visitsIn(from, shift(-1)).order("scheduled_on", { ascending: false }).order("id").range(a, b), MAX_EVENTS - coming.length);
+    visits = [...past.reverse(), ...coming];
   } else {
     // Field crew see only the visits they're on (as in the app); crew leads also get their crews' visits.
     // Their visits come through the assignments, filtered to the feed's dates, rather than as a

@@ -196,7 +196,7 @@ export async function runImport(companyId: string, timeZone: string, files: read
         task.progress((done += chunk.length));
       }
     }
-    // A recurring job's next 60 days of visits now, rather than at the next hourly run.
+    // A recurring job's next year of visits now, rather than at the next nightly run.
     for (const id of repeating) {
       if (control.stopped) break;
       await api.post(`/jobs/${id}/generate-visits`).catch(() => undefined);

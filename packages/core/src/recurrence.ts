@@ -15,6 +15,13 @@ export interface RecurringJob {
   paused?: ReadonlyArray<{ from: string; until: string }> | null;
 }
 
+/**
+ * How far ahead a recurring job's visits are on the schedule: a year, so April can be planned in
+ * January and a client's next visit shows through the off season. The nightly task keeps it at that
+ * (apps/api/src/tasks.ts, materializeJob). Under MAX_DATES for any rule, a daily one included.
+ */
+export const VISIT_HORIZON_DAYS = 365;
+
 const DAY_MS = 86_400_000;
 /** Most dates one call returns, so a runaway rule can't flood the schedule. */
 const MAX_DATES = 1000;
