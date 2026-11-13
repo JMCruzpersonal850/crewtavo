@@ -54,20 +54,24 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
 
   // The latest event of this kind, or else the latest record of the subject's type.
   const event = must(await db.from("activity").select("id, subject_type, subject_id").eq("company_id", companyId).eq("verb", rule.trigger).not("subject_id", "is", null).order("created_at", { ascending: false }).limit(1));
-  let subjectId = event[0]?.subject_id ?? null;
-  if (!subjectId) {
+  const latestRecord = async () => {
     const table = ({ client: "clients", request: "requests", quote: "quotes", job: "jobs", visit: "visits", invoice: "invoices" } as const)[trigger.subject];
     const latest = must(await db.from(table).select("id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1));
-    subjectId = latest[0]?.id ?? null;
-  }
-  if (!subjectId) return c.json({ record: null, pass: false, failed: null, previews: [] });
-
+    return latest[0]?.id ?? null;
+  };
   const admin = adminClient(c.env);
-  const loaded = await buildContext(c.env, admin, companyId, trigger.subject, subjectId, appUrl(c));
+  const load = async (id: string | null) => (id ? buildContext(c.env, admin, companyId, trigger.subject, id, appUrl(c)) : null);
+  let eventId: number | null = event[0]?.id ?? null;
+  let loaded = await load(event[0]?.subject_id ?? null);
+  // No event yet, or its record is gone since (a deleted visit's "cancelled"): the latest record, without the event's own words.
+  if (!loaded) {
+    eventId = null;
+    loaded = await load(await latestRecord());
+  }
   if (!loaded) return c.json({ record: null, pass: false, failed: null, previews: [] });
   // What the event said (a sub's name and price, the card a charge failed on), as a run would have it.
   // The person previewing sees the office's copies of any client links, as the rule's notices carry them.
-  const ctx = await withAutopayLink(c.env, await withEvent(admin, loaded, rule.trigger, event[0]?.id ?? null), rule.trigger, appUrl(c));
+  const ctx = await withAutopayLink(c.env, await withEvent(admin, loaded, rule.trigger, eventId), rule.trigger, appUrl(c));
   const vars = await officeVars(c.env, ctx, appUrl(c));
   const check = evaluateConditions(rule.conditions as Condition[], ctx.facts, ctx.subject);
   const r = (t?: string) => renderTemplate(t ?? "", vars).trim();

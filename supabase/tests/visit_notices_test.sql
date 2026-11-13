@@ -110,6 +110,8 @@ insert into public.visits (company_id, job_id, property_id, title, scheduled_on,
 select tvn.check(tvn.events(:'made') = '{}', 'not a visit a recurring job''s schedule makes');
 select tvn.book('Yesterday', -1) as past \gset
 select tvn.check(tvn.events(:'past') = '{}', 'not a visit on a day that''s gone');
+insert into public.visits (company_id, job_id, property_id, title, starts_at, ends_at) values (:'co', :'job', :'place', 'Earlier today', now() - interval '2 hours', now() - interval '1 hour') returning id as earlier \gset
+select tvn.check(tvn.events(:'earlier') = '{}', 'not a visit written down after it began');
 insert into public.visits (company_id, job_id, property_id, title, scheduled_on, status) values (:'co', :'job', :'place', 'Done already', tvn.day(0), 'completed') returning id as done \gset
 select tvn.check(tvn.events(:'done') = '{}', 'not a visit created already completed');
 insert into public.visits (company_id, kind, title, scheduled_on) values (:'co', 'task', 'Order hangers', tvn.day(1)) returning id as task \gset
@@ -408,4 +410,4 @@ drop schema tvn cascade;
 reset client_min_messages;
 
 \o
-\echo 'All visit notice tests passed (82 checks).'
+\echo 'All visit notice tests passed (83 checks).'

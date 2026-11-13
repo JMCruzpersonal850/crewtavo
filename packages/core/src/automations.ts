@@ -143,7 +143,7 @@ export const isVisitNotice = (verb: string | null | undefined) => (VISIT_NOTICE_
 export const VISIT_NOTICE_SETTLE_MIN = 10;
 /** What counts as a visit moved, as the screens say it (private.visit_moved decides). */
 export const VISIT_MOVED_WORDS =
-  "A visit counts as moved when its day changes, or its start time changes by an hour or more. A later start that's still inside the arrival window you give clients doesn't count, so organizing a route doesn't message anyone.";
+  "A visit counts as moved when its day changes, or its start time changes by an hour or more. A later start that's still inside the arrival window you give clients doesn't count, and neither does an anytime visit getting a time on its day, so organizing a route doesn't message anyone.";
 
 /** The starter rules for them (private.install_visit_notice_rules), in the order they happen. */
 export const VISIT_NOTICE_STARTERS = ["visit_scheduled", "visit_rescheduled", "visit_cancelled"] as const;

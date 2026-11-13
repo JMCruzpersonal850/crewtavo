@@ -8,7 +8,8 @@
 --                      that had no day, or was cancelled, and gets one. Whoever books it: a person,
 --                      an assistant, or the server acting on a booking (nobody has to be signed
 --                      in). Not the visits a recurring job's schedule makes (a year of them), not a
---                      day in the past, not a visit created already under way or finished.
+--                      day in the past or a start time already gone by, not a visit created
+--                      already under way or finished.
 --   visit.rescheduled  a visit still to come moves to another day, or its start time moves by an
 --                      hour or more. A later start still inside the arrival window the business
 --                      gives its clients (Settings → Company) isn't a move, and neither is a visit
@@ -208,6 +209,8 @@ begin
       v_verb := 'visit.rescheduled';
     elsif v_unsent.activity_id is not null then
       return null;
+    elsif new.starts_at is not null and new.starts_at <= now() then
+      return null; -- put on the schedule after it began: work written down afterwards
     else
       v_verb := 'visit.scheduled';
     end if;
