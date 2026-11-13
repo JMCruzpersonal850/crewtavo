@@ -23,6 +23,7 @@ import type { WebVisit } from "../marketing/website";
 import { WebVisitRows } from "../marketing/WebVisitRows";
 import { PlansCard } from "../plans/PlansCard";
 import { VisitDialog, type VisitInput } from "../schedule/VisitDialog";
+import { askedFor, BookAskedTime } from "./AskedTime";
 import { memberName, requestSource, useTeam } from "./RequestsPage";
 
 export function RequestPage() {
@@ -40,7 +41,7 @@ export function RequestPage() {
       unwrapOne(
         await supabase()
           .from("requests")
-          .select("id, number, title, details, status, source, website_form_id, assigned_to, answers, promo_code, rejected_promo_code, promo_problem, web_visit, created_at, client:clients(id, display_name, email, phone), property:properties(id, line1, city, region, postal_code, lat, lng), form:intake_forms(name, questions), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, assignees:visit_assignees(user_id)), quotes(id, number, title, status, total)")
+          .select("id, number, title, details, status, source, website_form_id, assigned_to, answers, promo_code, rejected_promo_code, promo_problem, web_visit, created_at, asked_starts_at, asked_ends_at, client:clients(id, display_name, email, phone), property:properties(id, line1, city, region, postal_code, lat, lng), form:intake_forms(name, questions), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, assignees:visit_assignees(user_id)), quotes(id, number, title, status, total)")
           .eq("id", id)
           .maybeSingle(),
         "This request",
@@ -150,6 +151,18 @@ export function RequestPage() {
         {r.client && <Link to={`/clients/${r.client.id}`} className="strong">{r.client.display_name}</Link>}
         <span className="chip">{requestSource(r)}</span>
       </div>
+
+      {/* A time picked on a booking form that needs the office's OK: held for them until it's answered. */}
+      {askedFor(r, session.company.timezone) && !r.visits.some((v) => v.kind === "assessment" && v.status !== "cancelled") && (
+        <div className="callout callout-info">
+          <Icon name="calendar" size={20} />
+          <div className="grow">
+            <strong>Asked for {askedFor(r, session.company.timezone)}</strong>
+            <div className="small" style={{ fontWeight: 400 }}>{r.client?.display_name ?? "The client"} picked this time online and was told it isn't confirmed yet. Book it, or schedule the assessment for another time.</div>
+          </div>
+          {canSell && <BookAskedTime request={r} onBooked={refresh} />}
+        </div>
+      )}
 
       {r.status === "new" && Date.now() - Date.parse(r.created_at) > 2 * 86_400_000 && (
         <div className="callout callout-warning"><Icon name="clock" size={20} /><div className="grow">Waiting over 2 days. Schedule an assessment or start a quote.</div></div>

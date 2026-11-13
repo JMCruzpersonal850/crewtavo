@@ -12,6 +12,7 @@ import { formatDate, timeAgo } from "@/lib/format";
 import { titleOrClientFilter, useStatusCounts } from "@/lib/listing";
 import { firstRows } from "@/lib/paging";
 import { can, hasRole, useSession, type Session } from "@/lib/session";
+import { askedFor, BookAskedTime } from "./AskedTime";
 import { NewRequestDialog } from "./NewRequestDialog";
 
 // A tab for one status says it as the status pill does.
@@ -37,7 +38,7 @@ export async function loadRequests({ companyId, statuses, term, fromWebsite }: {
     () => {
       let q = supabase()
         .from("requests")
-        .select("id, number, title, status, source, website_form_id, assigned_to, created_at, client:clients(id, display_name), property:properties(line1, city)", { count: "exact" })
+        .select("id, number, title, status, source, website_form_id, assigned_to, created_at, asked_starts_at, asked_ends_at, client:clients(id, display_name), property:properties(line1, city)", { count: "exact" })
         .eq("company_id", companyId)
         .in("status", [...statuses]);
       if (fromWebsite) q = q.not("website_form_id", "is", null);
@@ -158,6 +159,13 @@ export function RequestsPage() {
                   <td>
                     <Link className="cell-link" to={`/requests/${r.id}`} onClick={(e) => e.stopPropagation()}>{r.title}</Link>
                     <div className="muted small">{requestSource(r)}{r.property ? ` · ${r.property.line1}` : ""}</div>
+                    {/* A time picked online that waits for the office's OK, with one press to book it. */}
+                    {askedFor(r, session.company.timezone) && (
+                      <div className="row wrap small" style={{ gap: 8, marginTop: 4 }}>
+                        <strong>Asked for {askedFor(r, session.company.timezone)}</strong>
+                        {canSell && <BookAskedTime request={r} size="sm" />}
+                      </div>
+                    )}
                   </td>
                   <td>{r.client?.display_name ?? <span className="muted">—</span>}</td>
                   <td>{memberName(team.data?.find((m) => m.user_id === r.assigned_to)) ?? <span className="muted">—</span>}</td>
