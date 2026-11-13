@@ -57,6 +57,7 @@ import {
 } from "../services/autopay";
 import { geocodeAddress } from "../services/external";
 import { quoteReviewsFor } from "../services/googleReviews";
+import { draftArrivedRequest } from "../services/quoteDrafts";
 import { LETTERHEAD_MAX_BYTES } from "../services/letterhead";
 import { isDrawnPng, isPng, LOGO_MAX_BYTES, logoImage, logoOf } from "../services/logo";
 import { PACKAGE_PICTURE_MAX_BYTES } from "../services/packagePictures";
@@ -1206,6 +1207,8 @@ publicRoutes.post("/public/forms/:company/:form", async (c) => {
   }
   if (found.new_property && found.property_id) geocodeLater(c, found.property_id, body.address);
   kickAutomations(c, company.id);
+  // A draft quote for it, when the business has them made as requests come in.
+  runInBackground(c, draftArrivedRequest(c.env, company.id, request.id));
   if (!body.files.length) return c.json({ ok: true, reference: request.number, booking }, 201);
 
   // The request is in. Each file goes straight to Storage on a link that works once (and is
@@ -1801,10 +1804,12 @@ publicRoutes.post("/hub/:token/request", async (c) => {
         answers: body.timing ? { when: { asap: "As soon as possible", month: "In the next month", flexible: "Flexible" }[body.timing] } : {},
         promo_code: promo,
       })
-      .select("number")
+      .select("id, number")
       .single(),
   );
   kickAutomations(c, l.c);
+  // A draft quote for it, when the business has them made as requests come in.
+  runInBackground(c, draftArrivedRequest(c.env, l.c, request.id));
   return c.json({ ok: true, reference: request.number }, 201);
 });
 

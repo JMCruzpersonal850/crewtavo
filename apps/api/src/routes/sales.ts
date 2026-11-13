@@ -4,6 +4,7 @@
  * the steps with rules, side effects or secrets.
  */
 import {
+  ADMINS,
   drawingSquares,
   evaluateFormula,
   FormulaError,
@@ -25,6 +26,7 @@ import { appUrl, asJson, dbError, HttpError, isoDate, must, param, readJson, req
 import { clientLink } from "../lib/links";
 import { roofSegments } from "../services/external";
 import { applyMeasurement } from "../services/measurements";
+import { draftQuote, setQuoteAi } from "../services/quoteDrafts";
 import { SITE_PRICE_SET, sitePriceSet } from "../services/roofPackages";
 import { BATCH_JOBS, convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendChoicesOf, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, TOO_MANY_JOBS, type SalesScope } from "../services/sales";
 
@@ -40,6 +42,20 @@ const scope = (c: Context<AppEnv>): SalesScope => ({ db: c.var.db, env: c.env, c
 /** Start a draft quote from a request, carrying over the client, property and any measurement. */
 sales.post("/requests/:id/quote", requireUser, requireCompany(SALES, "sales"), async (c) => {
   return c.json(await quoteFromRequest(scope(c), param(c, "id")), 201);
+});
+
+/**
+ * Draft a quote: the same draft, filled in from the request (services/quoteDrafts.ts), with Claude
+ * when the company has it on for this, else from the price list. Nothing is sent.
+ */
+sales.post("/requests/:id/draft-quote", requireUser, requireCompany(SALES, "sales"), async (c) => {
+  return c.json(await draftQuote(scope(c), param(c, "id"), c.var.userId), 201);
+});
+
+/** Draft quotes with Claude, on (once Claude answers with the company's key) or off: Settings → Company. */
+sales.put("/quotes/drafting", requireUser, requireCompany(ADMINS), async (c) => {
+  const body = await readJson(c, z.object({ ai: z.boolean() }));
+  return c.json(await setQuoteAi(c.env, c.var.companyId, c.var.userId, body.ai));
 });
 
 /**

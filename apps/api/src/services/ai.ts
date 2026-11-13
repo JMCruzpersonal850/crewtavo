@@ -31,10 +31,11 @@ export const AI_ASKS_PER_COMPANY = 300;
  * Counts one ask of the AI (a rewrite, a draft, a suggestion, an answer from the guides), for the
  * person and for their company, and refuses once either has had its hour's worth. Every ask is paid
  * for from the company's Claude key or the deployment's, so one sign-in can't run up either. One a
- * minute all hour is more than anyone drafting replies or captions asks for.
+ * minute all hour is more than anyone drafting replies or captions asks for. An ask nobody made
+ * (a quote drafted by itself as a request comes in: userId null) counts against the company alone.
  */
-export async function countAiAsk(env: Env, companyId: string, userId: string): Promise<void> {
-  if (!(await allow(env, `ai:person:${userId}`, AI_ASKS_PER_PERSON, 3600)) || !(await allow(env, `ai:company:${companyId}`, AI_ASKS_PER_COMPANY, 3600))) {
+export async function countAiAsk(env: Env, companyId: string, userId: string | null): Promise<void> {
+  if ((userId !== null && !(await allow(env, `ai:person:${userId}`, AI_ASKS_PER_PERSON, 3600))) || !(await allow(env, `ai:company:${companyId}`, AI_ASKS_PER_COMPANY, 3600))) {
     throw new HttpError(429, "That's a lot to ask the AI in an hour. Wait a while and try again.");
   }
 }

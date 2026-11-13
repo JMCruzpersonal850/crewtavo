@@ -6,17 +6,23 @@
  *   settings.quotes.alert_over       "Tell me about quotes over $X": owners, admins and the quote's
  *                                    salesperson hear when one is sent, approved or sent back for
  *                                    changes (20261113001120_high_value_quote_alerts.sql); off empty
+ *   settings.quotes.draft_requests   a request from a booking form or the Client Hub gets a draft
+ *                                    quote by itself (services/quoteDrafts.ts), off unless set
+ *   settings.quote_ai                Draft a quote uses Claude: its own switch, saved at once by the
+ *                                    server once Claude answers with the company's key (PUT
+ *                                    /quotes/drafting), never with the Save button
  */
 import { toUnits } from "@crewtavo/core/money";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
-import { supabase, unwrap } from "@/lib/api";
+import { api, supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
 interface QuoteForm {
   sendPayments: boolean;
+  draftRequests: boolean;
   /** The amount as typed; empty is off. */
   alertOver: string;
 }
@@ -25,7 +31,7 @@ interface QuoteForm {
 export function quoteForm(settings: unknown): QuoteForm {
   const s = (settings ?? {}) as Record<string, any>;
   const over = Number(s.quotes?.alert_over);
-  return { sendPayments: s.payment_schedule?.send === true, alertOver: typeof s.quotes?.alert_over === "number" && over > 0 ? String(over) : "" };
+  return { sendPayments: s.payment_schedule?.send === true, draftRequests: s.quotes?.draft_requests === true, alertOver: typeof s.quotes?.alert_over === "number" && over > 0 ? String(over) : "" };
 }
 
 /** The alert amount to save: a number above 0 to the cent, null for off. Throws the field's message when it isn't one. */
@@ -52,7 +58,7 @@ export function QuoteSettings() {
   const save = useMutation({
     meta: { inline: true },
     mutationFn: async (v: QuoteForm) => {
-      const settings = { payment_schedule: { send: v.sendPayments }, quotes: { alert_over: alertAmount(v.alertOver) } };
+      const settings = { payment_schedule: { send: v.sendPayments }, quotes: { alert_over: alertAmount(v.alertOver), draft_requests: v.draftRequests } };
       unwrap(await supabase().rpc("merge_company_settings", { p_company: company.id, p_settings: settings as never }));
     },
     onSuccess: () => {
@@ -61,6 +67,16 @@ export function QuoteSettings() {
     },
   });
   const saved = useJustDone(save);
+  // Claude for drafts: the server checks the key with Claude before it turns on.
+  const ai = useMutation({
+    meta: { inline: true },
+    mutationFn: (on: boolean) => api.put<{ on: boolean }>("/quotes/drafting", { ai: on }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["company", company.id] });
+      session.refresh();
+    },
+  });
+  const aiOn = ((details.data?.settings ?? {}) as { quote_ai?: { on?: boolean } }).quote_ai?.on === true;
   if (!f) return null;
   return (
     <form className="card card-pad stack" onSubmit={(e) => { e.preventDefault(); save.mutate(f); }}>
@@ -71,6 +87,19 @@ export function QuoteSettings() {
           <input className="input" inputMode="decimal" style={{ paddingLeft: 22 }} value={f.alertOver} placeholder="Off" onChange={(e) => setF({ ...f, alertOver: e.target.value.replace(/[^0-9.]/g, "") })} />
         </span>
       </Field>
+      <label className="switch-row" style={{ fontWeight: 400 }}>
+        <input type="checkbox" className="switch" checked={ai.isPending ? Boolean(ai.variables) : aiOn} disabled={ai.isPending} onChange={(e) => ai.mutate(e.target.checked)} />
+        Draft quotes with Claude
+      </label>
+      <span className="muted small">
+        Draft a quote, on a request, has Claude read what the client asked for and pick lines from your price list, with quantities when they gave them. It never makes up an item or a price, and nothing is sent: you look it over. Each draft is an ask of your Claude key. Off, drafts take the price list items whose names match their answers. Saved as you switch it.
+      </span>
+      <FormError error={ai.error} />
+      <label className="switch-row" style={{ fontWeight: 400 }}>
+        <input type="checkbox" className="switch" checked={f.draftRequests} onChange={(e) => setF({ ...f, draftRequests: e.target.checked })} />
+        Draft a quote when a request comes in
+      </label>
+      <span className="muted small">For requests from your booking forms and the Client Hub. The person the request is assigned to, or else the office, is told when the draft is ready.</span>
       <label className="switch-row" style={{ fontWeight: 400 }}>
         <input type="checkbox" className="switch" checked={f.sendPayments} onChange={(e) => setF({ ...f, sendPayments: e.target.checked })} />
         Send scheduled payments to clients by themselves

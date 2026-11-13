@@ -63,6 +63,15 @@ export function RequestPage() {
       navigate(`/quotes/${q.id}`);
     },
   });
+  // A draft filled in from the request (services/quoteDrafts.ts): Claude's when it's on, else from the price list.
+  const toDraft = useMutation({
+    meta: { success: (d: { by: string }) => (d.by === "claude" ? "Claude drafted the quote. Look it over before you send it." : "Quote drafted from your price list"), tone: "quote" },
+    mutationFn: () => api.post<{ id: string; by: "claude" | "price_list" }>(`/requests/${id}/draft-quote`),
+    onSuccess: (q) => {
+      refresh();
+      navigate(`/quotes/${q.id}`);
+    },
+  });
   const toJob = useMutation({
     meta: { success: "Job created", tone: "job" },
     mutationFn: async () => {
@@ -122,7 +131,8 @@ export function RequestPage() {
             <>
               {open && <Button icon="calendar" onClick={() => setVisit(assessment())}>Schedule assessment</Button>}
               {/* The next step, until it has a quote: then that quote is, and another is only an option. */}
-              {open && <Button variant={r.quotes.length ? "secondary" : "primary"} icon="quote" loading={toQuote.isPending} onClick={() => toQuote.mutate()}>Create quote</Button>}
+              {open && <Button variant={r.quotes.length ? "secondary" : "primary"} icon="quote" loading={toQuote.isPending} disabled={toDraft.isPending} onClick={() => toQuote.mutate()}>Create quote</Button>}
+              {open && <Button icon="sparkle" loading={toDraft.isPending} disabled={toQuote.isPending} onClick={() => toDraft.mutate()}>Draft a quote</Button>}
               <Menu
                 items={[
                   { label: "Edit request", icon: "edit", onSelect: () => setEditing(true) },

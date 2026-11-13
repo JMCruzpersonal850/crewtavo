@@ -134,7 +134,7 @@ describe("routes", () => {
 
   it("runs autopay every 5 minutes, with the outbox that sends its receipts", () => {
     expect(TASKS).toContain("autopay");
-    expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay"]);
+    expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay", "installments"]);
   });
 
   it("rejects expired client links", async () => {
