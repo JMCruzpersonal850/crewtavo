@@ -46,8 +46,10 @@ export interface TakeoffRow {
   snapshot_path: string | null;
   show_on_quote: boolean;
   updated_at: string;
+  /** The aerial imagery it was drawn on, or "report" for a roof typed in from a report (core isReportRoof). */
+  provider?: string | null;
 }
-export const TAKEOFF_FIELDS = "id, title, sections, total_area_sqft, total_area_sqyd, total_length_ft, roof_pitch, waste_pct, roofing_squares, snapshot_path, show_on_quote, updated_at";
+export const TAKEOFF_FIELDS = "id, title, sections, total_area_sqft, total_area_sqyd, total_length_ft, roof_pitch, waste_pct, roofing_squares, snapshot_path, show_on_quote, updated_at, provider";
 
 export const sectionsOf = (m: Pick<TakeoffRow, "sections"> | null | undefined): Section[] => (Array.isArray(m?.sections) ? (m!.sections as Section[]) : []);
 export const isPaving = (m: Pick<TakeoffRow, "sections"> | null | undefined) => isPavingTakeoff(sectionsOf(m));

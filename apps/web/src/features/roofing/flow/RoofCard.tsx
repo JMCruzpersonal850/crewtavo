@@ -1,10 +1,12 @@
 /**
  * The measured roof, short: its squares and pitch, its edges with their colors from the map, the roof
- * area and what to order with waste, and the picture. "Measure again" goes back to the map.
+ * area and what to order with waste, and the picture. "Measure again" goes back to the map. A roof
+ * typed in from a report (RoofReport.tsx) says so in place of the picture and the word "Measured",
+ * and `action` is its way back to the numbers.
  */
 import { edgeLengths, ROOF_EDGES, type RoofEdge } from "@crewtavo/core/geo";
-import { ROOF_EDGE_COLORS, savedRoofingQuantities, STEEP_RISE } from "@crewtavo/core/roofing";
-import type { CSSProperties } from "react";
+import { isReportRoof, ROOF_EDGE_COLORS, savedRoofingQuantities, STEEP_RISE } from "@crewtavo/core/roofing";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
 import { formatNumber } from "@/lib/format";
@@ -21,7 +23,8 @@ function pitchWords(takeoff: TakeoffRow): string | null {
   return words.length < 3 ? words.join(" and ") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 }
 
-export function RoofCard({ takeoff, picture, editLink }: { takeoff: TakeoffRow; picture?: string; editLink: string | null }) {
+export function RoofCard({ takeoff, picture, editLink, action }: { takeoff: TakeoffRow; picture?: string; editLink: string | null; action?: ReactNode }) {
+  const fromReport = isReportRoof(takeoff);
   const sections = sectionsOf(takeoff);
   const edges = edgeLengths({ sections });
   const values = savedRoofingQuantities(sections, takeoff.roof_pitch, Number(takeoff.waste_pct));
@@ -37,7 +40,7 @@ export function RoofCard({ takeoff, picture, editLink }: { takeoff: TakeoffRow; 
           <img src={picture} alt={`The roof drawn on the aerial photo, ${takeoff.title}`} />
         </a>
       ) : (
-        <div className={`${styles.roofPicture} ${styles.roofEmpty}`}>No picture yet. Save the roof on the map to make the report.</div>
+        <div className={`${styles.roofPicture} ${styles.roofEmpty}`}>{fromReport ? "Entered from a report, not drawn on the map." : "No picture yet. Save the roof on the map to make the report."}</div>
       )}
       <div className={styles.roofInfo}>
         <div className={styles.roofHead}>
@@ -45,7 +48,7 @@ export function RoofCard({ takeoff, picture, editLink }: { takeoff: TakeoffRow; 
             {pitched ? (
               <>
                 <span className={styles.roofCheck} aria-hidden="true"><Icon name="check" size={14} strokeWidth={2} /></span>
-                Measured: {formatNumber(values.roof_squares!, 1)} squares{pitch ? (pitch === "flat" ? ", flat" : ` at ${pitch}`) : ""}
+                {fromReport ? "From a report" : "Measured"}: {formatNumber(values.roof_squares!, 1)} squares{pitch ? (pitch === "flat" ? ", flat" : ` at ${pitch}`) : ""}
               </>
             ) : (
               <>
@@ -54,7 +57,7 @@ export function RoofCard({ takeoff, picture, editLink }: { takeoff: TakeoffRow; 
               </>
             )}
           </h3>
-          {editLink && <Link to={editLink} className="small strong">Measure again</Link>}
+          {action ?? (editLink && <Link to={editLink} className="small strong">Measure again</Link>)}
         </div>
         {marked.length > 0 && (
           <ul className={styles.edges} aria-label="Roof edges">
@@ -74,7 +77,13 @@ export function RoofCard({ takeoff, picture, editLink }: { takeoff: TakeoffRow; 
         ) : (
           <p className={styles.roofNote}>The roof has no pitch yet, so it can't be priced by the square. Set its pitch on the map (flat counts).</p>
         )}
-        {pitched && !marked.length && <p className={styles.roofNote}>No edges marked. Mark the eaves, rakes, ridges, hips and valleys on the map to price drip edge, ridge cap and flashing.</p>}
+        {pitched && !marked.length && (
+          <p className={styles.roofNote}>
+            {fromReport
+              ? "No edges entered. Add the report's eaves, rakes, ridges, hips and valleys to price drip edge, ridge cap and flashing."
+              : "No edges marked. Mark the eaves, rakes, ridges, hips and valleys on the map to price drip edge, ridge cap and flashing."}
+          </p>
+        )}
       </div>
     </div>
   );

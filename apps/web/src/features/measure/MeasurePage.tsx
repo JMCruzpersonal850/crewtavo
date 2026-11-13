@@ -13,7 +13,7 @@
 import { inBounds, stateImagery, stateImageryAt, type StateImagery } from "@crewtavo/core/imagery";
 import { drawingSquares, edgeLengths, isPitch, isRoofEdge, normalizePitch, pitchFactor, pitchProblem, ROOF_EDGES, summarizeFeatureCollection, type Feature, type Position, type RoofEdge } from "@crewtavo/core/geo";
 import { itemFits, PAVING_ITEMS, pavingItem, pavingQuantities, stallsAlong, type PavingItem } from "@crewtavo/core/paving";
-import { ROOF_EDGE_COLORS } from "@crewtavo/core/roofing";
+import { isReportRoof, REPORT_PROVIDER, ROOF_EDGE_COLORS } from "@crewtavo/core/roofing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
@@ -182,6 +182,9 @@ export function MeasurePage() {
   const [edges, setEdges] = useState<Record<string, RoofEdge>>({});
   // Paving takeoff items (PavingItems.tsx): what each shape is, and what new shapes become.
   const [items, setItems] = useState<Record<string, string>>({});
+  // A shape's measured value as it was saved (a roof typed in from a report is made of these): kept
+  // through a save, so opening such a measurement here and saving it doesn't lose its numbers.
+  const [measured, setMeasured] = useState<Record<string, number>>({});
   const [activeItem, setActiveItem] = useState<PavingItem | null>(null);
   // A roof edge picked to draw (RoofSteps.tsx): new lines become that edge.
   const [activeEdge, setActiveEdge] = useState<RoofEdge | null>(null);
@@ -236,7 +239,7 @@ export function MeasurePage() {
     queryFn: async () => {
       const db = supabase();
       const m = linkIds.measurement
-        ? unwrap(await db.from("measurements").select("id, title, geojson, roof_pitch, waste_pct, property_id, request_id, quote_id, invoice_id, show_on_quote, show_on_invoice, snapshot_path, view").eq("id", linkIds.measurement).maybeSingle())
+        ? unwrap(await db.from("measurements").select("id, title, geojson, roof_pitch, waste_pct, property_id, request_id, quote_id, invoice_id, show_on_quote, show_on_invoice, snapshot_path, view, provider").eq("id", linkIds.measurement).maybeSingle())
         : null;
       if (linkIds.measurement && !m) throw new Error("That drawing wasn't found. It may have been deleted.");
       const ids = {
@@ -321,6 +324,8 @@ export function MeasurePage() {
   }, [mapState]);
 
   // ----- What's drawn ---------------------------------------------------------------------------
+  // Typed in from a report (roofing/flow/RoofReport.tsx), not drawn here: its shapes only carry the report's numbers.
+  const fromReport = isReportRoof(context.data?.measurement);
   const names = useMemo(() => defaultNames(shapes.map((s) => ({ ...s, edge: edges[s.id], itemName: itemFits(items[s.id], s.kind) ? pavingItem(items[s.id])?.name : null }))), [shapes, edges, items]);
   const nameOf = (id: string) => labels[id]?.trim() || names[id] || "this shape";
   // Unnamed shapes are saved as "Area 1", "Line 1", so the client sees the same names as the map.
@@ -342,10 +347,11 @@ export function MeasurePage() {
             ...(edge ? { edge } : {}),
             ...(itemFits(items[s.id], s.kind) ? { item: items[s.id] } : {}),
             ...(fromOsm.includes(s.id) ? { source: "openstreetmap" } : {}),
+            ...(measured[s.id] != null && s.kind !== "Cutout" ? { manual_value: measured[s.id] } : {}),
           },
         };
       }),
-    [shapes, labels, names, depth, pitch, pitches, edges, items, fromOsm],
+    [shapes, labels, names, depth, pitch, pitches, edges, items, fromOsm, measured],
   );
   // Same math the server uses on save (packages/core), so live numbers match stored ones.
   const summary = useMemo(() => summarizeFeatureCollection({ type: "FeatureCollection", features }, { pitch }), [features, pitch]);
@@ -410,6 +416,10 @@ export function MeasurePage() {
     })));
     setEdges(Object.fromEntries(ids.flatMap((id, i) => (isRoofEdge(kept[i]?.properties?.edge) ? [[id, kept[i]!.properties!.edge as RoofEdge]] : []))));
     setItems(Object.fromEntries(ids.flatMap((id, i) => (pavingItem(kept[i]?.properties?.item) ? [[id, String(kept[i]!.properties!.item)]] : []))));
+    setMeasured(Object.fromEntries(ids.flatMap((id, i) => {
+      const value = kept[i]?.properties?.manual_value;
+      return typeof value === "number" && value >= 0 ? [[id, value]] : [];
+    })));
     ids.forEach((id) => knownIds.current.add(id));
     setFromOsm(ids.filter((_, i) => kept[i]?.properties?.source === "openstreetmap"));
     baseline.current = ids.length;
@@ -937,7 +947,8 @@ export function MeasurePage() {
         request_id: ctx?.ids.request ?? undefined,
         quote_id: saved ? undefined : ctx?.ids.quote ?? undefined,
         invoice_id: saved ? undefined : ctx?.ids.invoice ?? undefined,
-        provider: shown,
+        // A roof typed in from a report stays one while every shape still carries a typed-in number.
+        provider: fromReport && shapes.length > 0 && shapes.every((s) => measured[s.id] != null) ? REPORT_PROVIDER : shown,
         roof_pitch: tidyPitch(pitch) || null,
         waste_pct: Math.min(100, Math.max(0, Number(waste || 0))),
         geojson: { type: "FeatureCollection", features },
@@ -1358,6 +1369,9 @@ export function MeasurePage() {
             )}
 
             {pitchError && shapes.length > 0 && <div className="field-error" role="alert">{pitchError}</div>}
+            {fromReport && shapes.some((s) => measured[s.id] != null) && (
+              <span className="muted small" role="note">These measurements were typed in from a report. The small shapes on the map only carry its numbers: change them from the roofing project's first step, or draw the roof here as a new measurement.</span>
+            )}
             {roofer ? [roofCard, depthCard] : [depthCard, roofCard]}
         </aside>
         {!panelShown && (
