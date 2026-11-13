@@ -3530,6 +3530,9 @@ isOneToOne: false
 "call_off_autopay_charge":
 { Args: { "p_charge": string }; Returns: undefined
                            },
+"call_off_visit_notice":
+{ Args: { "p_visit": string }; Returns: number
+                           },
 "campaign_audience":
 { Args: { "p_audience": Json,"p_company_id": string }; Returns: {
               "client_id": string,"display_name": string,"email": string
@@ -4507,6 +4510,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"send_visit_notice_now":
+{ Args: { "p_visit": string }; Returns: number
+                           },
 "set_checklist_services":
 { Args: { "p_services": (string)[],"p_template": string }; Returns: undefined
                            },
@@ -4536,6 +4542,9 @@ isOneToOne: false
                            },
 "set_sub_sign_in_countries":
 { Args: { "p_company": string,"p_countries": (string)[] }; Returns: (string)[]
+                           },
+"set_visit_notices":
+{ Args: { "p_company": string,"p_enabled": boolean,"p_reminder"?: boolean }; Returns: number
                            },
 "set_weather_rules":
 { Args: { "p_company": string,"p_rules": Json }; Returns: Json
@@ -4647,6 +4656,9 @@ isOneToOne: false
 "tell_unpaid_deposits":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
+"texting_starters":
+{ Args: { "p_company": string }; Returns: number
+                           },
 "tidy_sign_in_codes":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
@@ -4700,6 +4712,9 @@ isOneToOne: false
 { Args: { "p_visit": string }; Returns: {
               "email": string,"name": string,"phone": string
             }[]
+                           },
+"visit_notice_is_repeat":
+{ Args: { "p_run": number }; Returns: boolean
                            },
 "web_analytics_save":
 { Args: { "p_changes": Json,"p_company": string }; Returns: Json
