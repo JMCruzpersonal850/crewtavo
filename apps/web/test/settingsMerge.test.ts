@@ -19,6 +19,18 @@ describe("saving company settings", () => {
     }
   });
 
+  it("saves whether a one-off job is marked complete when its last visit is finished, under the name the database reads", () => {
+    const code = source("CompanySettings.tsx");
+    expect(code).toContain('jobs: { complete_when_visits_done: v.complete_jobs === "1" }');
+    expect(code).toContain('complete_jobs: completesWhenVisitsDone(s) ? "1" : ""');
+    const sql = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261113000100_finished_jobs_ask_for_their_invoice.sql", import.meta.url)), "utf8");
+    expect(sql).toContain("c.settings -> 'jobs' -> 'complete_when_visits_done'");
+    // The job's page says when the database marked it, with the way back beside it.
+    const page = readFileSync(fileURLToPath(new URL("../src/features/jobs/JobPage.tsx", import.meta.url)), "utf8");
+    expect(page).toContain("Marked complete when its last visit was finished");
+    expect(page).toContain('j.finished_by_visits_at && ["requires_invoicing", "completed"].includes(j.status)');
+  });
+
   it("saves the workdays with the workday hours", () => {
     expect(source("CompanySettings.tsx")).toContain(`working_hours: { start: v.hours_start, end: v.hours_end, days: v.workdays.split(",").map(Number) }`);
   });

@@ -328,7 +328,8 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
 **And also:**
 
 - **Jobs and invoicing:** one-off and recurring jobs, multi-day work, change orders the client
-  approves, batch invoicing, payment reminders, deposits, progress billing and retainage. Invoices
+  approves, batch invoicing, payment reminders, deposits, progress billing and retainage. A one-off
+  job moves to Requires invoicing when its last visit is finished, and the office is told. Invoices
   go through Stripe for card and bank payments; invoices made in Stripe come in too, with the fees
   and bank deposits behind every payment. Refunds, write-offs for invoices that won't be paid,
   expenses and job costing, timesheets and pay.

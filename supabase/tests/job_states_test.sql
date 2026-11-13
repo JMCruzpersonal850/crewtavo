@@ -31,7 +31,10 @@ select public.create_company('Kiri Job States Lawn', 'general', 'Pacific/Kiritim
 select set_config('request.jwt.claims', '{"sub": "ab4e0000-0000-0000-0000-000000000002", "role": "authenticated"}', true);
 select public.create_company('Niue Job States Lawn', 'general', 'Pacific/Niue') as niue \gset
 
+-- The server loads the jobs and their visits, with nobody signed in: a finished visit loaded that way
+-- marks nothing (20261113000100), so each job's state here comes from its visits alone.
 set local role service_role;
+select set_config('request.jwt.claims', '', true);
 insert into public.memberships (company_id, user_id, role) values (:'kiri', 'ab4e0000-0000-0000-0000-000000000003', 'field_crew');
 insert into public.clients (company_id, status, display_name) values (:'kiri', 'active', 'Kiri Job States Client') returning id as kc \gset
 insert into public.clients (company_id, status, display_name) values (:'niue', 'active', 'Niue Job States Client') returning id as nc \gset

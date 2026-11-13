@@ -62,7 +62,7 @@ const CHANNELS: Array<{ value: AskChannel; label: string }> = [
   { value: "both", label: "Both" },
 ];
 const WHEN_HINTS: Record<AskWhen, string> = {
-  "job.completed": "When a job moves to Requires invoicing or Completed.",
+  "job.completed": "When a job moves to Requires invoicing or Completed. A one-off job does when its last visit is finished, unless that's off in Settings → Company.",
   "visit.completed": "Each visit of a one-off job, not assessments or tasks.",
   "invoice.paid": "Not deposits or progress billing: the work isn't done yet.",
 };

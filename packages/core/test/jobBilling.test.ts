@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { billingAnswers, billingModeOf, billingText, invoiceDue, invoicePeriod, monthlyPlan, monthlyVisits, monthText, visitDay } from "../src/jobBilling";
+import { billingAnswers, billingModeOf, billingText, completesWhenVisitsDone, invoiceDue, invoicePeriod, monthlyPlan, monthlyVisits, monthText, visitDay } from "../src/jobBilling";
+
+describe("marking a one-off job complete when its last visit is finished", () => {
+  it("is on until the company turns it off, as the database reads it", () => {
+    expect(completesWhenVisitsDone(null)).toBe(true);
+    expect(completesWhenVisitsDone({})).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: {} })).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: { complete_when_visits_done: true } })).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: "off" })).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: { complete_when_visits_done: false } })).toBe(false);
+  });
+});
 
 describe("the two questions", () => {
   it("keep billing_mode in step: per_visit only for per visit, after each visit", () => {

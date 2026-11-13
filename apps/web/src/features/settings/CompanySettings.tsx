@@ -1,5 +1,6 @@
 import { lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
 import { BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
+import { completesWhenVisitsDone } from "@crewtavo/core/jobBilling";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
 import { PRESETS } from "@crewtavo/core/presets";
 import { workdays } from "@crewtavo/core/slots";
@@ -51,6 +52,7 @@ export function CompanySettings() {
       hub_tips: s.hub_tips ? "1" : "",
       record_location: s.clock?.record_location === false ? "" : "1",
       breaks: breakPay(s),
+      complete_jobs: completesWhenVisitsDone(s) ? "1" : "",
       minimum_charge: String(minimumCharge(s) ?? ""),
       late_fee: fee?.type ?? "off", late_fee_amount: fee ? String(fee.amount) : "", late_fee_days: String(fee?.grace_days ?? 7),
     });
@@ -98,6 +100,8 @@ export function CompanySettings() {
         branding: { color: v.color },
         hub_tips: v.hub_tips === "1",
         clock: { record_location: v.record_location === "1", breaks: v.breaks },
+        // Read by the database when a job's last visit is finished (private.completes_finished_jobs).
+        jobs: { complete_when_visits_done: v.complete_jobs === "1" },
         // Both off unless set (the database adds the lines: 20261104000100 and 000200).
         minimum_charge: minimum > 0 ? Math.round(minimum * 100) / 100 : null,
         late_fee: lateFee,
@@ -224,6 +228,16 @@ export function CompanySettings() {
         </label>
         {/* The one switch for tips (settings.hub_tips): the Client Hub, the receipt and the server all follow it. */}
         <span className="muted small">Also offered on the receipt after an automatic charge. Off: no tip choice anywhere, and no tip is charged.</span>
+      </div>
+      <div className="card card-pad stack">
+        <strong>Jobs</strong>
+        <label className="switch-row" style={{ fontWeight: 400 }}>
+          <input type="checkbox" className="switch" checked={f.complete_jobs === "1"} onChange={(e) => setF({ ...f, complete_jobs: e.target.checked ? "1" : "" })} />
+          When the last visit of a one-off job is finished, mark the work complete
+        </label>
+        <span className="muted small">
+          The job moves to Requires invoicing and the people who handle invoices are told. A job on autopay isn't marked, since that charges the card: they're told to mark it themselves. Off: jobs wait for Mark work complete, and they're still told.
+        </span>
       </div>
       <div className="card card-pad stack">
         <strong>Time clock</strong>

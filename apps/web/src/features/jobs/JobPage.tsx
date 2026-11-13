@@ -356,6 +356,14 @@ export function JobPage() {
         {autopay.card_required && jobAutopay.data && !jobAutopay.data.onFile && !["completed", "archived"].includes(j.status) && <span className="chip chip-amber"><Icon name="card" size={12} />Card not set up</span>}
       </div>
 
+      {/* The database made the change the Mark work complete button makes (20261113000100), so the page says how, and how to undo it. */}
+      {j.finished_by_visits_at && ["requires_invoicing", "completed"].includes(j.status) && (
+        <div className="muted small row wrap" style={{ gap: 6 }}>
+          <Icon name="check" size={14} />
+          <span>Marked complete when its last visit was finished{canSell ? ". Reopen it if another visit is needed." : "."}</span>
+          {canSell && <Button size="sm" variant="ghost" icon="undo" loading={update.isPending && update.variables?.status === "active"} onClick={() => update.mutate({ status: "active" })}>Reopen job</Button>}
+        </div>
+      )}
       {j.paused_at && j.status === "active" && (
         <div className="callout callout-info">
           <Icon name="pause" size={20} />

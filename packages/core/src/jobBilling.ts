@@ -39,6 +39,16 @@ export const ONE_OFF_CHOICES: ReadonlyArray<{ value: "on_completion" | "progress
   { value: "progress", label: "Progress billing", hint: "Bill parts of the contract as the work goes." },
 ];
 
+/**
+ * Whether a one-off job's work is marked complete when its last visit is finished
+ * (settings.jobs.complete_when_visits_done; private.completes_finished_jobs): on unless it's been
+ * turned off, for companies from before the switch too.
+ */
+export function completesWhenVisitsDone(settings: unknown): boolean {
+  const jobs = (settings as { jobs?: unknown } | null | undefined)?.jobs;
+  return !(jobs && typeof jobs === "object" && (jobs as { complete_when_visits_done?: unknown }).complete_when_visits_done === false);
+}
+
 /** billing_mode for the two answers (private.align_billing). */
 export const billingModeOf = (pricing: JobPricing, schedule: InvoiceSchedule) => (pricing === "per_visit" && schedule === "after_visit" ? "per_visit" : "fixed_schedule");
 
