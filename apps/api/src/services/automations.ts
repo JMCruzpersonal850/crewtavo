@@ -21,6 +21,7 @@ import {
   etaWords,
   evaluateConditions,
   isAutopayTrigger,
+  isVisitNotice,
   localDate,
   memberPermissions,
   renderTemplate,
@@ -106,6 +107,10 @@ export interface RunContext {
   appPath: string;
   jobId: string | null;
   propertyId: string | null;
+  /** A visit as it is now, for the rules about it being booked, moved or cancelled; `gone` when it was deleted. */
+  visit?: { status: string; scheduled_on: string | null; starts_at: string | null; gone?: true };
+  /** Where a moved or cancelled visit was, as the client last knew it (the event's own: private.visit_notice). */
+  was?: { scheduled_on: string | null; starts_at: string | null };
   /** What started the rule (its trigger), once it's running: some keep to their own rules (sub_offer.*). */
   trigger?: string;
   /** The automated campaign the rule's email is sent as, once it's running. */
@@ -125,6 +130,27 @@ export function visitTime(startsAt: string, timeZone: string, windowMin = 0) {
   const at = (ms: number) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
   const start = new Date(startsAt).getTime();
   return windowMin ? ` between ${at(start)} and ${at(start + windowMin * 60_000)}` : ` at ${at(start)}`;
+}
+
+/**
+ * A visit's day and time as a client reads them: "Tuesday, November 17" and " at 9:00 AM" (or the
+ * arrival window). The time is empty for an anytime visit, and both for one with no day.
+ */
+export function visitWhen(startsAt: string | null | undefined, scheduledOn: string | null | undefined, timeZone: string, windowMin = 0): { date: string; time: string } {
+  const at = startsAt ?? (scheduledOn ? `${scheduledOn}T12:00:00Z` : null);
+  return {
+    date: at ? new Date(at).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: startsAt ? timeZone : "UTC" }) : "",
+    time: startsAt ? visitTime(startsAt, timeZone, windowMin) : "",
+  };
+}
+
+/** A deleted visit, as its "cancelled" event kept it (private.visit_notice), for the message about it. */
+export interface GoneVisit {
+  title: string;
+  kind: string | null;
+  client_id: string | null;
+  job_id: string | null;
+  property_id: string | null;
 }
 
 /** A price range as a client reads it: "$18,300 to $21,050" (cents only when an end has them). */
@@ -193,8 +219,11 @@ async function invoiceOnAutopay(admin: Db, companyId: string, invoiceId: string)
   return (data ?? []).length ? "yes" : "no";
 }
 
-/** Everything a rule can know about the record it runs on. Null when the record is gone. */
-export async function loadContext(admin: Db, companyId: string, subjectType: string, subjectId: string): Promise<RunContext | null> {
+/**
+ * Everything a rule can know about the record it runs on. Null when the record is gone, unless it's
+ * a deleted visit whose "cancelled" event kept what a message needs (`gone`).
+ */
+export async function loadContext(admin: Db, companyId: string, subjectType: string, subjectId: string, gone?: GoneVisit | null): Promise<RunContext | null> {
   if (!SUBJECTS.includes(subjectType as SubjectKind)) return null;
   const subject = subjectType as SubjectKind;
 
@@ -210,6 +239,7 @@ export async function loadContext(admin: Db, companyId: string, subjectType: str
   let appPath = "/";
   let jobId: string | null = null;
   let propertyId: string | null = null;
+  let visit: RunContext["visit"];
 
   switch (subject) {
     case "client": {
@@ -290,21 +320,35 @@ export async function loadContext(admin: Db, companyId: string, subjectType: str
         .eq("company_id", companyId)
         .eq("id", subjectId)
         .maybeSingle();
-      if (!data) return null;
+      if (!data) {
+        if (!gone) return null;
+        // Deleted: what its event kept, at the property and on the job it was, if they're still there.
+        const [place, job] = await Promise.all([
+          gone.property_id ? admin.from("properties").select("line1, city, region").eq("company_id", companyId).eq("id", gone.property_id).maybeSingle() : null,
+          gone.job_id ? admin.from("jobs").select("id, kind").eq("company_id", companyId).eq("id", gone.job_id).maybeSingle() : null,
+        ]);
+        clientId = gone.client_id;
+        propertyId = place?.data ? gone.property_id : null;
+        jobId = job?.data?.id ?? null;
+        facts = { status: "cancelled", kind: gone.kind, job_kind: job?.data?.kind ?? null };
+        vars = { title: gone.title, address: addressOf(place?.data ?? null), date: "", time: "", eta: "" };
+        label = gone.title;
+        appPath = jobId ? `/jobs/${jobId}` : "/schedule";
+        visit = { status: "cancelled", scheduled_on: null, starts_at: null, gone: true };
+        break;
+      }
       const rel = data as unknown as { job: { client_id: string; kind: string } | null; request: { client_id: string } | null; property: (Property & { client_id: string }) | null };
       clientId = rel.job?.client_id ?? rel.request?.client_id ?? rel.property?.client_id ?? null;
       propertyId = data.property_id;
       jobId = data.job_id;
       facts = { status: data.status, kind: data.kind, job_kind: rel.job?.kind ?? null };
-      const tz = co.timezone || "UTC";
-      const date = data.starts_at ?? (data.scheduled_on ? `${data.scheduled_on}T12:00:00Z` : null);
       vars = {
         title: data.title,
         address: addressOf(rel.property),
-        date: date ? new Date(date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: data.starts_at ? tz : "UTC" }) : "",
-        time: data.starts_at ? visitTime(data.starts_at, tz, arrivalWindowMin(co.settings)) : "",
+        ...visitWhen(data.starts_at, data.scheduled_on, co.timezone || "UTC", arrivalWindowMin(co.settings)),
         eta: etaWords(data.eta_at),
       };
+      visit = { status: data.status, scheduled_on: data.scheduled_on, starts_at: data.starts_at };
       label = data.title;
       appPath = data.job_id ? `/jobs/${data.job_id}` : "/schedule";
       break;
@@ -367,16 +411,23 @@ export async function loadContext(admin: Db, companyId: string, subjectType: str
     appPath,
     jobId,
     propertyId,
+    ...(visit && { visit }),
   };
 }
 
 /**
  * Adds the signed client link ({{link}}): a quote's or invoice's Client Hub page, or for a client the
- * Hub's home. It's the client's own (own: 1), for the emails and texts that go to their own email and
+ * Hub's home; for a visit that home too, where the client sees their visits and can ask to move one.
+ * It's the client's own (own: 1), for the emails and texts that go to their own email and
  * phone. Everything else a rule writes, where the team reads it, has the office's copy (officeVars).
  */
 async function withLink(env: Env, ctx: RunContext, baseUrl: string | null): Promise<RunContext> {
-  if (!baseUrl || (ctx.subject !== "quote" && ctx.subject !== "invoice" && ctx.subject !== "client")) return ctx;
+  if (!baseUrl) return ctx;
+  if (ctx.subject === "visit") {
+    if (!ctx.client) return ctx;
+    return { ...ctx, vars: { ...ctx.vars, link: await clientLink(env, baseUrl, { c: ctx.company.id, t: "client", id: ctx.client.id, own: 1 }) } };
+  }
+  if (ctx.subject !== "quote" && ctx.subject !== "invoice" && ctx.subject !== "client") return ctx;
   const link = await clientLink(env, baseUrl, { c: ctx.company.id, t: ctx.subject, id: ctx.id, own: 1 });
   return { ...ctx, vars: { ...ctx.vars, link } };
 }
@@ -400,9 +451,11 @@ async function withHomeLink(env: Env, ctx: RunContext, baseUrl: string | null): 
  * {{autopay.expires}} ("08/28"), as private.emit wrote them into the activity's data. A client's ask
  * to move or cancel a visit gives {{change.when}} (the time asked for, as the Hub showed it),
  * {{change.message}} and {{change.reason}}, from the request itself: the activity names only which.
+ * A visit moved gives {{old.date}} and {{old.time}}, where the client last knew it to be; a visit
+ * cancelled has that as its own {{date}} and {{time}}, since by now it has no day or is gone.
  */
 export async function withEvent(admin: Db, ctx: RunContext, trigger: string, activityId: number | null | undefined): Promise<RunContext> {
-  if (!triggerDef(trigger)?.variables?.length || activityId == null) return ctx;
+  if ((!triggerDef(trigger)?.variables?.length && trigger !== "visit.cancelled") || activityId == null) return ctx;
   const { data } = await admin.from("activity").select("data").eq("company_id", ctx.company.id).eq("id", activityId).maybeSingle();
   const event = (data?.data ?? {}) as Record<string, unknown>;
   const text = (v: unknown) => (v == null ? "" : String(v));
@@ -419,10 +472,44 @@ export async function withEvent(admin: Db, ctx: RunContext, trigger: string, act
     const when = ask?.scheduled_on ? slotLabel({ date: ask.scheduled_on, starts_at: ask.starts_at }, ctx.company.timezone || "UTC", arrivalWindowMin(ctx.company.settings)) : "";
     return { ...ctx, vars: { ...ctx.vars, change: { when, message: text(ask?.message), reason: text(ask?.reason) } } };
   }
+  if (trigger === "visit.rescheduled" || trigger === "visit.cancelled") {
+    const was = { scheduled_on: event.was_scheduled_on ? text(event.was_scheduled_on) : null, starts_at: event.was_starts_at ? text(event.was_starts_at) : null };
+    const when = visitWhen(was.starts_at, was.scheduled_on, ctx.company.timezone || "UTC", arrivalWindowMin(ctx.company.settings));
+    return { ...ctx, was, vars: trigger === "visit.cancelled" ? { ...ctx.vars, ...when } : { ...ctx.vars, old: when } };
+  }
   return {
     ...ctx,
     vars: { ...ctx.vars, sub: { name: text(event.sub_name), price: amount(event.total), reason: text(event.reason) } },
   };
+}
+
+/**
+ * Why a rule about a visit being booked, moved or cancelled has nothing to tell the client by the
+ * time it runs, ten minutes after the change; null when it goes ahead. The database folds the
+ * changes made to the visit meanwhile (private.visit_notice). This is for the rest: a client
+ * archived since, a visit that started or whose day passed, and one that's back where it was.
+ */
+export function visitNoticeSkip(ctx: Pick<RunContext, "client" | "company" | "visit" | "was">, trigger: string, now = new Date()): string | null {
+  if (!isVisitNotice(trigger) || !ctx.visit) return null;
+  if (ctx.client?.status === "archived") return `${ctx.client.display_name} is archived`;
+  const { status, scheduled_on, starts_at } = ctx.visit;
+  const onSchedule = status === "scheduled" && Boolean(scheduled_on);
+  if (trigger === "visit.cancelled") return onSchedule ? "The visit is back on the schedule" : null;
+  if (!onSchedule) return "The visit has started or is off the schedule";
+  if (scheduled_on! < localDate(now, ctx.company.timezone || "UTC")) return "The visit's day has passed";
+  const sameStart = (a: string | null, b: string | null) => (a && b ? Date.parse(a) === Date.parse(b) : a === b);
+  if (trigger === "visit.rescheduled" && ctx.was && ctx.was.scheduled_on === scheduled_on && sameStart(ctx.was.starts_at, starts_at)) return "The visit is back where it was";
+  return null;
+}
+
+/** The deleted visit a "cancelled" run is about, from the event that queued it; null when the event doesn't say. */
+async function goneVisit(admin: Db, companyId: string, activityId: number | null | undefined): Promise<GoneVisit | null> {
+  if (activityId == null) return null;
+  const { data } = await admin.from("activity").select("data").eq("company_id", companyId).eq("id", activityId).eq("verb", "visit.cancelled").maybeSingle();
+  const event = (data?.data ?? {}) as Record<string, unknown>;
+  const id = (v: unknown) => (typeof v === "string" && v ? v : null);
+  if (typeof event.title !== "string") return null;
+  return { title: event.title, kind: id(event.kind), client_id: id(event.client_id), job_id: id(event.job_id), property_id: id(event.property_id) };
 }
 
 /** The {{autopay.*}} values so far, as an object (none yet is an empty one). */
@@ -454,6 +541,9 @@ export async function officeVars(env: Env, ctx: RunContext, baseUrl: string | nu
   if (vars.link && (ctx.subject === "quote" || ctx.subject === "invoice" || ctx.subject === "client")) {
     vars.link = await clientLink(env, baseUrl, { c: ctx.company.id, t: ctx.subject, id: ctx.id, via: "office" });
   }
+  if (vars.link && ctx.subject === "visit" && ctx.client) {
+    vars.link = await clientLink(env, baseUrl, { c: ctx.company.id, t: "client", id: ctx.client.id, via: "office" });
+  }
   const group = autopayVars(vars);
   if (group.link && ctx.client) {
     vars.autopay = { ...group, link: `${await clientLink(env, baseUrl, { c: ctx.company.id, t: "client", id: ctx.client.id, via: "office" })}?view=autopay` };
@@ -461,8 +551,8 @@ export async function officeVars(env: Env, ctx: RunContext, baseUrl: string | nu
   return vars;
 }
 
-export async function buildContext(env: Env, admin: Db, companyId: string, subjectType: string, subjectId: string, baseUrl: string | null) {
-  const ctx = await loadContext(admin, companyId, subjectType, subjectId);
+export async function buildContext(env: Env, admin: Db, companyId: string, subjectType: string, subjectId: string, baseUrl: string | null, gone?: GoneVisit | null) {
+  const ctx = await loadContext(admin, companyId, subjectType, subjectId, gone);
   return ctx ? withLink(env, ctx, baseUrl) : null;
 }
 
@@ -749,7 +839,12 @@ export async function executeRun(env: Env, admin: Db, run: RunRow, baseUrl: stri
     const { data: rule } = await admin.from("automation_rules").select("id, name, trigger, enabled, conditions, actions, run_count, template_key").eq("id", run.rule_id).maybeSingle();
     if (!rule || !rule.enabled) return calledOff(admin, run, rule?.trigger === "client.inactive", "The rule was turned off or deleted.");
     if (!run.subject_type || !run.subject_id) return finish(admin, run, "skipped", [], "There was nothing to act on.");
-    const loaded = await buildContext(env, admin, run.company_id, run.subject_type, run.subject_id, baseUrl);
+    let loaded = await buildContext(env, admin, run.company_id, run.subject_type, run.subject_id, baseUrl);
+    // A visit that was deleted is still told as cancelled, from what its event kept.
+    if (!loaded && rule.trigger === "visit.cancelled") {
+      const gone = await goneVisit(admin, run.company_id, run.activity_id);
+      if (gone) loaded = await buildContext(env, admin, run.company_id, run.subject_type, run.subject_id, baseUrl, gone);
+    }
     if (!loaded) return finish(admin, run, "skipped", [], "The record was deleted.");
     const campaign = campaignRuleOf(rule) ?? undefined;
     let ctx: RunContext = await withAutopayLink(
@@ -767,6 +862,15 @@ export async function executeRun(env: Env, admin: Db, run: RunRow, baseUrl: stri
       if (who?.status === "archived") return finish(admin, run, "skipped", [], `${who.display_name} is archived`);
     }
     if (campaign?.marketing) ctx = await withHomeLink(env, ctx, baseUrl);
+    // A visit booked, moved or cancelled: nothing to say if it changed back, started or passed while
+    // this waited, and multi-day work is one message, sent by its first day's run.
+    if (isVisitNotice(rule.trigger)) {
+      const why = visitNoticeSkip(ctx, rule.trigger);
+      if (why) return finish(admin, run, "skipped", [], why);
+      const { data: repeat, error: repeatError } = await admin.rpc("visit_notice_is_repeat", { p_run: run.id });
+      if (repeatError) throw new Error(repeatError.message);
+      if (repeat) return finish(admin, run, "skipped", [], "Another day of the same multi-day work says it");
+    }
     // The actions this trigger takes (a sub's offer: notices to the office and tasks), whatever the
     // rule says: a rule written straight to the database doesn't get to text the client a sub's price.
     // A status change is checked by the action itself, as the rule screen checks it.

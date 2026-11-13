@@ -7,6 +7,7 @@ import {
   actionsForTrigger,
   describeRuleSentence,
   fieldsFor,
+  isVisitNotice,
   OP_LABELS,
   ROLE_GROUP_LABELS,
   STATUS_ACTION_CHOICES,
@@ -16,6 +17,8 @@ import {
   triggerDef,
   validateRule,
   variablesForTrigger,
+  VISIT_MOVED_WORDS,
+  VISIT_NOTICE_SETTLE_MIN,
   type Action,
   type ActionType,
   type Condition,
@@ -266,6 +269,13 @@ function RulePageScreen() {
               </select>
               {draft.trigger === "client.inactive" && (
                 <p className="muted small" style={{ margin: 0 }}>Checked each morning at 10. Set the number of days under Only if.</p>
+              )}
+              {isVisitNotice(draft.trigger) && (
+                <p className="muted small" style={{ margin: 0 }}>
+                  Runs {VISIT_NOTICE_SETTLE_MIN} minutes after the change, with the visit as it is then: a visit changed twice is one message, and one put back is none. Not for the visits a
+                  recurring job's schedule makes or changes, or a change the client asked for in the Client Hub.{draft.trigger === "visit.rescheduled" ? ` ${VISIT_MOVED_WORDS}` : ""}
+                  {draft.trigger === "visit.cancelled" ? " Cancelled, deleted or taken off the schedule all count." : ""}
+                </p>
               )}
               {draft.trigger === RECURRING_TRIGGER && (
                 <p className="muted small" style={{ margin: 0 }}>
