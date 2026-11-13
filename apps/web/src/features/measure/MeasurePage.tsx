@@ -12,7 +12,7 @@
  */
 import { inBounds, stateImagery, stateImageryAt, type StateImagery } from "@crewtavo/core/imagery";
 import { drawingSquares, edgeLengths, isPitch, isRoofEdge, normalizePitch, pitchFactor, pitchProblem, ROOF_EDGES, summarizeFeatureCollection, type Feature, type Position, type RoofEdge } from "@crewtavo/core/geo";
-import { itemFits, PAVING_ITEMS, pavingItem, stallsAlong, type PavingItem } from "@crewtavo/core/paving";
+import { itemFits, PAVING_ITEMS, pavingItem, pavingQuantities, stallsAlong, type PavingItem } from "@crewtavo/core/paving";
 import { ROOF_EDGE_COLORS } from "@crewtavo/core/roofing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -355,7 +355,8 @@ export function MeasurePage() {
   const squares = pitchError ? null : drawingSquares(summary, pitch, Number(waste || 0));
   const roofEdges = edgeLengths(summary);
   const cubicYards = depthIn ? (summary.total_area_sqft * (depthIn / 12)) / 27 : 0;
-  const asphaltTons = depthIn ? (summary.total_area_sqyd * depthIn * 110) / 2000 : 0;
+  // The asphalt areas only (every area, on a drawing that marks none as an item): not the concrete, gravel or patches.
+  const asphaltTons = depthIn ? (pavingQuantities(summary.sections).asphalt_sqyd * depthIn * 110) / 2000 : 0;
   const shapesRef = useListAnimation<HTMLDivElement>();
   // With Roofing installed the roof tools show on every row; anyone else gets them once they set a pitch or an edge.
   const roofer = isRoofingCompany(company);

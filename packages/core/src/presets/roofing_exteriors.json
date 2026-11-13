@@ -36,6 +36,14 @@
       "formula_name": "Roof squares without waste"
     },
     {
+      "name": "Tear-off, second layer",
+      "category": "Tear-off",
+      "unit": "square",
+      "unit_price": 45,
+      "unit_cost": 25,
+      "formula_name": "Roof squares without waste"
+    },
+    {
       "name": "Drip edge",
       "category": "Edges and flashing",
       "unit": "ft",
@@ -58,6 +66,20 @@
       "unit_price": 8,
       "unit_cost": 3.5,
       "formula_name": "Valley flashing"
+    },
+    {
+      "name": "Step flashing",
+      "category": "Edges and flashing",
+      "unit": "ft",
+      "unit_price": 9,
+      "unit_cost": 4.2
+    },
+    {
+      "name": "Wall flashing",
+      "category": "Edges and flashing",
+      "unit": "ft",
+      "unit_price": 11,
+      "unit_cost": 5
     },
     {
       "name": "Steep roof charge",
@@ -325,6 +347,9 @@
         "Ridge vent",
         "Ice and water shield",
         "Chimney flashing",
+        "Step flashing",
+        "Wall flashing",
+        "Tear-off, second layer",
         "Rotten decking",
         "Reflash a skylight",
         "Chimney cricket",
@@ -380,6 +405,9 @@
         "Ridge vent",
         "Ice and water shield",
         "Chimney flashing",
+        "Step flashing",
+        "Wall flashing",
+        "Tear-off, second layer",
         "Rotten decking",
         "Reflash a skylight",
         "Chimney cricket",
@@ -434,6 +462,9 @@
       "quick": [
         "Ice and water shield",
         "Chimney flashing",
+        "Step flashing",
+        "Wall flashing",
+        "Tear-off, second layer",
         "Rotten decking",
         "Reflash a skylight",
         "Chimney cricket",
@@ -581,6 +612,10 @@
   "weather_rules": [
     {
       "applies_to": "Architectural shingle roof",
+      "max_rain_pct": 40
+    },
+    {
+      "applies_to": "Designer shingle roof",
       "max_rain_pct": 40
     },
     {

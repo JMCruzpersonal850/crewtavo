@@ -37,7 +37,15 @@ export const workedOut = (basis: Basis) => fromArea(basis) || basis === "haul";
 /** On for a new job when it has a price: trucking and mobilization, which most jobs take. */
 const onByDefault = (item: CalcItem) => (item.basis === "haul" || item.basis === "flat") && item.price > 0;
 
-/** Hot-mix asphalt and crushed stone base weigh about 110 lb per sq yd for each inch of depth. */
+/**
+ * Hot-mix asphalt and compacted crushed stone base both weigh about 110 lb per sq yd for each inch
+ * of depth. For asphalt it's the usual estimating figure (about 147 lb per cu ft in place); for
+ * dense-graded base stone it's the 2 tons a compacted cubic yard that stone is commonly ordered by
+ * (4,000 lb over 36 sq yd-inches is 111). The Paving preset's "Hot-mix asphalt tons", "Stone base
+ * tons" and "Gravel tons" formulas use the same 110 (packages/core/src/presets/paving.json), so a
+ * quote from the price list and one from this calculator order the same stone. A business that
+ * buys lighter or heavier stone sets its own weight on the item in Set up.
+ */
 export const DEFAULT_WEIGHT = 110;
 const LB_PER_TON = 2000;
 
@@ -93,18 +101,22 @@ export interface CalcSetup {
   minimum: number;
 }
 
-/** Until a business sets up its own: a working paver's sheet. A 0 price is one nobody has set yet. */
+/**
+ * Until a business sets up its own: a working paver's sheet. A 0 price is one nobody has set yet.
+ * Stone and emulsion go by different numbers from one state to the next (21A, #8, #68 and CRS-2 are
+ * one region's), so each is called what it is, with that region's code beside it.
+ */
 export const DEFAULT_SETUP: CalcSetup = {
   items: [
     { id: "top", name: "Top coat asphalt", section: "Asphalt", basis: "depth", price: 100, weight: DEFAULT_WEIGHT, work: "asphalt" },
     { id: "intermediate", name: "Intermediate asphalt", section: "Asphalt", basis: "depth", price: 92, weight: DEFAULT_WEIGHT, work: "asphalt" },
     { id: "base", name: "Base asphalt", section: "Asphalt", basis: "depth", price: 91, weight: DEFAULT_WEIGHT, work: "asphalt" },
-    { id: "stone21a", name: "Base stone (21A)", section: "Stone and tar", basis: "depth", price: 30, weight: DEFAULT_WEIGHT, work: "stone" },
-    { id: "stone8", name: "#8 stone (top layer)", section: "Stone and tar", basis: "spread_lb", price: 30, work: "tar_chip" },
-    { id: "stone68", name: "#68 stone (prime coat)", section: "Stone and tar", basis: "spread_lb", price: 31 },
+    { id: "stone21a", name: "Crusher run base stone (21A)", section: "Stone and tar", basis: "depth", price: 30, weight: DEFAULT_WEIGHT, work: "stone" },
+    { id: "stone8", name: "Chip stone, 3/8 inch (#8), top layer", section: "Stone and tar", basis: "spread_lb", price: 30, work: "tar_chip" },
+    { id: "stone68", name: "Chip stone, 3/4 inch (#68), prime coat", section: "Stone and tar", basis: "spread_lb", price: 31 },
     {
       id: "liquid",
-      name: "Liquid asphalt (CRS-2)",
+      name: "Liquid asphalt emulsion (CRS-2)",
       section: "Stone and tar",
       basis: "spread_gal",
       price: 4.5,

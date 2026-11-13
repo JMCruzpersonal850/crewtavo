@@ -7,54 +7,109 @@
       "name": "Weekly mow",
       "unit": "visit",
       "unit_price": 55,
+      "unit_cost": 28,
       "formula_name": "Mowing price per visit"
     },
     {
       "name": "Bi-weekly mow",
       "unit": "visit",
       "unit_price": 65,
-      "formula_name": "Mowing price per visit"
+      "unit_cost": 33,
+      "formula_name": "Bi-weekly mowing price per visit"
+    },
+    {
+      "name": "Fertilizer application",
+      "unit": "visit",
+      "unit_price": 65,
+      "unit_cost": 24,
+      "formula_name": "Fertilizer price per visit"
+    },
+    {
+      "name": "Core aeration",
+      "unit": "visit",
+      "unit_price": 140,
+      "unit_cost": 55,
+      "formula_name": "Aeration price"
+    },
+    {
+      "name": "Overseeding",
+      "unit": "visit",
+      "unit_price": 180,
+      "unit_cost": 85,
+      "formula_name": "Overseeding price"
+    },
+    {
+      "name": "Mulch install",
+      "unit": "cu yd",
+      "unit_price": 95,
+      "unit_cost": 45
+    },
+    {
+      "name": "Hedge and shrub trimming",
+      "unit": "hr",
+      "unit_price": 70,
+      "unit_cost": 32
+    },
+    {
+      "name": "Spring cleanup",
+      "unit": "visit",
+      "unit_price": 275,
+      "unit_cost": 140
+    },
+    {
+      "name": "Fall cleanup",
+      "unit": "visit",
+      "unit_price": 325,
+      "unit_cost": 165
     },
     {
       "name": "Leaf cleanup",
       "unit": "visit",
-      "unit_price": 250
+      "unit_price": 250,
+      "unit_cost": 130
     },
     {
       "name": "Gutter cleaning",
       "unit": "visit",
-      "unit_price": 175
+      "unit_price": 175,
+      "unit_cost": 80
     },
     {
       "name": "House power wash",
       "unit": "visit",
-      "unit_price": 350
+      "unit_price": 350,
+      "unit_cost": 150
     },
     {
       "name": "Window cleaning",
       "unit": "pane",
       "unit_price": 10,
+      "unit_cost": 4,
       "formula_name": "Window panes"
     },
     {
       "name": "Snow plowing",
       "unit": "push",
-      "unit_price": 75
+      "unit_price": 75,
+      "unit_cost": 35
     },
     {
       "name": "Salt application",
       "unit": "visit",
-      "unit_price": 120
+      "unit_price": 120,
+      "unit_cost": 60
     },
     {
       "name": "Holiday light install and takedown",
       "unit": "visit",
-      "unit_price": 950
+      "unit_price": 950,
+      "unit_cost": 450
     },
     {
       "name": "Commercial grounds plan",
       "unit": "month",
-      "unit_price": 1800
+      "unit_price": 1800,
+      "unit_cost": 1100
     }
   ],
   "formulas": [
@@ -64,8 +119,28 @@
       "sets": "unit_price"
     },
     {
+      "name": "Bi-weekly mowing price per visit",
+      "formula": "max(55, area_sqft / 1000 * 5.5)",
+      "sets": "unit_price"
+    },
+    {
       "name": "Window panes",
       "formula": "count"
+    },
+    {
+      "name": "Fertilizer price per visit",
+      "formula": "max(55, area_sqft / 1000 * 13)",
+      "sets": "unit_price"
+    },
+    {
+      "name": "Aeration price",
+      "formula": "max(95, area_sqft / 1000 * 18)",
+      "sets": "unit_price"
+    },
+    {
+      "name": "Overseeding price",
+      "formula": "max(110, area_sqft / 1000 * 25)",
+      "sets": "unit_price"
     }
   ],
   "checklists": [
@@ -73,49 +148,38 @@
       "name": "Weekly mow standard",
       "services": [
         "Weekly mow",
-        "Bi-weekly mow",
-        "Commercial grounds plan"
+        "Bi-weekly mow"
       ],
       "items": [
         {
-          "key": "mow_and_stripe_front",
-          "label": "Mow and stripe front",
+          "key": "mowed_trimmed_and_edged",
+          "label": "Mowed, trimmed and edged",
           "type": "check",
           "required": true
         },
         {
-          "key": "trim_along_walks_and_beds",
-          "label": "Trim along walks and beds",
+          "key": "walks_and_drive_blown_off",
+          "label": "Walks and drive blown off",
           "type": "check",
           "required": true
         },
         {
-          "key": "edge_driveway",
-          "label": "Edge driveway",
+          "key": "gates_closed",
+          "label": "Gates closed",
           "type": "check",
+          "required": true
+        },
+        {
+          "key": "anything_for_the_office",
+          "label": "Anything for the office?",
+          "type": "text",
           "required": false
         },
         {
-          "key": "blow_off_hard_surfaces",
-          "label": "Blow off hard surfaces",
-          "type": "check",
-          "required": true
-        },
-        {
-          "key": "gutter_check",
-          "label": "Gutter check",
-          "type": "choice",
-          "required": false,
-          "options": [
-            "Clear",
-            "Needs cleaning"
-          ]
-        },
-        {
-          "key": "after_photos",
-          "label": "After photos",
+          "key": "photo_if_something_is_wrong",
+          "label": "Photo, if something's wrong",
           "type": "photo",
-          "required": true
+          "required": false
         }
       ]
     },
@@ -238,6 +302,10 @@
   "weather_rules": [
     {
       "applies_to": "Weekly mow",
+      "max_rain_pct": 70
+    },
+    {
+      "applies_to": "Bi-weekly mow",
       "max_rain_pct": 70
     },
     {

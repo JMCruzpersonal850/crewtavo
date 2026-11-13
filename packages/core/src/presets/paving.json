@@ -36,6 +36,14 @@
       "formula_name": "Striping length"
     },
     {
+      "name": "Stall striping, per stall",
+      "category": "Striping",
+      "unit": "ea",
+      "unit_price": 6.0,
+      "unit_cost": 2.4,
+      "formula_name": "Stalls"
+    },
+    {
       "name": "ADA stall package",
       "category": "Striping",
       "unit": "ea",
@@ -99,6 +107,14 @@
       "formula_name": "Hot-mix asphalt tons"
     },
     {
+      "name": "Gravel surface",
+      "category": "Paving",
+      "unit": "ton",
+      "unit_price": 48,
+      "unit_cost": 29,
+      "formula_name": "Gravel tons"
+    },
+    {
       "name": "Tar and chip surface",
       "category": "Paving",
       "unit": "sq ft",
@@ -124,9 +140,9 @@
     {
       "name": "Mobilization and trucking",
       "category": "Paving",
-      "unit": "hr",
-      "unit_price": 132,
-      "unit_cost": 85
+      "unit": "ea",
+      "unit_price": 450,
+      "unit_cost": 280
     }
   ],
   "formulas": [
@@ -136,7 +152,11 @@
     },
     {
       "name": "Stone base tons",
-      "formula": "asphalt_sqyd * depth_in * 100 / 2000"
+      "formula": "asphalt_sqyd * depth_in * 110 / 2000"
+    },
+    {
+      "name": "Gravel tons",
+      "formula": "gravel_sqft / 9 * depth_in * 110 / 2000"
     },
     {
       "name": "Sealcoat area",
@@ -153,6 +173,10 @@
     {
       "name": "Striping length",
       "formula": "stripe_ft"
+    },
+    {
+      "name": "Stalls",
+      "formula": "stalls"
     },
     {
       "name": "ADA stalls",
@@ -237,6 +261,75 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "Parking lot quality check",
+      "services": [
+        "Mill and overlay 2 inch",
+        "Line striping",
+        "Stall striping, per stall",
+        "ADA stall package"
+      ],
+      "work": [
+        "milling",
+        "striping"
+      ],
+      "items": [
+        {
+          "key": "cones_barricades_and_signs_set",
+          "label": "Cones, barricades and signs set",
+          "type": "check",
+          "required": true
+        },
+        {
+          "key": "cars_cleared_and_tenants_told",
+          "label": "Cars cleared and tenants told",
+          "type": "check",
+          "required": true
+        },
+        {
+          "key": "drains_and_structures_protected",
+          "label": "Drains and structures protected or raised to grade",
+          "type": "check",
+          "required": true
+        },
+        {
+          "key": "mat_temperature_at_laydown_f",
+          "label": "Mat temperature at laydown (°F)",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "tons_placed",
+          "label": "Tons placed",
+          "type": "number",
+          "required": false
+        },
+        {
+          "key": "striping_layout_matches_the_plan",
+          "label": "Striping layout matches the plan",
+          "type": "check",
+          "required": false
+        },
+        {
+          "key": "ada_stalls_aisles_and_signs_checked",
+          "label": "ADA stalls, aisles and signs checked",
+          "type": "check",
+          "required": false
+        },
+        {
+          "key": "after_photos",
+          "label": "After photos",
+          "type": "photo",
+          "required": true
+        },
+        {
+          "key": "walkthrough_with_the_property_manager",
+          "label": "Walkthrough with the property manager",
+          "type": "signature",
+          "required": false
+        }
+      ]
     }
   ],
   "intake_forms": [
@@ -277,6 +370,68 @@
           "key": "drainage",
           "label": "Drainage problems?",
           "type": "yes_no",
+          "required": false
+        },
+        {
+          "key": "photos",
+          "label": "Photos",
+          "type": "photos",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "Parking lot estimate request",
+      "slug": "parking-lot-estimate-request",
+      "kind": "assessment",
+      "requires_approval": false,
+      "lead_time_days": 1,
+      "slot_minutes": 60,
+      "max_per_day": 6,
+      "questions": [
+        {
+          "key": "address",
+          "label": "Property address",
+          "type": "address",
+          "required": true
+        },
+        {
+          "key": "property",
+          "label": "Kind of property",
+          "type": "choice",
+          "required": true,
+          "options": [
+            "Retail or restaurant",
+            "Office or industrial",
+            "Apartments or HOA",
+            "School, church or town",
+            "Other"
+          ]
+        },
+        {
+          "key": "work",
+          "label": "Work needed",
+          "type": "multi_choice",
+          "required": true,
+          "options": [
+            "New paving",
+            "Overlay or resurfacing",
+            "Patching and potholes",
+            "Sealcoat",
+            "Striping",
+            "Concrete or curb"
+          ]
+        },
+        {
+          "key": "size",
+          "label": "Approximate size or number of stalls",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "closing",
+          "label": "When can the lot be closed?",
+          "type": "text",
           "required": false
         },
         {

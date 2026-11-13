@@ -348,6 +348,53 @@ describe("presets", () => {
     expect(PRESETS.paving.checklists.find((c) => c.name === "Driveway quality check")).toMatchObject({ services: ["Grade and compact stone base", "Hot-mix asphalt surface"], work: ["asphalt"] });
   });
 
+  it("starts a paving business with a set that hangs together: one stone weight, mobilization by the trip, every takeoff value priced", () => {
+    const { services, formulas, checklists, intake_forms: forms } = PRESETS.paving;
+    const formula = (name: string) => formulas.find((f) => f.name === name)!.formula;
+    // Hot mix, base stone and gravel at the same 110 lb per sq yd per inch the paving calculator starts with.
+    for (const name of ["Hot-mix asphalt tons", "Stone base tons", "Gravel tons"]) expect(formula(name), name).toMatch(/\* depth_in \* 110 \/ 2000$/);
+    expect(evaluateFormula(formula("Stone base tons"), { asphalt_sqyd: 400, depth_in: 6 })).toBe(132);
+    expect(evaluateFormula(formula("Gravel tons"), { gravel_sqft: 3600, depth_in: 4 })).toBe(88);
+    expect(services.find((s) => s.name === "Mobilization and trucking")).toMatchObject({ unit: "ea", unit_price: 450 });
+    // Every value a paving takeoff counts that a paver bills for is used by some item's formula.
+    const used = new Set(formulas.flatMap((f) => [...formulaVariables(f.formula)]));
+    for (const name of ["stalls", "gravel_sqft", "asphalt_sqyd", "sealcoat_sqft", "stripe_ft", "ada_stalls", "curb_ft"]) expect(used.has(name), name).toBe(true);
+    for (const s of services) expect(s.unit_cost, s.name).toBeGreaterThan(0);
+    // A driveway and a lot each have their checklist and their request form.
+    expect(checklists.map((c) => c.name)).toEqual(["Driveway quality check", "Parking lot quality check"]);
+    expect(forms.map((f) => f.slug)).toEqual(["driveway-estimate-request", "parking-lot-estimate-request"]);
+  });
+
+  it("starts a lawn business with what it sells all year, priced and costed, and a mow checklist for 30 stops a day", () => {
+    const { services, formulas, checklists, weather_rules: rules } = PRESETS.lawn_exterior;
+    const price = (service: string, area: number) => evaluateFormula(formulas.find((f) => f.name === services.find((s) => s.name === service)!.formula_name)!.formula, { area_sqft: area });
+    // Cut every other week costs more a cut than weekly, on a small lawn and a big one.
+    expect([price("Weekly mow", 5000), price("Bi-weekly mow", 5000)]).toEqual([45, 55]);
+    expect([price("Weekly mow", 20_000), price("Bi-weekly mow", 20_000)]).toEqual([90, 110]);
+    expect(rules.filter((r) => r.max_rain_pct === 70).map((r) => r.applies_to)).toEqual(["Weekly mow", "Bi-weekly mow"]);
+    for (const name of ["Fertilizer application", "Core aeration", "Overseeding", "Mulch install", "Hedge and shrub trimming", "Spring cleanup", "Fall cleanup"]) {
+      expect(services.some((s) => s.name === name), name).toBe(true);
+    }
+    for (const s of services) {
+      expect(s.unit_cost, s.name).toBeGreaterThan(0);
+      expect(s.unit_cost, s.name).toBeLessThan(s.unit_price);
+    }
+    const mow = checklists.find((c) => c.services?.includes("Weekly mow"))!;
+    expect(mow.services).toEqual(["Weekly mow", "Bi-weekly mow"]);
+    expect(mow.items.length).toBeLessThanOrEqual(5);
+    expect(mow.items.filter((i) => i.type === "photo" && i.required)).toEqual([]);
+  });
+
+  it("starts a roofer with wall and step flashing, a second layer to tear off, and a rain rule on every shingle roof", () => {
+    const { services, packages, weather_rules: rules } = PRESETS.roofing_exteriors;
+    for (const name of ["Step flashing", "Wall flashing", "Tear-off, second layer"]) {
+      expect(services.find((s) => s.name === name)?.unit_cost, name).toBeGreaterThan(0);
+      for (const p of packages ?? []) expect(p.quick, `${p.name}: ${name}`).toContain(name);
+    }
+    expect(services.find((s) => s.name === "Tear-off, second layer")).toMatchObject({ unit: "square", formula_name: "Roof squares without waste" });
+    expect(rules.filter((r) => r.max_rain_pct === 40).map((r) => r.applies_to)).toEqual(["Architectural shingle roof", "Designer shingle roof", "Standing-seam metal roof"]);
+  });
+
   it("offers the roofing packages as Good, Better and Best, each with highlights and a warranty", () => {
     const packages = PRESETS.roofing_exteriors.packages ?? [];
     expect(packages.map((p) => [p.name, p.tier])).toEqual([

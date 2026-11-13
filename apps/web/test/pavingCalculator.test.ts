@@ -151,7 +151,7 @@ describe("Paving calculator", () => {
 
   it("describes the job for the client without prices, days or profit", () => {
     const calc = calculate(DEFAULT_SETUP, { ...SHEET_1, values: { ...SHEET_1.values, stone8: 0, liquid: 0.1, sawCut: 120 } }, { stone21a: 13 });
-    expect(scopeText(calc)).toBe('12,000 sq ft (1,333 sq yd). Top coat asphalt, 2" deep: 147 tons. Base stone (21A): 13 tons. Liquid asphalt (CRS-2): 134 gal. Milling (2"). Saw cutting: 120 ft.');
+    expect(scopeText(calc)).toBe('12,000 sq ft (1,333 sq yd). Top coat asphalt, 2" deep: 147 tons. Crusher run base stone (21A): 13 tons. Liquid asphalt emulsion (CRS-2): 134 gal. Milling (2"). Saw cutting: 120 ft.');
   });
 
   it("keeps on the quote line what the job is made of, so weather rules and checklists know its work", () => {
@@ -161,8 +161,8 @@ describe("Paving calculator", () => {
     // Each item the bid has any of, with the amount as bid (typed over or worked out) and what one costs.
     expect(line.parts).toEqual([
       { id: "top", name: "Top coat asphalt", unit: "ton", quantity: 150, unit_cost: 100, material: true, work: "asphalt" },
-      { id: "stone21a", name: "Base stone (21A)", unit: "ton", quantity: lineOf(calc, "stone21a").quantity, unit_cost: 30, material: true, work: "stone" },
-      { id: "stone8", name: "#8 stone (top layer)", unit: "ton", quantity: 24, unit_cost: 30, material: true, work: "tar_chip" },
+      { id: "stone21a", name: "Crusher run base stone (21A)", unit: "ton", quantity: lineOf(calc, "stone21a").quantity, unit_cost: 30, material: true, work: "stone" },
+      { id: "stone8", name: "Chip stone, 3/8 inch (#8), top layer", unit: "ton", quantity: 24, unit_cost: 30, material: true, work: "tar_chip" },
       { id: "mill", name: "Milling", unit: "sq yd", quantity: 1333.333, unit_cost: 6, work: "milling" },
       { id: "fullCrew", name: "Full crew", unit: "day", quantity: 3, unit_cost: 5000 },
     ]);

@@ -225,7 +225,7 @@ const hoaQuote = await quote("Meadowbrook HOA", "Clubhouse lot sealcoat and rest
 const approvedQuote = await quote("Summit Ridge Builders", "Phase 2 subdivision roads (binder + surface)", "approved", [
   line("Grade and compact stone base", 410),
   line("Hot-mix asphalt surface", 620),
-  line("Mobilization and trucking", 24),
+  line("Mobilization and trucking", 7),
 ], { approved_at: daysAgo(10) });
 
 const jobId = await must(db.rpc("convert_quote_to_job", { p_quote: approvedQuote }), "convert quote");
