@@ -133,7 +133,7 @@ export function FieldVisitPage() {
   });
   const refresh = () => {
     // The Jobs list and job pages say Late, Today, Upcoming or Unscheduled from the visits (public.job_state).
-    for (const k of [["field-visit", id], ["field"], ["schedule"], ["job"], ["jobs"], ["running-timer"], ["dashboard"], ["checklist", id]]) queryClient.invalidateQueries({ queryKey: k });
+    for (const k of [["field-visit", id], ["field"], ["schedule"], ["job"], ["jobs"], ["running-timer"], ["crew-clock"], ["dashboard"], ["checklist", id]]) queryClient.invalidateQueries({ queryKey: k });
   };
   // These work offline: saved on the phone and sent, in order, when there's signal. Each is sent by
   // the action registered for it (fieldActions.ts), not a mutationFn here: lib/offline.ts notes when

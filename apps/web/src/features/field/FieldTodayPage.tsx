@@ -100,6 +100,8 @@ export function FieldTodayPage() {
     queryClient.invalidateQueries({ queryKey: ["job"] });
     queryClient.invalidateQueries({ queryKey: ["jobs"] });
     queryClient.invalidateQueries({ queryKey: ["running-timer"] });
+    // Finishing a visit ends the crew's clocks on it too.
+    queryClient.invalidateQueries({ queryKey: ["crew-clock"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
   // Works offline: the tap is saved on the phone (with its time) and sent when there's signal. Sent

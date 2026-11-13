@@ -1,8 +1,9 @@
 /**
  * A crew member's clock on a visit (fieldActions.setVisitStatus + fieldData.clockVisit): the visit's
- * status is shared and only moves forward, but each person clocks in and out as they tapped, and
- * a tap sent again doesn't add time twice. A sub without a clock moves the visit along and has no
- * time at all, as decided when they tapped.
+ * status is shared and only moves forward, each person clocks in as they tapped and a tap sent again
+ * doesn't add time twice, and finishing the visit ends every clock still running on it (the
+ * database: 20261113000600_finished_visits_end_their_clocks.sql). A sub without a clock moves the
+ * visit along and has no time at all, as decided when they tapped.
  */
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -10,13 +11,23 @@ import { beforeEach, expect, it, vi } from "vitest";
 // and time_entries rows as the database holds them.
 const STEPS: Record<string, number> = { unscheduled: 0, scheduled: 0, en_route: 1, in_progress: 2, completed: 3 };
 type Entry = { id: number; user_id: string; visit_id: string | null; started_at: string; ended_at: string | null };
-const server = { status: "scheduled", entries: [] as Entry[], refuseTime: false, sent: [] as object[] };
+const server = { status: "scheduled", completedAt: null as string | null, entries: [] as Entry[], refuseTime: false, sent: [] as object[], order: [] as string[] };
+// The database's rule: a clock running on a visit ends when the visit was finished, with no place
+// of its own, and so does a clock-in that arrives afterwards dated before it.
+const endOnFinishedVisit = () => {
+  for (const e of server.entries) if (e.visit_id === "v1" && e.ended_at === null && server.completedAt && e.started_at < server.completedAt) e.ended_at = server.completedAt;
+};
 
 vi.mock("../src/lib/api", () => {
   const api = {
-    patch: async (_path: string, body: { status: string; forward_only?: boolean }) => {
+    patch: async (_path: string, body: { status: string; forward_only?: boolean; completed_at?: string }) => {
       server.sent.push(body);
+      server.order.push(`visit ${body.status}`);
       if (body.forward_only && (server.status === "cancelled" || (STEPS[server.status] ?? 0) > (STEPS[body.status] ?? 0))) return { status: server.status, skipped: true };
+      if (body.status === "completed" && server.status !== "completed") {
+        server.completedAt = body.completed_at ?? null;
+        endOnFinishedVisit();
+      }
       server.status = body.status;
       return { status: server.status };
     },
@@ -32,6 +43,8 @@ vi.mock("../src/lib/api", () => {
         // The office took a sub off the clock: the database refuses their time.
         if (server.refuseTime) return Promise.resolve({ data: null, error: new Error('new row violates row-level security policy for table "time_entries"') });
         server.entries.push({ id: server.entries.length + 1, ended_at: null, ...values });
+        server.order.push("clock in");
+        if (server.status === "completed") endOnFinishedVisit();
         return Promise.resolve({ data: null, error: null });
       },
       eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), q),
@@ -42,6 +55,7 @@ vi.mock("../src/lib/api", () => {
       then: (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) => {
         const rows = server.entries.filter((r) => filters.every((f) => f(r))).slice(0, limit);
         if (update) rows.forEach((r) => Object.assign(r, update));
+        if (update && rows.length) server.order.push("clock out");
         return Promise.resolve({ data: rows.map((r) => ({ ...r })), error: null }).then(resolve, reject);
       },
     };
@@ -57,12 +71,14 @@ const timeOf = (userId: string) => server.entries.filter((e) => e.user_id === us
 
 beforeEach(() => {
   server.status = "scheduled";
+  server.completedAt = null;
+  server.order = [];
   server.entries = [];
   server.refuseTime = false;
   server.sent = [];
 });
 
-it("clocks a crewmate in and out even when the visit was finished before their taps arrived", async () => {
+it("clocks a crewmate in even when the visit was finished before their taps arrived, up to when it was finished", async () => {
   // Alice's phone gets signal first; Bob tapped Start and Complete with none, and his go out later.
   await tap("alice", "en_route", "2026-10-17T12:50:00Z");
   await tap("alice", "in_progress", "2026-10-17T13:00:00Z");
@@ -70,7 +86,22 @@ it("clocks a crewmate in and out even when the visit was finished before their t
   await tap("bob", "in_progress", "2026-10-17T13:05:00Z");
   await tap("bob", "completed", "2026-10-17T16:10:00Z");
   expect(server.status).toBe("completed");
-  expect(timeOf("bob")).toEqual([["2026-10-17T13:05:00Z", "2026-10-17T16:10:00Z"]]);
+  // The visit was finished at 4:00: that's where everyone's clock on it ends, Bob's included.
+  expect(timeOf("bob")).toEqual([["2026-10-17T13:05:00Z", "2026-10-17T16:00:00Z"]]);
+});
+
+it("stops the tapper's own clock before the visit is finished, and leaves a crewmate's to the database", async () => {
+  await tap("alice", "in_progress", "2026-10-17T13:00:00Z");
+  await tap("bob", "in_progress", "2026-10-17T13:05:00Z");
+  server.order = [];
+  await tap("alice", "completed", "2026-10-17T16:00:00Z");
+  // Her phone's stop goes first (it carries where the phone was); finishing the visit ends Bob's.
+  expect(server.order).toEqual(["clock out", "visit completed"]);
+  expect(timeOf("alice")).toEqual([["2026-10-17T13:00:00Z", "2026-10-17T16:00:00Z"]]);
+  expect(timeOf("bob")).toEqual([["2026-10-17T13:05:00Z", "2026-10-17T16:00:00Z"]]);
+  // Bob's own Complete, tapped later with no signal, changes nothing when it arrives.
+  await tap("bob", "completed", "2026-10-17T16:10:00Z");
+  expect(timeOf("bob")).toEqual([["2026-10-17T13:05:00Z", "2026-10-17T16:00:00Z"]]);
 });
 
 it("doesn't add time when someone's own Start is sent again after they finished", async () => {
@@ -115,8 +146,9 @@ it("clocks a sub the office keeps hours for, and a tap saved before the flag exi
   await tap("sub", "in_progress", "2026-10-17T13:00:00Z", undefined, true);
   await tap("sub", "completed", "2026-10-17T15:00:00Z", undefined, true);
   expect(timeOf("sub")).toEqual([["2026-10-17T13:00:00Z", "2026-10-17T15:00:00Z"]]);
+  // No flag on the tap: it clocks (and the visit, finished at 3:00, is where that clock ends).
   await tap("alice", "in_progress", "2026-10-17T13:00:00Z");
-  expect(timeOf("alice")).toEqual([["2026-10-17T13:00:00Z", null]]);
+  expect(timeOf("alice")).toEqual([["2026-10-17T13:00:00Z", "2026-10-17T15:00:00Z"]]);
 });
 
 it("doesn't promise a running clock to someone who has none", () => {

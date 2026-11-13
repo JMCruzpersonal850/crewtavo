@@ -85,23 +85,29 @@ const visitStatusBody = (v: Pick<VisitStatusChange, "status" | "at" | "place">) 
 });
 
 export async function setVisitStatus(v: VisitStatusChange) {
-  // As the company it was tapped in, even if the app has switched company since. Forward only: a
-  // tap sent again after later ones went out (the app closed before it heard back) is skipped.
-  const result = await api.patch<{ skipped?: boolean; status?: string }>(`/visits/${v.visitId}`, visitStatusBody(v), { companyId: v.companyId });
   // The visit's status is shared, but each person's clock is their own: when the visit has moved on
   // (a crewmate finished it first), this person still clocks in and out as they tapped. Only a
   // cancelled visit doesn't start a clock, and someone without a clock (a sub, mostly) has none.
   const clocks = v.clock !== false;
-  let clockOff = false;
-  try {
-    if (clocks && v.status === "in_progress" && !(result.skipped && result.status === "cancelled")) await clockVisit(v.companyId, v.userId, { id: v.visitId, job_id: v.jobId }, "start", v.at, v.place);
-    if (clocks && v.status === "completed") await clockVisit(v.companyId, v.userId, { id: v.visitId, job_id: v.jobId }, "stop", v.at, v.place);
-  } catch (error) {
-    // A sub whose clock the office turned off after this phone last heard (the database refuses
-    // their time now): the visit moved on, and there's simply no clock.
-    if (!(v.sub && clockRefused(error))) throw error;
-    clockOff = true;
-  }
+  let clockOff = false as boolean;
+  const clock = async (action: "start" | "stop") => {
+    try {
+      await clockVisit(v.companyId, v.userId, { id: v.visitId, job_id: v.jobId }, action, v.at, v.place);
+    } catch (error) {
+      // A sub whose clock the office turned off after this phone last heard (the database refuses
+      // their time now): the visit moved on, and there's simply no clock.
+      if (!(v.sub && clockRefused(error))) throw error;
+      clockOff = true;
+    }
+  };
+  // Their own clock stops before the visit is finished, with where the phone was: finishing a visit
+  // ends every clock still running on it (20261113000600_finished_visits_end_their_clocks.sql), and
+  // one the database ends has no place.
+  if (clocks && v.status === "completed") await clock("stop");
+  // As the company it was tapped in, even if the app has switched company since. Forward only: a
+  // tap sent again after later ones went out (the app closed before it heard back) is skipped.
+  const result = await api.patch<{ skipped?: boolean; status?: string }>(`/visits/${v.visitId}`, visitStatusBody(v), { companyId: v.companyId });
+  if (clocks && v.status === "in_progress" && !(result.skipped && result.status === "cancelled")) await clock("start");
   return { skipped: Boolean(result.skipped), visitStatus: result.status, ...(clockOff && { clockOff }) };
 }
 
