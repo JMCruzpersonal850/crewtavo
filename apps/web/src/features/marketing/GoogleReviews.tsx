@@ -52,6 +52,7 @@ import {
   type ReviewFilters,
   type SuggestedClient,
 } from "./googleReviewData";
+import { quotePickItem, QuoteReviewsCard, useQuoteReviews, useSetQuoteReviews } from "./QuoteReviews";
 
 const ReviewTrend = lazy(() => import("./ReviewTrend").then((m) => ({ default: m.ReviewTrend })));
 
@@ -206,6 +207,8 @@ export function GoogleSide({ g, stats }: { g: GoogleState | undefined; stats: Re
           </div>
         </div>
       )}
+      {/* Which reviews clients see on their quotes, once there are any to show. */}
+      <QuoteReviewsCard hasReviews={Boolean(s && s.count > 0)} />
       {s && s.count > 0 && (
         <div className="card card-pad stack-sm">
           <strong>Reviews each month</strong>
@@ -277,6 +280,10 @@ export function GoogleReviewList({ g }: { g: GoogleState }) {
   }, [focused.data]);
 
   const sync = useSyncNow(() => setTimeout(refresh, 1500));
+  // Picking a review to show on quotes, from its menu (QuoteReviews.tsx).
+  const quotePicks = useQuoteReviews();
+  const setPicks = useSetQuoteReviews();
+  const pickFor = (id: string) => quotePickItem(id, quotePicks.data, (ids) => quotePicks.data && setPicks.mutate({ show: quotePicks.data.show, pdf: quotePicks.data.pdf, ids }));
   const setClient = useMutation({
     mutationFn: (v: { review: Review; client: { id: string; display_name: string } | null }) => api.put(`/reviews/${v.review.id}/client`, { client_id: v.client?.id ?? null }),
     onSuccess: (_, v) => {
@@ -351,6 +358,7 @@ export function GoogleReviewList({ g }: { g: GoogleState }) {
             onMatch={() => { setMatching(r); setDialogOpen(true); }}
             onNotThem={() => notThem(r)}
             onChanged={refresh}
+            quotePick={pickFor(r.id)}
           />
         ))}
         {total > PAGE && (
@@ -376,7 +384,7 @@ const LONG = 320;
  * One review. The status and the menu sit on the name's line, so on a phone the words and the reply
  * get the row's whole width beside the photo.
  */
-function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onChanged }: {
+function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onChanged, quotePick }: {
   review: Review;
   names: ReadonlyMap<string, string>;
   highlight: boolean;
@@ -384,6 +392,8 @@ function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onCh
   onMatch: () => void;
   onNotThem: () => void;
   onChanged: () => void;
+  /** Show on quotes, or stop. */
+  quotePick: ReturnType<typeof quotePickItem>;
 }) {
   const navigate = useNavigate();
   const [more, setMore] = useState(false);
@@ -415,6 +425,7 @@ function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onCh
               { label: "Not this client", icon: "x", hidden: !r.client, onSelect: onNotThem },
               // A 4 or 5-star review with words can be posted as a card (Marketing → Social).
               { label: "Post on social", icon: "share", hidden: (r.rating ?? 0) < 4 || !text.trim(), onSelect: () => navigate(`/marketing?tab=social&compose=review&review=${r.id}`) },
+              quotePick,
             ]}
           />
         </div>

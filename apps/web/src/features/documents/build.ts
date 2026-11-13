@@ -319,6 +319,8 @@ export interface DocumentExtras {
    * none. Left out, a signed quote prints the copy kept with its approval.
    */
   contract?: DocumentContract | null;
+  /** The business's Google reviews, when it prints them on its quotes (the Client Hub's quote sends them). */
+  reviews?: DocumentData["reviews"];
 }
 
 /**
@@ -397,6 +399,7 @@ export function quoteDocument(quote: DocumentQuote, lines: readonly DocumentQuot
     total: Number(quote.total ?? 0),
     deposit: deposit > 0 ? deposit : null,
     schedule: quoteSchedule(quote, approval !== null),
+    ...(extras.reviews ? { reviews: extras.reviews } : {}),
     repeats: quote.recurrence_rule ? scheduleText(quote.recurrence_rule, quote.active_months) : null,
     notes: [quote.message?.trim(), notIn].filter(Boolean).join("\n\n") || null,
     signatures: extras.signatures ?? approvalSignatures(quote.approval, quote.approved_at),

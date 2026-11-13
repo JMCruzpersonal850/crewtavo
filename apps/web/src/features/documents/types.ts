@@ -108,6 +108,8 @@ export interface DocumentData {
   deposit?: number | null;
   /** Estimates with a payment schedule: each payment, when it's due (core scheduleDueText's words) and its amount. It takes the deposit's place. */
   schedule?: Array<{ name: string; due: string; amount: number }> | null;
+  /** Estimates, when the business prints its Google reviews on them: its rating and count, and up to three (core quoteReviews). */
+  reviews?: DocumentReviews | null;
   /** Estimates for recurring work: how often ("Every 2 weeks, Tuesday"). Its total is then per visit. */
   repeats?: string | null;
   /**
@@ -160,4 +162,11 @@ export interface EstimateDocumentProps {
    * under the screen's heading it's shown below (3 under an h2). 2 unless given.
    */
   headingLevel?: number;
+}
+
+/** The business's Google reviews as an estimate prints them ("What clients say"). */
+export interface DocumentReviews {
+  rating: number | null;
+  count: number | null;
+  reviews: ReadonlyArray<{ name: string; rating: number; date: string; text: string }>;
 }

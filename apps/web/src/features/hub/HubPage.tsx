@@ -46,6 +46,7 @@ import { dateIn, formatDate, formatMoney, formatMoneyCents, setCurrency, todayIn
 import { sanitizeContractHtml } from "@/lib/html";
 import { ClientPortal, hubZone, MessageDialog, type ClientView, type PortalVisit } from "./ClientPortal";
 import { CARD_REQUIRED } from "./HubAutopay";
+import { HubReviews } from "./HubReviews";
 import {
   autopayPayNote,
   contrastOnWhite,
@@ -826,6 +827,7 @@ function SignedQuote({ token, data, printing, onPrint }: { token: string; data: 
       {contract && <TermsToRead contract={contract} />}
       {(q.portal_fields?.length ?? 0) > 0 && <section className="card card-pad"><HubFieldList fields={q.portal_fields} /></section>}
       <HubDrawings token={token} drawings={data.drawings} />
+      <HubReviews reviews={data.reviews} />
       {printing && <PrintableDocument {...doc} />}
     </>
   );
@@ -1019,6 +1021,8 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
 
       {/* Without options, what's on it and its add-ons, always in view. */}
       {!offers && lineCard}
+
+      <HubReviews reviews={data.reviews} />
 
       {requestChanges.isSuccess ? (
         <Done title="Request sent">{data.company.name} will review your notes and follow up with an updated quote.</Done>

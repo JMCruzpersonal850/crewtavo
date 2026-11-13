@@ -633,7 +633,9 @@ select t1070.check(array(
   'set_checklist_services(uuid, uuid[])',
   -- Whether a client's contacts get the client's messages: owners and admins only, never a sub.
   'set_contact_messages(uuid, boolean)', 'set_job_discount_billing(uuid, uuid, boolean)', 'set_next_number(uuid, text, bigint)',
-  'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)', 'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
+  'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)',
+  -- Reviews on quotes: owners, admins and the office with the marketing area only (it checks), never a sub.
+  'set_quote_reviews(uuid, boolean, boolean, uuid[])', 'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
   -- Turning on what clients are told about their visits: the office with the Automations area only, never a sub.
   'set_visit_notices(uuid, boolean, boolean)',
   -- Weather rules: the owner and the office with Settings only, never a sub.

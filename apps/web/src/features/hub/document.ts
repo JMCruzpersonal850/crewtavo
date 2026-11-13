@@ -87,6 +87,13 @@ export interface HubApproval {
   /** Each payment of its schedule as it was signed, with its amount (left out without one, and by older servers). */
   payment_schedule?: unknown;
 }
+/** The business's Google reviews on a quote (the server's quoteReviewsFor). */
+export interface HubReviews {
+  rating: number | null;
+  count: number | null;
+  reviews: Array<{ name: string; rating: number; date: string; text: string }>;
+  pdf: boolean;
+}
 /** A roof estimate sent as a price range: the range, what's in it and what could move it. */
 export interface HubRange {
   low: number;
@@ -155,6 +162,8 @@ export interface QuoteView {
   template?: unknown;
   /** Null with a price range (it would say the price), and from servers before contracts. */
   contract?: HubContract | null;
+  /** The business's Google rating and up to three reviews, when it shows them on quotes (`pdf`: on its PDF too). Null otherwise, and left out by older servers. */
+  reviews?: HubReviews | null;
   quote: {
     id: string;
     number: number;
@@ -528,6 +537,8 @@ export function quoteDocument(view: QuoteView, paper: HubPaper = {}): DocumentDa
     optionId,
     options: options.map((o) => ({ id: o.id, name: o.name, tier: o.tier, picture: o.picture, style: o.style, highlights: o.highlights, warranty: o.warranty, total: o.total })),
     choice: paper.signing || signed ? hubChoice(view, optionId) : null,
+    // Printed only when the business ticked "On the quote's PDF too".
+    reviews: view.reviews?.pdf ? view.reviews : null,
     ...(paper.contract !== undefined ? { contract: paper.contract ? { sections: paper.contract.sections } : null } : {}),
   });
 }

@@ -138,6 +138,14 @@
 
 .notes { font-size: 12px; line-height: 1.6; white-space: pre-line; }
 .notes .eyebrow { margin-bottom: 4px; }
+/* "What clients say": the business's Google reviews, when it prints them on its quotes. */
+.reviews { display: grid; gap: 8px; font-size: 12px; line-height: 1.55; }
+.reviewsRating { font-weight: 600; color: var(--doc-ink); }
+.reviewsRating span { color: #e3a008; }
+.review { margin: 0; padding: 8px 12px; border-left: 3px solid var(--doc-rule); }
+.review blockquote { margin: 0; }
+.review figcaption { margin-top: 2px; font-size: 11px; color: var(--doc-text-2); }
+.review figcaption span { color: #e3a008; letter-spacing: 1px; }
 /* The template's own terms, a paragraph at a time; the first has the rule above. */
 .terms { font-size: 11px; line-height: 1.6; white-space: pre-line; color: var(--doc-text-2); }
 .termsFirst { padding-top: 14px; border-top: 1px solid var(--doc-rule); }

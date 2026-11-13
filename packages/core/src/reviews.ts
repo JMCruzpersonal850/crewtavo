@@ -257,6 +257,69 @@ export const LOCATION_PROBLEMS: Record<LocationProblem, string> = {
   gone: "This location isn't in the Google account anymore. Pick it again, or another one.",
 };
 
+// ---------------------------------------------------------------------------------------------
+// Reviews shown on quotes (settings.quote_reviews, 20261113001130_reviews_on_quotes.sql)
+// ---------------------------------------------------------------------------------------------
+
+/** How many reviews a quote shows, and how much of each one's words. */
+export const QUOTE_REVIEWS = 3;
+export const QUOTE_REVIEW_CHARS = 280;
+
+/** A Google review as the server reads it for a quote (public.reviews). */
+export interface QuoteReviewRow {
+  reviewer_name: string | null;
+  reviewer_anonymous: boolean;
+  rating: number | null;
+  comment: string | null;
+  posted_at: string;
+  /** 1 to 3: picked by the office in Marketing → Reviews, in this order. */
+  quote_pick?: number | null;
+  /** Taken off Google: never shown. */
+  deleted_at?: string | null;
+}
+
+/** A review as the client sees it on a quote. */
+export interface QuoteReview {
+  name: string;
+  rating: number;
+  date: string;
+  text: string;
+}
+
+/**
+ * The reviewer as a quote names them, their first name and last initial ("Dana W."), so a client's
+ * full name isn't put in front of other clients; "A Google user" when Google gave no name.
+ */
+export function reviewerShortName(review: { reviewer_name: string | null; reviewer_anonymous: boolean }): string {
+  const words = (reviewerName(review) ?? "").split(/\s+/).filter(Boolean);
+  if (!words.length) return "A Google user";
+  const initial = words.length > 1 ? [...words.at(-1)!].find((ch) => /\p{L}/u.test(ch)) : undefined;
+  return initial ? `${words[0]} ${initial.toUpperCase()}.` : words[0]!;
+}
+
+/** A review's words, trimmed to `max` characters at a word, with "…" when cut. Spaces and line breaks fold to one. */
+export function trimReview(text: string | null | undefined, max = QUOTE_REVIEW_CHARS): string {
+  const plain = (text ?? "").replace(/\s+/g, " ").trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s.,;:!?-]+$/, "")}…`;
+}
+
+/**
+ * The reviews a quote shows: the ones the office picked, in their order; when none of those is still
+ * on Google, the newest with 5 stars and words. Three at most, each named by first name and initial,
+ * its words trimmed. None at all when there are none to show.
+ */
+export function quoteReviews(rows: readonly QuoteReviewRow[]): QuoteReview[] {
+  const live = rows.filter((r) => !r.deleted_at && r.rating != null && r.rating >= 1 && r.rating <= 5);
+  const picked = live.filter((r) => r.quote_pick != null).sort((a, b) => a.quote_pick! - b.quote_pick!);
+  const chosen = picked.length
+    ? picked
+    : live.filter((r) => r.rating === 5 && (r.comment ?? "").trim()).sort((a, b) => Date.parse(b.posted_at) - Date.parse(a.posted_at));
+  return chosen.slice(0, QUOTE_REVIEWS).map((r) => ({ name: reviewerShortName(r), rating: r.rating!, date: r.posted_at.slice(0, 10), text: trimReview(r.comment) }));
+}
+
 /** The Google Cloud project number in an OAuth client ID ("123456789012-abc.apps.googleusercontent.com"), which Google's access form asks for. */
 export function projectNumber(clientId: string | null | undefined): string | null {
   return /^(\d{6,})-/.exec(clientId ?? "")?.[1] ?? null;

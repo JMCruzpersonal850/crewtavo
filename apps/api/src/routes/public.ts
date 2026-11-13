@@ -56,6 +56,7 @@ import {
   turnOffAutopay,
 } from "../services/autopay";
 import { geocodeAddress } from "../services/external";
+import { quoteReviewsFor } from "../services/googleReviews";
 import { LETTERHEAD_MAX_BYTES } from "../services/letterhead";
 import { isDrawnPng, isPng, LOGO_MAX_BYTES, logoImage, logoOf } from "../services/logo";
 import { PACKAGE_PICTURE_MAX_BYTES } from "../services/packagePictures";
@@ -422,7 +423,7 @@ publicRoutes.get("/hub/:token", async (c) => {
     // A quote template (no client) never reaches the Client Hub, not even as a preview.
     if (!quote.client_id) throw new HttpError(404, "Quote not found.");
     const signed = quote.status === "approved" || quote.status === "converted";
-    const [lineRows, options, drawings, template, roofPackage, home, fields] = await Promise.all([
+    const [lineRows, options, drawings, template, roofPackage, home, fields, reviews] = await Promise.all([
       // The formula only tells the server which line is the tear-off; it's never sent.
       admin.from("quote_line_items").select("id, option_id, service_id, name, description, quantity, unit, unit_price, taxable, optional, selected, option_group, sort, formula").eq("company_id", l.c).eq("quote_id", quote.id).order("sort"),
       loadOptions(admin, l.c, quote.id),
@@ -432,6 +433,11 @@ publicRoutes.get("/hub/:token", async (c) => {
       quote.roof_package_id ? admin.from("roof_packages").select("name, warranty, roof_service_id").eq("company_id", l.c).eq("id", quote.roof_package_id).maybeSingle() : null,
       l.pv ? null : homeLink(c, l.c, quote.client_id, l),
       hubFields(admin, l.c, "quote", quote.custom_fields),
+      // The business's Google rating and reviews, when it shows them on quotes.
+      quoteReviewsFor(admin, l.c).catch((error) => {
+        console.error("Couldn't read the reviews for a quote", error);
+        return null;
+      }),
     ]);
     const lines = [...must(lineRows)].sort((a, b) => a.sort - b.sort);
     // How the code comes off: as it was approved once it's signed, so a signed quote keeps its words (core quotePromoRule).
@@ -548,6 +554,7 @@ publicRoutes.get("/hub/:token", async (c) => {
       deposit_online: depositOnline,
       deposit,
       deposit_due: depositPayable ? null : depositInvoice,
+      reviews,
       quote: {
         id: quote.id, number: quote.number, status: quote.status, title: quote.title, message: quote.message,
         subtotal: exact ? quote.subtotal : null,

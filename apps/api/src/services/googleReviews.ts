@@ -22,11 +22,13 @@ import {
   LOCATION_PROBLEMS,
   NOT_ENABLED_MESSAGE,
   OWN_APP_APPROVAL_MESSAGE,
+  quoteReviews,
   REPLY_MAX,
   REVIEW_STOP_NOTE,
   SIGNIN_MESSAGE,
   starRating,
   type LocationProblem,
+  type QuoteReview,
   type ReviewProblem,
 } from "@crewtavo/core/reviews";
 import type { Env } from "../env";
@@ -794,4 +796,39 @@ export async function endReviewSync(admin: Db, companyId: string, remove: boolea
   const { data, error } = await admin.rpc("end_review_sync", { p_company: companyId, p_remove: remove });
   if (error) throw new Error(error.message);
   return liftRemoved(admin, companyId, data, "removed");
+}
+
+/** What a quote in the Client Hub shows of the business's Google reviews (settings.quote_reviews). */
+export interface QuoteReviews {
+  /** As Google shows them: the average and how many. */
+  rating: number | null;
+  count: number | null;
+  reviews: QuoteReview[];
+  /** On the quote's PDF too. */
+  pdf: boolean;
+}
+
+/**
+ * The business's Google rating and count, and up to three reviews, for a quote (core quoteReviews:
+ * the office's picks, else the newest 5-star ones with words, each named by first name and initial).
+ * Only Google reviews of the location being synced that are still on Google: public.reviews holds
+ * nothing else. Null while it's off, while Marketing is uninstalled, or with no Google reviews.
+ */
+export async function quoteReviewsFor(admin: Db, companyId: string): Promise<QuoteReviews | null> {
+  const { data: company } = await admin.from("companies").select("settings").eq("id", companyId).maybeSingle();
+  const settings = (company?.settings ?? {}) as Record<string, unknown>;
+  const on = settings.quote_reviews as { show?: unknown; pdf?: unknown } | undefined;
+  if (on?.show !== true || !marketingOn(settings)) return null;
+  const { data: sync } = await admin.from("review_syncs").select("location_id, average_rating, total_reviews").eq("company_id", companyId).maybeSingle();
+  if (!sync?.location_id) return null;
+  const fields = "reviewer_name, reviewer_anonymous, rating, comment, posted_at, quote_pick, deleted_at";
+  const live = () => admin.from("reviews").select(fields).eq("company_id", companyId).eq("location_id", sync.location_id!).is("deleted_at", null);
+  const [picked, newest] = await Promise.all([
+    live().not("quote_pick", "is", null).order("quote_pick").limit(3),
+    live().eq("rating", 5).not("comment", "is", null).order("posted_at", { ascending: false }).limit(20),
+  ]);
+  const reviews = quoteReviews(picked.data?.length ? picked.data : (newest.data ?? []));
+  const count = sync.total_reviews ?? null;
+  if (!reviews.length && !(Number(count) > 0)) return null;
+  return { rating: sync.average_rating === null ? null : Number(sync.average_rating), count, reviews, pdf: on.pdf === true };
 }

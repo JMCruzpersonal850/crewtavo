@@ -210,6 +210,8 @@ function paperOf(template: TemplateSettings, company: DocumentCompany, data: Doc
       space: i ? NOTES_LINE : GAP,
     });
   });
+  // The business's Google reviews, when it prints them on its quotes: kept whole on a page.
+  if (estimate && data.reviews && (data.reviews.reviews.length || data.reviews.count)) add({ key: "reviews", node: <Reviews reviews={data.reviews} />, space: GAP });
   // The template's own terms, as they've always printed: no title, line breaks kept.
   paragraphs(template.terms).forEach((text, i) =>
     add({
@@ -812,6 +814,28 @@ function Totals({ data }: { data: DocumentData }) {
         </>
       )}
     </dl>
+  );
+}
+
+/** "What clients say": the Google rating and count, then each review with its stars, name and day. */
+function Reviews({ reviews }: { reviews: NonNullable<DocumentData["reviews"]> }) {
+  return (
+    <div className={styles.reviews}>
+      <div className={styles.eyebrow}>What clients say</div>
+      {reviews.rating !== null && reviews.count ? (
+        <div className={styles.reviewsRating}>
+          <span aria-hidden="true">★</span> {reviews.rating.toFixed(1)} on Google · {reviews.count.toLocaleString("en-US")} {reviews.count === 1 ? "review" : "reviews"}
+        </div>
+      ) : null}
+      {reviews.reviews.map((r, i) => (
+        <figure key={i} className={styles.review}>
+          <blockquote>{r.text}</blockquote>
+          <figcaption>
+            <span aria-label={`${r.rating} out of 5 stars`}>{"★".repeat(r.rating)}</span> {r.name} · {shortDate(r.date)}
+          </figcaption>
+        </figure>
+      ))}
+    </div>
   );
 }
 
