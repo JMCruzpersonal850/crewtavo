@@ -1,8 +1,8 @@
 /**
  * The assistant's tools that change an invoice after it's sent (assistant-tools/invoices.ts). Each
  * goes through the database's own function for it, so an assistant is held to the rules the invoice
- * page is: remove_late_fee (20261113000420_late_fee_off_for_an_invoice.sql), and update_invoice's
- * no_late_fee.
+ * page is: edit_invoice_lines (edit_invoice, 20261113000440_edit_sent_invoices.sql), remove_late_fee
+ * (20261113000420_late_fee_off_for_an_invoice.sql), and update_invoice's no_late_fee.
  */
 import { createClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +31,64 @@ function database(rpc: Record<string, () => Response> = {}, invoice: Record<stri
 const refusal = (message: string, code = "22023") => () => Response.json({ code, message, details: null, hint: null }, { status: 400 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("the assistant editing a sent invoice's lines", () => {
+  const LINE = "22222222-2222-4222-8222-222222222222";
+  const after = { id: INVOICE, status: "partially_paid", total: 650, amount_paid: 300, balance_due: 350, changed: 1, old_total: 500, old_status: "partially_paid" };
+
+  it("goes through the database's edit_invoice, the one path the invoice page's Edit invoice takes", async () => {
+    const { ctx, sent } = database({ edit_invoice: () => Response.json(after) });
+    const args = invoiceTools.edit_invoice_lines.input.parse({
+      invoice_id: INVOICE,
+      lines: [{ id: LINE, name: " Labor ", quantity: 1, unit_price: 500 }, { name: "Extra outlet", description: "Garage", quantity: 2, unit_price: 75.004, taxable: false }],
+    });
+    expect(await invoiceTools.edit_invoice_lines.run(ctx, args)).toEqual({ saved: true, invoice: after });
+    expect(sent.find((s) => s.path.startsWith("rpc/edit_invoice"))?.body).toEqual({
+      p_invoice: INVOICE,
+      p_preview: false,
+      p_lines: [
+        { id: LINE, name: "Labor", description: null, quantity: 1, unit: "ea", unit_price: 500, taxable: true },
+        { name: "Extra outlet", description: "Garage", quantity: 2, unit: "ea", unit_price: 75, taxable: false },
+      ],
+    });
+    // Nothing is written to the invoice's lines or payments by the tool itself.
+    expect(sent.filter((s) => s.method !== "GET").map((s) => s.path.split("?")[0])).toEqual(["rpc/edit_invoice"]);
+    expect(invoiceTools.edit_invoice_lines.area).toBe("invoices");
+    expect(invoiceTools.edit_invoice_lines.destructive).toBeUndefined();
+  });
+
+  it("can ask what the change would come to without making it", async () => {
+    const { ctx, sent } = database({ edit_invoice: () => Response.json(after) });
+    const result = await invoiceTools.edit_invoice_lines.run(ctx, invoiceTools.edit_invoice_lines.input.parse({ invoice_id: INVOICE, lines: [{ name: "Labor", unit_price: 650 }], preview: true }));
+    expect(result).toEqual({ preview: true, invoice: after });
+    expect((sent.find((s) => s.path.startsWith("rpc/edit_invoice"))?.body as { p_preview: boolean }).p_preview).toBe(true);
+  });
+
+  it("passes on the database's refusals as they read", async () => {
+    for (const message of [
+      "This invoice has $300.00 paid on it, so its total can't go below that. Refund the difference first.",
+      "Undo the write-off before changing this invoice",
+      "This invoice was made in Stripe. Make changes there",
+      "Invoice #12 already takes this one off the job's total. Void that invoice to change this one",
+    ]) {
+      const { ctx } = database({ edit_invoice: refusal(message) });
+      await expect(invoiceTools.edit_invoice_lines.run(ctx, invoiceTools.edit_invoice_lines.input.parse({ invoice_id: INVOICE, lines: [{ name: "Labor", unit_price: 1 }] }))).rejects.toThrow(message);
+    }
+  });
+
+  it("never reaches another company's invoice, and takes no line without a name", async () => {
+    const { ctx, sent } = database({ edit_invoice: () => Response.json(after) }, null);
+    await expect(invoiceTools.edit_invoice_lines.run(ctx, invoiceTools.edit_invoice_lines.input.parse({ invoice_id: INVOICE, lines: [{ name: "Labor", unit_price: 1 }] }))).rejects.toThrow();
+    expect(sent.some((s) => s.path.startsWith("rpc/"))).toBe(false);
+    expect(invoiceTools.edit_invoice_lines.input.safeParse({ invoice_id: INVOICE, lines: [{ name: "  ", unit_price: 1 }] }).success).toBe(false);
+  });
+
+  it("is told each line's id by get_invoice", async () => {
+    const { ctx, sent } = database();
+    await invoiceTools.get_invoice.run(ctx, { invoice_id: INVOICE });
+    expect(sent[0]!.path).toMatch(/lines:invoice_line_items\(id,/);
+  });
+});
 
 describe("the assistant taking a late fee off", () => {
   it("calls the database's remove_late_fee for this company's invoice, and says what came off", async () => {

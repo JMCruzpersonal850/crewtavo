@@ -45,6 +45,8 @@ import { refundable, stripeCharge, stripeRefundable, stripeRefundToasts, type St
 import { settle } from "./settle";
 import { autopayBankNote, bankPayment, bankPaymentNote, paidInStripe, paymentAmount, RECORD_IN_STRIPE } from "./stripeInvoices";
 import { chargeOutcomeText, type ChargeResult } from "./charges";
+import { EditInvoiceDialog } from "./EditInvoiceDialog";
+import { editOffer } from "./editInvoice";
 import { lateFeeControls } from "./lateFees";
 import { CustomFieldsCard, useCustomFields } from "../customFields/CustomFields";
 
@@ -63,7 +65,7 @@ function InvoicePageScreen() {
   const session = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [dialog, setDialog] = useState<null | "send" | "payment" | "work">(null);
+  const [dialog, setDialog] = useState<null | "send" | "payment" | "work" | "edit">(null);
   const [refunding, setRefunding] = useState<null | { id: string; amount: number; method: string }>(null);
   const [stripeRefund, setStripeRefund] = useState<null | { id: string; amount: number; tip_amount: number; method: string; processor_ref: string | null }>(null);
   const today = todayIn(session.company.timezone);
@@ -279,6 +281,9 @@ function InvoicePageScreen() {
   const editable = draft && !charging;
   // Made in Stripe: paid as Stripe billed it, so its total changes there, not here.
   const fromStripe = inv.stripe.some((s) => s.origin === "stripe");
+  // Edit invoice: a sent invoice's lines, changed in place with its payments as they are (the
+  // database's edit_invoice). It waits while the client is paying the amount as it stands.
+  const editing = editOffer(inv, { fromStripe, charging, bankOnItsWay: Boolean(bank) || clearing });
   // Remove late fee, the "No late fee on this invoice" tick, and what's said once one was taken off.
   const fees = lateFeeControls(inv, { feesOn: Boolean(lateFee), fromStripe });
   const feeTotal = inv.lines.filter((l) => l.kind === "late_fee").reduce((sum, l) => sum + Number(l.quantity) * Number(l.unit_price), 0);
@@ -341,6 +346,7 @@ function InvoicePageScreen() {
                 { separator: true },
                 { label: "Mark as sent", icon: "check", hidden: !draft || !inv.lines.length || charging, onSelect: () => update.mutate({ status: "sent" }) },
                 { label: "Record payment", icon: "dollar", hidden: !draft || !inv.lines.length || charging || clearing, onSelect: () => setDialog("payment") },
+                { label: "Edit invoice", icon: "edit", hidden: !editing.offered, disabled: Boolean(editing.waits), title: editing.waits ?? undefined, onSelect: () => setDialog("edit") },
                 { label: "Move back to draft", icon: "undo", hidden: draft || isVoid || writtenOff || inv.payments.length > 0 || fromStripe || charging || clearing, onSelect: () => update.mutate({ status: "draft", sent_at: null }) },
                 {
                   label: "Write off",
@@ -490,6 +496,13 @@ function InvoicePageScreen() {
           {editable && inv.job && ["standard", "visits"].includes(inv.kind) && (
             <div><Button size="sm" icon="clock" onClick={() => setDialog("work")}>Add logged hours and materials</Button></div>
           )}
+          {/* Sent: its lines change through Edit invoice, in one step, with its payments left as they are. */}
+          {editing.offered && (
+            <div className="row wrap" style={{ gap: 8, alignItems: "center" }}>
+              <Button size="sm" icon="edit" disabled={Boolean(editing.waits)} onClick={() => setDialog("edit")}>Edit invoice</Button>
+              {editing.waits && <span className="muted small">{editing.waits}</span>}
+            </div>
+          )}
           <NotesCard value={inv.notes} editable={!isVoid} onEdit={save.edited} onUnchanged={unchanged} onSave={(notes) => saveField({ notes })} />
           <section className="stack">
             <h2 className="section-title">Payments</h2>
@@ -612,6 +625,7 @@ function InvoicePageScreen() {
       </div>
 
       {dialog === "send" && <SendDialog kind="invoice" id={inv.id} number={inv.number} email={inv.client?.email ?? null} phone={inv.client?.phone ?? null} textsOffSince={inv.client?.sms_opt_out_at} onClose={() => setDialog(null)} onSent={refresh} />}
+      {dialog === "edit" && <EditInvoiceDialog invoice={{ id: inv.id, number: inv.number, updated_at: inv.updated_at, lines: inv.lines }} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "work" && inv.job && <AddWorkDialog invoiceId={inv.id} jobId={inv.job.id} onClose={() => { setDialog(null); refresh(); }} />}
       {dialog === "payment" && <PaymentDialog invoice={{ id: inv.id, client_id: inv.client_id, balance, draft }} bank={bankNote} onClose={() => setDialog(null)} onSaved={refresh} />}
       {refunding && <RefundDialog invoice={{ id: inv.id, client_id: inv.client_id, status: inv.status, due_on: inv.due_on, balance_due: balance }} payment={refunding} left={refundable(refunding, inv.payments)} onClose={() => setRefunding(null)} onSaved={refresh} />}

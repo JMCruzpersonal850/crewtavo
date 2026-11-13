@@ -183,6 +183,7 @@ export const ASSISTANT_TOOL_LABELS: Record<string, string> = {
   bill_logged_work: "Billed a job's logged hours and materials",
   update_invoice: "Changed an invoice's custom fields or late fees",
   remove_late_fee: "Took a late fee off an invoice",
+  edit_invoice_lines: "Edited an invoice's lines",
   send_invoice: "Sent an invoice",
   send_reminders: "Sent payment reminders",
   record_payment: "Recorded a payment",
