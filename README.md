@@ -387,10 +387,15 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   Driving instead, from On my way until Stop for the day: travel is paid time, on no job's costs.
   Subs are paid by the job instead, under Subcontractors. Crewtavo doesn't move the money.
 - **Every trade:** trade presets ([`packages/core/src/presets`](packages/core/src/presets)) load
-  starter services, quote formulas, checklists, booking forms and SOP categories when a company
-  signs up: plumbing, HVAC, electrical, cleaning, pool and spa, pest control, handyman,
-  landscaping, lawn and exterior maintenance, paving and sitework, roofing and exteriors, or a
-  general starting point for any other trade.
+  starter services, quote formulas, checklists, weather rules, booking forms, custom fields and SOP
+  categories when a company signs up: plumbing, HVAC, electrical, cleaning, pool and spa, pest
+  control, handyman, landscaping, lawn and exterior maintenance, paving and sitework, roofing and
+  exteriors, or a general starting point for any other trade. A paving job priced with the paving
+  calculator gets the same weather holds and checklists as one priced from the price list, each
+  line that works from a depth gets its own (6 inches of stone under 2 of asphalt), and job
+  costing counts crew days and load tickets once, against what was estimated. A roofer keeps an
+  insurance claim's details on quotes and jobs, and can type in a roof report's measurements
+  (EagleView, Hover) instead of tracing the roof.
 
 ## How it fits together
 
