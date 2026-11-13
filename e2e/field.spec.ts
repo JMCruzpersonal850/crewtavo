@@ -4,6 +4,10 @@
  */
 import { dateIn, expect, expectAccessible, makeJob, must, PHONE, test, unique, zonedIso, type Company } from "./support/fixtures";
 
+// One after another: these share the demo employee, who has one clock. Side by side, one test's
+// clock-in would be newer than another's taps waiting with no signal, and the newer clock wins.
+test.describe.configure({ mode: "default" });
+
 /** A visit at 4 PM today, assigned to the demo employee. */
 async function employeeVisitToday(data: Company) {
   const job = await makeJob(data, "Field");
