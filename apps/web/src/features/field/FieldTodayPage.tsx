@@ -3,8 +3,7 @@
  * and the whole route in a maps app. A sub sees the same for the visits they're on, without a clock
  * unless the office keeps their hours.
  */
-import { crewPeople, onVisit } from "@crewtavo/core/visitPeople";
-import { onlineManager, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
@@ -14,44 +13,25 @@ import { useDocumentTitle } from "@/components/ui/PageHeader";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { EntityStatus, statusLabel } from "@/components/ui/StatusPill";
-import { api, supabase, unwrap } from "@/lib/api";
-import { addDaysIso, todayIn } from "@/lib/format";
+import { todayIn } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
 import { hasRole, isSub, keepsTime, useSession } from "@/lib/session";
 import { CrewEquipmentCard } from "../equipment/CrewEquipmentCard";
 import { dayRoute } from "../schedule/dayRoute";
 import { useSchedulingRights } from "../schedule/myCrews";
 import { ClockCard } from "./ClockCard";
-import { visitContact, type VisitContact } from "./contact";
+import { visitContact } from "./contact";
 import { CrewClockCard } from "./CrewClockCard";
-import { pendingVisitStatus, showVisitStatus, statusSaved, type VisitStatusChange } from "./fieldActions";
+import { showVisitStatus, statusSaved, type VisitStatusChange } from "./fieldActions";
 import { useStatusTap } from "./fieldData";
+import { GeofenceCard } from "./GeofenceCard";
 import { InstallAppCard } from "./InstallAppCard";
+import { myDayKey, useMyDay, type MyDayVisit } from "./myDay";
 import { OfflineNote } from "./OfflineNote";
 import { FIELD_SCOPE } from "@/lib/offline";
 import { toast } from "@/lib/toast";
 
-interface Visit {
-  id: string;
-  title: string;
-  kind: string;
-  status: string;
-  starts_at: string | null;
-  ends_at: string | null;
-  scheduled_on: string | null;
-  route_order: number | null;
-  hold_reason: string | null;
-  crew_id: string | null;
-  job: { id: string; number: number; title: string; client: { display_name: string } | null } | null;
-  property: { id: string; line1: string; line2?: string | null; city: string | null; region?: string | null; postal_code?: string | null; lat: number | null; lng: number | null } | null;
-  /** Where an entry with no client property is (a task). */
-  address?: string | null;
-  assignees: Array<{ user_id: string }>;
-  series_day: number | null;
-  series_total: number | null;
-  /** For a sub, who can't read clients: the client's name (visit_contact()). */
-  contact?: VisitContact | null;
-}
+type Visit = MyDayVisit;
 
 const clientName = (v: Visit) => visitContact(v.job?.client, v.contact).name;
 
@@ -71,26 +51,8 @@ export function FieldTodayPage() {
   const isLead = useSchedulingRights().canDispatch;
   useDocumentTitle("My day");
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz });
-  const key = ["field", session.company.id, today];
-
-  const data = useQuery({
-    queryKey: key,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const [schedule, crews] = await Promise.all([
-        api.get<{ visits: Visit[] }>(`/schedule?from=${today}&to=${addDaysIso(today, 1)}`),
-        supabase().from("crew_members").select("crew_id").eq("user_id", session.userId),
-      ]);
-      // The visits I'm on: the ones I'm listed on, and my crews' visits with nobody listed (visitPeople).
-      // A crew's visit with other people listed still shows to whoever can see it (a foreman, the
-      // office), as it always has; field crew aren't sent those at all.
-      const myCrews = crewPeople(unwrap(crews).map((c) => ({ crew_id: c.crew_id, user_id: session.userId })));
-      const mine = schedule.visits
-        .filter((v) => v.status !== "cancelled" && (onVisit(v, session.userId, myCrews) || Boolean(v.crew_id && myCrews.has(v.crew_id))))
-        .map((v) => ({ ...v, status: pendingVisitStatus(queryClient, v.id) ?? v.status }));
-      return { today: mine.filter((v) => v.scheduled_on === today), tomorrow: mine.filter((v) => v.scheduled_on !== today && !["completed", "cancelled"].includes(v.status)) };
-    },
-  });
+  const key = myDayKey(session.company.id, today);
+  const data = useMyDay();
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["field"] });
@@ -149,6 +111,8 @@ export function FieldTodayPage() {
       <OfflineNote />
       {!hasRole(session, "admin", "office", "estimator") && <InstallAppCard />}
       {keepsTime(session) && <ClockCard visits={open.filter((v) => v.status === "in_progress").map((v) => ({ id: v.id, title: v.title, job_id: v.job?.id ?? null }))} />}
+      {/* The clock at the property, when the company has it on: what the phone asks as they get there and leave. */}
+      <GeofenceCard onStatus={(visit, status) => void statusTap.tap(visit, status)} />
       {session.role === "crew_lead" && <CrewClockCard visits={data.data?.today ?? []} />}
 
       {data.isPending && <Loading label="Loading your visits"><div className="stack">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={2} />)}</div></Loading>}

@@ -34,6 +34,13 @@ export interface ClockChange {
   place?: ClockPlace;
   /** Made on the phone, one for each person clocked in, so a tap sent twice starts one clock each. */
   entryIds?: Record<string, string>;
+  /**
+   * Made by the phone itself at a visit's property (the clock at the property, geofence.ts), not
+   * tapped: the clocks it starts and stops are marked so for Timesheets, and it never ends a break.
+   */
+  geofence?: boolean;
+  /** Only a clock on this visit moves (leaving its property); any other clock stays as it is. */
+  fromVisit?: string;
 }
 
 /** A clock tap as it's saved: dated now, with an id for each clock it starts. */
@@ -68,6 +75,9 @@ export function clockAfter(clock: ShownClock | null, tap: ClockTap, userId: stri
     if (!who.includes(userId)) return clock;
     // A clock that began after the tap (the office started it since) stays: the tap lost to it.
     if (clock && !startedBefore(clock, at)) return clock;
+    // Leaving a property moves only a clock on that visit; the phone never ends a break by itself.
+    if (tap.change.fromVisit && clock?.visit?.id !== tap.change.fromVisit) return clock;
+    if (tap.change.geofence && clock?.category === "break") return clock;
     if (!target) return null;
     if (target.visit && clock?.visit?.id === target.visit.id) return clock;
     return { id: `tap:${at}`, category: target.category, started_at: at, visit: target.visit ? { id: target.visit.id, title: target.visit.title } : null };

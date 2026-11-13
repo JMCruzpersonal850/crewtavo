@@ -44,3 +44,19 @@ export function describePlace(place: StoredPlace, site: Site | null): { text: st
   if (meters <= ON_SITE_M + Math.min(place.accuracy ?? 0, ON_SITE_M)) return { text: `at ${where}`, tone: "good", mapUrl, title };
   return { text: `${distanceLabel(meters)} from ${where}${rough}`, tone: "warning", mapUrl, title };
 }
+
+/**
+ * What the phone did by itself on an entry (the clock at the property: Settings → Company → Time
+ * clock), for the office to tell it from a tap. A visit's clock starts as they arrive and stops as
+ * they leave; on the whole-day clock, travel starts as they leave one and stops at the next. Null
+ * for a tap's clock.
+ */
+export function atPropertyNote(entry: { category: string; geofence_in?: boolean | null; geofence_out?: boolean | null }): string | null {
+  const visit = entry.category === "visit";
+  const started = entry.geofence_in ? (visit ? "arriving at the property" : "leaving a property") : null;
+  const stopped = entry.geofence_out ? (visit ? "leaving the property" : "arriving at a property") : null;
+  if (started && stopped) return visit ? "Started and stopped by the phone at the property" : `Started by the phone on ${started}, stopped on ${stopped}`;
+  if (started) return `Started by the phone on ${started}`;
+  if (stopped) return `Stopped by the phone on ${stopped}`;
+  return null;
+}

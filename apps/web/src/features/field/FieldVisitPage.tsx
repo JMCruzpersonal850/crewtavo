@@ -48,6 +48,7 @@ import { guideQuery } from "../kb/kbData";
 import { contactLinks, visitContact, type VisitContact } from "./contact";
 import { pendingChecklistSaves, pendingVisitSave, pendingVisitStatus, showVisitStatus, statusSaved, type ChecklistSave, type VisitNotesSave, type VisitStatusChange } from "./fieldActions";
 import { formatDuration, useStatusTap } from "./fieldData";
+import { GeofenceCard } from "./GeofenceCard";
 import { OfflineNote, useSignal } from "./OfflineNote";
 import { SignaturePad } from "./SignaturePad";
 import { visitChecklists, type VisitChecklist } from "./visitChecklists";
@@ -246,6 +247,8 @@ export function FieldVisitPage() {
         </div>
       </div>
       <OfflineNote />
+      {/* The clock at the property: Complete visit goes through the checklist check, as the button below does. */}
+      <GeofenceCard visitId={v.id} onStatus={(_visit, status) => (status === "completed" ? void complete() : setStatus(status))} />
       {v.status === "completed" && v.completed_at && <div className="callout callout-good"><Icon name="check" size={20} /><div className="grow">Completed {timeAgo(v.completed_at)}.</div></div>}
       {/* Autopay bills the visit itself; with no signal, whether it does may not be on the phone. */}
       {v.status === "completed" && v.job && invoiceKind && takesMoney(session) && (autopay.isSuccess ? !autopay.data : !online) && <VisitInvoice visitId={v.id} jobId={v.job.id} kind={invoiceKind} />}

@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // time_entries as the database holds them, with its own rules: an id is used once, and one clock
 // runs per person (20261112000410_one_running_clock.sql): a clock that starts stops the one running
 // before it, and one that arrives late, dated before the clock running now, ends where that began.
-type Entry = { id: string; company_id: string; user_id: string; visit_id: string | null; job_id: string | null; category: string; started_at: string; ended_at: string | null; in_place?: unknown; out_place?: unknown };
+type Entry = { id: string; company_id: string; user_id: string; visit_id: string | null; job_id: string | null; category: string; started_at: string; ended_at: string | null; in_place?: unknown; out_place?: unknown; geofence_in?: boolean; geofence_out?: boolean };
 const db = { entries: [] as Entry[], made: 0 };
 const at = (time: string) => `2026-10-17T${time}:00.000Z`;
 const ms = (iso: string) => Date.parse(iso);
@@ -307,5 +307,62 @@ describe("what the clock cards show while taps wait on the phone", () => {
     showClockTap(fresh, { key: "clock", change: tapAt("09:00", drive) });
     expect(fresh.getQueryData(["crew-clock", "c1", "ray,sam"])).toBeUndefined();
     expect(crewAfter([], ["ray", "sam"], [{ key: "clock", change: tapAt("09:00", drive, ["sam"]) }]).map((r) => r.user_id)).toEqual(["sam"]);
+  });
+});
+
+describe("the clock at the property (geofence.ts): the phone's own taps", () => {
+  const byPhone = (change: ClockChange, fromVisit?: string): ClockChange => ({ ...change, geofence: true, ...(fromVisit && { fromVisit }) });
+  const marks = (userId: string) => db.entries.filter((e) => e.user_id === userId).sort((a, b) => ms(a.started_at) - ms(b.started_at)).map((e) => [e.visit_id ?? e.category, Boolean(e.geofence_in), Boolean(e.geofence_out)]);
+
+  it("starts the clock on arriving, dated at the arrival, and marks the clocks it starts and stops", async () => {
+    await setClock(tapAt("08:30", drive));
+    await setClock(byPhone(tapAt("09:00", visit)));
+    expect(timeOf("ray")).toEqual([["drive", "08:30", "09:00"], ["v1", "09:00", null]]);
+    expect(marks("ray")).toEqual([["drive", false, true], ["v1", true, false]]);
+    sound();
+  });
+
+  it("stops only a clock still on that visit when they leave", async () => {
+    await setClock(byPhone(tapAt("09:00", visit)));
+    await setClock(byPhone(tapAt("11:00", null), "v1"));
+    expect(timeOf("ray")).toEqual([["v1", "09:00", "11:00"]]);
+    expect(marks("ray")).toEqual([["v1", true, true]]);
+    // On a break, or on the next visit, by the time it's sent: left as it is.
+    await setClock(tapAt("11:30", { category: "break" }));
+    expect(await setClock(byPhone(tapAt("11:45", null), "v1"))).toEqual({ lost: [] });
+    expect(timeOf("ray").at(-1)).toEqual(["break", "11:30", null]);
+    sound();
+  });
+
+  it("moves the clock on the visit to travel on the whole-day clock, and nothing else", async () => {
+    await setClock(byPhone(tapAt("09:00", visit)));
+    await setClock(byPhone(tapAt("11:00", drive), "v1"));
+    expect(timeOf("ray")).toEqual([["v1", "09:00", "11:00"], ["drive", "11:00", null]]);
+    expect(marks("ray")).toEqual([["v1", true, true], ["drive", true, false]]);
+    // Already off the visit (Complete moved them to travel first): no second drive.
+    await setClock(byPhone(tapAt("11:05", drive), "v1"));
+    expect(timeOf("ray")).toHaveLength(2);
+    sound();
+  });
+
+  it("never ends a break, and loses to a tap made after it, as any late tap does", async () => {
+    await setClock(tapAt("09:00", { category: "break" }));
+    expect(await setClock(byPhone(tapAt("09:10", visit)))).toEqual({ lost: [] });
+    expect(timeOf("ray")).toEqual([["break", "09:00", null]]);
+    officeStarts("sam", "shop", "10:00");
+    const result = await setClock(byPhone(clockChange({ userId: "sam", company: { id: "c1" } }, ["sam"], visit, undefined, at("09:55"))));
+    expect(result).toEqual({ lost: ["sam"] });
+    sound();
+  });
+
+  it("shows the same on the clock cards while it waits: only from that visit, never over a break", () => {
+    const running = (category: string, time: string, onVisit?: string) => ({ id: "e1", category, started_at: at(time), visit: onVisit ? { id: onVisit, title: "Gutters" } : null });
+    const tap = (change: ClockChange) => ({ key: "clock" as const, change });
+    expect(clockAfter(running("visit", "09:00", "v1"), tap(byPhone(tapAt("11:00", null), "v1")), "ray")).toBeNull();
+    expect(clockAfter(running("visit", "09:00", "v2"), tap(byPhone(tapAt("11:00", null), "v1")), "ray")).toEqual(running("visit", "09:00", "v2"));
+    expect(clockAfter(running("break", "09:00"), tap(byPhone(tapAt("09:30", visit))), "ray")).toEqual(running("break", "09:00"));
+    expect(clockAfter(running("drive", "08:00"), tap(byPhone(tapAt("09:30", visit))), "ray")).toMatchObject({ category: "visit", visit: { id: "v1" } });
+    // A tap of the person's own does end a break.
+    expect(clockAfter(running("break", "09:00"), tap(tapAt("09:30", visit)), "ray")).toMatchObject({ category: "visit" });
   });
 });

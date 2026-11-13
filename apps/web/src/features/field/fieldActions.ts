@@ -162,11 +162,14 @@ export function statusSaved(result: { skipped: boolean; visitStatus?: string; cl
 export async function setClock(v: ClockChange): Promise<{ lost: string[] }> {
   const db = supabase();
   const running = async (who: string[]) =>
-    who.length ? unwrap(await db.from("time_entries").select("id, user_id, visit_id, started_at").eq("company_id", v.companyId).in("user_id", who).is("ended_at", null)) : [];
+    who.length ? unwrap(await db.from("time_entries").select("id, user_id, visit_id, category, started_at").eq("company_id", v.companyId).in("user_id", who).is("ended_at", null)) : [];
+  // Made by the phone at a property (the clock at the property): marked so on the clocks it starts and stops.
+  const stopped = { ended_at: v.at, out_place: v.place, ...(v.geofence && { geofence_out: true }) };
   if (!v.target) {
-    unwrap(await db.from("time_entries").update({ ended_at: v.at, out_place: v.place }).eq("company_id", v.companyId).in("user_id", v.who).is("ended_at", null).lt("started_at", v.at));
-    // Still on the clock: one that began after this Stop was tapped.
-    return { lost: [...new Set((await running(v.who)).map((entry) => entry.user_id))] };
+    const stop = db.from("time_entries").update(stopped).eq("company_id", v.companyId).in("user_id", v.who).is("ended_at", null).lt("started_at", v.at);
+    unwrap(await (v.fromVisit ? stop.eq("visit_id", v.fromVisit) : stop));
+    // Still on the clock: one that began after this Stop was tapped. Leaving a property leaves any other clock as it is.
+    return { lost: [...new Set((await running(v.who)).filter((entry) => !v.fromVisit || entry.visit_id === v.fromVisit).map((entry) => entry.user_id))] };
   }
   const { target } = v;
   const ids = v.entryIds ?? {};
@@ -174,6 +177,12 @@ export async function setClock(v: ClockChange): Promise<{ lost: string[] }> {
   const sent = Object.values(ids).length ? unwrap(await db.from("time_entries").select("id").in("id", Object.values(ids))).map((entry) => entry.id) : [];
   let who = v.who.filter((id) => !ids[id] || !sent.includes(ids[id]!));
   const open = await running(who);
+  if (v.fromVisit) {
+    // Leaving a property: only whoever's clock is still on that visit moves to travel.
+    who = who.filter((id) => open.some((entry) => entry.user_id === id && entry.visit_id === v.fromVisit && startedBefore(entry, v.at)));
+  }
+  // The phone never ends a break by itself.
+  if (v.geofence) who = who.filter((id) => !open.some((entry) => entry.user_id === id && entry.category === "break" && startedBefore(entry, v.at)));
   // Already on that visit's clock (their own Start, or a crew lead clocked them in): left as it is.
   if (target.visit) who = who.filter((id) => !open.some((entry) => entry.user_id === id && entry.visit_id === target.visit!.id));
   const lost = who.filter((id) => open.some((entry) => entry.user_id === id && !startedBefore(entry, v.at)));
@@ -183,11 +192,15 @@ export async function setClock(v: ClockChange): Promise<{ lost: string[] }> {
     who = who.filter((id) => !covered.includes(id));
   }
   if (!who.length) return { lost };
-  unwrap(await db.from("time_entries").update({ ended_at: v.at, out_place: v.place }).eq("company_id", v.companyId).in("user_id", who).is("ended_at", null).lt("started_at", v.at));
+  unwrap(await db.from("time_entries").update(stopped).eq("company_id", v.companyId).in("user_id", who).is("ended_at", null).lt("started_at", v.at));
   try {
     unwrap(
       await db.from("time_entries").insert(
-        who.map((user_id) => ({ ...(ids[user_id] && { id: ids[user_id] }), company_id: v.companyId, user_id, category: target.category, visit_id: target.visit?.id ?? null, job_id: target.visit?.jobId ?? null, started_at: v.at, in_place: v.place })),
+        who.map((user_id) => ({
+          ...(ids[user_id] && { id: ids[user_id] }),
+          company_id: v.companyId, user_id, category: target.category, visit_id: target.visit?.id ?? null, job_id: target.visit?.jobId ?? null, started_at: v.at, in_place: v.place,
+          ...(v.geofence && { geofence_in: true }),
+        })),
       ),
     );
   } catch (error) {

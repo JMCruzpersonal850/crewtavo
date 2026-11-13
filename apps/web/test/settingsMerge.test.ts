@@ -33,7 +33,9 @@ describe("saving company settings", () => {
 
   it("saves how the clock works beside the other clock settings, under the name the database reads", () => {
     const code = source("CompanySettings.tsx");
-    expect(code).toContain('clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode }');
+    expect(code).toContain('clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode, geofence: { mode: v.geofence_mode, radius: geofenceRadius(v.geofence_radius) } }');
+    // The clock at the property beside it, off unless chosen, read back the way the phone reads it (core geofence).
+    expect(code).toContain("geofence_mode: geofence(s).mode");
     expect(code).toContain("clock_mode: clockMode(s)");
     // Both choices are offered, each with its one line.
     expect(code).toContain("(Object.keys(CLOCK_MODE_LABELS) as ClockMode[]).map");

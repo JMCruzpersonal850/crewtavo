@@ -24,7 +24,7 @@ import { CATEGORY_LABELS, type TimerCategory } from "../field/fieldData";
 import { useMyCrews } from "../schedule/myCrews";
 import { useDispatchOptions } from "../schedule/VisitDialog";
 import { timeEntryProblem } from "@crewtavo/core/pay";
-import { describePlace, type EntryPlaces, type StoredPlace } from "./clockPlace";
+import { atPropertyNote, describePlace, type EntryPlaces, type StoredPlace } from "./clockPlace";
 import { entrySpan } from "./entrySpan";
 import { PayPeriods } from "./PayPeriods";
 import { loadWeek, type Entry, type TeamMember, type WeekData } from "./weekData";
@@ -124,9 +124,10 @@ export function TimesheetsPage() {
           person: name(r.user_id), date: dayOf(r.started_at), start: fmtTime(r.started_at), end: r.ended_at ? fmtTime(r.ended_at) : "",
           hours: r.ended_at ? hours(r.started_at, r.ended_at).toFixed(2) : "", paid_hours: r.ended_at ? paidHours(r).toFixed(2) : "", category: CATEGORY_LABELS[r.category], work: r.visit?.title ?? r.job?.title ?? "", approved: r.approved_at ? "yes" : "no",
           clock_in: placeCell(placeOf(r.id)?.in_place, placeOf(r.id)), clock_out: placeCell(placeOf(r.id)?.out_place, placeOf(r.id)),
+          by_phone: atPropertyNote(r) ?? "",
         })),
         [
-          { key: "person", label: "Person" }, { key: "date", label: "Date" }, { key: "start", label: "Start" }, { key: "end", label: "End" }, { key: "hours", label: "Hours" }, { key: "paid_hours", label: "Paid hours" }, { key: "category", label: "Type" }, { key: "work", label: "Visit or job" }, { key: "approved", label: "Approved" },
+          { key: "person", label: "Person" }, { key: "date", label: "Date" }, { key: "start", label: "Start" }, { key: "end", label: "End" }, { key: "hours", label: "Hours" }, { key: "paid_hours", label: "Paid hours" }, { key: "category", label: "Type" }, { key: "work", label: "Visit or job" }, { key: "approved", label: "Approved" }, { key: "by_phone", label: "At the property" },
           ...(seesPlaces ? [{ key: "clock_in" as const, label: "Clock-in location" }, { key: "clock_out" as const, label: "Clock-out location" }] : []),
         ],
       ),
@@ -213,6 +214,12 @@ export function TimesheetsPage() {
                       <span className="tabular">{fmtTime(r.started_at)} – {r.ended_at ? fmtTime(r.ended_at) : "now"}</span>
                       <span className="muted small" style={{ display: "block" }}>{r.visit?.title ?? r.job?.title ?? CATEGORY_LABELS[r.category]}{r.notes ? ` · ${r.notes}` : ""}</span>
                       {placeOf(r.id) && <ClockPlaces places={placeOf(r.id)!} userId={r.user_id} name={name} />}
+                      {atPropertyNote(r) && (
+                        <span className="small muted row" style={{ gap: 4 }} title="The phone did this by itself as they got to or left a visit's property, not a tap (Settings → Company → Time clock).">
+                          <Icon name="clock" size={12} />
+                          {atPropertyNote(r)}
+                        </span>
+                      )}
                     </span>
                     {isUnpaidBreak(r, pay)
                       ? <span className="tabular muted" title={pay === "unpaid" ? "Breaks aren't paid time" : `Breaks over ${SHORT_BREAK_MINUTES} minutes aren't paid time`}>{hours(r.started_at, r.ended_at).toFixed(2)} h unpaid</span>

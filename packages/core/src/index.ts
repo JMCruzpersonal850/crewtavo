@@ -17,6 +17,7 @@ export * from "./estimates";
 export * from "./forms";
 export * from "./formulas";
 export * from "./geo";
+export * from "./geofence";
 export * from "./hosting";
 export * from "./dns";
 export * from "./documents";

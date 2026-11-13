@@ -1,6 +1,8 @@
 import { lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
 import { BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
 import { CLOCK_MODE_HINTS, CLOCK_MODE_LABELS, clockMode, type ClockMode } from "@crewtavo/core/clock";
+import { FT_PER_M } from "@crewtavo/core/geo";
+import { GEOFENCE_MODE_HINTS, GEOFENCE_MODE_LABELS, GEOFENCE_NOTE, GEOFENCE_RADIUS, geofence, geofenceRadius, type GeofenceMode } from "@crewtavo/core/geofence";
 import { completesWhenVisitsDone } from "@crewtavo/core/jobBilling";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
 import { PRESETS } from "@crewtavo/core/presets";
@@ -24,6 +26,9 @@ const BREAK_HINTS: Record<BreakPay, string> = {
   paid: "Every break counts as paid time, lunch included.",
   unpaid: "No break counts as paid time. Federal rules say rest breaks of 20 minutes or less must be paid, so check before choosing this.",
 };
+// The clock at the property's choices of how close counts as there, in meters, said in feet too.
+const RADII = [100, 150, 200, 300, 400, 500];
+const radiusLabel = (m: number) => `${m} m (${(Math.round((m * FT_PER_M) / 10) * 10).toLocaleString("en-US")} ft)`;
 // Monday first, as the week reads; settings.working_hours.days keeps them as 0 (Sunday) to 6.
 const WEEK = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]] as const;
 const BRAND_COLORS = ["#0f2a35", "#3b7d23", "#1d4ed8", "#b45309", "#be123c", "#6d28d9", "#0f766e", "#1f2937"];
@@ -55,6 +60,8 @@ export function CompanySettings() {
       record_location: s.clock?.record_location === false ? "" : "1",
       breaks: breakPay(s),
       clock_mode: clockMode(s),
+      geofence_mode: geofence(s).mode,
+      geofence_radius: String(geofence(s).radius),
       complete_jobs: completesWhenVisitsDone(s) ? "1" : "",
       minimum_charge: String(minimumCharge(s) ?? ""),
       late_fee: fee?.type ?? "off", late_fee_amount: fee ? String(fee.amount) : "", late_fee_days: String(fee?.grace_days ?? 7),
@@ -103,7 +110,8 @@ export function CompanySettings() {
         branding: { color: v.color },
         hub_tips: v.hub_tips === "1",
         // mode: read by the database too, when a visit is finished (private.clock_mode).
-        clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode },
+        // geofence: the clock at the property, off unless chosen here (core/geofence.ts).
+        clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode, geofence: { mode: v.geofence_mode, radius: geofenceRadius(v.geofence_radius) } },
         // Read by the database when a job's last visit is finished (private.completes_finished_jobs).
         jobs: { complete_when_visits_done: v.complete_jobs === "1" },
         // Both off unless set (the database adds the lines: 20261104000100 and 000200).
@@ -252,6 +260,19 @@ export function CompanySettings() {
               {(Object.keys(CLOCK_MODE_LABELS) as ClockMode[]).map((m) => <option key={m} value={m}>{CLOCK_MODE_LABELS[m]}</option>)}
             </select>
           </Field>
+          <Field label="At the property" hint={f.geofence_mode === "off" ? GEOFENCE_MODE_HINTS.off : `${GEOFENCE_MODE_HINTS[f.geofence_mode as GeofenceMode]} ${GEOFENCE_NOTE}`}>
+            <select className="select" value={f.geofence_mode} onChange={set("geofence_mode")}>
+              {(Object.keys(GEOFENCE_MODE_LABELS) as GeofenceMode[]).map((m) => <option key={m} value={m}>{GEOFENCE_MODE_LABELS[m]}</option>)}
+            </select>
+          </Field>
+          {f.geofence_mode !== "off" && (
+            <Field label="How close counts as there" hint="The phone compares where it is with the property's spot on the map itself. Where it was is saved only if the switch below is on.">
+              <select className="select" value={f.geofence_radius} onChange={set("geofence_radius")}>
+                {!RADII.includes(Number(f.geofence_radius)) && <option value={f.geofence_radius}>{radiusLabel(Number(f.geofence_radius))}</option>}
+                {RADII.map((m) => <option key={m} value={m}>{radiusLabel(m)}{m === GEOFENCE_RADIUS.default ? " (usual)" : ""}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label="Breaks" hint={BREAK_HINTS[f.breaks as BreakPay]}>
             <select className="select" value={f.breaks} onChange={set("breaks")}>
               {(Object.keys(BREAK_PAY_LABELS) as BreakPay[]).map((b) => <option key={b} value={b}>{BREAK_PAY_LABELS[b]}</option>)}

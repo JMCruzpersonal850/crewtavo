@@ -21,6 +21,9 @@ export interface Entry {
   approved_at: string | null;
   /** The clock was left running and stopped by Crewtavo: the end time is a guess. */
   auto_stopped_at: string | null;
+  /** Started or stopped by the phone at a visit's property, not a tap (timesheets/clockPlace atPropertyNote). */
+  geofence_in: boolean;
+  geofence_out: boolean;
   notes: string | null;
   visit: { title: string } | null;
   job: { title: string } | null;
@@ -43,7 +46,7 @@ export async function loadWeek({ companyId, week, timeZone, seesPlaces }: { comp
       () =>
         supabase()
           .from("time_entries")
-          .select("id, user_id, category, started_at, ended_at, approved_at, auto_stopped_at, notes, visit:visits(title), job:jobs(title)")
+          .select("id, user_id, category, started_at, ended_at, approved_at, auto_stopped_at, geofence_in, geofence_out, notes, visit:visits(title), job:jobs(title)")
           .eq("company_id", companyId)
           .gte("started_at", zonedTimeToUtc(week, "00:00", timeZone).toISOString())
           .lt("started_at", zonedTimeToUtc(addDaysIso(week, 7), "00:00", timeZone).toISOString()),
