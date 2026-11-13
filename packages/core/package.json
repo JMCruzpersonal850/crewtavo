@@ -76,7 +76,10 @@
     "./promos": "./src/promos.ts",
     "./postcards": "./src/postcards.ts",
     "./showcases": "./src/showcases.ts",
-    "./reviewCompare": "./src/reviewCompare.ts"
+    "./reviewCompare": "./src/reviewCompare.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./i18n/patterns": "./src/i18n/patterns.ts",
+    "./i18n/es": "./src/i18n/es/index.ts"
   },
   "scripts": {
     "test": "vitest run",

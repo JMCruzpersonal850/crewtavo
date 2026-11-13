@@ -30,6 +30,10 @@
           document.querySelector('meta[name="theme-color"]').setAttribute("content", "#191918");
         }
       } catch (e) {}
+      // The language chosen on this phone (src/lib/i18n.tsx), for screen readers from the start.
+      try {
+        if (localStorage.getItem("crewtavo.locale") === "es" && !/^\/(hub|book|u|refer)\//.test(location.pathname)) document.documentElement.lang = "es";
+      } catch (e) {}
       if (/^\/book\//.test(location.pathname) && /[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add("embedded");
     </script>
   </head>

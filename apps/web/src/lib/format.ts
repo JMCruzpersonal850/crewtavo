@@ -1,21 +1,37 @@
 import { taxPercent } from "@crewtavo/core/money";
+import { intlLocale, t } from "./i18n";
 
 /** Currencies a business can pick (Settings → Company and sign-up): the API takes the same list. */
 export { CURRENCIES } from "@crewtavo/core/money";
 
 let currency = "USD";
-let money = new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 });
-let moneyCents = new Intl.NumberFormat("en-US", { style: "currency", currency });
-let compact = new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 });
 
-/** The business's currency (companies.currency), which the session sets; numbers stay en-US, only the symbol changes. */
+/**
+ * Numbers, dates and money in the app's language: "en-US", or "es-US" for Spanish (US-style
+ * numbers and money with Spanish words: "jue, 15 de oct", "9:20 a.m."). Money's formatters are
+ * made once per currency and language.
+ */
+const moneyFormats = new Map<string, { money: Intl.NumberFormat; moneyCents: Intl.NumberFormat; compact: Intl.NumberFormat }>();
+function formats() {
+  const tag = intlLocale();
+  let found = moneyFormats.get(`${tag}|${currency}`);
+  if (!found) {
+    found = {
+      money: new Intl.NumberFormat(tag, { style: "currency", currency, maximumFractionDigits: 0 }),
+      moneyCents: new Intl.NumberFormat(tag, { style: "currency", currency }),
+      compact: new Intl.NumberFormat(tag, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }),
+    };
+    moneyFormats.set(`${tag}|${currency}`, found);
+  }
+  return found;
+}
+
+/** The business's currency (companies.currency), which the session sets; numbers stay US-style, only the symbol changes. */
 export function setCurrency(code: string | null | undefined) {
   const next = (code || "USD").toUpperCase();
   if (next === currency) return;
   try {
-    money = new Intl.NumberFormat("en-US", { style: "currency", currency: next, maximumFractionDigits: 0 });
-    moneyCents = new Intl.NumberFormat("en-US", { style: "currency", currency: next });
-    compact = new Intl.NumberFormat("en-US", { style: "currency", currency: next, notation: "compact", maximumFractionDigits: 1 });
+    new Intl.NumberFormat("en-US", { style: "currency", currency: next });
     currency = next;
   } catch {
     // Not a currency code: keep what was there.
@@ -26,42 +42,46 @@ export function setCurrency(code: string | null | undefined) {
 export const moneyCurrency = () => currency;
 
 
-export const formatMoney = (n: number | null | undefined) => money.format(n ?? 0);
-export const formatMoneyCents = (n: number | null | undefined) => moneyCents.format(n ?? 0);
+export const formatMoney = (n: number | null | undefined) => formats().money.format(n ?? 0);
+export const formatMoneyCents = (n: number | null | undefined) => formats().moneyCents.format(n ?? 0);
 /** "$9.9K", "$1.2M"; amounts under $1,000 stay whole dollars ("$711", not "$710.8"). */
-export const formatMoneyCompact = (n: number | null | undefined) => (Math.abs(n ?? 0) < 1000 ? money : compact).format(n ?? 0);
+export const formatMoneyCompact = (n: number | null | undefined) => (Math.abs(n ?? 0) < 1000 ? formats().money : formats().compact).format(n ?? 0);
 
 /** "Thu, Oct 15" */
 export const formatDay = (value: string | Date) =>
-  new Date(value).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  new Date(value).toLocaleDateString(intlLocale(), { weekday: "short", month: "short", day: "numeric" });
 
 /** "7:20 AM", in `timeZone` when given (the company's), otherwise the browser's. */
 export const formatTime = (value: string | Date, timeZone?: string) =>
-  new Date(String(value).replace(" ", "T")).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
+  new Date(String(value).replace(" ", "T")).toLocaleTimeString(intlLocale(), { hour: "numeric", minute: "2-digit", timeZone });
 
 export const formatNumber = (n: number, digits = 0) =>
-  n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  n.toLocaleString(intlLocale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 /** A tax rate (stored as a fraction) as a percent, to the 0.0001% it's kept to: "8.875%", "8.25%". */
 export const formatTaxRate = (rate: number | string | null | undefined) =>
-  `${taxPercent(rate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`;
+  `${taxPercent(rate).toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`;
 
 /** "Oct 16, 2026" */
 export const formatDate = (value: string | Date | null | undefined) =>
-  value ? new Date(String(value).length === 10 ? `${value}T12:00:00` : value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  value ? new Date(String(value).length === 10 ? `${value}T12:00:00` : value).toLocaleDateString(intlLocale(), { month: "short", day: "numeric", year: "numeric" }) : "—";
 
 /** "Thu, Oct 16, 7:00 AM", in `timeZone` when given (the company's), otherwise the browser's. */
 export const formatDateTime = (value: string | Date, timeZone?: string) =>
-  new Date(value).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone });
+  new Date(value).toLocaleString(intlLocale(), { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone });
 
 /** "3 days ago", "in 2 hours" */
 export function timeAgo(value: string | Date): string {
   const seconds = (new Date(value).getTime() - Date.now()) / 1000;
-  const rtf = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(intlLocale(), { numeric: "auto" });
   const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
   for (const [unit, size] of units) if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
-  return "just now";
+  return t("just now");
 }
+
+/** "Thursday", "jueves": a weekday's name in the app's language (0 is Sunday). */
+export const weekdayName = (day: number, width: "long" | "short" = "long") =>
+  new Date(Date.UTC(2026, 0, 4 + day, 12)).toLocaleDateString(intlLocale(), { weekday: width, timeZone: "UTC" });
 
 const US_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu"];
 // For browsers that can't list every zone.
