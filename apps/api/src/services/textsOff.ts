@@ -43,20 +43,25 @@ export async function numberStopped(admin: Db, companyId: string, to: string | n
   return Boolean(data?.length);
 }
 
-/** The number texted STOP to the company, or Twilio said it had: remembered, once. */
-export async function noteStop(admin: Db, companyId: string, phone: string | null | undefined): Promise<void> {
+/** The number texted STOP to the company, or Twilio said it had: remembered, once. True when that's news. */
+export async function noteStop(admin: Db, companyId: string, phone: string | null | undefined): Promise<boolean> {
   const key = phoneMatchKey(phone);
-  if (!key) return;
-  const { error } = await admin.from("sms_stops").upsert({ company_id: companyId, phone_key: key, phone: (phone ?? "").trim().slice(0, 40) }, { onConflict: "company_id,phone_key", ignoreDuplicates: true });
+  if (!key) return false;
+  const { data, error } = await admin
+    .from("sms_stops")
+    .upsert({ company_id: companyId, phone_key: key, phone: (phone ?? "").trim().slice(0, 40) }, { onConflict: "company_id,phone_key", ignoreDuplicates: true })
+    .select("phone_key");
   if (error) throw new Error(`Couldn't record a STOP: ${error.message}`);
+  return Boolean(data?.length);
 }
 
-/** The number texted START: it can be texted again. */
-export async function clearStop(admin: Db, companyId: string, phone: string | null | undefined): Promise<void> {
+/** The number texted START: it can be texted again. True when it had been stopped. */
+export async function clearStop(admin: Db, companyId: string, phone: string | null | undefined): Promise<boolean> {
   const key = phoneMatchKey(phone);
-  if (!key) return;
-  const { error } = await admin.from("sms_stops").delete().eq("company_id", companyId).eq("phone_key", key);
+  if (!key) return false;
+  const { data, error } = await admin.from("sms_stops").delete().eq("company_id", companyId).eq("phone_key", key).select("phone_key");
   if (error) throw new Error(`Couldn't clear a STOP: ${error.message}`);
+  return Boolean(data?.length);
 }
 
 /**

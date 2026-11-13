@@ -1,7 +1,10 @@
 /**
  * Messaging: send an email or text to a client from the message center, and receive replies to
- * texts (Twilio webhook). Every message is recorded on the client's timeline. A client who texts
- * STOP has texts off (clients.sms_opt_out_at) until they text START, and Crewtavo doesn't text them.
+ * texts (Twilio webhook). Every message is recorded on the client's timeline; a text from a
+ * contact's phone goes there too, and one from a number nobody knows is kept for the office to
+ * attach to a client (services/inboundTexts.ts). A client who texts STOP has texts off
+ * (clients.sms_opt_out_at) until they text START, and no number that texted STOP is texted
+ * (sms_stops, services/textsOff.ts).
  */
 import { SALES } from "@crewtavo/core";
 import { smsKeyword } from "@crewtavo/core/marketing";
@@ -19,7 +22,8 @@ import { sendEmail, sendSms } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
 import { logoImage } from "../services/logo";
-import { clearStop, noteRefusedText, noteStop, numberStopped, numberStoppedRefusal, phoneKey, textsOffRefusal, textsOffTo } from "../services/textsOff";
+import { receiveText } from "../services/inboundTexts";
+import { noteRefusedText, numberStopped, numberStoppedRefusal, phoneKey, textsOffRefusal, textsOffTo } from "../services/textsOff";
 
 export const messages = new Hono<AppEnv>();
 
@@ -96,44 +100,9 @@ messages.post("/webhooks/twilio", async (c) => {
   // STOP or START: what Twilio itself acted on when it says (Advanced Opt-Out), else the words.
   const optOut = (form.OptOutType ?? "").toUpperCase();
   const keyword = optOut === "STOP" ? "stop" : optOut === "START" ? "start" : optOut ? null : smsKeyword(body);
-  const admin = adminClient(c.env);
-  // Match the sender to clients by phone number (last 10 digits), across companies using this number.
-  const { data: candidates } = await admin.from("clients").select("id, company_id, phone, display_name").not("phone", "is", null).ilike("phone", `%${from.slice(-4)}%`).limit(50);
-  const matches = (candidates ?? []).filter((cl) => phoneKey(cl.phone) === from);
-  for (const client of matches) {
-    await admin.from("messages").insert({
-      company_id: client.company_id, client_id: client.id, channel: "sms", direction: "in", status: "received",
-      body, external_id: form.MessageSid ?? null, sent_by: null,
-    });
-    // Texts off from now, or back on: only a change is news (a YES that's an ordinary reply isn't).
-    let changed = false;
-    if (keyword === "stop") {
-      const { data } = await admin.from("clients").update({ sms_opt_out_at: new Date().toISOString() }).eq("id", client.id).is("sms_opt_out_at", null).select("id");
-      changed = Boolean(data?.length);
-      // The number itself, too: a contact kept under it isn't texted either (sms_stops).
-      await noteStop(admin, client.company_id, form.From);
-    } else if (keyword === "start") {
-      const { data } = await admin.from("clients").update({ sms_opt_out_at: null }).eq("id", client.id).not("sms_opt_out_at", "is", null).select("id");
-      changed = Boolean(data?.length);
-      await clearStop(admin, client.company_id, form.From);
-    }
-    const notice = changed && keyword === "stop"
-      ? { title: `${client.display_name} turned off texts`, body: "They texted STOP. Crewtavo won't text them until they text START." }
-      : changed
-        ? { title: `${client.display_name} turned texts back on`, body: `They texted ${body.trim().slice(0, 20).toUpperCase()}, so Crewtavo can text them again.` }
-        : { title: "New text from a client", body: body.slice(0, 200) };
-    const { data: office } = await admin.from("memberships").select("user_id").eq("company_id", client.company_id).eq("active", true).in("role", ["owner", "admin", "office"]);
-    if (office?.length) {
-      await admin.from("notifications").insert(office.map((m) => ({ company_id: client.company_id, user_id: m.user_id, kind: "client", title: notice.title.slice(0, 300), body: notice.body, link: `/messages?client=${client.id}` })));
-    }
-    kickAutomations(c, client.company_id);
-  }
-  // STOP or START from a contact's phone (a spouse or property manager ticked for text reminders):
-  // that number stops, or starts again, for each company that keeps it as a contact's.
-  if (keyword) {
-    const { data: contacts } = await admin.from("client_contacts").select("company_id, phone").not("phone", "is", null).ilike("phone", `%${from.slice(-4)}%`).limit(50);
-    const companies = new Set((contacts ?? []).filter((contact) => phoneKey(contact.phone) === from).map((contact) => contact.company_id));
-    for (const company of companies) await (keyword === "stop" ? noteStop(admin, company, form.From) : clearStop(admin, company, form.From));
-  }
+  // Filed under the client or contact whose number it is, or kept as from an unknown number
+  // (services/inboundTexts.ts). The server's own number is shared by every company here.
+  const touched = await receiveText(adminClient(c.env), { from: form.From!, body, sid: form.MessageSid ?? null, keyword }, null);
+  for (const company of touched) kickAutomations(c, company);
   return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
 });

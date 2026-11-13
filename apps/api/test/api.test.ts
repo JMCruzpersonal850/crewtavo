@@ -410,6 +410,11 @@ describe("texting", () => {
   describe("STOP and START", () => {
     const withTwilio = { ...env, TWILIO_AUTH_TOKEN: "twilio-token" };
     const url = "https://ops.example.com/api/webhooks/twilio";
+    /** The contacts with a number like the sender's, for the tests that have some. */
+    let contacts: Array<{ company_id: string; client_id: string; name: string; phone: string }> = [];
+    afterEach(() => {
+      contacts = [];
+    });
     /** A text from +1 540-555-0163, who's a client in two companies; `changes` is whether the client's texts setting changes. */
     async function text(body: string, extra: Record<string, string> = {}, changes = true) {
       const calls: Array<{ method: string; path: string; params: URLSearchParams; body: any }> = [];
@@ -425,13 +430,9 @@ describe("texting", () => {
             { id: "client-3", company_id: "co-1", phone: "(540) 555-0199", display_name: "Bo Other" },
           ]);
         }
-        // A property manager in a third company's contacts has the number too, and someone else doesn't.
-        if (method === "GET" && path === "client_contacts") {
-          return Response.json([
-            { company_id: "co-3", client_id: "client-9", name: "Ana at Oak HOA", phone: "540.555.0163" },
-            { company_id: "co-3", client_id: "client-9", name: "Someone else", phone: "540-555-0199" },
-          ]);
-        }
+        if (method === "GET" && path === "client_contacts") return Response.json(contacts);
+        // The number wasn't stopped before a STOP, and was before a START, when `changes`.
+        if ((method === "POST" || method === "DELETE") && path === "sms_stops") return Response.json(changes ? [{ phone_key: "5405550163" }] : []);
         if (method === "PATCH" && path === "clients") return Response.json(changes ? [{ id: u.searchParams.get("id")!.slice(3) }] : []);
         if (method === "GET" && path === "memberships") return Response.json([{ user_id: "owner-1" }]);
         return Response.json([]);
@@ -452,15 +453,28 @@ describe("texting", () => {
     }
 
     it("stops the number itself too, for each company that keeps it as a client's or a contact's", async () => {
+      // A property manager in a third company's contacts has the number too, and someone else there doesn't.
+      const others = [
+        { company_id: "co-3", client_id: "client-9", name: "Ana at Oak HOA", phone: "540.555.0163" },
+        { company_id: "co-3", client_id: "client-8", name: "Someone else", phone: "540-555-0199" },
+        // In co-1 the number is a client's own, so the text is filed under that client alone.
+        { company_id: "co-1", client_id: "client-3", name: "Ana, Bo's neighbour", phone: "5405550163" },
+      ];
+      contacts = others;
       const stopped = await text("STOP");
       expect(stopped.stops).toEqual([["co-1", "5405550163", "+15405550163"], ["co-2", "5405550163", "+15405550163"], ["co-3", "5405550163", "+15405550163"]]);
       expect(stopped.starts).toEqual([]);
+      // On the contact's client's timeline, and the office hears who it was.
+      expect(stopped.messages).toEqual([["client-1", "STOP"], ["client-2", "STOP"], ["client-9", "STOP"]]);
+      expect(stopped.notices).toEqual(["Ana Smith turned off texts", "Ana S. turned off texts", "Ana at Oak HOA turned off texts"]);
       const started = await text("START");
       expect(started.starts).toEqual([["eq.co-1", "eq.5405550163"], ["eq.co-2", "eq.5405550163"], ["eq.co-3", "eq.5405550163"]]);
       expect(started.stops).toEqual([]);
+      expect(started.notices).toEqual(["Ana Smith turned texts back on", "Ana S. turned texts back on", "Ana at Oak HOA turned texts back on"]);
       // An ordinary text changes nothing about who can be texted.
       const plain = await text("See you Tuesday");
       expect([plain.stops, plain.starts]).toEqual([[], []]);
+      expect(plain.notices).toEqual(["New text from a client", "New text from a client", "New text from Ana at Oak HOA"]);
     });
 
     it.each(["STOP", "stop ", "Stop.", "STOPALL", "unsubscribe", "opt out", "Revoke"])("turns texts off for every client with the number on %j", async (body) => {
