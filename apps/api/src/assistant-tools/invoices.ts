@@ -137,7 +137,7 @@ export const invoiceTools = {
     run: (ctx, a) => invoiceJobs(salesScope(ctx), a.job_ids, a.send),
   }),
   send_invoice: tool({
-    description: "Send an invoice to the client by email (default) or text, with their link to view and pay it; or just make the link (channel link). A draft becomes sent.",
+    description: "Send an invoice to the client by email (default) or text, with their link to view and pay it; or just make the link (channel link). It goes to the client and their contacts ticked for emails or texts, unless recipients names the addresses or numbers to send it to instead (10 at most). A draft becomes sent.",
     input: z.object({ invoice_id: z.uuid(), ...sendSchema.shape, ...companyArg }),
     area: "invoices",
     run: async (ctx, { invoice_id, company_id: _, ...body }) => sendInvoice(salesScope(ctx), invoice_id, body),

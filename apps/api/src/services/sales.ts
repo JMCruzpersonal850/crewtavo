@@ -8,7 +8,7 @@
 import { laborRates, localDate, workLines, workToBill } from "@crewtavo/core";
 import { hidesExactPrice, inRangeMode, optionsIntroText, rangeIntroText } from "@crewtavo/core/estimates";
 import { optionBaseTotal, toCents, type Amount, type OptionLine, type TotalsPromo } from "@crewtavo/core/money";
-import { MAX_RECIPIENTS, type Recipient } from "@crewtavo/core/recipients";
+import { clientRecipients, emailMatchKey, MAX_RECIPIENTS, phoneMatchKey, uniqueAddresses, type Recipient } from "@crewtavo/core/recipients";
 import { z } from "zod";
 import type { Env } from "../env";
 import { stripeAccess, syncStripeInvoice } from "../integrations/stripe";
@@ -20,8 +20,8 @@ import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
 import { loadOptions, manualApproval } from "./contracts";
 import { logoImage } from "./logo";
-import { recipientsColumn, recipientsFor, sendToEach } from "./recipients";
-import { noteRefusedText, numberStopped, numberStoppedRefusal, textsOffRefusal, textsOffTo } from "./textsOff";
+import { clientReach, recipientsColumn, sendChoicesFor, sendToEach, stoppedNumbers } from "./recipients";
+import { noteRefusedText, numberStoppedRefusal, textsOffRefusal, textsOffTo } from "./textsOff";
 
 /** Who's sending, from where: the person's client, their company, and the address client links use. */
 export interface SalesScope {
@@ -33,7 +33,16 @@ export interface SalesScope {
 
 export const sendSchema = z.object({
   channel: z.enum(["email", "sms", "link"]).default("email"),
-  to: z.string().trim().max(200).optional(), // defaults to the client's email or phone
+  // One address or number, as older callers give it. With neither this nor `recipients`, it goes to
+  // the client's own and to their contacts ticked for emails or texts.
+  to: z.string().trim().max(200).optional().describe("One email address or phone number to send it to instead of the client's."),
+  // Every address or number to send it to (the client's, their contacts', any typed in), instead
+  // of the default. Each is checked, and there are 10 at most.
+  recipients: z
+    .array(z.string().trim().max(200))
+    .max(MAX_RECIPIENTS, `Send it to ${MAX_RECIPIENTS} people at most.`)
+    .optional()
+    .describe("Every email address (or phone number, for a text) to send it to, 10 at most. Leave out to send to the client and their contacts ticked for emails or texts."),
   subject: z.string().trim().max(200).optional(),
   message: z.string().max(4000).optional(),
 });
@@ -151,6 +160,21 @@ async function invoiceLinkLine(s: SalesScope) {
   return (await stripeAccess(s.env, adminClient(s.env), s.companyId)) ? "You can view and pay it online:" : "You can view it online:";
 }
 
+/** How a send went: the office's copy of the link, whether it reached anyone, and who. */
+export interface Delivered {
+  link: string;
+  sent: boolean;
+  /** Why it reached nobody ("Link only" when only the link was asked for), with the provider's status and code. */
+  reason?: string;
+  status?: number;
+  code?: number;
+  id?: string;
+  /** The addresses or numbers it went to. */
+  sent_to?: string[];
+  /** It reached some and not these. */
+  not_sent?: Array<{ to: string; reason: string }>;
+}
+
 /**
  * Email or text the client their link to a quote or invoice (or just make the link), and log it on
  * their timeline. Only an email or text to the client's own email or phone on file carries their
@@ -159,7 +183,7 @@ async function invoiceLinkLine(s: SalesScope) {
  * carry the office's copy too (lib/links clientLinks), so the person sending can't use it, or send
  * it to themselves, to say yes to autopay or tip on the client's saved card for them.
  */
-export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: Deliverable, body: SendBody, defaults: DeliverDefaults = {}) {
+export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: Deliverable, body: SendBody, defaults: DeliverDefaults = {}): Promise<Delivered> {
   // Only a quote template has no client, and it's never sent: a quote is made from it first.
   if (!record.client_id) throw new HttpError(400, TEMPLATE_NOT_SENT);
   const company = must(await s.db.from("companies").select("name, email, phone, address, currency, settings").eq("id", s.companyId).maybeSingle());
@@ -224,32 +248,54 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
 type SendClient = { id: string; display_name: string; email: string | null; phone: string | null; sms_opt_out_at: string | null };
 
 /**
- * Who a quote or invoice goes to. An address or number typed for this send (`to`) is the only one
- * it goes to, as it always was. Without one: the client's own, and their contacts ticked for emails
- * or texts (services/recipients.ts). Never a number that texted STOP. Refuses, with what to fix,
- * when that leaves nobody.
+ * Who a quote or invoice goes to. The addresses or numbers named for this send (`recipients`, as
+ * the Send dialog ticks and types them, and `to`, the one address older callers give) are the only
+ * ones it goes to: every one is checked, and there are MAX_RECIPIENTS at most. With none named: the
+ * client's own, and their contacts ticked for emails or texts (services/recipients.ts). Never a
+ * number that texted STOP. Refuses, with what to fix, when that leaves nobody.
  */
 async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", client: SendClient, body: SendBody, settings: unknown): Promise<Recipient[]> {
-  const typed = body.to?.trim();
+  const reach = await clientReach(admin, companyId, client, settings);
+  const named = uniqueAddresses(channel, [...(body.recipients ?? []), body.to]);
+  if (!named.length) {
+    const people = clientRecipients(channel, client, reach.contacts, reach);
+    if (people.length) return people.slice(0, MAX_RECIPIENTS);
+    if (channel === "email") throw new HttpError(400, "Add a valid email address for this client first.");
+    throw new HttpError(400, client.phone ? textsOffRefusal(client.display_name) : "This client has no phone number.");
+  }
+  if (named.length > MAX_RECIPIENTS) throw new HttpError(400, `Send it to ${MAX_RECIPIENTS} people at most.`);
+  // Whose each address or number is, for the timeline: the client's, a contact's, or one typed in.
+  const key = channel === "email" ? emailMatchKey : phoneMatchKey;
+  const whose = (to: string): Recipient => {
+    if (sentToClient(channel, to, client)) return { to, name: client.display_name, contact_id: null };
+    const contact = reach.contacts.find((c) => key(channel === "email" ? c.email : c.phone) === key(to));
+    return contact ? { to, name: contact.name, contact_id: contact.id } : { to, name: to, contact_id: null };
+  };
   if (channel === "email") {
-    if (typed) {
-      if (!isEmail(typed)) throw new HttpError(400, "Add a valid email address for this client first.");
-      return [{ to: typed, name: sentToClient("email", typed, client) ? client.display_name : typed, contact_id: null }];
-    }
-    const people = await recipientsFor(admin, companyId, client, "email", settings);
-    if (!people.length) throw new HttpError(400, "Add a valid email address for this client first.");
-    return people.slice(0, MAX_RECIPIENTS);
+    const wrong = named.find((to) => !isEmail(to));
+    if (wrong) throw new HttpError(400, named.length === 1 ? "Add a valid email address for this client first." : `${wrong} isn't a valid email address.`);
+    return named.map(whose);
   }
-  if (typed) {
-    // A client who texted STOP isn't texted at their own phone, a quote or invoice included; nor is
-    // any other number that texted STOP.
-    if (textsOffTo(client, typed)) throw new HttpError(400, textsOffRefusal(client.display_name));
-    if (await numberStopped(admin, companyId, typed)) throw new HttpError(400, numberStoppedRefusal(typed));
-    return [{ to: typed, name: sentToClient("sms", typed, client) ? client.display_name : typed, contact_id: null }];
-  }
-  const people = await recipientsFor(admin, companyId, client, "sms", settings);
-  if (!people.length) throw new HttpError(400, client.phone ? textsOffRefusal(client.display_name) : "This client has no phone number.");
-  return people.slice(0, MAX_RECIPIENTS);
+  const wrong = named.find((to) => !phoneMatchKey(to));
+  if (wrong) throw new HttpError(400, `${wrong} isn't a phone number.`);
+  // A client who texted STOP isn't texted at their own phone, a quote or invoice included; nor is
+  // any other number that texted STOP.
+  if (named.some((to) => textsOffTo(client, to))) throw new HttpError(400, textsOffRefusal(client.display_name));
+  const stopped = new Set(await stoppedNumbers(admin, companyId, named));
+  const refused = named.find((to) => stopped.has(phoneMatchKey(to)));
+  if (refused) throw new HttpError(400, numberStoppedRefusal(refused));
+  return named.map(whose);
+}
+
+/**
+ * The people the Send dialog offers for a quote's or invoice's client, by email and by text: the
+ * client and their contacts, with who starts ticked (services/recipients.ts sendChoicesFor).
+ */
+export async function sendChoicesOf(s: SalesScope, kind: "quote" | "invoice", id: string) {
+  const record = must(await s.db.from(kind === "quote" ? "quotes" : "invoices").select("id, client_id").eq("id", id).eq("company_id", s.companyId).maybeSingle(), `${kind === "quote" ? "Quote" : "Invoice"} not found.`);
+  if (!record.client_id) throw new HttpError(400, TEMPLATE_NOT_SENT);
+  const client = must(await s.db.from("clients").select("id, display_name, email, phone, sms_opt_out_at").eq("id", record.client_id).eq("company_id", s.companyId).maybeSingle(), "Client not found.");
+  return { ...(await sendChoicesFor(adminClient(s.env), s.companyId, client)), max: MAX_RECIPIENTS };
 }
 
 /** Start a draft quote from a request, carrying over the client, property and any measurement. */

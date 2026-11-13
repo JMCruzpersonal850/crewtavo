@@ -26,7 +26,7 @@ import { clientLink } from "../lib/links";
 import { roofSegments } from "../services/external";
 import { applyMeasurement } from "../services/measurements";
 import { SITE_PRICE_SET, sitePriceSet } from "../services/roofPackages";
-import { BATCH_JOBS, convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, TOO_MANY_JOBS, type SalesScope } from "../services/sales";
+import { BATCH_JOBS, convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendChoicesOf, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, TOO_MANY_JOBS, type SalesScope } from "../services/sales";
 
 export const sales = new Hono<AppEnv>();
 
@@ -77,6 +77,11 @@ sales.get("/:kind{quotes|invoices}/:id/link", requireUser, requireCompany(SALES)
   if (!record.client_id) throw new HttpError(400, TEMPLATE_NOT_SENT);
   // A one-day preview link that also works while the document is still a draft.
   return c.json({ link: await clientLink(c.env, appUrl(c), { c: c.var.companyId, t: kind, id, pv: 1 }, 1) });
+});
+
+/** Who the Send dialog offers for a quote or invoice: the client and their contacts, by email and by text. */
+sales.get("/:kind{quotes|invoices}/:id/recipients", requireUser, requireCompany(SALES), async (c) => {
+  return c.json(await sendChoicesOf(scope(c), c.req.param("kind") === "quotes" ? "quote" : "invoice", param(c, "id")));
 });
 
 // ---------------------------------------------------------------------------------------------

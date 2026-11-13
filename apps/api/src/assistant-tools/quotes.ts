@@ -243,7 +243,7 @@ export const quoteTools = {
     },
   }),
   send_quote: tool({
-    description: "Send a quote to the client by email (default) or text, with their link to review, choose options and approve it; or just make the link (channel link) to share another way. It's then marked sent.",
+    description: "Send a quote to the client by email (default) or text, with their link to review, choose options and approve it; or just make the link (channel link) to share another way. It goes to the client and their contacts ticked for emails or texts, unless recipients names the addresses or numbers to send it to instead (10 at most). It's then marked sent.",
     input: z.object({ quote_id: z.uuid(), ...sendSchema.shape, ...companyArg }),
     area: "quotes",
     run: async (ctx, { quote_id, company_id: _, ...body }) => sendQuote(salesScope(ctx), quote_id, body),
