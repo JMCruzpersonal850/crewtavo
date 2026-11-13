@@ -28,6 +28,7 @@ import { GeofenceCard } from "./GeofenceCard";
 import { InstallAppCard } from "./InstallAppCard";
 import { myDayKey, useMyDay, type MyDayVisit } from "./myDay";
 import { OfflineNote } from "./OfflineNote";
+import { SpanishOffer } from "./SpanishOffer";
 import { FIELD_SCOPE } from "@/lib/offline";
 import { toast } from "@/lib/toast";
 
@@ -109,6 +110,7 @@ export function FieldTodayPage() {
       </div>
 
       <OfflineNote />
+      <SpanishOffer />
       {!hasRole(session, "admin", "office", "estimator") && <InstallAppCard />}
       {keepsTime(session) && <ClockCard visits={open.filter((v) => v.status === "in_progress").map((v) => ({ id: v.id, title: v.title, job_id: v.job?.id ?? null }))} />}
       {/* The clock at the property, when the company has it on: what the phone asks as they get there and leave. */}

@@ -20,7 +20,7 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
   const sellsPackages = canSell && can(session, "sales");
   const managesEmail = isAdmin && (can(session, "apps") || can(session, "settings"));
   const connectsApps = isAdmin && can(session, "apps");
-  const profile: SettingsItem = { tab: "profile", label: "Profile", icon: "user", keywords: "my account name photo picture avatar password phone notifications theme dark mode appearance spare keys recovery calendar feed directions maps app measure map default imagery" };
+  const profile: SettingsItem = { tab: "profile", label: "Profile", icon: "user", keywords: "my account name photo picture avatar password phone notifications theme dark mode appearance language idioma español spanish spare keys recovery calendar feed directions maps app measure map default imagery" };
   // A sub's settings are their own profile and notifications.
   if (isSub(session)) return [{ title: "You", items: [profile] }];
 

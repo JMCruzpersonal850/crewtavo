@@ -2120,14 +2120,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "avatar_url": string | null,"color": string | null,"created_at": string,"email": string | null,"full_name": string,"phone": string | null,"updated_at": string,"user_id": string
+                    "avatar_url": string | null,"color": string | null,"created_at": string,"email": string | null,"full_name": string,"locale": string | null,"phone": string | null,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "avatar_url"?: string | null,"color"?: string | null,"created_at"?: string,"email"?: string | null,"full_name"?: string,"phone"?: string | null,"updated_at"?: string,"user_id": string
+                    "avatar_url"?: string | null,"color"?: string | null,"created_at"?: string,"email"?: string | null,"full_name"?: string,"locale"?: string | null,"phone"?: string | null,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "avatar_url"?: string | null,"color"?: string | null,"created_at"?: string,"email"?: string | null,"full_name"?: string,"phone"?: string | null,"updated_at"?: string,"user_id"?: string
+                    "avatar_url"?: string | null,"color"?: string | null,"created_at"?: string,"email"?: string | null,"full_name"?: string,"locale"?: string | null,"phone"?: string | null,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     

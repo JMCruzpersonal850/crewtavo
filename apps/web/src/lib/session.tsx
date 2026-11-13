@@ -20,6 +20,7 @@ import { TermsPage } from "@/features/legal/License";
 import { RailwaySetupPage } from "@/features/setup/RailwaySetupPage";
 import { api, ApiError, companyFeatures, loadConfig, setActiveCompany, supabase, type AppConfig } from "./api";
 import { setCurrency } from "./format";
+import { followProfile } from "./i18n";
 import { forgetOfflineCache, keepQueuedFieldActions, keepsDayOffline, pendingFieldActions, signOutWarning, startOfflineCache } from "./offline";
 import { photosNotSent } from "./offlinePhotos";
 import { setRecentsPerson } from "./recent";
@@ -69,7 +70,8 @@ export interface SubLogin {
 }
 
 interface Me {
-  profile: { user_id: string; email: string | null; full_name: string; phone: string | null; color?: string | null; avatar_url?: string | null };
+  /** locale: the language they chose (en, es), or null to follow this device; missing from a server older than it. */
+  profile: { user_id: string; email: string | null; full_name: string; phone: string | null; color?: string | null; avatar_url?: string | null; locale?: string | null };
   /** False when every sign-in this person has is a sub's: they can't set up a business with it. */
   can_create_company?: boolean;
   memberships: Array<{ role: Role; role_name: string; role_id?: string | null; permissions: Permission[]; company: Company; subcontractor?: SubLogin | null; email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean; terms_accepted?: boolean; railway_needed?: boolean }>;
@@ -250,6 +252,13 @@ export function SessionProvider({ children, requireCompany = true }: { children:
   setActiveCompany(membership?.company.id ?? null);
   setRecentsPerson(auth?.user.id ?? null);
   setCurrency(membership?.company.currency);
+
+  // Their own language, once known: the app reloads into it when this device was in another (lib/i18n.tsx).
+  const hasMe = Boolean(me.data);
+  const profileLocale = me.data?.profile.locale;
+  useEffect(() => {
+    if (hasMe) followProfile(profileLocale);
+  }, [hasMe, profileLocale]);
 
   // Crews and subs keep their day on the phone; queued field actions survive closing the app (lib/offline.ts).
   const userId = auth?.user.id;

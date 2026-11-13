@@ -1,5 +1,6 @@
 /** Public config, the signed-in user, onboarding (company + trade preset), the license and team invites. */
 import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetCustomFields, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
+import { LOCALES } from "@crewtavo/core/i18n";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv, Env } from "../env";
@@ -91,7 +92,7 @@ account.get("/presets", (c) => c.json(presetSummaries()));
 account.get("/me", requireUser, async (c) => {
   const { db, userId } = c.var;
   const [profile, memberships, everyRole] = await Promise.all([
-    db.from("profiles").select("user_id, email, full_name, phone, avatar_url, color").eq("user_id", userId).maybeSingle(),
+    db.from("profiles").select("user_id, email, full_name, phone, avatar_url, color, locale").eq("user_id", userId).maybeSingle(),
     db
       .from("memberships")
       .select("company_id, role, role_id, subcontractor_id, company:companies(id, name, slug, trade_preset, timezone, currency, address, phone, settings)")
@@ -197,7 +198,8 @@ function codeWaysOf(sub: { phone: string | null; email: string | null }, setting
 }
 
 account.patch("/me", requireUser, async (c) => {
-  const body = await readJson(c, z.object({ full_name: z.string().trim().min(1).max(120).optional(), phone: z.string().max(40).nullable().optional() }));
+  // locale: the language they use the app in (null follows their device), and notices reach them in.
+  const body = await readJson(c, z.object({ full_name: z.string().trim().min(1).max(120).optional(), phone: z.string().max(40).nullable().optional(), locale: z.enum(LOCALES).nullable().optional() }));
   const { error } = await c.var.db.from("profiles").update(body).eq("user_id", c.var.userId);
   if (error) throw dbError(error);
   return c.json({ ok: true });
@@ -424,7 +426,7 @@ account.get("/team", requireUser, requireCompany(), async (c) => {
   if (!withSubs) query = query.neq("role", "subcontractor");
   const members = must(await query);
   const profiles = must(
-    await db.from("profiles").select("user_id, full_name, email, phone, color, avatar_url").in("user_id", members.map((m) => m.user_id)),
+    await db.from("profiles").select("user_id, full_name, email, phone, color, avatar_url, locale").in("user_id", members.map((m) => m.user_id)),
   );
   const byId = new Map(profiles.map((p) => [p.user_id, p]));
   // Subs' business names: the subs list is the office's, so just the names, read with the server's key.

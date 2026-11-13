@@ -13,6 +13,7 @@ import { formatPhoneTyping } from "@/lib/validate";
 import { signingInNote, subCodeWays } from "../auth/textCode";
 import { MeasureMapSetting } from "../measure/ImageryPicker";
 import { CalendarFeedCard } from "./CalendarFeedCard";
+import { LanguageCard } from "./Language";
 import { NotificationSettings } from "./NotificationSettings";
 import { PhotoButtons } from "./ProfilePhoto";
 import { SignatureCard } from "./SignatureCard";
@@ -95,6 +96,7 @@ export function ProfileSettings() {
       {signs && <SignatureCard />}
       <NotificationSettings phone={session.profile.phone} />
       <Appearance />
+      <LanguageCard />
       <MapsAppSetting />
       {!sub && <MeasureMapSetting />}
       {!sub && <CalendarFeedCard />}
