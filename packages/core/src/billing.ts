@@ -6,6 +6,7 @@
  *     and the lines that bill them (the database holds each to one line, 20261104000300).
  */
 import { lineTotal, toCents, type Amount } from "./money";
+import { localDate } from "./time";
 
 export interface LateFee {
   type: "flat" | "percent";
@@ -40,12 +41,19 @@ export function lateFeeAmount(balance: Amount, fee: LateFee): number {
  * The day an invoice's late fee goes on (the first day past its grace days), or null when it
  * never will: it has its fee already (an invoice gets one, once), late fees are off for it
  * (no_late_fee), nothing is owed, it isn't due, or it's a draft, paid, void or written off, or a
- * deposit (paid before the work, so never late).
+ * deposit (paid before the work, so never late). The grace days count from the due date, or from
+ * the day a paid invoice was owed again (owed_again_at, where the business is) when that's later:
+ * a payment removed or a refund recorded isn't the client paying late (add_late_fees).
  */
-export function lateFeeOn(invoice: { kind: string; status: string; balance_due: Amount; due_on: string | null; late_fee_at?: string | null; no_late_fee?: boolean | null }, fee: LateFee | null): string | null {
+export function lateFeeOn(
+  invoice: { kind: string; status: string; balance_due: Amount; due_on: string | null; late_fee_at?: string | null; no_late_fee?: boolean | null; owed_again_at?: string | null },
+  fee: LateFee | null,
+  timeZone = "UTC",
+): string | null {
   if (!fee || invoice.kind === "deposit" || invoice.late_fee_at || invoice.no_late_fee || !invoice.due_on || toCents(invoice.balance_due) <= 0) return null;
   if (!["sent", "partially_paid", "overdue"].includes(invoice.status)) return null;
-  const day = new Date(`${invoice.due_on}T12:00:00Z`);
+  const owedAgain = invoice.owed_again_at ? localDate(new Date(invoice.owed_again_at), timeZone) : null;
+  const day = new Date(`${owedAgain && owedAgain > invoice.due_on ? owedAgain : invoice.due_on}T12:00:00Z`);
   day.setUTCDate(day.getUTCDate() + fee.grace_days + 1);
   return day.toISOString().slice(0, 10);
 }

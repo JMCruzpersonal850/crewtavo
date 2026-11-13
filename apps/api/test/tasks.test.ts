@@ -114,6 +114,7 @@ describe("hourly upkeep", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const calls = serve((call) => {
       if (call.path === "rpc/mark_overdue_invoices") return Response.json({ code: "22023", message: 'time zone "Not/AZone" not recognized', details: null, hint: null }, { status: 400 });
+      if (call.path === "rpc/raise_past_due_notices") return 2;
       if (call.path === "rpc/add_late_fees") return 6;
       if (call.path === "rpc/tell_unpaid_deposits") return 1;
       if (call.path === "rpc/emit_invoice_reminders") return 7;
@@ -133,6 +134,7 @@ describe("hourly upkeep", () => {
     autopay.bank.mockResolvedValueOnce(1);
     expect(await runTask("followups", env)).toEqual({
       overdue: 0,
+      owed_again: 2,
       late_fees: 6,
       deposits: 1,
       invoice_reminders: 7,
@@ -151,7 +153,7 @@ describe("hourly upkeep", () => {
     });
     // Cards expiring next month are flagged before the clocks.
     expect(calls.map((c) => c.path)).toEqual([
-      "rpc/mark_overdue_invoices", "rpc/add_late_fees", "rpc/tell_unpaid_deposits", "rpc/emit_invoice_reminders", "rpc/emit_visit_reminders", "rpc/emit_equipment_alerts", "rpc/emit_equipment_document_alerts", "rpc/emit_guide_reviews", "rpc/expire_sub_offers",
+      "rpc/mark_overdue_invoices", "rpc/raise_past_due_notices", "rpc/add_late_fees", "rpc/tell_unpaid_deposits", "rpc/emit_invoice_reminders", "rpc/emit_visit_reminders", "rpc/emit_equipment_alerts", "rpc/emit_equipment_document_alerts", "rpc/emit_guide_reviews", "rpc/expire_sub_offers",
       "rpc/emit_sub_document_alerts", "rpc/emit_card_expiry_alerts", "rpc/clock_upkeep", "rpc/tidy_sign_in_codes",
     ]);
     expect(autopay.reconcile).toHaveBeenCalledWith(env, expect.anything());

@@ -64,6 +64,15 @@ describe("late fees", () => {
     expect(lateFeeOn({ ...owed, no_late_fee: false }, fee)).toBe("2026-10-07");
   });
 
+  it("count the grace days from the day a paid invoice was owed again, where the business is", () => {
+    // Due Oct 1 with five grace days; a payment was removed on Oct 20 (late evening in Chicago is Oct 21 UTC).
+    const again = { ...owed, owed_again_at: "2026-10-21T03:30:00Z" };
+    expect(lateFeeOn(again, fee, "America/Chicago")).toBe("2026-10-26");
+    expect(lateFeeOn(again, fee)).toBe("2026-10-27");
+    // Owed again before it was even due: the due date still decides.
+    expect(lateFeeOn({ ...owed, owed_again_at: "2026-09-20T15:00:00Z" }, fee, "America/Chicago")).toBe("2026-10-07");
+  });
+
   it("never go on a deposit invoice, as the hourly task skips them", () => {
     expect(lateFeeOn({ ...owed, kind: "deposit" }, fee)).toBeNull();
     expect(lateFeeOn(owed, fee)).toBe("2026-10-07");
