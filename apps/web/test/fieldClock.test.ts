@@ -4,18 +4,26 @@
  * doesn't add time twice, and finishing the visit ends every clock still running on it (the
  * database: 20261113000600_finished_visits_end_their_clocks.sql). A sub without a clock moves the
  * visit along and has no time at all, as decided when they tapped.
+ *
+ * On the whole-day clock (settings.clock.mode "day") On my way starts the clock on travel, Start
+ * visit moves it onto the visit and Complete moves it back to travel, for the team and never a sub.
  */
 import { beforeEach, expect, it, vi } from "vitest";
 
 // The server side: the visit's status with the API's forward_only rule (apps/api/src/routes/schedule.ts),
 // and time_entries rows as the database holds them.
 const STEPS: Record<string, number> = { unscheduled: 0, scheduled: 0, en_route: 1, in_progress: 2, completed: 3 };
-type Entry = { id: number; user_id: string; visit_id: string | null; started_at: string; ended_at: string | null };
-const server = { status: "scheduled", completedAt: null as string | null, entries: [] as Entry[], refuseTime: false, sent: [] as object[], order: [] as string[] };
+type Entry = { id: number; company_id?: string; user_id: string; visit_id: string | null; category?: string; started_at: string; ended_at: string | null };
+const server = { status: "scheduled", completedAt: null as string | null, entries: [] as Entry[], refuseTime: false, sent: [] as object[], order: [] as string[], day: false };
 // The database's rule: a clock running on a visit ends when the visit was finished, with no place
-// of its own, and so does a clock-in that arrives afterwards dated before it.
+// of its own, and so does a clock-in that arrives afterwards dated before it. On the whole-day
+// clock (server.day) the person goes on to travel from there.
 const endOnFinishedVisit = () => {
-  for (const e of server.entries) if (e.visit_id === "v1" && e.ended_at === null && server.completedAt && e.started_at < server.completedAt) e.ended_at = server.completedAt;
+  for (const e of [...server.entries]) {
+    if (!(e.visit_id === "v1" && e.ended_at === null && server.completedAt && e.started_at < server.completedAt)) continue;
+    e.ended_at = server.completedAt;
+    if (server.day) server.entries.push({ id: server.entries.length + 1, company_id: e.company_id, user_id: e.user_id, visit_id: null, category: "drive", started_at: `${server.completedAt} +1ms`, ended_at: null });
+  }
 };
 
 vi.mock("../src/lib/api", () => {
@@ -68,9 +76,13 @@ const { setVisitStatus, statusSaved } = await import("../src/features/field/fiel
 const { statusChange } = await import("../src/features/field/fieldData");
 const tap = (userId: string, status: string, at: string, place?: { lat: number; lng: number; accuracy: number }, clock?: boolean) => setVisitStatus({ companyId: "c1", userId, visitId: "v1", jobId: null, status, at, place, clock });
 const timeOf = (userId: string) => server.entries.filter((e) => e.user_id === userId).map((e) => [e.started_at, e.ended_at]);
+/** A tap by someone on the whole-day clock, and their time as "what, from, to". */
+const dayTap = (userId: string, status: string, at: string, place?: { lat: number; lng: number; accuracy: number }) => setVisitStatus({ companyId: "c1", userId, visitId: "v1", jobId: null, status, at, place, clock: true, day: true });
+const dayOf = (userId: string) => server.entries.filter((e) => e.user_id === userId).map((e) => [e.visit_id ? "visit" : e.category, e.started_at, e.ended_at]);
 
 beforeEach(() => {
   server.status = "scheduled";
+  server.day = false;
   server.completedAt = null;
   server.order = [];
   server.entries = [];
@@ -222,4 +234,101 @@ it("dates a Complete by when it was tapped, so one sent after a spell without si
     { status: "completed", forward_only: true, completed_at: "2026-10-17T16:00:00Z" },
     { status: "completed", forward_only: true, completed_at: "2026-10-17T16:05:00Z" },
   ]);
+});
+
+// ----- The whole-day clock -----------------------------------------------------------------------
+
+it("on the whole-day clock, On my way starts the clock on travel, Start visit moves it to the visit and Complete moves it back", async () => {
+  server.day = true;
+  const yard = { lat: 40.1, lng: -75.1, accuracy: 20 };
+  const site = { lat: 40.0004, lng: -75.0003, accuracy: 12 };
+  const onMyWay = await dayTap("alice", "en_route", "2026-10-17T12:40:00Z", yard);
+  expect(dayOf("alice")).toEqual([["drive", "2026-10-17T12:40:00Z", null]]);
+  expect(statusSaved(onMyWay, { status: "en_route" } as never)).toBe("On your way, your clock is running");
+  await dayTap("alice", "in_progress", "2026-10-17T13:00:00Z", site);
+  server.order = [];
+  const done = await dayTap("alice", "completed", "2026-10-17T16:00:00Z", site);
+  expect(dayOf("alice")).toEqual([
+    ["drive", "2026-10-17T12:40:00Z", "2026-10-17T13:00:00Z"],
+    ["visit", "2026-10-17T13:00:00Z", "2026-10-17T16:00:00Z"],
+    ["drive", "2026-10-17T16:00:00Z", null],
+  ]);
+  // Her phone moves her own clock first, with where it was, then the visit is finished.
+  expect(server.order).toEqual(["clock out", "clock in", "visit completed"]);
+  expect(statusSaved(done, { status: "completed" } as never)).toBe("Visit completed, your clock keeps running");
+  // Travel is the Driving timer: on no visit and no job, with the place it started from.
+  const travel = server.entries.at(-1) as Entry & { job_id?: unknown; in_place?: unknown };
+  expect([travel.visit_id ?? null, travel.job_id ?? null, travel.in_place]).toEqual([null, null, site]);
+  expect((server.entries[0] as Entry & { in_place?: unknown; out_place?: unknown }).in_place).toEqual(yard);
+});
+
+it("moves a crewmate on the visit's clock to travel when someone else finishes it (the database), and leaves their own later Complete nothing to do", async () => {
+  server.day = true;
+  await dayTap("alice", "in_progress", "2026-10-17T13:00:00Z");
+  await dayTap("bob", "in_progress", "2026-10-17T13:05:00Z");
+  await dayTap("alice", "completed", "2026-10-17T16:00:00Z");
+  const bob = [["visit", "2026-10-17T13:05:00Z", "2026-10-17T16:00:00Z"], ["drive", "2026-10-17T16:00:00Z +1ms", null]];
+  expect(dayOf("bob")).toEqual(bob);
+  const late = await dayTap("bob", "completed", "2026-10-17T16:10:00Z");
+  expect(dayOf("bob")).toEqual(bob);
+  expect(late.travel).toBe(true);
+});
+
+it("doesn't split the drive when someone already driving taps On my way, or add one when a tap is sent again", async () => {
+  server.day = true;
+  server.entries.push({ id: 1, company_id: "c1", user_id: "alice", visit_id: null, category: "drive", started_at: "2026-10-17T12:00:00Z", ended_at: null });
+  await dayTap("alice", "en_route", "2026-10-17T12:40:00Z");
+  expect(dayOf("alice")).toEqual([["drive", "2026-10-17T12:00:00Z", null]]);
+  await dayTap("alice", "in_progress", "2026-10-17T13:00:00Z");
+  await dayTap("alice", "completed", "2026-10-17T16:00:00Z");
+  const day = dayOf("alice");
+  // Each of the three sent again, after the app closed before it heard back.
+  await dayTap("alice", "en_route", "2026-10-17T12:40:00Z");
+  await dayTap("alice", "in_progress", "2026-10-17T13:00:00Z");
+  await dayTap("alice", "completed", "2026-10-17T16:00:00Z");
+  expect(dayOf("alice")).toEqual(day);
+  expect(day).toHaveLength(3);
+});
+
+it("leaves a break a break, and no clock no clock, when the visit is completed on the whole-day clock", async () => {
+  server.day = true;
+  server.status = "in_progress";
+  server.entries.push({ id: 1, company_id: "c1", user_id: "alice", visit_id: null, category: "break", started_at: "2026-10-17T15:30:00Z", ended_at: null });
+  const onBreak = await dayTap("alice", "completed", "2026-10-17T16:00:00Z");
+  expect(dayOf("alice")).toEqual([["break", "2026-10-17T15:30:00Z", null]]);
+  expect(statusSaved(onBreak, { status: "completed" } as never)).toBe("Visit completed");
+  server.status = "in_progress";
+  server.completedAt = null;
+  await dayTap("bob", "completed", "2026-10-17T16:00:00Z");
+  expect(dayOf("bob")).toEqual([]);
+});
+
+it("doesn't start the day for a visit the office cancelled", async () => {
+  server.day = true;
+  server.status = "cancelled";
+  await dayTap("alice", "en_route", "2026-10-17T12:40:00Z");
+  expect(server.entries).toEqual([]);
+});
+
+it("keeps a sub and a company on visits only off the whole-day clock, as decided at the tap", async () => {
+  const person = (role: string, settings: Record<string, unknown>, extra: object = {}) => ({ role, userId: "u1", subcontractor: null, company: { id: "c1", settings }, ...extra }) as never;
+  const visit = { id: "v1", jobId: null };
+  const whole = { clock: { mode: "day" } };
+  expect(statusChange(person("field_crew", whole), visit, "en_route").change.day).toBe(true);
+  expect(statusChange(person("crew_lead", whole), visit, "completed").change.day).toBe(true);
+  expect(statusChange(person("field_crew", {}), visit, "en_route").change).not.toHaveProperty("day");
+  expect(statusChange(person("field_crew", { clock: { mode: "visits" } }), visit, "en_route").change).not.toHaveProperty("day");
+  const sub = person("subcontractor", whole, { subcontractor: { id: "s1", name: "Apex", can_contact_clients: false, uses_clock: true } });
+  expect(statusChange(sub, visit, "en_route").change).not.toHaveProperty("day");
+  // A sub's On my way never clocks, and their Complete stops their clock, even if a tap said otherwise.
+  await setVisitStatus({ companyId: "c1", userId: "sub", visitId: "v1", jobId: null, status: "en_route", at: "2026-10-17T12:40:00Z", clock: true, sub: true, day: true });
+  expect(server.entries).toEqual([]);
+  await tap("sub", "in_progress", "2026-10-17T13:00:00Z", undefined, true);
+  await setVisitStatus({ companyId: "c1", userId: "sub", visitId: "v1", jobId: null, status: "completed", at: "2026-10-17T15:00:00Z", clock: true, sub: true, day: true });
+  expect(timeOf("sub")).toEqual([["2026-10-17T13:00:00Z", "2026-10-17T15:00:00Z"]]);
+  // Visits only: On my way is off the clock, and Complete stops it.
+  server.status = "scheduled";
+  server.completedAt = null;
+  expect(statusSaved(await tap("alice", "en_route", "2026-10-17T12:40:00Z"), { status: "en_route" } as never)).toBe("On your way");
+  expect(timeOf("alice")).toEqual([]);
 });

@@ -31,6 +31,17 @@ describe("saving company settings", () => {
     expect(page).toContain('j.finished_by_visits_at && ["requires_invoicing", "completed"].includes(j.status)');
   });
 
+  it("saves how the clock works beside the other clock settings, under the name the database reads", () => {
+    const code = source("CompanySettings.tsx");
+    expect(code).toContain('clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode }');
+    expect(code).toContain("clock_mode: clockMode(s)");
+    // Both choices are offered, each with its one line.
+    expect(code).toContain("(Object.keys(CLOCK_MODE_LABELS) as ClockMode[]).map");
+    expect(code).toContain("hint={CLOCK_MODE_HINTS[f.clock_mode as ClockMode]}");
+    const sql = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261113000610_whole_day_clock.sql", import.meta.url)), "utf8");
+    expect(sql).toContain("c.settings -> 'clock' ->> 'mode'");
+  });
+
   it("saves the workdays with the workday hours", () => {
     expect(source("CompanySettings.tsx")).toContain(`working_hours: { start: v.hours_start, end: v.hours_end, days: v.workdays.split(",").map(Number) }`);
   });

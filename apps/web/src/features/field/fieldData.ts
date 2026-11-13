@@ -1,4 +1,5 @@
 /** Shared helpers for the crew (field) screens. */
+import { clockMode } from "@crewtavo/core/clock";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase, unwrap } from "@/lib/api";
@@ -47,11 +48,20 @@ export const clockPlace = (company: Pick<Company, "settings">) => (recordsPlaces
 export const clocksOn = (status: string) => status === "in_progress" || status === "completed";
 
 /**
- * What a status tap saves, as it was made: the time is when it was tapped, and whether it clocks
- * this person in and out (not a sub without a clock), which stays with it if it has to wait for
- * signal. `locate`: the phone's place goes with it, where the company keeps where people clock in,
- * for a tap that starts or stops the clock, and for On my way, to tell the client when the crew
- * should get there (only that time is kept).
+ * Whether this person is on the whole-day clock (Settings → Company → Time clock): On my way starts
+ * their clock on travel, Complete visit moves it back to travel, and it runs until they stop for
+ * the day. The team only: a sub's clock, when the office keeps one, runs for their visits.
+ */
+export const onDayClock = (session: Pick<Session, "role" | "subcontractor"> & { company: Pick<Company, "settings"> }) =>
+  keepsTime(session) && !isSub(session) && clockMode(session.company.settings) === "day";
+
+/**
+ * What a status tap saves, as it was made: the time is when it was tapped, whether it clocks this
+ * person in and out (not a sub without a clock), and whether they're on the whole-day clock, which
+ * stay with it if it has to wait for signal. `locate`: the phone's place goes with it, where the
+ * company keeps where people clock in, for a tap that starts or stops the clock, and for On my way,
+ * to tell the client when the crew should get there (only that time is kept, unless On my way
+ * starts the whole-day clock: then it's where they clocked in).
  */
 export function statusChange(
   session: Pick<Session, "role" | "subcontractor" | "userId"> & { company: Pick<Company, "id" | "settings"> },
@@ -60,7 +70,7 @@ export function statusChange(
   at = new Date().toISOString(),
 ): { change: VisitStatusChange; locate: boolean } {
   const clock = keepsTime(session);
-  const change: VisitStatusChange = { companyId: session.company.id, userId: session.userId, visitId: visit.id, jobId: visit.jobId, status, at, clock, ...(isSub(session) && { sub: true }) };
+  const change: VisitStatusChange = { companyId: session.company.id, userId: session.userId, visitId: visit.id, jobId: visit.jobId, status, at, clock, ...(isSub(session) && { sub: true }), ...(onDayClock(session) && { day: true }) };
   return { change, locate: ((clock && clocksOn(status)) || status === "en_route") && recordsPlaces(session.company) };
 }
 
@@ -104,12 +114,42 @@ export async function clockVisit(companyId: string, userId: string, visit: { id:
   }
   for (const entry of open) {
     // A clock started after `at` (another queued action ran first) can't end before it began.
-    if (entry.started_at >= now) continue;
+    if (!startedBefore(entry, now)) continue;
     unwrap(await db.from("time_entries").update({ ended_at: now, out_place: place }).eq("id", entry.id));
   }
   if (action === "start") {
     unwrap(await db.from("time_entries").insert({ company_id: companyId, user_id: userId, visit_id: visit.id, job_id: visit.job_id, category: "visit", started_at: now, in_place: place }));
   }
+}
+
+/** Whether a clock began before a moment. As moments, not text: the database writes a time another way than the phone does. */
+const startedBefore = (entry: { started_at: string }, at: string) => Date.parse(entry.started_at) < Date.parse(at);
+
+/**
+ * The whole-day clock's travel (Driving, on no visit or job) for the signed-in person, from `at`.
+ * Returns whether they're on travel afterwards.
+ *
+ * On my way: whatever they were on stops and travel starts, unless they're driving already.
+ * Complete visit (`fromVisit`): only their clock on that visit moves to travel. One on a break or
+ * on other work stays as it is, and no clock stays no clock: the day starts with On my way or
+ * Start visit, not with finishing one. (Everyone else on the visit's clock is moved by the
+ * database as the visit is finished: 20261113000610_whole_day_clock.sql.)
+ */
+export async function clockTravel(companyId: string, userId: string, at: string, place?: ClockPlace, fromVisit?: string): Promise<boolean> {
+  const db = supabase();
+  const open = unwrap(await db.from("time_entries").select("id, visit_id, category, started_at").eq("user_id", userId).eq("company_id", companyId).is("ended_at", null));
+  const driving = open.some((entry) => entry.category === "drive" && !entry.visit_id);
+  if (driving) return true;
+  if (!fromVisit) {
+    // Their own On my way sent again after they'd moved on (the app closed before it heard back): that travel is already there.
+    const recorded = unwrap(await db.from("time_entries").select("id").eq("user_id", userId).eq("company_id", companyId).eq("category", "drive").eq("started_at", at).limit(1));
+    if (recorded.length) return false;
+  }
+  const leaving = (fromVisit ? open.filter((entry) => entry.visit_id === fromVisit) : open).filter((entry) => startedBefore(entry, at));
+  if (fromVisit && !leaving.length) return false;
+  for (const entry of leaving) unwrap(await db.from("time_entries").update({ ended_at: at, out_place: place }).eq("id", entry.id));
+  unwrap(await db.from("time_entries").insert({ company_id: companyId, user_id: userId, category: "drive", started_at: at, in_place: place }));
+  return true;
 }
 
 /** Start a general timer (driving, shop time, a break), stopping whatever was running. */

@@ -5,7 +5,7 @@
  */
 import type { QueryClient } from "@tanstack/react-query";
 import { api, supabase, unwrap } from "@/lib/api";
-import { clockVisit, type ClockPlace } from "./fieldData";
+import { clockTravel, clockVisit, type ClockPlace } from "./fieldData";
 
 export interface VisitStatusChange {
   companyId: string;
@@ -25,6 +25,11 @@ export interface VisitStatusChange {
   clock?: boolean;
   /** Tapped by a sub: if the office has since taken them off the clock, the visit still moves on. */
   sub?: boolean;
+  /**
+   * On the whole-day clock, decided at the tap like `clock` (fieldData.onDayClock): On my way starts
+   * their clock on travel, and Complete moves it back to travel instead of stopping it.
+   */
+  day?: boolean;
 }
 
 /**
@@ -89,10 +94,14 @@ export async function setVisitStatus(v: VisitStatusChange) {
   // (a crewmate finished it first), this person still clocks in and out as they tapped. Only a
   // cancelled visit doesn't start a clock, and someone without a clock (a sub, mostly) has none.
   const clocks = v.clock !== false;
+  // The whole-day clock: travel is on it (never a sub's, whatever the tap says).
+  const day = clocks && v.day === true && !v.sub;
   let clockOff = false as boolean;
-  const clock = async (action: "start" | "stop") => {
+  let travel = false as boolean;
+  const clock = async (action: "start" | "stop" | "travel" | "travel from visit") => {
     try {
-      await clockVisit(v.companyId, v.userId, { id: v.visitId, job_id: v.jobId }, action, v.at, v.place);
+      if (action === "start" || action === "stop") await clockVisit(v.companyId, v.userId, { id: v.visitId, job_id: v.jobId }, action, v.at, v.place);
+      else travel = await clockTravel(v.companyId, v.userId, v.at, v.place, action === "travel" ? undefined : v.visitId);
     } catch (error) {
       // A sub whose clock the office turned off after this phone last heard (the database refuses
       // their time now): the visit moved on, and there's simply no clock.
@@ -100,25 +109,32 @@ export async function setVisitStatus(v: VisitStatusChange) {
       clockOff = true;
     }
   };
-  // Their own clock stops before the visit is finished, with where the phone was: finishing a visit
-  // ends every clock still running on it (20261113000600_finished_visits_end_their_clocks.sql), and
-  // one the database ends has no place.
-  if (clocks && v.status === "completed") await clock("stop");
+  // Their own clock stops (or, on the whole-day clock, moves to travel) before the visit is
+  // finished, with where the phone was: finishing a visit does the same to every clock still running
+  // on it (20261113000600_finished_visits_end_their_clocks.sql), and those have no place.
+  if (clocks && v.status === "completed") await clock(day ? "travel from visit" : "stop");
   // As the company it was tapped in, even if the app has switched company since. Forward only: a
   // tap sent again after later ones went out (the app closed before it heard back) is skipped.
   const result = await api.patch<{ skipped?: boolean; status?: string }>(`/visits/${v.visitId}`, visitStatusBody(v), { companyId: v.companyId });
-  if (clocks && v.status === "in_progress" && !(result.skipped && result.status === "cancelled")) await clock("start");
-  return { skipped: Boolean(result.skipped), visitStatus: result.status, ...(clockOff && { clockOff }) };
+  const cancelled = Boolean(result.skipped) && result.status === "cancelled";
+  if (clocks && v.status === "in_progress" && !cancelled) await clock("start");
+  // On my way starts the day's clock. Not when the visit had already moved on: that's this tap sent
+  // again after the ones that followed it, and their time since is already there.
+  if (day && v.status === "en_route" && !result.skipped) await clock("travel");
+  return { skipped: Boolean(result.skipped), visitStatus: result.status, ...(clockOff && { clockOff }), ...(travel && { travel }) };
 }
 
 /** The database turning a clock down: row-level security on time entries. */
 export const clockRefused = (error: unknown) => /row-level security|permission/i.test(error instanceof Error ? error.message : String(error));
 
 /** What a status tap's confirmation says, once the server has it (a toast: no closing period). */
-export function statusSaved(result: { skipped: boolean; visitStatus?: string; clockOff?: boolean } | undefined, change: VisitStatusChange): string {
+export function statusSaved(result: { skipped: boolean; visitStatus?: string; clockOff?: boolean; travel?: boolean } | undefined, change: VisitStatusChange): string {
   const clocks = change.clock !== false && !result?.clockOff;
   if (result?.skipped) return result.visitStatus === "cancelled" ? "The office cancelled this visit" : clocks ? "Your crew already moved this visit on, your time is saved" : "This visit had already moved on";
-  return change.status === "en_route" ? "On your way" : change.status === "in_progress" ? (clocks ? "Visit started, your clock is running" : "Visit started") : "Visit completed";
+  // On the whole-day clock (`travel`: their clock is on travel now) the drive is on the clock too.
+  if (change.status === "en_route") return result?.travel ? "On your way, your clock is running" : "On your way";
+  if (change.status === "in_progress") return clocks ? "Visit started, your clock is running" : "Visit started";
+  return result?.travel ? "Visit completed, your clock keeps running" : "Visit completed";
 }
 
 export interface ChecklistSave {

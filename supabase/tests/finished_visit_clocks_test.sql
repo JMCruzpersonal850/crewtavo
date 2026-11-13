@@ -70,6 +70,9 @@ select tfc.as_user(:'pat');
 select public.create_company('Clockwork Gutters', 'general') as co \gset
 reset role;
 select tfc.as_nobody();
+-- On the clock that stops with the visit (visits only). The whole-day clock, which goes on to travel
+-- instead, is in whole_day_clock_test.sql.
+update public.companies set settings = jsonb_set(settings, '{clock}', '{"mode": "visits"}') where id = :'co';
 insert into public.memberships (company_id, user_id, role) values (:'co', :'ray', 'field_crew'), (:'co', :'sam', 'field_crew'), (:'co', :'tess', 'field_crew');
 insert into public.clients (company_id, display_name) values (:'co', 'Maria Lopez') returning id as maria \gset
 insert into public.jobs (company_id, client_id, title) values (:'co', :'maria', 'Gutters') returning id as job \gset

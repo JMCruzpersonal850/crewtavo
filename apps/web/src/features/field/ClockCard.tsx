@@ -2,13 +2,16 @@
  * The running clock: what I'm on, for how long, and start/stop/switch. Used on My day and Timesheets.
  * On My day it also offers the visits under way, to clock back onto one after a break. Not there for
  * a sub unless the office keeps their hours.
+ *
+ * On the whole-day clock (Settings → Company → Time clock) it runs between visits too, on Driving,
+ * so the way to end the day is here: Stop for the day.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Spinner } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { hasRole, keepsTime, useSession } from "@/lib/session";
-import { CATEGORY_LABELS, clockPlace, clockVisit, recordsPlaces, startTimer, stopTimers, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
+import { CATEGORY_LABELS, clockPlace, clockVisit, onDayClock, recordsPlaces, startTimer, stopTimers, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
 
 interface VisitUnderWay { id: string; title: string; job_id: string | null }
 type ClockAction = TimerCategory | "stop" | VisitUnderWay;
@@ -17,10 +20,11 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
   const session = useSession();
   const queryClient = useQueryClient();
   const clocks = keepsTime(session);
+  const day = onDayClock(session);
   const timer = useRunningTimer(session.company.id, session.userId, clocks);
   const elapsed = useElapsed(timer.data?.started_at);
   const action = useMutation({
-    meta: { success: (_: unknown, v: ClockAction) => (v === "stop" ? "Clock stopped" : typeof v === "object" ? `${v.title}: clock started` : `${CATEGORY_LABELS[v]}: clock started`) },
+    meta: { success: (_: unknown, v: ClockAction) => (v === "stop" ? (day ? "Clock stopped for the day" : "Clock stopped") : typeof v === "object" ? `${v.title}: clock started` : `${CATEGORY_LABELS[v]}: clock started`) },
     mutationFn: async (a: ClockAction) => {
       const place = await clockPlace(session.company);
       if (a === "stop") return stopTimers(session.company.id, session.userId, place);
@@ -44,15 +48,17 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
           <>
             <div className="strong">{visit ? visit.title : CATEGORY_LABELS[timer.data!.category as TimerCategory] ?? "Working"}</div>
             <div className="small" style={{ color: "var(--green-dark)" }}>Clock running · {elapsed}</div>
+            {day && <div className="small muted">It runs between visits too, until you stop for the day.</div>}
           </>
         ) : (
           <>
             <div className="strong">Clock is off</div>
+            {day && <div className="small muted">On my way or Start visit starts your day.</div>}
             {recordsPlaces(session.company) && !hasRole(session, "admin", "office") && <div className="small muted">Clocking in and out saves where you are, for the office.</div>}
           </>
         )}
       </div>
-      {on && <Button variant="dark" icon="pause" loading={action.isPending && action.variables === "stop"} disabled={starting} onClick={() => action.mutate("stop")}>Stop</Button>}
+      {on && <Button variant="dark" icon="pause" loading={action.isPending && action.variables === "stop"} disabled={starting} onClick={() => action.mutate("stop")}>{day ? "Stop for the day" : "Stop"}</Button>}
       <Menu
         label="Start a timer"
         triggerClassName="btn"

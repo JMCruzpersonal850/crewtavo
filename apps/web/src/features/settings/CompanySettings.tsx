@@ -1,5 +1,6 @@
 import { lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
 import { BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
+import { CLOCK_MODE_HINTS, CLOCK_MODE_LABELS, clockMode, type ClockMode } from "@crewtavo/core/clock";
 import { completesWhenVisitsDone } from "@crewtavo/core/jobBilling";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
 import { PRESETS } from "@crewtavo/core/presets";
@@ -53,6 +54,7 @@ export function CompanySettings() {
       hub_tips: s.hub_tips ? "1" : "",
       record_location: s.clock?.record_location === false ? "" : "1",
       breaks: breakPay(s),
+      clock_mode: clockMode(s),
       complete_jobs: completesWhenVisitsDone(s) ? "1" : "",
       minimum_charge: String(minimumCharge(s) ?? ""),
       late_fee: fee?.type ?? "off", late_fee_amount: fee ? String(fee.amount) : "", late_fee_days: String(fee?.grace_days ?? 7),
@@ -100,7 +102,8 @@ export function CompanySettings() {
         arrival_window_min: Number(v.arrival_window_min),
         branding: { color: v.color },
         hub_tips: v.hub_tips === "1",
-        clock: { record_location: v.record_location === "1", breaks: v.breaks },
+        // mode: read by the database too, when a visit is finished (private.clock_mode).
+        clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode },
         // Read by the database when a job's last visit is finished (private.completes_finished_jobs).
         jobs: { complete_when_visits_done: v.complete_jobs === "1" },
         // Both off unless set (the database adds the lines: 20261104000100 and 000200).
@@ -244,6 +247,11 @@ export function CompanySettings() {
       <div className="card card-pad stack">
         <strong>Time clock</strong>
         <div className="form-grid">
+          <Field label="How the clock works" hint={CLOCK_MODE_HINTS[f.clock_mode as ClockMode]}>
+            <select className="select" value={f.clock_mode} onChange={set("clock_mode")}>
+              {(Object.keys(CLOCK_MODE_LABELS) as ClockMode[]).map((m) => <option key={m} value={m}>{CLOCK_MODE_LABELS[m]}</option>)}
+            </select>
+          </Field>
           <Field label="Breaks" hint={BREAK_HINTS[f.breaks as BreakPay]}>
             <select className="select" value={f.breaks} onChange={set("breaks")}>
               {(Object.keys(BREAK_PAY_LABELS) as BreakPay[]).map((b) => <option key={b} value={b}>{BREAK_PAY_LABELS[b]}</option>)}

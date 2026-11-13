@@ -234,9 +234,10 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
     </td>
     <td width="34%" valign="top">
       <p><strong>In the field.</strong> <em>My day</em> on any phone: on my way, start and finish,
-      gate codes, checklists with signatures, photos, materials used and a crew clock. It installs
-      like an app on Android and iPhone, keeps working with no signal and catches up when the
-      connection is back.</p>
+      gate codes, checklists with signatures, photos, materials used and a crew clock. The clock
+      runs for visits only, or for the whole day with the driving between visits on it: your
+      choice. It installs like an app on Android and iPhone, keeps working with no signal and
+      catches up when the connection is back.</p>
       <p><strong>For your clients.</strong> The Client Hub, with no account to create: approve
       quotes, pay invoices (with an optional tip), see the next visit, ask for changes, request
       work and message the office.</p>
@@ -369,8 +370,10 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   dates, adds their piece pay (per square, per job or per day, from their rate card), flags
   overtime and unapproved time, downloads for your payroll service, and records who's been paid and
   how. Paid time is locked, and hours are paid once: where periods overlap, a later one owes only
-  what the earlier didn't pay. Subs are paid by the job instead, under Subcontractors. Crewtavo
-  doesn't move the money.
+  what the earlier didn't pay. Finishing a visit clocks out everyone still on its clock. On the
+  whole-day clock (Settings → Company → Time clock; new businesses start on it) they go on to
+  Driving instead, from On my way until Stop for the day: travel is paid time, on no job's costs.
+  Subs are paid by the job instead, under Subcontractors. Crewtavo doesn't move the money.
 - **Every trade:** trade presets ([`packages/core/src/presets`](packages/core/src/presets)) load
   starter services, quote formulas, checklists, booking forms and SOP categories when a company
   signs up: plumbing, HVAC, electrical, cleaning, pool and spa, pest control, handyman,

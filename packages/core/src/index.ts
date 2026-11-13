@@ -7,6 +7,7 @@ export * from "./billing";
 export * from "./breaks";
 export * from "./campaigns";
 export * from "./chat";
+export * from "./clock";
 export * from "./clientImport";
 export * from "./contracts";
 export * from "./customFields";
