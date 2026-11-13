@@ -82,9 +82,11 @@ export function FieldTodayPage() {
         supabase().from("crew_members").select("crew_id").eq("user_id", session.userId),
       ]);
       // The visits I'm on: the ones I'm listed on, and my crews' visits with nobody listed (visitPeople).
+      // A crew's visit with other people listed still shows to whoever can see it (a foreman, the
+      // office), as it always has; field crew aren't sent those at all.
       const myCrews = crewPeople(unwrap(crews).map((c) => ({ crew_id: c.crew_id, user_id: session.userId })));
       const mine = schedule.visits
-        .filter((v) => v.status !== "cancelled" && onVisit(v, session.userId, myCrews))
+        .filter((v) => v.status !== "cancelled" && (onVisit(v, session.userId, myCrews) || Boolean(v.crew_id && myCrews.has(v.crew_id))))
         .map((v) => ({ ...v, status: pendingVisitStatus(queryClient, v.id) ?? v.status }));
       return { today: mine.filter((v) => v.scheduled_on === today), tomorrow: mine.filter((v) => v.scheduled_on !== today && !["completed", "cancelled"].includes(v.status)) };
     },
