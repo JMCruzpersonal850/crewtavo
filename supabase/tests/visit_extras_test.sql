@@ -227,7 +227,8 @@ select tvx.check((select bool_and(visit_id = :'mow7'::uuid and visit_was_on is n
 select tvx.refused(format('update public.visit_extras set visit_id = null where id = %L', :'x_leaf'), '%stays on a visit%', 'an extra can''t be taken off its visit and left on none');
 update public.visits set status = 'completed' where id = :'mow7';
 select public.create_invoice_for_job(:'mow', 'visits') as mow_inv5 \gset
-select tvx.check(tvx.lines(:'mow_inv5') = 'Mossy mow 45.00, Leaf haul 55.00, Edging 20.00', 'and they''re billed with that visit');
+-- Both extras were made in one transaction, at one time, so which follows the other isn't set.
+select tvx.check(tvx.lines(:'mow_inv5') in ('Mossy mow 45.00, Leaf haul 55.00, Edging 20.00', 'Mossy mow 45.00, Edging 20.00, Leaf haul 55.00'), 'and they''re billed with that visit');
 commit;
 
 -- A visit with extra work on it isn't one of those a closed job's schedule drops.
