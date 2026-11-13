@@ -9,6 +9,7 @@ import { CANT_SHARE, CLIENT_OPT_OUT, MAX_PHOTOS, type CantShare } from "@crewtav
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { canDrawOn, DrawOnPhoto, OriginalLink } from "@/components/DrawOnPhoto";
 import { featureOn } from "@/components/shell/nav";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
@@ -16,7 +17,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
-import { signedUrls } from "@/lib/files";
+import { photoLinks } from "@/lib/photoMarkup";
 import { formatDate } from "@/lib/format";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
@@ -38,7 +39,11 @@ interface RecordPhoto {
   visit_on: string | null;
   can_share: boolean;
   cant_share: string | null;
+  /** The photo drawn on (lib/photoMarkup.ts): shown instead, the original a tap away. */
+  marked_path: string | null;
+  created_by: string | null;
   url: string | null;
+  originalUrl: string | null;
 }
 
 /**
@@ -75,9 +80,8 @@ export function PhotosCard(props: { jobId: string } | { clientId: string }) {
   const photos = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const rows = unwrap(await supabase().rpc("record_photos", { p_company: session.company.id, p_job: jobId ?? undefined, p_client: clientId ?? undefined })) as unknown as Omit<RecordPhoto, "url">[];
-      const urls = await signedUrls(rows.map((r) => r.path)).catch(() => ({}) as Record<string, string>);
-      return rows.map((r): RecordPhoto => ({ ...r, url: urls[r.path] ?? null }));
+      const rows = unwrap(await supabase().rpc("record_photos", { p_company: session.company.id, p_job: jobId ?? undefined, p_client: clientId ?? undefined })) as unknown as Omit<RecordPhoto, "url" | "originalUrl">[];
+      return photoLinks(rows);
     },
   });
   const show = (id: string, shareable: boolean) => queryClient.setQueryData<RecordPhoto[]>(key, (rows) => rows?.map((r) => (r.id === id ? { ...r, shareable } : r)));
@@ -153,6 +157,8 @@ export function PhotosCard(props: { jobId: string } | { clientId: string }) {
                       <div className="thumb">
                         {p.url ? <a href={p.url} target="_blank" rel="noreferrer" aria-label={`Open ${p.file_name}`}><img src={p.url} alt={p.file_name} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
                         {p.can_share && <ShareToggle photo={p} onShown={(shareable) => show(p.id, shareable)} />}
+                        {p.marked_path && <OriginalLink url={p.originalUrl} label={p.file_name} />}
+                        {canDrawOn(session, p) && <DrawOnPhoto photo={p} label={p.file_name} onSaved={() => void queryClient.invalidateQueries({ queryKey: key })} />}
                       </div>
                       {p.shareable && p.can_share && state === "ready" && <span className="chip chip-green" style={{ justifySelf: "start" }}>OK to share</span>}
                       {note && <span className="muted small">{note}</span>}

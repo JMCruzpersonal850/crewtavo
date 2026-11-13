@@ -627,6 +627,33 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .thumb-pick[aria-pressed="true"] .thumb-pick-badge { background: var(--green); color: #fff; box-shadow: none; }
 .thumb-pick:disabled { cursor: not-allowed; }
 .thumb-pick:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Drawing on a photo (components/DrawOnPhoto.tsx): the pen in the bottom-right corner of a photo, a 44 px target like OK to share's. */
+.thumb-draw { position: absolute; right: 0; bottom: 0; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: #fff; }
+.thumb-draw-badge { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: rgba(15, 42, 53, 0.62); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.92); }
+.thumb-draw:focus-visible { outline: none; }
+.thumb-draw:focus-visible .thumb-draw-badge { box-shadow: var(--ring); }
+/* A photo with a drawing: a link to the photo as taken, top left. Fixed colours: it sits on a photo. */
+.thumb-original { position: absolute; left: 6px; top: 6px; padding: 2px 7px; border-radius: var(--radius-pill); background: rgba(15, 42, 53, 0.78); color: #fff; font-size: var(--fs-12); font-weight: 600; line-height: 18px; text-decoration: none; }
+.thumb-original:hover, .thumb-original:focus-visible { background: rgba(15, 42, 53, 0.95); color: #fff; }
+
+/* ---------- Photo editor (components/PhotoEditor.tsx) ---------- */
+/* The whole screen, dark around the photo whatever the theme, so colours on it read true. */
+.photo-editor { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #151515; color: #f2f2f2; display: none; }
+.photo-editor[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.photo-editor::backdrop { background: #151515; }
+.photo-editor-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: #202020; }
+.photo-editor-bar .input { background: #fff; color: #111; }
+.photo-editor-stage { min-height: 0; display: grid; place-items: center; padding: 8px; overflow: hidden; }
+.photo-editor-stage canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.photo-editor-tool { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: #f2f2f2; cursor: pointer; }
+.photo-editor-tool:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.photo-editor-tool[aria-pressed="true"] { background: #f2f2f2; color: #151515; }
+.photo-editor-tool:disabled { opacity: 0.35; cursor: not-allowed; }
+.photo-editor-tool:focus-visible, .photo-editor-swatch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.photo-editor-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); cursor: pointer; }
+.photo-editor-swatch[aria-pressed="true"] { border-color: #151515; box-shadow: 0 0 0 3px #f2f2f2; }
+.photo-editor-problem { color: #ffb4a9; }
+@media (max-width: 600px) { .photo-editor-tools { justify-content: center; } }
 
 /* ---------- Timeline (activity, notes) ---------- */
 .timeline { display: grid; }

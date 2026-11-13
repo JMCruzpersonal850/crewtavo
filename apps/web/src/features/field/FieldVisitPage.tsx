@@ -14,6 +14,8 @@ import { shownCustomFields } from "@crewtavo/core/customFields";
 import { onlineManager, useIsMutating, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type ChangeEvent, type RefObject } from "react";
 import { Link, useParams } from "react-router-dom";
+import { canDrawOn, DrawOnPhoto, OriginalLink } from "@/components/DrawOnPhoto";
+import { PhotoEditor } from "@/components/PhotoEditor";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
@@ -27,7 +29,7 @@ import { PageError } from "@/components/ui/States";
 import { EntityStatus, StatusPill } from "@/components/ui/StatusPill";
 import { supabase, unwrap, unwrapOne } from "@/lib/api";
 import { errorMessage, isAuthError } from "@/lib/errors";
-import { signedUrls } from "@/lib/files";
+import { photoLinks } from "@/lib/photoMarkup";
 import { addressLine, formatDateTime, timeAgo } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
 import { useListAnimation } from "@/lib/motion";
@@ -742,7 +744,14 @@ const Checklist = forwardRef<
   );
 });
 
-interface Photo { id: string; path: string; file_name: string; caption: string | null; content_type: string | null; shareable: boolean; created_at: string; created_by: string | null; url: string | null }
+interface Photo {
+  id: string; path: string; file_name: string; caption: string | null; content_type: string | null; shareable: boolean; created_at: string; created_by: string | null;
+  /** The photo drawn on, shown instead of it (lib/photoMarkup.ts). */
+  marked_path: string | null;
+  /** What it shows (its drawing, if any), and the photo as taken. */
+  url: string | null;
+  originalUrl: string | null;
+}
 type VisitPhotos = ReturnType<typeof useVisitPhotos>;
 
 /**
@@ -763,16 +772,16 @@ function useVisitPhotos(visitId: string) {
   const list = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const rows = unwrap(await supabase().from("attachments").select("id, path, file_name, caption, content_type, shareable, created_at, created_by").eq("owner_type", "visit").eq("owner_id", visitId).order("created_at"));
-      const urls = await signedUrls(rows.map((r) => r.path)).catch(() => ({}) as Record<string, string>);
-      return rows.map((r): Photo => ({ ...r, url: urls[r.path] ?? null }));
+      const rows = unwrap(await supabase().from("attachments").select("id, path, marked_path, file_name, caption, content_type, shareable, created_at, created_by").eq("owner_type", "visit").eq("owner_id", visitId).order("created_at"));
+      return photoLinks(rows);
     },
   });
-  const add = async (files: File[]) => {
+  // `drawn`: one photo drawn on before it's added (the photo editor), kept beside it.
+  const add = async (files: File[], drawn?: Blob | null) => {
     setAdding((n) => n + files.length);
     for (const file of files) {
       try {
-        const kept = await addVisitPhoto({ userId: session.userId, companyId: company.id, visitId }, file);
+        const kept = await addVisitPhoto({ userId: session.userId, companyId: company.id, visitId }, file, files.length === 1 ? drawn : null);
         // Said as it's taken: with no signal and nowhere to keep it, only the open app holds it.
         if (!kept && !onlineManager.isOnline()) toast.warning("This phone couldn't save the photo", { description: "Keep Crewtavo open until you have signal, or the photo will be lost." });
       } catch (error) {
@@ -800,7 +809,9 @@ function useVisitPhotos(visitId: string) {
     adding,
     waiting,
     uploading: adding > 0 || waiting.some((p) => p.sending),
-    add: (files: File[]) => void add(files),
+    add: (files: File[], drawn?: Blob | null) => void add(files, drawn),
+    /** Reloads them: a drawing saved or taken off. */
+    refresh: () => void refreshPhotos(),
     /** One that hasn't uploaded is only on this phone, so removing it has no Undo: asked first. */
     removeWaiting: async (p: PhonePhoto) => {
       if (await confirm({ title: "Remove this photo?", body: "It hasn't uploaded yet, so it will be gone for good.", confirmLabel: "Remove", danger: true })) removePhonePhoto(p.id);
@@ -827,25 +838,59 @@ function useVisitPhotos(visitId: string) {
   };
 }
 
-/** Take or choose photos for the visit: on the Photos card, and on checklist items that ask for them. */
+/**
+ * Take or choose photos for the visit: on the Photos card, and on checklist items that ask for them.
+ * "Draw on a photo" takes or chooses one and opens it to draw on before it's added: the photo and
+ * its drawing go through the phone's queue together, so it works with no signal.
+ */
 function PhotoPicker({ photos }: { photos: VisitPhotos }) {
+  const [drawing, setDrawing] = useState<File | null>(null);
   return (
-    <label className="btn">
-      <Icon name="camera" size={16} />
-      {photos.uploading ? "Uploading…" : "Add photos"}
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        multiple
-        className="sr-only"
-        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-          const files = [...(e.target.files ?? [])];
-          e.target.value = "";
-          if (files.length) photos.add(files);
-        }}
-      />
-    </label>
+    <span className="row wrap" style={{ gap: 8 }}>
+      <label className="btn">
+        <Icon name="camera" size={16} />
+        {photos.uploading ? "Uploading…" : "Add photos"}
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          multiple
+          className="sr-only"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const files = [...(e.target.files ?? [])];
+            e.target.value = "";
+            if (files.length) photos.add(files);
+          }}
+        />
+      </label>
+      <label className="btn btn-ghost">
+        <Icon name="pen" size={16} />
+        Draw on a photo
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) setDrawing(file);
+          }}
+        />
+      </label>
+      {drawing && (
+        <PhotoEditor
+          picture={drawing}
+          saveLabel="Add photo"
+          keepsBlank
+          onCancel={() => setDrawing(null)}
+          onSave={(drawn) => {
+            photos.add([drawing], drawn);
+            setDrawing(null);
+          }}
+        />
+      )}
+    </span>
   );
 }
 
@@ -866,6 +911,9 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
             {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.caption ?? p.file_name} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
             {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label="Remove photo" onClick={() => photos.remove(p)}><Icon name="x" size={12} strokeWidth={2} /></button>}
             <ShareToggle photo={p} clientOptOut={clientOptOut} onShown={(shareable) => photos.showShareable(p.id, shareable)} />
+            {/* Drawn on: shown with the drawing, the photo as taken a tap away. */}
+            {p.marked_path && <OriginalLink url={p.originalUrl} label={p.caption ?? p.file_name} />}
+            {canDrawOn(session, p) && <DrawOnPhoto photo={p} label={p.caption ?? p.file_name} onSaved={photos.refresh} />}
           </div>
         ))}
         {photos.waiting.map((p) => <WaitingPhoto key={p.id} photo={p} onRemove={() => void photos.removeWaiting(p)} />)}
@@ -882,11 +930,13 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
 /** A photo that hasn't uploaded yet, shown from the phone, with where it stands. */
 function WaitingPhoto({ photo, onRemove }: { photo: PhonePhoto; onRemove: () => void }) {
   const [url, setUrl] = useState<string>();
+  // Drawn on as it was added: shown with the drawing, as it will be once it's up.
+  const shown = photo.marked?.body ?? photo.body;
   useEffect(() => {
-    const made = URL.createObjectURL(photo.body);
+    const made = URL.createObjectURL(shown);
     setUrl(made);
     return () => URL.revokeObjectURL(made);
-  }, [photo.body]);
+  }, [shown]);
   return (
     <div className="thumb">
       {url && <img src={url} alt={photo.fileName} />}

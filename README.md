@@ -234,7 +234,8 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
     </td>
     <td width="34%" valign="top">
       <p><strong>In the field.</strong> <em>My day</em> on any phone: on my way, start and finish,
-      gate codes, checklists with signatures, photos, materials used and a crew clock. The clock
+      gate codes, checklists with signatures, photos (draw arrows, circles and notes on them, and
+      the original is kept), materials used and a crew clock. The clock
       runs for visits only, or for the whole day with the driving between visits on it: your
       choice. Turn it on and the phone reminds the crew to start and finish a visit as they get to
       the property and leave, or starts and stops their clock there itself, while Crewtavo is open

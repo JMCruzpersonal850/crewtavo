@@ -7,13 +7,16 @@
 import { checklistAnswers, type ChecklistAnswer } from "@crewtavo/core/forms";
 import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
+import { OriginalLink } from "@/components/DrawOnPhoto";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { supabase, unwrap } from "@/lib/api";
 import { signedUrls } from "@/lib/files";
+import { photoPaths, shownPath } from "@/lib/photoMarkup";
 import { formatDate } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
-interface Photo { id: string; file_name: string; url: string | null }
+/** A visit's photo: what it shows (its drawing, if it has one: lib/photoMarkup.ts) and the photo as taken. */
+interface Photo { id: string; file_name: string; url: string | null; marked: boolean; originalUrl: string | null }
 
 function useFilledChecklists(scope: { jobId: string } | { visitId: string }) {
   const session = useSession();
@@ -33,11 +36,11 @@ function useFilledChecklists(scope: { jobId: string } | { visitId: string }) {
       const photoVisits = [...new Set(filled.filter((r) => r.list.some((a) => a.type === "photo")).map((r) => r.visit_id))];
       const [profiles, attachments] = await Promise.all([
         people.length ? db.from("profiles").select("user_id, full_name").in("user_id", people) : null,
-        photoVisits.length ? db.from("attachments").select("id, path, file_name, owner_id").eq("owner_type", "visit").in("owner_id", photoVisits).order("created_at") : null,
+        photoVisits.length ? db.from("attachments").select("id, path, marked_path, file_name, owner_id").eq("owner_type", "visit").in("owner_id", photoVisits).order("created_at") : null,
       ]);
       const names = new Map((profiles ? unwrap(profiles) : []).map((p) => [p.user_id, p.full_name]));
       const files = attachments ? unwrap(attachments) : [];
-      const urls = await signedUrls(files.map((f) => f.path)).catch(() => ({}) as Record<string, string>);
+      const urls = await signedUrls(photoPaths(files)).catch(() => ({}) as Record<string, string>);
       return filled.map((r) => ({
         id: r.id,
         name: r.template?.name ?? "Deleted checklist",
@@ -45,7 +48,7 @@ function useFilledChecklists(scope: { jobId: string } | { visitId: string }) {
         done: Boolean(r.completed_at),
         by: r.completed_by ? names.get(r.completed_by) || "Former team member" : null,
         answers: r.list,
-        photos: files.filter((f) => f.owner_id === r.visit_id).map((f): Photo => ({ id: f.id, file_name: f.file_name, url: urls[f.path] ?? null })),
+        photos: files.filter((f) => f.owner_id === r.visit_id).map((f): Photo => ({ id: f.id, file_name: f.file_name, url: urls[shownPath(f)] ?? urls[f.path] ?? null, marked: Boolean(f.marked_path), originalUrl: urls[f.path] ?? null })),
       }));
     },
   });
@@ -114,6 +117,7 @@ function Answer({ answer: a, photos }: { answer: ChecklistAnswer; photos: Photo[
         {photos.map((p) => (
           <div key={p.id} className="thumb">
             {p.url ? <a href={p.url} target="_blank" rel="noreferrer" aria-label={`Open ${p.file_name}`}><img src={p.url} alt={p.file_name} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
+            {p.marked && <OriginalLink url={p.originalUrl} label={p.file_name} />}
           </div>
         ))}
       </div>

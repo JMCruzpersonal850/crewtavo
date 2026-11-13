@@ -25,6 +25,7 @@
     "./breaks": "./src/breaks.ts",
     "./clock": "./src/clock.ts",
     "./geofence": "./src/geofence.ts",
+    "./photoMarkup": "./src/photoMarkup.ts",
     "./recurrence": "./src/recurrence.ts",
     "./routing": "./src/routing.ts",
     "./slots": "./src/slots.ts",

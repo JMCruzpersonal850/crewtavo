@@ -18,6 +18,7 @@ export * from "./forms";
 export * from "./formulas";
 export * from "./geo";
 export * from "./geofence";
+export * from "./photoMarkup";
 export * from "./hosting";
 export * from "./dns";
 export * from "./documents";
