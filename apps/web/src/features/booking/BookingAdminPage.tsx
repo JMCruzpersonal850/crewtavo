@@ -1,7 +1,11 @@
-/** Online booking: public request forms, their questions and service area, and links to share or embed. */
+/**
+ * Online booking: public request forms, their questions and service area, links to share or embed,
+ * and for an estimate or booking form, letting clients pick a time from the schedule's openings.
+ */
 import { formSlug as slugify, isPostalCode, normalizeIntakeForm } from "@crewtavo/core/forms";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { slotLabel, type OpenSlot } from "@crewtavo/core/slots";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -11,7 +15,7 @@ import { BackLink, PageHeader } from "@/components/ui/PageHeader";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
-import { supabase, unwrap } from "@/lib/api";
+import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useListAnimation } from "@/lib/motion";
 import { can, hasRole, useSession } from "@/lib/session";
@@ -21,7 +25,13 @@ import { EmbedDialog } from "./EmbedDialog";
 const KIND: Record<string, string> = { request: "Request form", assessment: "Book an estimate", booking: "Book a service" };
 type QType = "text" | "long_text" | "number" | "yes_no" | "choice" | "multi_choice" | "files" | "photos";
 interface Question { key: string; label: string; type: QType | "address"; required: boolean; options?: string[] }
-interface FormRow { id: string; slug: string; name: string; kind: string; active: boolean; questions: Question[]; service_area_zips: string[]; lead_time_days: number }
+interface FormRow {
+  id: string; slug: string; name: string; kind: string; active: boolean; questions: Question[]; service_area_zips: string[];
+  // Picking a time: whether clients can, how long a visit is, how soon and how many a day, whose time it books, and whether the office confirms first.
+  pick_time: boolean; slot_minutes: number | null; lead_time_days: number; max_per_day: number | null; crew_id: string | null; requires_approval: boolean;
+}
+/** How long a visit booked online can be, as the form offers them. */
+const LENGTHS: Array<[number, string]> = [[30, "30 minutes"], [45, "45 minutes"], [60, "1 hour"], [90, "1 hour 30 minutes"], [120, "2 hours"], [180, "3 hours"], [240, "4 hours"]];
 // Files and Photos: what people send go in Plans and files on the request (and on to its quote and job).
 const QTYPES: Array<[QType, string]> = [["text", "Short answer"], ["long_text", "Paragraph"], ["number", "Number"], ["yes_no", "Yes / no"], ["choice", "Pick one"], ["multi_choice", "Pick any"], ["files", "Files (plans, PDFs)"], ["photos", "Photos"]];
 
@@ -34,7 +44,7 @@ export function BookingAdminPage() {
   const canEdit = hasRole(session, "admin", "office") && can(session, "settings");
   const forms = useQuery({
     queryKey: ["intake-forms", company.id],
-    queryFn: async () => unwrap(await supabase().from("intake_forms").select("id, slug, name, kind, active, questions, service_area_zips, lead_time_days").eq("company_id", company.id).order("name")) as unknown as FormRow[],
+    queryFn: async () => unwrap(await supabase().from("intake_forms").select("id, slug, name, kind, active, questions, service_area_zips, pick_time, slot_minutes, lead_time_days, max_per_day, crew_id, requires_approval").eq("company_id", company.id).order("name")) as unknown as FormRow[],
   });
   const counts = useQuery({
     queryKey: ["intake-forms", company.id, "counts"],
@@ -98,6 +108,7 @@ export function BookingAdminPage() {
               </div>
               <span className="muted text-sm">
                 {KIND[f.kind] ?? f.kind} · {f.questions.filter((q) => q.type !== "address").length} questions{f.service_area_zips.length ? ` · ${f.service_area_zips.length} service area${f.service_area_zips.length === 1 ? "" : "s"}` : " · any area"}
+                {f.pick_time && f.kind !== "request" ? (f.requires_approval ? " · clients ask for a time" : " · clients book a time") : ""}
               </span>
               <span className="small"><strong>{counts.data?.[f.id] ?? 0}</strong> <span className="muted">requests in the last 30 days</span></span>
               <code style={{ padding: 8, background: "var(--fill)", borderRadius: "var(--radius-control)", fontSize: 12, overflowWrap: "anywhere" }}>{link(f.slug)}</code>
@@ -123,6 +134,21 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
   const [slug, setSlug] = useState(form?.slug ?? "");
   const [kind, setKind] = useState(form?.kind ?? "request");
   const [zips, setZips] = useState((form?.service_area_zips ?? []).join(", "));
+  // Picking a time. A new form starts with it off, as every form made before it existed is.
+  const [pickTime, setPickTime] = useState(form?.pick_time ?? false);
+  const [minutes, setMinutes] = useState(form?.slot_minutes ?? 60);
+  const [leadDays, setLeadDays] = useState(String(form?.lead_time_days ?? 1));
+  const [mostADay, setMostADay] = useState(form?.max_per_day ? String(form.max_per_day) : "");
+  const [crewId, setCrewId] = useState(form?.crew_id ?? "");
+  const [needsOk, setNeedsOk] = useState(form?.requires_approval ?? false);
+  const books = kind !== "request";
+  const lead = Math.min(Math.max(Math.round(Number(leadDays)) || 0, 0), 30);
+  const most = mostADay.trim() ? Math.min(Math.max(Math.round(Number(mostADay)) || 1, 1), 50) : null;
+  const crews = useQuery({
+    queryKey: ["crews", company.id, "booking"],
+    enabled: books,
+    queryFn: async () => unwrap(await supabase().from("crews").select("id, name").eq("company_id", company.id).eq("active", true).order("name").limit(200)),
+  });
   const [questions, setQuestions] = useState<Question[]>(form?.questions.filter((q) => q.type !== "address") ?? [{ key: "details", label: "What do you need done?", type: "long_text", required: true }]);
   const finalSlug = slug.trim() ? slugify(slug) : slugify(name);
   const clash = taken.filter((s) => s !== form?.slug).includes(finalSlug);
@@ -136,7 +162,9 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
     mutationFn: async () => {
       // Checked and tidied the way an AI assistant's are too (packages/core/src/forms.ts).
       const clean = normalizeIntakeForm({ name, slug, zips: zipList, questions }, taken.filter((s) => s !== form?.slug));
-      const row = { ...clean, kind, questions: clean.questions as never };
+      // A request form never offers times; its other booking settings are left as they were.
+      const timing = books ? { pick_time: pickTime, slot_minutes: minutes, lead_time_days: lead, max_per_day: most, crew_id: crewId || null, requires_approval: needsOk } : { pick_time: false };
+      const row = { ...clean, kind, questions: clean.questions as never, ...timing };
       if (form) unwrap(await supabase().from("intake_forms").update(row).eq("id", form.id));
       else unwrap(await supabase().from("intake_forms").insert({ ...row, company_id: company.id }));
     },
@@ -163,6 +191,49 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
         <Field label="Service area ZIP / Postal codes" optional error={badZips.length ? `Not a ZIP or postal code: ${badZips.slice(0, 3).join(", ")}` : null} hint="Separate them with commas. A code covers every one that starts with it, like M5V for M5V 2T6. Leave empty to accept any area.">
           <textarea className="textarea" style={{ minHeight: 60 }} value={zips} onChange={(e) => setZips(e.target.value)} placeholder="24151, 24065, 24184" />
         </Field>
+        {books && (
+          <div className="form-section">
+            <h3>Booking a time</h3>
+            <label className="row" style={{ gap: 12, alignItems: "flex-start" }}>
+              <input type="checkbox" className="switch" checked={pickTime} onChange={(e) => setPickTime(e.target.checked)} />
+              <span className="grow">
+                <strong style={{ display: "block" }}>Let clients pick a time</strong>
+                <span className="muted small">After the questions they choose a day and a time your schedule has open. Off, the form sends a request and you set the time.</span>
+              </span>
+            </label>
+            {pickTime && (
+              <>
+                <div className="form-grid">
+                  <Field label="Visit length" hint="How much time each booking takes on the schedule.">
+                    <select className="select" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+                      {(LENGTHS.some(([m]) => m === minutes) ? LENGTHS : [...LENGTHS, [minutes, `${minutes} minutes`] as [number, string]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Earliest booking, in days" hint="How many days ahead the first time offered is. 0 lets people book today.">
+                    <input className="input" inputMode="numeric" value={leadDays} onChange={(e) => setLeadDays(e.target.value.replace(/\D/g, "").slice(0, 2))} />
+                  </Field>
+                  <Field label="Most a day" optional hint="The most bookings this form takes for one day. Empty is no limit.">
+                    <input className="input" inputMode="numeric" value={mostADay} onChange={(e) => setMostADay(e.target.value.replace(/\D/g, "").slice(0, 2))} />
+                  </Field>
+                  <Field label="Who it books" hint={crewId ? "Times are offered when this crew is free." : "A time is offered only when nothing else on the schedule has it, so nobody is double-booked."}>
+                    <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+                      <option value="">No crew: the whole schedule</option>
+                      {(crews.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <label className="row" style={{ gap: 12, alignItems: "flex-start" }}>
+                  <input type="checkbox" className="switch" checked={needsOk} onChange={(e) => setNeedsOk(e.target.checked)} />
+                  <span className="grow">
+                    <strong style={{ display: "block" }}>Needs our OK before it's booked</strong>
+                    <span className="muted small">{needsOk ? "The time is held and shows on the request, where you book it with one press. The client is told it isn't confirmed yet." : "The visit goes straight onto the schedule, and the client is told it's booked."}</span>
+                  </span>
+                </label>
+                <NextOpenings formId={form?.id} minutes={minutes} leadDays={lead} mostADay={most} crewId={crewId || null} />
+              </>
+            )}
+          </div>
+        )}
         <div className="form-section">
           <h3>Questions</h3>
           <p className="muted small" style={{ margin: "-8px 0 0" }}>Name, email, phone and address are always asked. Files people send (plans, photos) show on the request under Plans and files.</p>
@@ -194,5 +265,41 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/** The next few times a client would be offered with these settings, as a check before saving. */
+function NextOpenings({ formId, minutes, leadDays, mostADay, crewId }: { formId?: string; minutes: number; leadDays: number; mostADay: number | null; crewId: string | null }) {
+  const { company } = useSession();
+  const typed = { form_id: formId, slot_minutes: minutes, lead_time_days: leadDays, max_per_day: mostADay, crew_id: crewId };
+  // Asked for once the typing stops.
+  const [asked, setAsked] = useState(typed);
+  const key = JSON.stringify(typed);
+  useEffect(() => {
+    const timer = setTimeout(() => setAsked(JSON.parse(key)), 500);
+    return () => clearTimeout(timer);
+  }, [key]);
+  const next = useQuery({
+    queryKey: ["booking-next-openings", company.id, asked],
+    meta: { silent: true },
+    placeholderData: keepPreviousData,
+    queryFn: () => api.post<{ timezone: string; timezone_label: string; window_min: number; slots: OpenSlot[] }>("/booking-forms/openings", asked),
+  });
+  return (
+    <div className="stack-sm" aria-live="polite">
+      <strong>The next times a client would see</strong>
+      {next.isPending ? (
+        <span className="muted small">Looking at your schedule…</span>
+      ) : next.error || !next.data ? (
+        <span className="muted small">The open times couldn't be read just now. They'll show here once they can.</span>
+      ) : next.data.slots.length === 0 ? (
+        <span className="muted small">Nothing is open in the next 60 days with these settings. Check your working days and hours in Settings → Company, and what's on the schedule.</span>
+      ) : (
+        <>
+          <div className="row wrap" style={{ gap: 6 }}>{next.data.slots.map((s) => <span key={s.starts_at} className="chip">{slotLabel(s, next.data.timezone, next.data.window_min)}</span>)}</div>
+          <span className="muted small">In {next.data.timezone_label}, from your working hours and what's already on the schedule.</span>
+        </>
+      )}
+    </div>
   );
 }
