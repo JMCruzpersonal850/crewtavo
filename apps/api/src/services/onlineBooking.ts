@@ -158,7 +158,8 @@ export async function bookFormTime(
   const day = await formOpenings(admin, company, form, { now, from: localDate(start, tz), days: 1 });
   if (!day.slots.some((s) => Date.parse(s.starts_at!) === start.getTime())) throw new BookingRefused(TAKEN);
   const { data, error } = await admin.rpc("book_form_time", {
-    p_company: company.id, p_form: form.id, p_name: booking.name, p_email: booking.email as string, p_phone: booking.phone as string,
+    p_company: company.id, p_form: form.id, p_name: booking.name, // Null, not left out, when one wasn't typed: the database is asked for the function by the names it's sent.
+    p_email: (booking.email ?? null) as string, p_phone: (booking.phone ?? null) as string,
     p_address: asJson(booking.address), p_answers: asJson(booking.answers), p_starts_at: start.toISOString(),
     p_promo: booking.promo ?? undefined, p_web_visit: booking.web_visit ? asJson(booking.web_visit) : undefined,
   });

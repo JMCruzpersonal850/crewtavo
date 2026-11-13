@@ -228,6 +228,10 @@ describe("a client books a time", () => {
     expect(db.rpc("book_form_time")).toMatchObject([{
       p_company: "co-1", p_form: "form-1", p_name: "Bob Jones", p_email: "bob@example.com", p_address: lead.address, p_answers: { notes: "Gate code 1234" }, p_starts_at: nine,
     }]);
+    // The email and the phone are both named in the call, null when one wasn't typed: left out, the
+    // database has no function by those names and nobody with only an email could book.
+    const sent = db.rpc("book_form_time")[0] as Record<string, unknown>;
+    expect("p_email" in sent && "p_phone" in sent).toBe(true);
     // The day's openings were read again just before.
     expect(db.rpc("booking_busy_times")).toEqual([{ p_company: "co-1", p_crew: null, p_from: at("2026-11-03", "00:00"), p_to: at("2026-11-04", "00:00") }]);
     const [email] = db.emails();
