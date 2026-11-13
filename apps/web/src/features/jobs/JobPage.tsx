@@ -28,6 +28,7 @@ import { VisitDialog, type VisitInput } from "../schedule/VisitDialog";
 import { useSchedulingRights } from "../schedule/myCrews";
 import { handlesSubPay, useJobPays } from "../subs/payData";
 import { ChangeOrders, useStartChangeOrder } from "./ChangeOrders";
+import { closeQuestion } from "./closing";
 import { ExpensesCard, useJobExpenses } from "./ExpensesCard";
 import { MaterialsCard, useJobMaterials } from "./JobMaterials";
 import { PhotosCard } from "../files/PhotosCard";
@@ -190,7 +191,12 @@ export function JobPage() {
   };
   const update = useMutation({
     meta: { success: (_: unknown, p: TablesUpdate<"jobs">) => (p.status === "requires_invoicing" ? "Job marked complete" : p.status === "archived" ? "Job archived" : p.status === "active" ? "Job reopened" : p.status === "completed" ? "Job closed" : "Job saved"), tone: "job" },
-    mutationFn: async (patch: TablesUpdate<"jobs">) => unwrap(await supabase().from("jobs").update(patch).eq("id", id)),
+    mutationFn: async (patch: TablesUpdate<"jobs">) => {
+      unwrap(await supabase().from("jobs").update(patch).eq("id", id));
+      // A recurring job reopened gets back the visits closing it took off (the server's, as when it's
+      // resumed). If that can't be done now, the nightly run makes them.
+      if (patch.status === "active" && j?.kind === "recurring" && canDispatch) await api.post(`/jobs/${id}/generate-visits`).catch(() => undefined);
+    },
     onSuccess: refresh,
   });
   // The switch moves the moment it's flipped, and back if the database refuses it (no toast: the switch shows it).
@@ -284,6 +290,16 @@ export function JobPage() {
     }
     update.mutate({ status: "requires_invoicing" });
   };
+  /**
+   * Close or archive. The visits its schedule made that are still to come go with it
+   * (20261113000120_closed_jobs_leave_the_schedule.sql), so when there are any it's asked first, with how many.
+   */
+  const closeJob = async (status: "completed" | "archived") => {
+    const waiting = await supabase().rpc("job_visits_to_remove", { p_job: id });
+    const question = closeQuestion(status, j.number, waiting.data ?? 0);
+    if (question && !(await confirm(question))) return;
+    update.mutate({ status });
+  };
   const newVisit = (): VisitInput => ({ job_id: j.id, property_id: j.property?.id ?? null, title: j.title, crew_id: j.default_crew_id, kind: "job", context: { label: `Job #${j.number} · ${j.client?.display_name ?? ""}`, to: `/jobs/${j.id}` } });
 
   // Materials, expenses and sub pay take no room until they have something (or failed to load, to
@@ -329,9 +345,9 @@ export function JobPage() {
                   { label: "Pause job", icon: "pause", hidden: j.status !== "active" || j.kind !== "recurring" || Boolean(j.paused_at), onSelect: () => setDialog("pause") },
                   { label: "Resume job", icon: "play", hidden: !j.paused_at, onSelect: () => resume.mutate() },
                   { label: "Mark work complete", icon: "check", hidden: j.status !== "active" || j.kind === "one_off", onSelect: () => update.mutate({ status: "requires_invoicing" }) },
-                  { label: "Close job", icon: "check", hidden: !["requires_invoicing"].includes(j.status), onSelect: () => update.mutate({ status: "completed" }) },
+                  { label: "Close job", icon: "check", hidden: !["requires_invoicing"].includes(j.status), onSelect: () => closeJob("completed") },
                   { label: "Reopen job", icon: "undo", hidden: j.status === "active", onSelect: () => update.mutate({ status: "active" }) },
-                  { label: "Archive job", icon: "archive", hidden: j.status === "archived", onSelect: () => update.mutate({ status: "archived" }) },
+                  { label: "Archive job", icon: "archive", hidden: j.status === "archived", onSelect: () => closeJob("archived") },
                   {
                     label: "Delete job",
                     icon: "trash",

@@ -103,7 +103,7 @@ export function JobsPage() {
   const archive = async () => {
     const ids = selection.ids;
     const numbers = new Map(rows.map((j) => [j.id, j.number]));
-    if (!(await confirm({ title: `Archive ${plural(ids.length, "job")}?`, body: "They move to Archived. Each can be reopened from its page.", confirmLabel: "Archive" }))) return;
+    if (!(await confirm({ title: `Archive ${plural(ids.length, "job")}?`, body: "They move to Archived, and a recurring job's upcoming visits come off the schedule. Each can be reopened from its page.", confirmLabel: "Archive" }))) return;
     selection.clear();
     archiveWithUndo<{ rows: typeof rows; total: number }>({
       key: listKey,

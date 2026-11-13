@@ -573,6 +573,8 @@ select t1070.check(array(
   'job_state(jobs)',
   -- The same, counted per state for the Jobs list's tabs.
   'job_state_counts(uuid)',
+  -- How many visits closing or archiving a job would remove: the office and estimators only, 0 for a sub.
+  'job_visits_to_remove(uuid)',
   -- Jobs with finished visits to invoice: runs as the caller, so a sub gets no more than the jobs of their own visits.
   'jobs_with_visits_to_invoice(uuid)', 'last_referral_ask(uuid, uuid)', 'last_review_ask(uuid, uuid)',
   'marketing_set_enabled(uuid, boolean)', 'marketing_summary(uuid)', 'material_choices(uuid)', 'merge_clients(uuid, uuid, uuid)',
