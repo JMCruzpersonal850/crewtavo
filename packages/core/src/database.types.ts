@@ -1494,14 +1494,14 @@ isOneToOne: false
                   ]
                 },"jobs": {
                   Row: {
-                    "active_months": (number)[] | null,"autopay": boolean,"autopay_since": string | null,"billing_mode": string,"client_id": string,"company_id": string,"created_at": string,"created_by": string | null,"custom_fields": NonNullable<Json>,"default_crew_id": string | null,"ends_on": string | null,"id": string,"instructions": string | null,"invoice_day": number | null,"invoice_schedule": string | null,"kind": string,"monthly_since": string | null,"number": number | null,"paused_at": string | null,"pauses": NonNullable<Json>,"permit_number": string | null,"po_number": string | null,"pricing": string | null,"property_id": string | null,"quote_id": string | null,"recurrence_rule": string | null,"resume_on": string | null,"resumed_at": string | null,"retainage_pct": number,"salesperson_id": string | null,"source_id": string | null,"starts_on": string | null,"status": string,"title": string,"updated_at": string,"visit_duration_min": number,"visit_start_time": string | null,"visit_time_fixed": boolean,"warranty_until": string | null,"weather_rules": NonNullable<Json>,"job_state": string | null
+                    "active_months": (number)[] | null,"autopay": boolean,"autopay_since": string | null,"billing_mode": string,"client_id": string,"company_id": string,"created_at": string,"created_by": string | null,"custom_fields": NonNullable<Json>,"default_crew_id": string | null,"ends_on": string | null,"finished_by_visits_at": string | null,"id": string,"instructions": string | null,"invoice_day": number | null,"invoice_schedule": string | null,"kind": string,"monthly_since": string | null,"number": number | null,"paused_at": string | null,"pauses": NonNullable<Json>,"permit_number": string | null,"po_number": string | null,"pricing": string | null,"property_id": string | null,"quote_id": string | null,"recurrence_rule": string | null,"resume_on": string | null,"resumed_at": string | null,"retainage_pct": number,"salesperson_id": string | null,"source_id": string | null,"starts_on": string | null,"status": string,"title": string,"updated_at": string,"visit_duration_min": number,"visit_start_time": string | null,"visit_time_fixed": boolean,"warranty_until": string | null,"weather_rules": NonNullable<Json>,"job_state": string | null
                   }
                   ComputedFields: "job_state"
                   Insert: {
-                    "active_months"?: (number)[] | null,"autopay"?: boolean,"autopay_since"?: string | null,"billing_mode"?: string,"client_id": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"default_crew_id"?: string | null,"ends_on"?: string | null,"id"?: string,"instructions"?: string | null,"invoice_day"?: number | null,"invoice_schedule"?: string | null,"kind"?: string,"monthly_since"?: string | null,"number"?: number | null,"paused_at"?: string | null,"pauses"?: NonNullable<Json>,"permit_number"?: string | null,"po_number"?: string | null,"pricing"?: string | null,"property_id"?: string | null,"quote_id"?: string | null,"recurrence_rule"?: string | null,"resume_on"?: string | null,"resumed_at"?: string | null,"retainage_pct"?: number,"salesperson_id"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"title": string,"updated_at"?: string,"visit_duration_min"?: number,"visit_start_time"?: string | null,"visit_time_fixed"?: boolean,"warranty_until"?: string | null,"weather_rules"?: NonNullable<Json>
+                    "active_months"?: (number)[] | null,"autopay"?: boolean,"autopay_since"?: string | null,"billing_mode"?: string,"client_id": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"default_crew_id"?: string | null,"ends_on"?: string | null,"finished_by_visits_at"?: string | null,"id"?: string,"instructions"?: string | null,"invoice_day"?: number | null,"invoice_schedule"?: string | null,"kind"?: string,"monthly_since"?: string | null,"number"?: number | null,"paused_at"?: string | null,"pauses"?: NonNullable<Json>,"permit_number"?: string | null,"po_number"?: string | null,"pricing"?: string | null,"property_id"?: string | null,"quote_id"?: string | null,"recurrence_rule"?: string | null,"resume_on"?: string | null,"resumed_at"?: string | null,"retainage_pct"?: number,"salesperson_id"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"title": string,"updated_at"?: string,"visit_duration_min"?: number,"visit_start_time"?: string | null,"visit_time_fixed"?: boolean,"warranty_until"?: string | null,"weather_rules"?: NonNullable<Json>
                   }
                   Update: {
-                    "active_months"?: (number)[] | null,"autopay"?: boolean,"autopay_since"?: string | null,"billing_mode"?: string,"client_id"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"default_crew_id"?: string | null,"ends_on"?: string | null,"id"?: string,"instructions"?: string | null,"invoice_day"?: number | null,"invoice_schedule"?: string | null,"kind"?: string,"monthly_since"?: string | null,"number"?: number | null,"paused_at"?: string | null,"pauses"?: NonNullable<Json>,"permit_number"?: string | null,"po_number"?: string | null,"pricing"?: string | null,"property_id"?: string | null,"quote_id"?: string | null,"recurrence_rule"?: string | null,"resume_on"?: string | null,"resumed_at"?: string | null,"retainage_pct"?: number,"salesperson_id"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"title"?: string,"updated_at"?: string,"visit_duration_min"?: number,"visit_start_time"?: string | null,"visit_time_fixed"?: boolean,"warranty_until"?: string | null,"weather_rules"?: NonNullable<Json>
+                    "active_months"?: (number)[] | null,"autopay"?: boolean,"autopay_since"?: string | null,"billing_mode"?: string,"client_id"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"default_crew_id"?: string | null,"ends_on"?: string | null,"finished_by_visits_at"?: string | null,"id"?: string,"instructions"?: string | null,"invoice_day"?: number | null,"invoice_schedule"?: string | null,"kind"?: string,"monthly_since"?: string | null,"number"?: number | null,"paused_at"?: string | null,"pauses"?: NonNullable<Json>,"permit_number"?: string | null,"po_number"?: string | null,"pricing"?: string | null,"property_id"?: string | null,"quote_id"?: string | null,"recurrence_rule"?: string | null,"resume_on"?: string | null,"resumed_at"?: string | null,"retainage_pct"?: number,"salesperson_id"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"title"?: string,"updated_at"?: string,"visit_duration_min"?: number,"visit_start_time"?: string | null,"visit_time_fixed"?: boolean,"warranty_until"?: string | null,"weather_rules"?: NonNullable<Json>
                   }
                   Relationships: [
                     {
@@ -4188,6 +4188,9 @@ isOneToOne: false
               "jobs": number,"state": string
             }[]
                            },
+"job_visits_to_remove":
+{ Args: { "p_job": string }; Returns: number
+                           },
 "jobs_with_visits_to_invoice":
 { Args: { "p_company": string }; Returns: {
               "active_months": (number)[] | null,
@@ -4201,6 +4204,7 @@ isOneToOne: false
 "custom_fields": NonNullable<Json>,
 "default_crew_id": string | null,
 "ends_on": string | null,
+"finished_by_visits_at": string | null,
 "id": string,
 "instructions": string | null,
 "invoice_day": number | null,
@@ -4277,6 +4281,11 @@ isOneToOne: false
 "my_sub_pay_totals":
 { Args: { "p_company": string }; Returns: {
               "counted": number,"owed": number,"owed_jobs": number,"paid": number,"payments": number,"year": number
+            }[]
+                           },
+"next_numbers":
+{ Args: { "p_company": string }; Returns: {
+              "highest_used": number,"kind": string,"next_number": number
             }[]
                            },
 "note_meta_access":
@@ -4448,6 +4457,9 @@ isOneToOne: false
                            },
 "set_job_discount_billing":
 { Args: { "p_every_visit": boolean,"p_job": string,"p_key": string }; Returns: number
+                           },
+"set_next_number":
+{ Args: { "p_company": string,"p_kind": string,"p_next": number }; Returns: number
                            },
 "set_photo_shareable":
 { Args: { "p_attachment": string,"p_shareable": boolean }; Returns: Json
