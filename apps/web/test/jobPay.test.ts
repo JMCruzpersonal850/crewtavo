@@ -299,6 +299,10 @@ describe("the job's costs", () => {
   it("does the same for time on the job, and says nothing when the lines had no labor in them", () => {
     expect(jobCosts({ contract: 0, lines, labor: 300, expenses: 0, crewPay: [] })).toMatchObject({ materials: 3020, margin: null, actualLabor: true });
     expect(jobCosts({ contract: 100, lines: [{ quantity: 1, unit_cost: 50 }], labor: 10, expenses: 0, crewPay: [] }).note).toBeNull();
+    // Extra work on a repeating job's visits: billed on top of the price, and costed as the job's lines are.
+    const extras = jobCosts({ contract: 45, lines: [{ quantity: 1, unit_cost: 20 }], labor: 0, expenses: 0, crewPay: [], extras: { price: 120, lines: [{ quantity: 2, unit_cost: 25 }] } });
+    expect(extras).toMatchObject({ extras: 120, materials: 70, profit: 95, margin: 58 });
+    expect(jobCosts({ contract: 45, lines: [], labor: 0, expenses: 0, crewPay: [] }).extras).toBe(0);
   });
   it("keeps the labor estimate while the job's time costs nothing yet (no rate set, or a clock running)", () => {
     expect(jobCosts({ contract: 10000, lines, labor: 0, expenses: 0, crewPay: [] })).toMatchObject({ materials: 4910, leftOut: 0, actualLabor: false, note: null });

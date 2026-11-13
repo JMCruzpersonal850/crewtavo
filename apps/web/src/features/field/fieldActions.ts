@@ -255,6 +255,11 @@ export interface JobLineAdd {
   /** The item's name and unit, to show it on the visit while it waits: not sent, the server uses the price list's. */
   name: string;
   unit: string;
+  /**
+   * The job repeats, so this is extra work on this visit alone (the server decides the same): it
+   * shows with the visit's extra work while it waits, not in the job's list. Not sent.
+   */
+  extra?: boolean;
 }
 
 /** Work added on site: the item and how many, never a price (the office's applies). Safe to send twice. */
@@ -262,14 +267,19 @@ export async function addJobLine(v: JobLineAdd) {
   unwrap(await supabase().rpc("add_field_line", { p_visit: v.visitId, p_service: v.serviceId, p_quantity: v.quantity, p_id: v.lineId }));
 }
 
-/** Lines added on this phone for a job that haven't gone yet, so its list of work shows them meanwhile. */
-export function pendingJobLines(queryClient: QueryClient, jobId: string): JobLineAdd[] {
-  return queryClient
+/** Everything added on this phone that hasn't gone yet. */
+const pendingLineAdds = (queryClient: QueryClient): JobLineAdd[] =>
+  queryClient
     .getMutationCache()
     .findAll({ mutationKey: ["job-line-add"], status: "pending" })
     .map((m) => m.state.variables as JobLineAdd | undefined)
-    .filter((v): v is JobLineAdd => v?.jobId === jobId);
-}
+    .filter((v): v is JobLineAdd => Boolean(v));
+
+/** Lines added on this phone for a job that haven't gone yet, so its list of work shows them meanwhile. */
+export const pendingJobLines = (queryClient: QueryClient, jobId: string): JobLineAdd[] => pendingLineAdds(queryClient).filter((v) => v.jobId === jobId && !v.extra);
+
+/** Extra work added on this phone for a visit of a repeating job that hasn't gone yet. */
+export const pendingVisitExtras = (queryClient: QueryClient, visitId: string): JobLineAdd[] => pendingLineAdds(queryClient).filter((v) => v.visitId === visitId && v.extra === true);
 
 /** A line waiting on this phone as the job's list of work (job_scope) shows it: last, as the server adds it. */
 export const waitingScopeLine = (v: JobLineAdd) => ({ id: v.lineId, name: v.name, description: null, quantity: v.quantity, unit: v.unit, sort: Number.MAX_SAFE_INTEGER });

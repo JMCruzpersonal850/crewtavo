@@ -1,5 +1,6 @@
 import { autopayAllowed, autopayDueText, autopaySettings, methodLabel, type AutopaySettings } from "@crewtavo/core/autopay";
 import { billingText, billsByVisit, monthText } from "@crewtavo/core/jobBilling";
+import { costedExtras, extrasByVisit, takesExtras, visitTakesExtras } from "@crewtavo/core/visitExtras";
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { askRefusal, marketingOn } from "@crewtavo/core/marketing";
 import { contractDiscountNote } from "@crewtavo/core/promos";
@@ -43,6 +44,7 @@ import { jobCosts } from "./jobCosts";
 import { JobPayCard, seesJobPay } from "./JobPayCard";
 import { repeatText } from "./repeatText";
 import { ScopeOfWork } from "./ScopeOfWork";
+import { ExtraWorkDialog, ExtrasToReview, useEditsExtras, useJobExtras, VisitExtraLines } from "./VisitExtras";
 import { askToastKind, type AskResult } from "../marketing/askForm";
 import { CustomFieldList, useCustomFields } from "../customFields/CustomFields";
 import { memberName, useTeam } from "../requests/RequestsPage";
@@ -71,6 +73,9 @@ export function JobPage() {
   // The invoice just made, while its next step offers the job's logged hours and materials.
   const [madeInvoice, setMadeInvoice] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
+  // The visit whose extra work is being added to (a repeating job's).
+  const [extraVisit, setExtraVisit] = useState<{ id: string; title: string; scheduled_on: string | null } | null>(null);
+  const editsExtras = useEditsExtras();
   // The empty section an add button under the line items just opened, shown while its dialog is up.
   const [adding, setAdding] = useState<Extra | null>(null);
   // The add button pressed goes as its section shows, so when the dialog closes keyboard focus goes back
@@ -116,6 +121,8 @@ export function JobPage() {
   const j = job.data;
   useDocumentTitle(j ? `Job #${j.number}` : "Job");
   const clientId = j?.client?.id ?? null;
+  // Extra work on single visits of a repeating job: billed once with its visit, never part of the job's price.
+  const extras = useJobExtras(id, j?.kind === "recurring");
   // Whether the client can be charged now (an agreement in force, not paused, its card active: the
   // rule private.autopay_ready keeps), and the charge waiting for this job's finished work.
   const jobAutopay = useQuery({
@@ -250,12 +257,16 @@ export function JobPage() {
   if (job.error || !j) return <PageError error={job.error} onRetry={() => job.refetch()} back={<BackLink to="/jobs">Jobs</BackLink>} />;
 
   const contract = Number(j.financials?.contract_total ?? 0);
-  const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses ?? 0, crewPay: costs.data?.crewPay ?? [] });
-  const { materials, labor, crew, expenses, profit, margin } = cost;
   const visits = j.visits;
+  const visitExtras = extrasByVisit(extras.data ?? []);
+  const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses ?? 0, crewPay: costs.data?.crewPay ?? [], extras: costedExtras(extras.data ?? [], visits) });
+  const { materials, labor, crew, expenses, profit, margin } = cost;
   const upcoming = visits.filter((v) => !["completed", "cancelled"].includes(v.status));
   const past = visits.filter((v) => ["completed", "cancelled"].includes(v.status));
-  const shownVisits = [...upcoming.slice(0, 12), ...(showPast ? past : [])];
+  // A finished visit whose extra work isn't on an invoice yet stays in sight with the upcoming ones.
+  const owed = showPast ? [] : past.filter((v) => v.status === "completed" && visitExtras.get(v.id)?.some((e) => !e.invoice_id));
+  const shownVisits = [...owed, ...upcoming.slice(0, 12), ...(showPast ? past : [])];
+  const addsExtras = editsExtras && takesExtras(j);
   const uninvoiced = visits.filter((v) => v.status === "completed" && !v.invoice_id && v.kind === "job").length;
   const billed = (invoices.data ?? []).filter((i) => ["deposit", "progress"].includes(i.kind) && i.status !== "void").reduce((s, i) => s + Number(i.subtotal), 0);
   const hasInvoices = Boolean(invoices.data?.length);
@@ -408,6 +419,7 @@ export function JobPage() {
       {charging && j.status !== "archived" && (
         <div className="muted small row" style={{ gap: 6 }}><Icon name="card" size={14} />Charged automatically {autopayDueText(charging.due_at, session.company.timezone)}.</div>
       )}
+      {extras.data && extras.data.length > 0 && <ExtrasToReview jobId={j.id} extras={extras.data} visits={visits} />}
 
       <div className="two-col">
         <div className="wide stack-lg">
@@ -437,8 +449,12 @@ export function JobPage() {
                         {v.invoice_id ? " · invoiced" : ""}
                       </span>
                       {v.hold_reason && <span className="small" style={{ color: "var(--warning)", fontWeight: 600 }}>Weather: {v.hold_reason}</span>}
+                      <VisitExtraLines extras={visitExtras.get(v.id) ?? []} visit={v} />
                     </span>
                     <StatusPill label={statusText("visit", v.status)} tone={visitTone(v.status)} />
+                    {addsExtras && v.kind === "job" && visitTakesExtras(v) && (
+                      <Button size="sm" variant="ghost" icon="plus" aria-label={`Extra work on ${v.title}${v.scheduled_on ? `, ${formatDate(v.scheduled_on)}` : ""}`} title="Extra work on this visit" onClick={(e) => { e.stopPropagation(); setExtraVisit({ id: v.id, title: v.title, scheduled_on: v.scheduled_on }); }}>Extra work</Button>
+                    )}
                     {canDispatch && !["completed", "cancelled"].includes(v.status) && (
                       <Button size="sm" variant="ghost" icon="check" aria-label={`Complete ${v.title}`} title="Mark complete" loading={completeVisit.isPending && completeVisit.variables === v.id} onClick={(e) => { e.stopPropagation(); completeVisit.mutate(v.id); }} />
                     )}
@@ -512,13 +528,15 @@ export function JobPage() {
               <strong>Job costing</strong>
               {costs.isPending ? <Skeleton height={60} /> : (
                 <>
-                  <ProfitBar price={contract} labor={labor} crew={crew} expenses={expenses} materials={materials} />
+                  <ProfitBar price={contract + cost.extras} labor={labor} crew={crew} expenses={expenses} materials={materials} />
                   {/* The figures roll to their new values as line items, time and costs change. */}
                   <div className="totals" style={{ marginTop: 6 }}>
                     <div className="line" style={{ alignItems: "flex-start" }}>
                       <span>Price{contractNote && <span className="muted small" style={{ display: "block" }}>{contractNote}</span>}</span>
                       <AnimatedNumber value={contract} format={MONEY_CENTS} />
                     </div>
+                    {/* Billed once each with its visit, on top of the price, which it doesn't change. */}
+                    {cost.extras !== 0 && <div className="line"><span>Extra work on visits</span><AnimatedNumber value={cost.extras} format={MONEY_CENTS} /></div>}
                     <div className="line"><span>{cost.actualLabor ? "Line item materials" : "Line item costs"}</span><AnimatedNumber value={materials} format={MONEY_CENTS} /></div>
                     <div className="line"><span>Labor ({(costs.data?.hours ?? 0).toFixed(1)} h)</span><AnimatedNumber value={labor} format={MONEY_CENTS} /></div>
                     <div className="line"><span>Sub and crew pay</span><AnimatedNumber value={crew} format={MONEY_CENTS} /></div>
@@ -594,6 +612,7 @@ export function JobPage() {
       </div>
 
       {visit && <VisitDialog visit={visit} onClose={() => setVisit(null)} onSaved={refresh} />}
+      {extraVisit && <ExtraWorkDialog visit={extraVisit} jobId={j.id} onClose={() => setExtraVisit(null)} />}
       {dialog === "details" && <JobDetailsDialog job={j as unknown as JobRecord} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "pause" && <PauseJobDialog jobId={j.id} canSchedule={canDispatch} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "invoice" && (

@@ -52,7 +52,8 @@ import { OfflineNote, useSignal } from "./OfflineNote";
 import { SignaturePad } from "./SignaturePad";
 import { visitChecklists, type VisitChecklist } from "./visitChecklists";
 import { AddWork, VisitInvoice } from "./FieldBilling";
-import { addsWork, fieldInvoiceKind, takesMoney, takesWork } from "./fieldMoney";
+import { addsToVisit, addsWork, fieldInvoiceKind, takesMoney, takesWork } from "./fieldMoney";
+import { VisitExtraScope } from "./FieldExtras";
 import { YourPrice } from "./YourPrice";
 
 interface ChecklistItem { key: string; label: string; type: "check" | "number" | "text" | "choice" | "photo" | "signature"; required: boolean; options?: string[]; sop_page_id?: string }
@@ -89,7 +90,7 @@ export function FieldVisitPage() {
       const row = unwrapOne(
         await supabase()
           .from("visits")
-          .select("id, title, kind, status, starts_at, ends_at, scheduled_on, notes, address, hold_reason, completed_at, series_day, series_total, equipment:visit_equipment(equipment:equipment(id, name, kind)), job:jobs(id, number, title, instructions, property_id, custom_fields, kind, status, pricing, client:clients(display_name, phone, social_photos_opt_out)), request:requests(id, title, details, client:clients(display_name, phone, social_photos_opt_out)), property:properties(id, line1, city, region, postal_code, lat, lng, notes, custom_fields)")
+          .select("id, title, kind, status, starts_at, ends_at, scheduled_on, notes, address, hold_reason, completed_at, invoice_id, series_day, series_total, equipment:visit_equipment(equipment:equipment(id, name, kind)), job:jobs(id, number, title, instructions, property_id, custom_fields, kind, status, pricing, client:clients(display_name, phone, social_photos_opt_out)), request:requests(id, title, details, client:clients(display_name, phone, social_photos_opt_out)), property:properties(id, line1, city, region, postal_code, lat, lng, notes, custom_fields)")
           .eq("id", id)
           .maybeSingle(),
         "This visit",
@@ -291,7 +292,10 @@ export function FieldVisitPage() {
       {v.job && (
         <section className="card card-pad stack-sm">
           <ScopeOfWork jobId={v.job.id} title="The work" bare />
-          {addsWork(session) && takesWork(v.job) && v.status !== "cancelled" && <AddWork visitId={v.id} jobId={v.job.id} />}
+          {/* A repeating job's work is the same every visit; this is what's extra on this one. */}
+          {addsToVisit(v.job) && <VisitExtraScope visitId={v.id} />}
+          {/* Not once a repeating job's visit is on an invoice: the office adds to the invoice then. */}
+          {addsWork(session) && takesWork(v.job) && v.status !== "cancelled" && !(addsToVisit(v.job) && v.invoice_id) && <AddWork visitId={v.id} jobId={v.job.id} toVisit={addsToVisit(v.job)} />}
         </section>
       )}
       {sub && <YourPrice visitId={v.id} />}

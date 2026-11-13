@@ -19,14 +19,21 @@ export interface JobCostInput {
   expenses: number;
   /** public.job_pay_costs for the job: nothing when it has none. */
   crewPay: ReadonlyArray<{ amount: number | string | null; payees: number }>;
+  /**
+   * Extra work on a repeating job's visits (core costedExtras): what it's billed at, on top of the
+   * job's price, and its lines, costed as the job's are.
+   */
+  extras?: { price: number; lines: readonly CostedLine[] };
 }
 
 export function jobCosts(input: JobCostInput) {
   const crew = input.crewPay.reduce((s, p) => s + Number(p.amount ?? 0), 0);
   const actualLabor = input.labor > 0 || input.crewPay.length > 0;
-  const lines = lineCosts(input.lines, actualLabor);
+  const lines = lineCosts([...input.lines, ...(input.extras?.lines ?? [])], actualLabor);
   const total = lines.materials + input.labor + crew + input.expenses;
-  const profit = input.contract - total;
+  const extras = input.extras?.price ?? 0;
+  const price = input.contract + extras;
+  const profit = price - total;
   return {
     materials: lines.materials,
     leftOut: lines.left_out,
@@ -35,7 +42,9 @@ export function jobCosts(input: JobCostInput) {
     expenses: input.expenses,
     total,
     profit,
-    margin: input.contract > 0 ? Math.round((profit / input.contract) * 100) : null,
+    margin: price > 0 ? Math.round((profit / price) * 100) : null,
+    /** What the extra work is billed at: counted with the price, and shown on a line of its own. */
+    extras,
     actualLabor,
     /** The one line under the costs when line items count materials only. */
     note: actualLabor && lines.left_out > 0

@@ -25,6 +25,7 @@ import { addDaysIso, formatDate, formatTime, todayIn } from "@/lib/format";
 import { shopPlace } from "@/lib/maps";
 import { useSession } from "@/lib/session";
 import { VisitChecklists } from "../jobs/FilledChecklists";
+import { VisitExtrasEditor } from "../jobs/VisitExtras";
 import { AddressSearch } from "../measure/AddressSearch";
 import { useSubSignIns } from "../subs/subsData";
 import { ChangeRequestPanel, usePendingChanges } from "./changeRequests";
@@ -525,6 +526,8 @@ export function VisitDialog({ visit, onClose, onSaved }: { visit: VisitInput; on
 
         <Field label="Instructions for the crew" optional><textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} /></Field>
         {visit.id && <VisitChecklists visitId={visit.id} />}
+        {/* A repeating job's visit: work done on it alone, billed once with it. Saved as it's added, apart from the form. */}
+        {visit.id && visit.job_id && (visit.kind ?? "job") === "job" && <VisitExtrasEditor visitId={visit.id} jobId={visit.job_id} onChanged={onSaved} />}
         <p className="muted small" style={{ margin: 0 }}>Times are in {tz.replace(/_/g, " ")}.</p>
         <FormError error={save.error} />
         <div className="form-actions">

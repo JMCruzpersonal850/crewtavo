@@ -265,7 +265,8 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
     let drop = (stale ?? []).filter((v) => !wanted.has(v.recurrence_key!)).map((v) => v.id);
     // A visit that job pay whose work is done (or paid) covers stays: that pay's visits are kept as
     // they were (20261025003001_job_pay.sql), so deleting it would be refused, and the rest with it.
-    // So does one with work logged on it (time, materials, a checklist), which deleting would lose.
+    // So does one with work logged on it (time, materials, a checklist), which deleting would lose,
+    // and one with extra work asked for on it (visit_extras), which is billed with that visit.
     const keep = new Set<string>();
     for (const ids of chunks(drop)) {
       const kept = await Promise.all([
@@ -273,6 +274,7 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
         admin.from("time_entries").select("visit_id").in("visit_id", ids),
         admin.from("job_materials").select("visit_id").in("visit_id", ids),
         admin.from("checklist_responses").select("visit_id").in("visit_id", ids),
+        admin.from("visit_extras").select("visit_id").in("visit_id", ids),
       ]);
       const keptError = kept.find((r) => r.error)?.error;
       if (keptError) throw new Error(keptError.message);

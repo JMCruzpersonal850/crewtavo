@@ -16,6 +16,7 @@ import { supabase, unwrap, unwrapOne } from "@/lib/api";
 import { addressLine, formatTime } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
 import { hasRole, useSession } from "@/lib/session";
+import { useVisitExtraScope } from "../field/FieldExtras";
 import { usePendingChanges } from "./changeRequests";
 import { lengthLabel } from "./VisitDialog";
 
@@ -55,6 +56,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
     queryFn: async () => unwrap(await supabase().from("property_access").select("gate_code, lockbox_code, instructions").eq("property_id", v!.property!.id))[0] ?? null,
   });
 
+  const extras = useVisitExtraScope(visitId, Boolean(v?.job));
   const client = v?.job?.client ?? v?.request?.client ?? null;
   const place = v ? visitPlace(v) : null;
   const minutes = v?.starts_at && v.ends_at ? Math.round((Date.parse(v.ends_at) - Date.parse(v.starts_at)) / 60_000) : null;
@@ -153,6 +155,17 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
                     {v.notes && <span className="pre-wrap">{v.notes}</span>}
                     {v.job?.instructions && <span className="pre-wrap muted">{v.job.instructions}</span>}
                     {!v.job && v.request?.details && <span className="pre-wrap muted">{v.request.details}</span>}
+                  </div>
+                </>
+              )}
+
+              {/* Extra work on this visit of a repeating job, without prices (the job page has those). */}
+              {extras.data && extras.data.length > 0 && (
+                <>
+                  <Icon name="plus" size={16} />
+                  <div className="stack-sm">
+                    <strong>Extra work on this visit</strong>
+                    {extras.data.map((e) => <span key={e.id}>{e.name}{Number(e.quantity) !== 1 || e.unit !== "ea" ? ` · ${Number(e.quantity)} ${e.unit}` : ""}</span>)}
                   </div>
                 </>
               )}

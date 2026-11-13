@@ -1,6 +1,6 @@
 /**
  * Finishing the paperwork on site (fieldMoney.ts says who): adding work to the visit's job from the
- * price list, and, once the visit is done, its invoice with its total, sent to the client, and cash
+ * price list (on a repeating job, to this visit alone), and, once the visit is done, its invoice with its total, sent to the client, and cash
  * or check recorded against it. Each goes the office's own way: add_field_line() for the line, at
  * the office's price; POST /jobs/:id/invoice (create_invoice_for_job, with all its rules) for the
  * invoice; SendDialog for sending; recordPayment for the payment. No card payments on site.
@@ -24,10 +24,14 @@ import { recordPayment } from "../invoices/recordPayment";
 import { scopeKey } from "../jobs/ScopeOfWork";
 import { SendDialog } from "../quotes/SendDialog";
 import { waitingScopeLine, type JobLineAdd } from "./fieldActions";
+import { visitExtrasKey, waitingExtra, type ExtraScopeLine } from "./FieldExtras";
 import { useSignal } from "./OfflineNote";
 
-/** Add work: an item from the price list and how many. The office's price applies, and the crew never sees it. */
-export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) {
+/**
+ * Add work: an item from the price list and how many. The office's price applies, and the crew never
+ * sees it. `toVisit`: the job repeats, so it's extra work on this visit alone (fieldMoney addsToVisit).
+ */
+export function AddWork({ visitId, jobId, toVisit = false }: { visitId: string; jobId: string; toVisit?: boolean }) {
   const session = useSession();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -42,14 +46,16 @@ export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) 
   const add = useMutation({
     mutationKey: ["job-line-add"],
     scope: FIELD_SCOPE,
-    meta: { success: "Added to the job" },
+    meta: { success: toVisit ? "Added to this visit" : "Added to the job" },
     onMutate: (v: JobLineAdd) => {
       if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
-      queryClient.setQueryData<Array<ReturnType<typeof waitingScopeLine>>>(scopeKey(jobId), (old) => old && [...old, waitingScopeLine(v)]);
+      if (v.extra) queryClient.setQueryData<ExtraScopeLine[]>(visitExtrasKey(visitId), (old) => old && [...old, waitingExtra(v)]);
+      else queryClient.setQueryData<Array<ReturnType<typeof waitingScopeLine>>>(scopeKey(jobId), (old) => old && [...old, waitingScopeLine(v)]);
     },
     // The job's checklists can come with its new item.
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: scopeKey(jobId) });
+      void queryClient.invalidateQueries({ queryKey: visitExtrasKey(visitId) });
       void queryClient.invalidateQueries({ queryKey: ["checklist", visitId] });
     },
   });
@@ -58,11 +64,12 @@ export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) 
       <Button icon="plus" style={{ justifySelf: "start" }} onClick={() => setOpen(true)}>Add work</Button>
       {open && (
         <AddWorkDialog
+          toVisit={toVisit}
           choices={choices.data}
           loading={choices.isPending && !choices.isPaused}
           onClose={() => setOpen(false)}
           onAdd={(item, quantity) => {
-            add.mutate({ visitId, jobId, lineId: crypto.randomUUID(), serviceId: item.id, quantity, name: item.name, unit: item.unit });
+            add.mutate({ visitId, jobId, lineId: crypto.randomUUID(), serviceId: item.id, quantity, name: item.name, unit: item.unit, ...(toVisit && { extra: true }) });
             setOpen(false);
           }}
         />
@@ -73,14 +80,14 @@ export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) 
 
 type Choice = { id: string; name: string; unit: string };
 
-function AddWorkDialog({ choices, loading, onClose, onAdd }: { choices: Choice[] | undefined; loading: boolean; onClose: () => void; onAdd: (item: Choice, quantity: number) => void }) {
+function AddWorkDialog({ choices, loading, toVisit, onClose, onAdd }: { choices: Choice[] | undefined; loading: boolean; toVisit: boolean; onClose: () => void; onAdd: (item: Choice, quantity: number) => void }) {
   const [serviceId, setServiceId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [problem, setProblem] = useState<string | null>(null);
   const item = choices?.find((c) => c.id === serviceId);
   const amount = Number(quantity);
   return (
-    <Dialog open onClose={onClose} title="Add work" description="Extra work or a part, from the price list. The office's price applies, and they'll see you added it.">
+    <Dialog open onClose={onClose} title="Add work" description={toVisit ? "Extra work or a part on this visit only, from the price list. The office's price applies, and they'll see you added it." : "Extra work or a part, from the price list. The office's price applies, and they'll see you added it."}>
       <form
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
