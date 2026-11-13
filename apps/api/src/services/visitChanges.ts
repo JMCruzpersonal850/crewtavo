@@ -17,6 +17,7 @@ import { dbError, HttpError, must } from "../lib/http";
 import { emailReady, sendEmail } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
 import { logoImage } from "./logo";
+import { visitBusyTimes } from "./onlineBooking";
 import { recipientsColumn, recipientsFor, sendToEach } from "./recipients";
 import { companyZone, updateVisit, type Scope } from "./schedule";
 
@@ -28,10 +29,9 @@ const length = (v: { starts_at: string | null; ends_at: string | null }) => (v.s
 
 /** Whether the visit's crew or people are busy between two times (the Client Hub's open slots read the same). */
 async function booked(env: Env, companyId: string, visitId: string, from: Date, to: Date): Promise<boolean> {
-  const { data, error } = await adminClient(env).rpc("visit_busy_times", { p_company: companyId, p_visit: visitId, p_from: from.toISOString(), p_to: to.toISOString() });
-  if (error) throw dbError(error);
+  const data = await visitBusyTimes(adminClient(env), companyId, visitId, from.toISOString(), to.toISOString());
   // A booking that ends as this one starts (or starts as it ends) isn't in the way.
-  return (data ?? []).some((b) => Date.parse(b.starts_at) < to.getTime() && Date.parse(b.ends_at) > from.getTime());
+  return data.some((b) => Date.parse(b.starts_at) < to.getTime() && Date.parse(b.ends_at) > from.getTime());
 }
 
 /** The requests waiting for an answer that the person may answer, oldest first. */

@@ -17,6 +17,7 @@ import {
   actionsForTrigger,
   addDays,
   arrivalWindowMin,
+  askedTimeLine,
   autopaySettings,
   etaWords,
   evaluateConditions,
@@ -111,6 +112,8 @@ export interface RunContext {
   visit?: { status: string; scheduled_on: string | null; starts_at: string | null; gone?: true };
   /** Where a moved or cancelled visit was, as the client last knew it (the event's own: private.visit_notice). */
   was?: { scheduled_on: string | null; starts_at: string | null };
+  /** A request whose client picked a time on a booking form: the office's notice of it says when, and whether it's booked. */
+  asked?: { status: string; asked_starts_at: string | null; asked_ends_at: string | null };
   /** What started the rule (its trigger), once it's running: some keep to their own rules (sub_offer.*). */
   trigger?: string;
   /** The automated campaign the rule's email is sent as, once it's running. */
@@ -240,6 +243,7 @@ export async function loadContext(admin: Db, companyId: string, subjectType: str
   let jobId: string | null = null;
   let propertyId: string | null = null;
   let visit: RunContext["visit"];
+  let asked: RunContext["asked"];
 
   switch (subject) {
     case "client": {
@@ -248,10 +252,11 @@ export async function loadContext(admin: Db, companyId: string, subjectType: str
       break;
     }
     case "request": {
-      const { data } = await admin.from("requests").select("number, title, status, source, client_id, property_id, property:properties(line1, city, region)").eq("company_id", companyId).eq("id", subjectId).maybeSingle();
+      const { data } = await admin.from("requests").select("number, title, status, source, client_id, property_id, asked_starts_at, asked_ends_at, property:properties(line1, city, region)").eq("company_id", companyId).eq("id", subjectId).maybeSingle();
       if (!data) return null;
       clientId = data.client_id;
       propertyId = data.property_id;
+      asked = { status: data.status, asked_starts_at: data.asked_starts_at, asked_ends_at: data.asked_ends_at };
       facts = { status: data.status, source: data.source };
       vars = { number: data.number, title: data.title, address: addressOf(data.property as Property) };
       label = `Request #${data.number}`;
@@ -412,6 +417,7 @@ export async function loadContext(admin: Db, companyId: string, subjectType: str
     jobId,
     propertyId,
     ...(visit && { visit }),
+    ...(asked?.asked_starts_at && { asked }),
   };
 }
 
@@ -673,8 +679,12 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       }
       const office = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
       const title = render(action.title, office) || ruleName;
+      // A new request whose client picked a time online says so, whatever the rule's own words are:
+      // "Booked online for Tue, Jan 14, 10:00 to 11:00 AM." or "Asked for ... It waits for your OK."
+      const picked = ctx.trigger === "request.created" && ctx.asked ? askedTimeLine(ctx.asked, ctx.company.timezone || "UTC") : null;
+      const body = [render(action.body, office), picked].filter(Boolean).join("\n") || null;
       const { error: insertError } = await admin.from("notifications").insert(
-        people.map((p) => ({ company_id: ctx.company.id, user_id: p.user_id, kind: ctx.subject, title: title.slice(0, 300), body: render(action.body, office) || null, link: ctx.appPath })),
+        people.map((p) => ({ company_id: ctx.company.id, user_id: p.user_id, kind: ctx.subject, title: title.slice(0, 300), body, link: ctx.appPath })),
       );
       if (insertError) throw new Error(insertError.message);
       return `Notified ${people.length} ${people.length === 1 ? "person" : "people"}`;

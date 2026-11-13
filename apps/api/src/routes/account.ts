@@ -378,6 +378,9 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
         slot_minutes: f.slot_minutes ?? null,
         max_per_day: f.max_per_day ?? null,
         requires_approval: f.requires_approval,
+        // A starter estimate or booking form that books without the office's OK offers times from
+        // the first day; one that needs the OK starts as a plain request form until the office says.
+        pick_time: f.kind !== "request" && !f.requires_approval,
       })),
     ),
     db.from("sop_categories").insert(preset.sop_categories.map((name, i) => ({ company_id: companyId, name, sort: i }))),

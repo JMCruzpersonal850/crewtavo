@@ -59,6 +59,7 @@ import { geocodeAddress } from "../services/external";
 import { LETTERHEAD_MAX_BYTES } from "../services/letterhead";
 import { isDrawnPng, isPng, LOGO_MAX_BYTES, logoImage, logoOf } from "../services/logo";
 import { PACKAGE_PICTURE_MAX_BYTES } from "../services/packagePictures";
+import { bookFormTime, bookingCalendar, bookingView, bookedVisitTitle, callOffBookedNotice, confirmBooking, firstOpenWeek, formOpenings, visitBusyTimes, type BookingForm } from "../services/onlineBooking";
 import { isJpeg } from "../services/photos";
 import { isRoofWork, quoteMeasurement, roofingOn, sitePriceSet, workKind } from "../services/roofPackages";
 import { optionsFrom } from "../services/sales";
@@ -1033,11 +1034,11 @@ publicRoutes.post("/hub/:token/tip", async (c) => {
 
 async function findForm(c: Parameters<typeof appUrl>[0]) {
   const admin = adminClient(c.env);
-  const company = must(await admin.from("companies").select("id, name, phone, timezone").eq("slug", c.req.param("company") ?? "").maybeSingle(), "Form not found.");
+  const company = must(await admin.from("companies").select("id, name, phone, timezone, settings").eq("slug", c.req.param("company") ?? "").maybeSingle(), "Form not found.");
   const form = must(
     await admin
       .from("intake_forms")
-      .select("id, name, kind, questions, service_area_zips, lead_time_days, slot_minutes")
+      .select("id, name, kind, questions, service_area_zips, lead_time_days, slot_minutes, max_per_day, requires_approval, pick_time, crew_id")
       .eq("company_id", company.id)
       .eq("slug", c.req.param("form") ?? "")
       .eq("active", true)
@@ -1058,7 +1059,30 @@ publicRoutes.post("/public/forms/:company/:form/promo", async (c) => {
 
 publicRoutes.get("/public/forms/:company/:form", async (c) => {
   const { company, form } = await findForm(c);
-  return c.json({ company: { name: company.name, phone: company.phone }, form: { name: form.name, kind: form.kind, questions: form.questions } });
+  return c.json({
+    company: { name: company.name, phone: company.phone },
+    form: { name: form.name, kind: form.kind, questions: form.questions },
+    // With "Let clients pick a time" on: what the page needs to offer times (the openings themselves come from /openings).
+    ...(form.pick_time && { booking: bookingView(company, form as BookingForm, (form.service_area_zips ?? []) as string[]) }),
+  });
+});
+
+/**
+ * The times a form with "Let clients pick a time" offers, a week at a call: from `from`, or with
+ * none, the first week that has one. Open times only (a day, a start and an end each), never
+ * anything about the visits and clients that fill the rest. An address outside the form's service
+ * area is turned away before any time is shown, as its request would be.
+ */
+publicRoutes.get("/public/forms/:company/:form/openings", async (c) => {
+  if (!(await allow(c.env, `form-openings:ip:${clientIp(c)}`, 120, 60 * 60))) throw new HttpError(429, "Too many tries. Try again later, or call us.");
+  const { admin, company, form } = await findForm(c);
+  if (!(await allow(c.env, `form-openings:company:${company.id}`, 3000, 60 * 60))) throw new HttpError(429, "Too many tries. Try again later, or call us.");
+  if (!form.pick_time) throw new HttpError(404, "This form doesn't offer times online.");
+  if (!inServiceArea(c.req.query("postal_code"), (form.service_area_zips ?? []) as string[])) throw new HttpError(400, `Sorry, ${company.name} doesn't serve that area yet.`);
+  const from = isoDate.safeParse(c.req.query("from"));
+  const week = from.success ? await formOpenings(admin, company, form as BookingForm, { from: from.data }) : await firstOpenWeek(admin, company, form as BookingForm);
+  c.header("Cache-Control", "no-store");
+  return c.json(week);
 });
 
 // Answers to a form's questions: text, or the options picked. Sized well past what a form asks (up
@@ -1095,6 +1119,9 @@ publicRoutes.post("/public/forms/:company/:form", async (c) => {
       files: formFiles,
       promo_code: z.string().trim().max(40).optional(),
       turnstile_token: z.string().optional(),
+      // The time picked, on a form with "Let clients pick a time" on. Without one (the web app from
+      // before there were times, or a form with nothing open) it's a plain request, as it always was.
+      starts_at: z.iso.datetime({ offset: true }).optional(),
     }),
   );
   if (!body.email && !body.phone) throw new HttpError(400, "Add an email or phone number so we can reach you.");
@@ -1117,27 +1144,53 @@ publicRoutes.post("/public/forms/:company/:form", async (c) => {
   const fileQuestions = new Set(((form.questions ?? []) as Array<{ key: string; type: string }>).filter((q) => q.type === "files" || q.type === "photos").map((q) => q.key));
   if (body.files.some((f) => !fileQuestions.has(f.question))) throw new HttpError(400, "This form doesn't take files.");
 
-  // The client Crewtavo already has (by email, else phone) or a new lead, and their property.
-  const found = must(
-    await admin.rpc("booking_form_client", { p_company: company.id, p_name: body.name, p_email: body.email, p_phone: body.phone, p_address: asJson(body.address) }),
-  ) as { client_id: string; property_id: string; matched: boolean; new_property: boolean };
-  // A client already here keeps their details; what was typed goes on the request for the office.
-  const typed = found.matched ? { name: body.name, email: body.email, phone: body.phone } : {};
   // The website visit that brought them in, when the business counts its website's visits (Apps).
   const visit = await bookingVisit(c, company.id);
-  const request = must(
-    await admin
-      .from("requests")
-      .insert({
-        company_id: company.id, client_id: found.client_id, property_id: found.property_id, intake_form_id: form.id,
-        source: "web_form", title: form.name, answers: asJson({ ...typed, ...body.answers }), promo_code: promo, created_by: null, web_visit: visit,
-      })
-      .select("id, number")
-      .single(),
-  );
-  if (found.new_property) geocodeLater(c, found.property_id, body.address);
+  let found: { client_id: string; property_id: string | null; matched: boolean; new_property: boolean };
+  let request: { id: string; number: number | null };
+  // What the page says about the time picked: booked, or asked for and waiting on the office.
+  let booking: { status: "booked" | "asked"; starts_at: string; ends_at: string; emailed: boolean; texted: boolean; calendar?: string } | undefined;
+  if (form.pick_time && body.starts_at) {
+    // The client, the request with the time, and its visit when the form books at once: all of it
+    // or none (public.book_form_time). A time that has gone is said plainly, and nothing is made.
+    const made = await bookFormTime(admin, company, form as BookingForm, {
+      name: body.name, email: body.email, phone: body.phone, address: body.address, answers: body.answers, starts_at: body.starts_at, promo, web_visit: visit,
+    });
+    found = made;
+    request = { id: made.request_id, number: made.number };
+    const title = made.booked ? bookedVisitTitle(form) : form.name;
+    // They always hear about a time they picked themselves; the "visit booked" rule then stays quiet.
+    const told = await confirmBooking(
+      c.env, admin,
+      { companyId: company.id, clientId: made.client_id, requestId: made.request_id, visitId: made.visit_id, title, startsAt: made.starts_at, booked: made.booked, text: Boolean(body.phone) },
+      appUrl(c),
+    );
+    if (made.visit_id) await callOffBookedNotice(admin, made.visit_id);
+    booking = {
+      status: made.booked ? "booked" : "asked", starts_at: made.starts_at, ends_at: made.ends_at, ...told,
+      ...(made.visit_id && { calendar: bookingCalendar(company, { id: made.visit_id, title, starts_at: made.starts_at, ends_at: made.ends_at }, body.address) }),
+    };
+  } else {
+    // The client Crewtavo already has (by email, else phone) or a new lead, and their property.
+    found = must(
+      await admin.rpc("booking_form_client", { p_company: company.id, p_name: body.name, p_email: body.email, p_phone: body.phone, p_address: asJson(body.address) }),
+    ) as { client_id: string; property_id: string; matched: boolean; new_property: boolean };
+    // A client already here keeps their details; what was typed goes on the request for the office.
+    const typed = found.matched ? { name: body.name, email: body.email, phone: body.phone } : {};
+    request = must(
+      await admin
+        .from("requests")
+        .insert({
+          company_id: company.id, client_id: found.client_id, property_id: found.property_id, intake_form_id: form.id,
+          source: "web_form", title: form.name, answers: asJson({ ...typed, ...body.answers }), promo_code: promo, created_by: null, web_visit: visit,
+        })
+        .select("id, number")
+        .single(),
+    );
+  }
+  if (found.new_property && found.property_id) geocodeLater(c, found.property_id, body.address);
   kickAutomations(c, company.id);
-  if (!body.files.length) return c.json({ ok: true, reference: request.number }, 201);
+  if (!body.files.length) return c.json({ ok: true, reference: request.number, booking }, 201);
 
   // The request is in. Each file goes straight to Storage on a link that works once (and is
   // checked against Storage's size limit there); /files then records the ones that arrived, and
@@ -1155,7 +1208,7 @@ publicRoutes.post("/public/forms/:company/:form", async (c) => {
     purpose: "form-files", c: company.id, r: request.id, f: ready.map(({ path, name, type, size }) => ({ path, name, type, size })), exp: Math.floor(Date.now() / 1000) + 3 * 60 * 60,
   } satisfies FilesToken);
   // In the order the files were sent, null where Storage couldn't make a link.
-  return c.json({ ok: true, reference: request.number, uploads: uploads.map((u) => u && { name: u.name, path: u.path, token: u.token }), files_token: filesToken }, 201);
+  return c.json({ ok: true, reference: request.number, booking, uploads: uploads.map((u) => u && { name: u.name, path: u.path, token: u.token }), files_token: filesToken }, 201);
 });
 
 /** After the uploads: the files that arrived go on the request (and its property) in Plans and files. */
@@ -1348,12 +1401,20 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   };
   const jobIds = (jobs.data ?? []).map((j) => j.id);
   const visitFields = "id, title, scheduled_on, starts_at, ends_at, status, completed_at, crew_id, property:properties(line1), assignees:visit_assignees(user_id)";
-  const [upcoming, done] = jobIds.length
+  const [jobVisits, done] = jobIds.length
     ? await Promise.all([
         admin.from("visits").select(visitFields).eq("company_id", companyId).in("job_id", jobIds).in("status", ["scheduled", "en_route", "in_progress"]).gte("scheduled_on", today).order("scheduled_on").order("starts_at", { nullsFirst: false }).limit(10),
         admin.from("visits").select(visitFields).eq("company_id", companyId).in("job_id", jobIds).eq("status", "completed").order("completed_at", { ascending: false, nullsFirst: false }).limit(5),
       ])
     : [{ data: [] }, { data: [] }];
+  // The visits they booked online themselves (an estimate on a request of theirs) are theirs to see,
+  // move and cancel too. An assessment the office put on a request stays the office's.
+  const bookedOnline = (await admin.from("requests").select("id").eq("company_id", companyId).eq("client_id", clientId).not("asked_starts_at", "is", null).order("created_at", { ascending: false }).limit(50)).data ?? [];
+  const requestVisits = bookedOnline.length
+    ? await admin.from("visits").select(visitFields).eq("company_id", companyId).in("request_id", bookedOnline.map((r) => r.id)).eq("kind", "assessment").in("status", ["scheduled", "en_route", "in_progress"]).gte("scheduled_on", today).order("scheduled_on").order("starts_at", { nullsFirst: false }).limit(10)
+    : { data: [] };
+  const soonest = (v: { scheduled_on: string | null; starts_at: string | null }) => `${v.scheduled_on ?? ""} ${v.starts_at ?? "~"}`;
+  const upcoming = { data: [...(jobVisits.data ?? []), ...(requestVisits.data ?? [])].sort((a, b) => soonest(a).localeCompare(soonest(b))).slice(0, 10) };
   // Crews by first name only. A sub is named from the office's record (their contact's first name),
   // never their profile, which they keep themselves; a sub with no contact name isn't named.
   // Who's on each: the people listed on it, or with nobody listed its crew's members (visitPeople()).
@@ -1384,7 +1445,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   const asked = upcomingIds.length
     ? (await admin.from("visit_change_requests").select("visit_id, kind").eq("company_id", companyId).eq("status", "pending").in("visit_id", upcomingIds)).data ?? []
     : [];
-  const visit = (v: NonNullable<typeof upcoming.data>[number]) => ({
+  const visit = (v: (typeof upcoming.data)[number]) => ({
     id: v.id, title: v.title, scheduled_on: v.scheduled_on, starts_at: v.starts_at, ends_at: v.ends_at, status: v.status, completed_at: v.completed_at,
     address: (v.property as unknown as { line1: string } | null)?.line1 ?? null,
     crew: firstNames(onIt(v), names),
@@ -1573,6 +1634,13 @@ publicRoutes.get("/public/service/:company/:file", async (c) => {
   return c.body(bytes, 200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 
+/** Whether a visit is the client's in their Hub: on a job of theirs, or one they booked online on a request of theirs. */
+function clientsVisit(visit: { job?: unknown; request?: unknown }, clientId: string): boolean {
+  const job = visit.job as { client_id: string } | null | undefined;
+  const request = visit.request as { client_id: string; asked_starts_at: string | null } | null | undefined;
+  return job?.client_id === clientId || Boolean(request && request.client_id === clientId && request.asked_starts_at);
+}
+
 // "Add to calendar" for one of the client's visits.
 publicRoutes.get("/hub/:token/visits/:file", async (c) => {
   const l = await link(c, ["client"]);
@@ -1580,10 +1648,10 @@ publicRoutes.get("/hub/:token/visits/:file", async (c) => {
   if (!z.uuid().safeParse(id).success) throw new HttpError(404, "Visit not found.");
   const admin = adminClient(c.env);
   const visit = must(
-    await admin.from("visits").select("id, title, scheduled_on, starts_at, ends_at, status, job:jobs(client_id), property:properties(line1, city), company:companies(name)").eq("company_id", l.c).eq("id", id).maybeSingle(),
+    await admin.from("visits").select("id, title, scheduled_on, starts_at, ends_at, status, job:jobs(client_id), request:requests(client_id, asked_starts_at), property:properties(line1, city), company:companies(name)").eq("company_id", l.c).eq("id", id).maybeSingle(),
     "Visit not found.",
   );
-  if ((visit.job as unknown as { client_id: string } | null)?.client_id !== l.id || !visit.scheduled_on) throw new HttpError(404, "Visit not found.");
+  if (!clientsVisit(visit, l.id) || !visit.scheduled_on) throw new HttpError(404, "Visit not found.");
   const place = visit.property as unknown as { line1: string; city: string | null } | null;
   const companyName = (visit.company as unknown as { name: string }).name;
   const ics = buildCalendar(companyName, [
@@ -1606,12 +1674,12 @@ publicRoutes.get("/hub/:token/visits/:file", async (c) => {
 async function changeableVisit(admin: ReturnType<typeof adminClient>, l: ClientLink, id: string | undefined) {
   if (!z.uuid().safeParse(id).success) throw new HttpError(404, "Visit not found.");
   const [found, company] = await Promise.all([
-    admin.from("visits").select("id, status, scheduled_on, starts_at, ends_at, job:jobs(client_id)").eq("company_id", l.c).eq("id", id!).maybeSingle(),
+    admin.from("visits").select("id, status, scheduled_on, starts_at, ends_at, job:jobs(client_id), request:requests(client_id, asked_starts_at)").eq("company_id", l.c).eq("id", id!).maybeSingle(),
     admin.from("companies").select("phone, timezone, settings").eq("id", l.c).maybeSingle(),
   ]);
   if (found.error) throw dbError(found.error);
   const visit = found.data;
-  if (!visit || (visit.job as unknown as { client_id: string } | null)?.client_id !== l.id) throw new HttpError(404, "Visit not found.");
+  if (!visit || !clientsVisit(visit, l.id)) throw new HttpError(404, "Visit not found.");
   const co = must(company);
   const tz = co.timezone || "UTC";
   if (!changeableOnline(visit, localDate(new Date(), tz))) throw new HttpError(409, `This visit can't be changed online now. ${co.phone ? `Call us at ${co.phone}.` : "Message us instead."}`);
@@ -1622,17 +1690,14 @@ async function changeableVisit(admin: ReturnType<typeof adminClient>, l: ClientL
 async function slotsFor(admin: ReturnType<typeof adminClient>, companyId: string, { visit, tz, settings }: Awaited<ReturnType<typeof changeableVisit>>) {
   const now = new Date();
   const first = addDays(localDate(now, tz), SLOT_LEAD_DAYS);
-  const { data, error } = await admin.rpc("visit_busy_times", {
-    p_company: companyId, p_visit: visit.id, p_from: zonedTimeToUtc(first, "00:00", tz).toISOString(), p_to: zonedTimeToUtc(addDays(first, SLOT_DAYS), "00:00", tz).toISOString(),
-  });
-  if (error) throw dbError(error);
+  const data = await visitBusyTimes(admin, companyId, visit.id, zonedTimeToUtc(first, "00:00", tz).toISOString(), zonedTimeToUtc(addDays(first, SLOT_DAYS), "00:00", tz).toISOString());
   const windowMin = arrivalWindowMin(settings);
   const anytime = !visit.starts_at;
   // shortcut: an anytime visit has no length, so an hour free makes its day open; use the job's visit length if that's too loose.
   const lengthMin = visit.starts_at && visit.ends_at ? (Date.parse(visit.ends_at) - Date.parse(visit.starts_at)) / 60_000 : 60;
   const slots = openSlots({
     now, timeZone: tz, hours: { start: settings.working_hours?.start ?? "07:00", end: settings.working_hours?.end ?? "18:00" }, workdays: workdays(settings), lengthMin,
-    busy: (data ?? []).map((b) => ({ start: Date.parse(b.starts_at), end: Date.parse(b.ends_at) })),
+    busy: data.map((b) => ({ start: Date.parse(b.starts_at), end: Date.parse(b.ends_at) })),
     stepMin: slotStep(settings), windowMin, anytime, current: { date: visit.scheduled_on, starts_at: visit.starts_at },
   });
   return { slots, window_min: windowMin, anytime };
