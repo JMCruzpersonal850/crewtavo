@@ -425,6 +425,13 @@ describe("texting", () => {
             { id: "client-3", company_id: "co-1", phone: "(540) 555-0199", display_name: "Bo Other" },
           ]);
         }
+        // A property manager in a third company's contacts has the number too, and someone else doesn't.
+        if (method === "GET" && path === "client_contacts") {
+          return Response.json([
+            { company_id: "co-3", client_id: "client-9", name: "Ana at Oak HOA", phone: "540.555.0163" },
+            { company_id: "co-3", client_id: "client-9", name: "Someone else", phone: "540-555-0199" },
+          ]);
+        }
         if (method === "PATCH" && path === "clients") return Response.json(changes ? [{ id: u.searchParams.get("id")!.slice(3) }] : []);
         if (method === "GET" && path === "memberships") return Response.json([{ user_id: "owner-1" }]);
         return Response.json([]);
@@ -438,8 +445,23 @@ describe("texting", () => {
         optOuts: optOuts.map((c) => ({ id: c.params.get("id"), when: c.params.get("sms_opt_out_at"), set: c.body.sms_opt_out_at === null ? null : typeof c.body.sms_opt_out_at })),
         messages: calls.filter((c) => c.method === "POST" && c.path === "messages").map((c) => [c.body.client_id, c.body.body]),
         notices: calls.filter((c) => c.method === "POST" && c.path === "notifications").flatMap((c) => c.body.map((n: { title: string }) => n.title)),
+        // The number itself, by company: remembered on a STOP (sms_stops), forgotten on a START.
+        stops: calls.filter((c) => c.method === "POST" && c.path === "sms_stops").map((c) => [c.body.company_id, c.body.phone_key, c.body.phone]),
+        starts: calls.filter((c) => c.method === "DELETE" && c.path === "sms_stops").map((c) => [c.params.get("company_id"), c.params.get("phone_key")]),
       };
     }
+
+    it("stops the number itself too, for each company that keeps it as a client's or a contact's", async () => {
+      const stopped = await text("STOP");
+      expect(stopped.stops).toEqual([["co-1", "5405550163", "+15405550163"], ["co-2", "5405550163", "+15405550163"], ["co-3", "5405550163", "+15405550163"]]);
+      expect(stopped.starts).toEqual([]);
+      const started = await text("START");
+      expect(started.starts).toEqual([["eq.co-1", "eq.5405550163"], ["eq.co-2", "eq.5405550163"], ["eq.co-3", "eq.5405550163"]]);
+      expect(started.stops).toEqual([]);
+      // An ordinary text changes nothing about who can be texted.
+      const plain = await text("See you Tuesday");
+      expect([plain.stops, plain.starts]).toEqual([[], []]);
+    });
 
     it.each(["STOP", "stop ", "Stop.", "STOPALL", "unsubscribe", "opt out", "Revoke"])("turns texts off for every client with the number on %j", async (body) => {
       const { optOuts, messages, notices } = await text(body);

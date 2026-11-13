@@ -24,6 +24,7 @@ import { emailReady } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { companyFooter, officeVars, Skip, type RunContext } from "./automations";
 import { emailClient } from "./marketingEmail";
+import { addressList, recipientsColumn, recipientsFor, sendToEach } from "./recipients";
 import { Busy, WaitUntil } from "./reviews";
 
 export const CAMPAIGN_EMAIL_NOT_CONNECTED = "Email isn't connected yet, so campaign emails can't be sent. An admin can connect it in Settings → Email.";
@@ -251,9 +252,28 @@ export async function sendCampaignEmail(
   if (!result.sent) throw new Error(reason);
   // The timeline's copy has the office's link: the client's own can say yes to a card, or tip on one.
   const kept = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
+  // A quote's follow-up is about the client's work, not marketing, so their contacts ticked for
+  // emails get a copy (services/recipients.ts), with the office's link and nothing tracked. A copy
+  // that doesn't go is noted on the message; the client's went, so the run isn't tried again for it.
+  const own = { to: email, name: client.display_name, contact_id: null };
+  const others = campaign.marketing ? [] : (await recipientsFor(admin, ctx.company.id, client, "email", ctx.company.settings)).filter((person) => person.contact_id);
+  const copies = await sendToEach(others, (person) =>
+    emailClient(env, {
+      companyId: ctx.company.id,
+      company: ctx.company,
+      client: { id: client.id, email: person.to },
+      subject: render(action.subject, kept),
+      text: render(action.body, kept),
+      baseUrl: baseUrl!,
+      footer: companyFooter(ctx.company),
+      unsubscribe: false,
+      buttons: typeof kept.vars.link === "string" ? { [kept.vars.link]: linkButton(campaign.key) } : undefined,
+    }),
+  );
   await admin.from("messages").insert({
     company_id: ctx.company.id, client_id: client.id, channel: "email", direction: "out", subject: render(action.subject, kept), body: render(action.body, kept),
     related_type: ctx.subject, related_id: ctx.id, external_id: result.id ?? null, sent_by: null,
+    recipients: recipientsColumn({ went: [own, ...copies.went], failed: copies.failed }),
   });
-  return `Emailed ${email}`;
+  return `Emailed ${addressList([own, ...copies.went])}`;
 }

@@ -62,6 +62,7 @@
     "./jobPay": "./src/jobPay.ts",
     "./subOffers": "./src/subOffers.ts",
     "./phone": "./src/phone.ts",
+    "./recipients": "./src/recipients.ts",
     "./marketing": "./src/marketing.ts",
     "./campaigns": "./src/campaigns.ts",
     "./reviews": "./src/reviews.ts",

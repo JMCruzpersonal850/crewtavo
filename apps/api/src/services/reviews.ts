@@ -172,7 +172,7 @@ async function deliver(
       result = await emailClient(env, { companyId: d.companyId, company: d.company, client: d.client, subject: d.subject, text: body, baseUrl: d.baseUrl, footer: companyFooter(d.company) });
     } else {
       result = await sendSms(env, { to: d.client.phone!, body }, d.companyId);
-      await noteRefusedText(admin, d.client, d.client.phone!, result);
+      await noteRefusedText(admin, d.client, d.client.phone!, result, d.companyId);
     }
     if (!result.sent) {
       // Twilio refusing a number that texted STOP is said as the app says texts off, not in Twilio's words.

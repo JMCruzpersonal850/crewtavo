@@ -1340,7 +1340,7 @@ describe("automation runs", () => {
   });
 
   /** A quote.sent or invoice.sent rule's run, as the database would queue it: quote #7 or invoice #2, for Pat. */
-  const sentRun = (subject: "quote" | "invoice" | "client", actions: unknown[]) => {
+  const sentRun = (subject: "quote" | "invoice" | "client", actions: unknown[], more: Record<string, unknown> = {}) => {
     const rows: Record<string, unknown> = {
       automation_rules: { id: "rule-1", name: "Follow up", trigger: subject === "client" ? "client.created" : `${subject}.sent`, enabled: true, conditions: [], run_count: 0, actions },
       companies: { id: COMPANY, name: "Radford Lawn Care", timezone: "America/New_York", currency: "USD", trade_preset: "lawn_exterior", settings: {}, address: {} },
@@ -1351,6 +1351,7 @@ describe("automation runs", () => {
       invoices: { number: 2, subject: "Weekly mow", status: "sent", total: 45, balance_due: 45, client_id: "client-1", job_id: "job-1", lines: [{ name: "Mow" }] },
       clients: { id: "client-1", display_name: "Pat Lee", email: "pat@example.com", phone: "+15405550111", tags: [], status: "active", lead_source: null },
       autopay_charges: [],
+      ...more,
     };
     return fakeDb(
       (q) => ({ data: verb(q) === "select" ? (rows[q.table] ?? null) : null }),
@@ -1405,6 +1406,58 @@ describe("automation runs", () => {
     const own = await readClientLink(env, tokenOf(sent[0]!.text));
     expect(own).toMatchObject({ t: "invoice", id: "invoice-1", own: 1 });
     expect(own).not.toHaveProperty("via");
+  });
+
+  it("email the client's contacts ticked for emails too, with the office's copy of the link, as one message", async () => {
+    const sent: Array<{ to: string[]; text: string }> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("resend")) sent.push(JSON.parse(String(init!.body)));
+      return Response.json({ id: `email-${sent.length}` });
+    });
+    const client_contacts = [
+      { id: "contact-1", name: "Mo Manager", email: "mo@example.com", phone: "540-555-0122", notify_email: true, notify_sms: true },
+      { id: "contact-2", name: "Sam Spouse", email: "sam@example.com", phone: null, notify_email: false, notify_sms: false },
+    ];
+    const { queries, rpcs } = sentRun("invoice", [{ type: "send_email", subject: "Invoice #{{number}}", body: "Pay it here: {{link}}" }], { client_contacts });
+    const mailing = { ...env, RESEND_API_KEY: "re_test", EMAIL_FROM: "Crewtavo <hi@crewtavo.test>" };
+    expect(await processAutomations(mailing, { limit: 50, baseUrl: "https://app.test" })).toMatchObject({ done: 1 });
+    expect(sent.map((m) => m.to)).toEqual([["pat@example.com"], ["mo@example.com"]]);
+    // Only the client's own address carries the link that can agree to autopay or tip on their card.
+    expect(await readClientLink(env, tokenOf(sent[0]!.text))).toMatchObject({ t: "invoice", id: "invoice-1", own: 1 });
+    const copy = await readClientLink(env, tokenOf(sent[1]!.text));
+    expect(copy).toMatchObject({ t: "invoice", id: "invoice-1", via: "office" });
+    expect(copy).not.toHaveProperty("own");
+    const messages = queries.filter((q) => q.table === "messages" && verb(q) === "insert");
+    expect(messages).toHaveLength(1);
+    expect(call(messages[0]!, "insert")![1].recipients).toEqual([{ to: "pat@example.com", name: "Pat Lee" }, { to: "mo@example.com", name: "Mo Manager" }]);
+    expect(rpcs.find((r) => r.fn === "finish_automation_run")!.args.p_result).toEqual([{ type: "send_email", ok: true, detail: "Emailed pat@example.com and mo@example.com" }]);
+  });
+
+  it("text the client's contacts ticked for texts, but never a number that texted STOP", async () => {
+    const texts: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("twilio")) texts.push(new URLSearchParams(String(init!.body)).get("To")!);
+      return Response.json({ sid: "SM1" });
+    });
+    const client_contacts = [
+      { id: "contact-1", name: "Mo Manager", email: null, phone: "540-555-0122", notify_email: true, notify_sms: true },
+      { id: "contact-2", name: "Sam Spouse", email: null, phone: "(540) 555-0133", notify_email: true, notify_sms: true },
+    ];
+    const texting = { ...env, TWILIO_ACCOUNT_SID: "AC1", TWILIO_AUTH_TOKEN: "t", TWILIO_FROM_NUMBER: "+15405550000" };
+    // Sam's number texted STOP to this company.
+    const { rpcs } = sentRun("invoice", [{ type: "send_sms", body: "Invoice #{{number}} is ready" }], { client_contacts, sms_stops: [{ phone_key: "5405550133" }] });
+    expect(await processAutomations(texting, { limit: 50, baseUrl: "https://app.test" })).toMatchObject({ done: 1 });
+    expect(texts).toEqual(["+15405550111", "540-555-0122"]);
+    expect(rpcs.find((r) => r.fn === "finish_automation_run")!.args.p_result).toEqual([{ type: "send_sms", ok: true, detail: "Texted +15405550111 and 540-555-0122" }]);
+
+    // A company that hasn't said yes to contacts yet: the client alone, as before.
+    texts.length = 0;
+    sentRun("invoice", [{ type: "send_sms", body: "Invoice #{{number}} is ready" }], {
+      client_contacts,
+      companies: { id: COMPANY, name: "Radford Lawn Care", timezone: "America/New_York", currency: "USD", trade_preset: "lawn_exterior", settings: { contact_messages: { enabled: false, pending: true } }, address: {} },
+    });
+    expect(await processAutomations(texting, { limit: 50, baseUrl: "https://app.test" })).toMatchObject({ done: 1 });
+    expect(texts).toEqual(["+15405550111"]);
   });
 
   it("about autopay fail rather than tell someone without the invoices area, and never add a client note", async () => {

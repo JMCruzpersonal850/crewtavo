@@ -38,7 +38,8 @@ import {
 } from "@crewtavo/core";
 import { daysSinceVisit, type AutomatedCampaign } from "@crewtavo/core/campaigns";
 import { hidesExactPrice } from "@crewtavo/core/estimates";
-import { marketingOn, REFERRAL_GAP_DAYS, REVIEW_GAP_DAYS, textsOff, textsOffReason } from "@crewtavo/core/marketing";
+import { marketingOn, REFERRAL_GAP_DAYS, REVIEW_GAP_DAYS, textsOffReason } from "@crewtavo/core/marketing";
+import { clientRecipients, type Recipient } from "@crewtavo/core/recipients";
 import { countsOn } from "@crewtavo/core/money";
 import type { Env } from "../env";
 import { companyAddress, companyFooter, firstName, isEmail, renderEmail } from "../lib/email";
@@ -50,6 +51,7 @@ import { CAMPAIGN_LINK_DAYS, campaignRuleOf, letStretchGo, sendCampaignEmail } f
 import { sendAutopayInvite } from "./autopay";
 import { logoImage } from "./logo";
 import { sendReferralAsk } from "./referrals";
+import { addressList, recipientsColumn, recipientsFor, sendToEach, stoppedNumbers, type Delivery } from "./recipients";
 import { Busy, sendReviewRequest, WaitUntil } from "./reviews";
 import { isRoofWork, roofingOn, workKind, type WorkKind } from "./roofPackages";
 import { optionsFrom } from "./sales";
@@ -498,6 +500,25 @@ const messageAbout = (ctx: RunContext, clientId: string) =>
   isAutopayTrigger(ctx.trigger) ? { related_type: "autopay", related_id: clientId } : { related_type: ctx.subject, related_id: ctx.id };
 
 /**
+ * A rule whose emails and texts go to the client alone, never their contacts: marketing (re-engage,
+ * win-back), a referral credit (theirs), and anything about autopay (their card).
+ */
+const clientAlone = (ctx: RunContext) => Boolean(ctx.campaign?.marketing) || isAutopayTrigger(ctx.trigger) || ctx.trigger === "referral.earned";
+
+/**
+ * Who a rule's email or text goes to: the client and their contacts ticked for it
+ * (services/recipients.ts), or the client alone for the rules above. Never a number that texted STOP.
+ */
+async function peopleFor(admin: Db, ctx: RunContext, client: NonNullable<RunContext["client"]>, channel: "email" | "sms"): Promise<Recipient[]> {
+  if (!clientAlone(ctx)) return recipientsFor(admin, ctx.company.id, client, channel, ctx.company.settings);
+  const stopped = channel === "sms" ? await stoppedNumbers(admin, ctx.company.id, [client.phone]) : [];
+  return clientRecipients(channel, client, [], { contactsOn: false, stopped });
+}
+
+/** For an action's result when it reached some but not all: "; didn't reach bo@example.com (why)". */
+const missed = (delivery: Delivery) => (delivery.failed.length ? `; didn't reach ${addressList(delivery.failed)} (${delivery.failed[0]!.reason.replace(/\.$/, "")})` : "");
+
+/**
  * Performs one action. Returns a short description of what happened (a Skip when there was nothing
  * to do), throws with the reason, or throws WaitUntil when it can't happen yet.
  */
@@ -540,37 +561,48 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
     }
     case "send_email": {
       // An automated campaign's email goes as one, tracked (Close pending quotes as it always has without APP_URL).
-      if (ctx.campaign && (ctx.campaign.marketing || baseUrl)) return sendCampaignEmail(env, admin, ctx, action, baseUrl);
+      // A quote's follow-up for a client with no address of their own goes the plain way below, to
+      // their contacts ticked for emails.
+      if (ctx.campaign && (ctx.campaign.marketing || (baseUrl && (!client || isEmail(client.email))))) return sendCampaignEmail(env, admin, ctx, action, baseUrl);
       if (!client) throw new Error("There's no client on this record.");
-      if (!isEmail(client.email)) throw new Error(`${client.display_name} has no email address.`);
-      const subject = render(action.subject, ctx);
-      const text = render(action.body, ctx);
-      const email = renderEmail({ companyName: ctx.company.name, logo: baseUrl ? logoImage(baseUrl, ctx.company.id, ctx.company.settings) : null, text, footer: companyFooter(ctx.company) });
-      const result = await sendEmail(env, { to: client.email!.trim(), subject, text: email.text, html: email.html, replyTo: ctx.company.email ?? undefined, fromName: ctx.company.name }, ctx.company.id);
-      if (!result.sent) throw new Error(result.reason ?? "The email wasn't sent.");
-      // The timeline's copy has the office's copies of the client's links (officeVars).
+      const people = await peopleFor(admin, ctx, client, "email");
+      if (!people.length) throw new Error(`${client.display_name} has no email address.`);
+      // The client's own address gets their own links; a contact's, and the timeline's copy, the
+      // office's copies (officeVars), which can't agree to autopay or tip on the client's card.
       const kept = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
+      const delivery = await sendToEach(people, (person) => {
+        const from = person.contact_id ? kept : ctx;
+        const email = renderEmail({ companyName: ctx.company.name, logo: baseUrl ? logoImage(baseUrl, ctx.company.id, ctx.company.settings) : null, text: render(action.body, from), footer: companyFooter(ctx.company) });
+        return sendEmail(env, { to: person.to, subject: render(action.subject, from), text: email.text, html: email.html, replyTo: ctx.company.email ?? undefined, fromName: ctx.company.name }, ctx.company.id);
+      }, "The email wasn't sent.");
+      if (!delivery.went.length) throw new Error(delivery.failed[0]!.reason);
       await admin.from("messages").insert({
         company_id: ctx.company.id, client_id: client.id, channel: "email", direction: "out", subject: render(action.subject, kept), body: render(action.body, kept),
-        ...messageAbout(ctx, client.id), external_id: result.id ?? null, sent_by: null,
+        ...messageAbout(ctx, client.id), external_id: delivery.id, sent_by: null, recipients: recipientsColumn(delivery),
       });
-      return `Emailed ${client.email}`;
+      return `Emailed ${addressList(delivery.went)}${missed(delivery)}`;
     }
     case "send_sms": {
       if (!client) throw new Error("There's no client on this record.");
-      if (!client.phone) throw new Error(`${client.display_name} has no phone number.`);
-      if (textsOff(client)) return new Skip(textsOffReason(client.display_name).replace(/\.$/, ""));
-      const body = render(action.body, ctx);
-      const result = await sendSms(env, { to: client.phone, body }, ctx.company.id);
-      await noteRefusedText(admin, client, client.phone, result);
-      if (!result.sent) throw new Error(result.reason ?? "The text wasn't sent.");
-      // The timeline's copy has the office's copies of the client's links (officeVars).
+      const people = await peopleFor(admin, ctx, client, "sms");
+      if (!people.length) {
+        if (!client.phone) throw new Error(`${client.display_name} has no phone number.`);
+        // Their phone texted STOP, and there's nobody else to text.
+        return new Skip(textsOffReason(client.display_name).replace(/\.$/, ""));
+      }
+      // As with emails: their own links to the client's own phone, the office's copies to a contact's.
       const kept = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
+      const delivery = await sendToEach(people, async (person) => {
+        const result = await sendSms(env, { to: person.to, body: render(action.body, person.contact_id ? kept : ctx) }, ctx.company.id);
+        await noteRefusedText(admin, client, person.to, result, ctx.company.id);
+        return result;
+      }, "The text wasn't sent.");
+      if (!delivery.went.length) throw new Error(delivery.failed[0]!.reason);
       await admin.from("messages").insert({
         company_id: ctx.company.id, client_id: client.id, channel: "sms", direction: "out", body: render(action.body, kept),
-        ...messageAbout(ctx, client.id), external_id: result.id ?? null, sent_by: null,
+        ...messageAbout(ctx, client.id), external_id: delivery.id, sent_by: null, recipients: recipientsColumn(delivery),
       });
-      return `Texted ${client.phone}`;
+      return `Texted ${addressList(delivery.went)}${missed(delivery)}`;
     }
     case "add_tag":
     case "remove_tag": {

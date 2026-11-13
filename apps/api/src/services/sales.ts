@@ -8,6 +8,7 @@
 import { laborRates, localDate, workLines, workToBill } from "@crewtavo/core";
 import { hidesExactPrice, inRangeMode, optionsIntroText, rangeIntroText } from "@crewtavo/core/estimates";
 import { optionBaseTotal, toCents, type Amount, type OptionLine, type TotalsPromo } from "@crewtavo/core/money";
+import { MAX_RECIPIENTS, type Recipient } from "@crewtavo/core/recipients";
 import { z } from "zod";
 import type { Env } from "../env";
 import { stripeAccess, syncStripeInvoice } from "../integrations/stripe";
@@ -19,7 +20,8 @@ import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
 import { loadOptions, manualApproval } from "./contracts";
 import { logoImage } from "./logo";
-import { noteRefusedText, textsOffRefusal, textsOffTo } from "./textsOff";
+import { recipientsColumn, recipientsFor, sendToEach } from "./recipients";
+import { noteRefusedText, numberStopped, numberStoppedRefusal, textsOffRefusal, textsOffTo } from "./textsOff";
 
 /** Who's sending, from where: the person's client, their company, and the address client links use. */
 export interface SalesScope {
@@ -173,37 +175,81 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
   const message = (link: string) => `${greeting}\n\n${intro}\n\n${link}\n\nThanks,\n${company.name}`;
   // The client's own link only to their own email or phone on file; any other address gets the office's copy.
   const linkFor = (channel: "email" | "sms", to: string) => (sentToClient(channel, to, record.client) ? links.own : links.office);
-  let result: { sent: boolean; reason?: string; id?: string } = { sent: false, reason: "Link only" };
-  if (body.channel === "email") {
-    const to = body.to || record.client?.email;
-    if (!to || !isEmail(to)) throw new HttpError(400, "Add a valid email address for this client first.");
-    const subject = body.subject || defaults.subject || `${label} from ${company.name}`;
-    const footer = [company.name, companyAddress(company.address as Record<string, string>), company.phone].filter(Boolean).join(" · ");
-    const text = message(linkFor("email", to));
-    result = await sendEmail(s.env, { to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer }), replyTo: company.email ?? undefined, fromName: company.name }, s.companyId);
-  } else if (body.channel === "sms") {
-    const to = body.to || record.client?.phone;
-    if (!to) throw new HttpError(400, "This client has no phone number.");
-    // A client who texted STOP isn't texted at their own phone, a quote or invoice included.
-    const { data: client } = await s.db.from("clients").select("id, display_name, phone, sms_opt_out_at").eq("id", record.client_id).maybeSingle();
-    if (client && textsOffTo(client, to)) throw new HttpError(400, textsOffRefusal(client.display_name));
-    result = await sendSms(s.env, { to, body: `${company.name}: ${intro} ${linkFor("sms", to)}` });
-    if (client) await noteRefusedText(adminClient(s.env), client, to, result);
-  }
-  if (result.sent) {
+  if (body.channel === "link") return { link: links.office, sent: false, reason: "Link only" };
+  const channel = body.channel;
+  const admin = adminClient(s.env);
+  const { data: onFile } = await s.db.from("clients").select("id, display_name, email, phone, sms_opt_out_at").eq("id", record.client_id).maybeSingle();
+  const client = onFile ?? { id: record.client_id, display_name: record.client?.display_name ?? "This client", email: record.client?.email ?? null, phone: record.client?.phone ?? null, sms_opt_out_at: null };
+  const people = await sendTo(admin, s.companyId, channel, client, body, company.settings);
+  const delivery =
+    channel === "email"
+      ? await sendToEach(people, (person) => {
+          const subject = body.subject || defaults.subject || `${label} from ${company.name}`;
+          const footer = [company.name, companyAddress(company.address as Record<string, string>), company.phone].filter(Boolean).join(" · ");
+          const text = message(linkFor("email", person.to));
+          return sendEmail(s.env, { to: person.to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer }), replyTo: company.email ?? undefined, fromName: company.name }, s.companyId);
+        })
+      : await sendToEach(people, async (person) => {
+          const result = await sendSms(s.env, { to: person.to, body: `${company.name}: ${intro} ${linkFor("sms", person.to)}` });
+          await noteRefusedText(admin, client, person.to, result, s.companyId);
+          return result;
+        });
+  if (delivery.went.length) {
     await s.db.from("messages").insert({
       company_id: s.companyId,
       client_id: record.client_id,
-      channel: body.channel,
-      subject: body.channel === "email" ? body.subject || defaults.subject || label : label,
+      channel,
+      subject: channel === "email" ? body.subject || defaults.subject || label : label,
       // The office's copy of the link: anyone who reads the timeline can open it, but not as the client.
       body: message(links.office),
       related_type: kind,
       related_id: record.id,
-      external_id: result.id ?? null,
+      external_id: delivery.id,
+      recipients: recipientsColumn(delivery),
     });
   }
-  return { link: links.office, ...result };
+  const first = delivery.failed[0];
+  return {
+    link: links.office,
+    sent: delivery.went.length > 0,
+    ...(delivery.id ? { id: delivery.id } : {}),
+    // Sent to nobody: why, and the provider's status and code with it, as a send to one address gave them.
+    ...(!delivery.went.length && first ? { reason: first.reason, ...(first.result.status ? { status: first.result.status } : {}), ...(first.result.code ? { code: first.result.code } : {}) } : {}),
+    sent_to: delivery.went.map((person) => person.to),
+    // Reached some and not others: who it didn't reach, and why.
+    ...(delivery.went.length && delivery.failed.length ? { not_sent: delivery.failed.map((person) => ({ to: person.to, reason: person.reason })) } : {}),
+  };
+}
+
+type SendClient = { id: string; display_name: string; email: string | null; phone: string | null; sms_opt_out_at: string | null };
+
+/**
+ * Who a quote or invoice goes to. An address or number typed for this send (`to`) is the only one
+ * it goes to, as it always was. Without one: the client's own, and their contacts ticked for emails
+ * or texts (services/recipients.ts). Never a number that texted STOP. Refuses, with what to fix,
+ * when that leaves nobody.
+ */
+async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", client: SendClient, body: SendBody, settings: unknown): Promise<Recipient[]> {
+  const typed = body.to?.trim();
+  if (channel === "email") {
+    if (typed) {
+      if (!isEmail(typed)) throw new HttpError(400, "Add a valid email address for this client first.");
+      return [{ to: typed, name: sentToClient("email", typed, client) ? client.display_name : typed, contact_id: null }];
+    }
+    const people = await recipientsFor(admin, companyId, client, "email", settings);
+    if (!people.length) throw new HttpError(400, "Add a valid email address for this client first.");
+    return people.slice(0, MAX_RECIPIENTS);
+  }
+  if (typed) {
+    // A client who texted STOP isn't texted at their own phone, a quote or invoice included; nor is
+    // any other number that texted STOP.
+    if (textsOffTo(client, typed)) throw new HttpError(400, textsOffRefusal(client.display_name));
+    if (await numberStopped(admin, companyId, typed)) throw new HttpError(400, numberStoppedRefusal(typed));
+    return [{ to: typed, name: sentToClient("sms", typed, client) ? client.display_name : typed, contact_id: null }];
+  }
+  const people = await recipientsFor(admin, companyId, client, "sms", settings);
+  if (!people.length) throw new HttpError(400, client.phone ? textsOffRefusal(client.display_name) : "This client has no phone number.");
+  return people.slice(0, MAX_RECIPIENTS);
 }
 
 /** Start a draft quote from a request, carrying over the client, property and any measurement. */

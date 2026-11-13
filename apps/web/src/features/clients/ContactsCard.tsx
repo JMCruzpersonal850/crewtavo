@@ -1,6 +1,8 @@
 /** Extra people on a client account: a spouse, property manager or billing contact. */
+import { contactMessages } from "@crewtavo/core/recipients";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -124,6 +126,8 @@ export function AddContact({ clientId }: { clientId: string }) {
 function ContactDialog({ clientId, contact, onClose }: { clientId: string; contact: Contact | null; onClose: () => void }) {
   const { company } = useSession();
   const queryClient = useQueryClient();
+  // Whether ticked contacts get the client's messages at all (Settings → Client notifications).
+  const contactsOn = contactMessages(company.settings).enabled;
   const [f, setF] = useState({
     name: contact?.name ?? "",
     email: contact?.email ?? "",
@@ -159,6 +163,11 @@ function ContactDialog({ clientId, contact, onClose }: { clientId: string; conta
         <label className="checkbox"><input type="checkbox" checked={f.is_primary} onChange={(e) => setF({ ...f, is_primary: e.target.checked })} /> Primary contact</label>
         <label className="checkbox"><input type="checkbox" checked={f.notify_email} onChange={(e) => setF({ ...f, notify_email: e.target.checked })} /> Gets emailed reminders and receipts</label>
         <label className="checkbox"><input type="checkbox" checked={f.notify_sms} onChange={(e) => setF({ ...f, notify_sms: e.target.checked })} /> Gets text reminders</label>
+        <span className="muted small">
+          {contactsOn
+            ? "Ticked, they get what the client gets about their work: visit reminders, on-my-way texts, quotes, invoices and receipts. Marketing emails and review requests only go to the client."
+            : <>Contacts don't get these yet. An owner or admin can turn it on in <Link to="/settings?tab=client-notifications">Settings → Client notifications</Link>.</>}
+        </span>
         <FormError error={save.error} fields={["email", "phone"]} />
         <div className="form-actions">
           <FormChecks />

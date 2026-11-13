@@ -17,6 +17,7 @@ import { useListAnimation } from "@/lib/motion";
 import { hasRole, useSession } from "@/lib/session";
 import { ClientPicker, type PickedClient } from "../clients/ClientForm";
 import { MessageBody } from "../clients/MessageBody";
+import { messageFrom, messagePeople } from "../clients/messagePeople";
 import { ConnectEmailHint } from "../settings/ConnectEmailHint";
 
 const FILTERS = [
@@ -133,7 +134,7 @@ function Thread({ clientId, onBack }: { clientId: string; onBack: () => void }) 
     queryFn: async () => {
       const [client, rows] = await Promise.all([
         supabase().from("clients").select("id, display_name, email, phone, sms_opt_out_at").eq("id", clientId).maybeSingle(),
-        supabase().from("messages").select("id, channel, direction, subject, body, status, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(300),
+        supabase().from("messages").select("id, channel, direction, subject, body, status, created_at, recipients, from_name").eq("client_id", clientId).order("created_at", { ascending: false }).limit(300),
       ]);
       return { client: unwrap(client), rows: unwrap(rows).reverse() };
     },
@@ -172,6 +173,9 @@ function Thread({ clientId, onBack }: { clientId: string; onBack: () => void }) 
           const day = dayLabel(m.created_at);
           const showDay = day !== lastDay;
           lastDay = day;
+          // One message however many people it went to: who they were, and anyone it didn't reach.
+          const sent = messagePeople(m);
+          const from = messageFrom(m);
           return (
             <Fragment key={m.id}>
               {showDay && <span className="thread-day">{day}</span>}
@@ -179,8 +183,11 @@ function Thread({ clientId, onBack }: { clientId: string; onBack: () => void }) 
                 <div className="msg-bubble">{m.subject && <span className="msg-subject">{m.subject}</span>}<MessageBody body={m.body} /></div>
                 <span className="msg-meta">
                   <Icon name={ICON[m.channel] ?? "messages"} size={12} />
-                  {note ? "Internal note" : m.channel === "email" ? "Email" : m.channel === "sms" ? "Text" : "Call"} · <span title={formatDateTime(m.created_at)}>{new Date(m.created_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
+                  {note ? "Internal note" : m.channel === "email" ? "Email" : m.channel === "sms" ? "Text" : "Call"}
+                  {from && <> from {from}</>}
+                  {sent.to && <span title={sent.toFull ?? undefined}> to {sent.to}</span>} · <span title={formatDateTime(m.created_at)}>{new Date(m.created_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
                   {m.status === "failed" && <span className="text-danger strong">· Not delivered</span>}
+                  {sent.missed && <span className="text-danger">· Didn't reach {sent.missed}</span>}
                 </span>
               </div>
             </Fragment>

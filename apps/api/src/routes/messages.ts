@@ -14,11 +14,12 @@ import { requireCompany, requireUser } from "../lib/auth";
 import { safeEqual } from "../lib/crypto";
 import { isEmail, renderEmail } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson, uuid } from "../lib/http";
+import { sentToClient } from "../lib/links";
 import { sendEmail, sendSms } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
 import { logoImage } from "../services/logo";
-import { noteRefusedText, phoneKey, textsOffRefusal, textsOffTo } from "../services/textsOff";
+import { clearStop, noteRefusedText, noteStop, numberStopped, numberStoppedRefusal, phoneKey, textsOffRefusal, textsOffTo } from "../services/textsOff";
 
 export const messages = new Hono<AppEnv>();
 
@@ -47,17 +48,20 @@ messages.post("/messages/send", requireUser, requireCompany(SALES), async (c) =>
   } else {
     to = body.to || client.phone || "";
     if (!to) throw new HttpError(400, `${client.display_name} has no phone number.`);
-    // Their own phone, after they texted STOP. Another number (a spouse's, say) is the office's to text.
+    // Their own phone, after they texted STOP. Another number (a spouse's, say) is the office's to
+    // text, unless that number texted STOP itself.
     if (textsOffTo(client, to)) throw new HttpError(400, textsOffRefusal(client.display_name));
+    if (await numberStopped(adminClient(c.env), companyId, to)) throw new HttpError(400, numberStoppedRefusal(to));
     if (body.body.length > 1600) throw new HttpError(400, "Texts are limited to 1,600 characters.");
     result = await sendSms(c.env, { to, body: body.body });
-    await noteRefusedText(adminClient(c.env), client, to, result);
+    await noteRefusedText(adminClient(c.env), client, to, result, companyId);
   }
   const { data: row, error } = await db
     .from("messages")
     .insert({
       company_id: companyId, client_id: client.id, channel: body.channel, direction: "out", subject: body.channel === "email" ? body.subject : null,
       body: body.body, status: result.sent ? "sent" : "failed", external_id: result.id ?? null,
+      recipients: [{ to, name: sentToClient(body.channel, to, client) ? client.display_name : to, ...(result.sent ? {} : { failed: true }) }],
     })
     .select("id")
     .single();
@@ -106,9 +110,12 @@ messages.post("/webhooks/twilio", async (c) => {
     if (keyword === "stop") {
       const { data } = await admin.from("clients").update({ sms_opt_out_at: new Date().toISOString() }).eq("id", client.id).is("sms_opt_out_at", null).select("id");
       changed = Boolean(data?.length);
+      // The number itself, too: a contact kept under it isn't texted either (sms_stops).
+      await noteStop(admin, client.company_id, form.From);
     } else if (keyword === "start") {
       const { data } = await admin.from("clients").update({ sms_opt_out_at: null }).eq("id", client.id).not("sms_opt_out_at", "is", null).select("id");
       changed = Boolean(data?.length);
+      await clearStop(admin, client.company_id, form.From);
     }
     const notice = changed && keyword === "stop"
       ? { title: `${client.display_name} turned off texts`, body: "They texted STOP. Crewtavo won't text them until they text START." }
@@ -120,6 +127,13 @@ messages.post("/webhooks/twilio", async (c) => {
       await admin.from("notifications").insert(office.map((m) => ({ company_id: client.company_id, user_id: m.user_id, kind: "client", title: notice.title.slice(0, 300), body: notice.body, link: `/messages?client=${client.id}` })));
     }
     kickAutomations(c, client.company_id);
+  }
+  // STOP or START from a contact's phone (a spouse or property manager ticked for text reminders):
+  // that number stops, or starts again, for each company that keeps it as a contact's.
+  if (keyword) {
+    const { data: contacts } = await admin.from("client_contacts").select("company_id, phone").not("phone", "is", null).ilike("phone", `%${from.slice(-4)}%`).limit(50);
+    const companies = new Set((contacts ?? []).filter((contact) => phoneKey(contact.phone) === from).map((contact) => contact.company_id));
+    for (const company of companies) await (keyword === "stop" ? noteStop(admin, company, form.From) : clearStop(admin, company, form.From));
   }
   return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
 });

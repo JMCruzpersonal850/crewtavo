@@ -21,6 +21,7 @@ import { everyRow, firstRows } from "@/lib/paging";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { NewClientDialog, useClientTags } from "./ClientForm";
+import { ContactMessagesNotice } from "./ContactMessages";
 import { ImportClientsDialog } from "./ImportClientsDialog";
 
 const FILTERS = [
@@ -203,6 +204,7 @@ export function ClientsPage() {
           )
         }
       />
+      <ContactMessagesNotice />
       <div className="toolbar">
         <div className="input-group">
           <span className="addon"><Icon name="search" size={16} /></span>

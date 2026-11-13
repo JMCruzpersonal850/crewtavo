@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { RuleRow } from "../automations/AutomationsPage";
+import { ContactMessagesSwitch } from "../clients/ContactMessages";
 import { CLIENT_NOTIFICATIONS, ruleFor, type ClientNotification } from "./clientNotifications";
 import { ConnectEmailHint } from "./ConnectEmailHint";
 
@@ -63,6 +64,7 @@ export function ClientNotificationSettings() {
         ))}
       </div>
       <FormError error={toggle.error} />
+      <ContactMessagesSwitch />
     </div>
   );
 }

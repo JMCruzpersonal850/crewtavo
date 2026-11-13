@@ -11,13 +11,13 @@
  * here as the person asking, so the database decides who may: whoever may move the visit.
  */
 import { arrivalWindowMin, localTime, slotLabel, zonedTimeToUtc } from "@crewtavo/core";
-import { isPlaceholderEmail } from "@crewtavo/core/email";
 import type { Env } from "../env";
-import { companyFooter, firstName, isEmail, renderEmail } from "../lib/email";
+import { companyFooter, firstName, renderEmail } from "../lib/email";
 import { dbError, HttpError, must } from "../lib/http";
 import { emailReady, sendEmail } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
 import { logoImage } from "./logo";
+import { recipientsColumn, recipientsFor, sendToEach } from "./recipients";
 import { companyZone, updateVisit, type Scope } from "./schedule";
 
 const FIELDS =
@@ -96,12 +96,15 @@ async function tellClient(env: Env, s: Scope, requestId: string, note: string | 
   const admin = adminClient(env);
   const [company, row] = await Promise.all([
     admin.from("companies").select("id, name, email, phone, timezone, settings, address").eq("id", s.companyId).maybeSingle(),
-    admin.from("visit_change_requests").select("kind, visit:visits(id, title, scheduled_on, starts_at), client:clients(id, display_name, email)").eq("company_id", s.companyId).eq("id", requestId).maybeSingle(),
+    admin.from("visit_change_requests").select("kind, visit:visits(id, title, scheduled_on, starts_at), client:clients(id, display_name, email, phone)").eq("company_id", s.companyId).eq("id", requestId).maybeSingle(),
   ]);
   const co = company.data;
   const visit = row.data?.visit as unknown as Pick<Visit, "id" | "title" | "scheduled_on" | "starts_at"> | null;
-  const client = row.data?.client as unknown as { id: string; display_name: string; email: string | null } | null;
-  if (!co || !visit || !client || !isEmail(client.email) || isPlaceholderEmail(client.email) || !(await emailReady(env, s.companyId))) return false;
+  const client = row.data?.client as unknown as { id: string; display_name: string; email: string | null; phone: string | null } | null;
+  if (!co || !visit || !client || !(await emailReady(env, s.companyId))) return false;
+  // The client, and their contacts ticked for emails (services/recipients.ts): whoever plans around the visit.
+  const people = await recipientsFor(admin, co.id, client, "email", co.settings);
+  if (!people.length) return false;
   // The visit as it is now: moved, for an approved reschedule.
   const when = visit.scheduled_on ? slotLabel({ date: visit.scheduled_on, starts_at: visit.starts_at }, co.timezone || "UTC", arrivalWindowMin(co.settings)) : "a day still to be set";
   const cancel = row.data!.kind === "cancel";
@@ -113,11 +116,11 @@ async function tellClient(env: Env, s: Scope, requestId: string, note: string | 
       : [`About your visit on ${when}`, `We can't ${cancel ? "cancel" : "move"} your ${visit.title} visit, so it stays on ${when}.${note ? `\n\n${note}` : ""}`];
   const text = [`Hi ${firstName(client.display_name)},`, line, `Questions? Reply to this email${co.phone ? ` or call ${co.phone}` : ""}.`, co.name].join("\n\n");
   const email = renderEmail({ companyName: co.name, logo: baseUrl ? logoImage(baseUrl, co.id, co.settings) : null, text, footer: companyFooter(co) });
-  const result = await sendEmail(env, { to: client.email!.trim(), subject, text: email.text, html: email.html, replyTo: co.email ?? undefined, fromName: co.name }, co.id);
-  if (!result.sent) return false;
+  const delivery = await sendToEach(people, (person) => sendEmail(env, { to: person.to, subject, text: email.text, html: email.html, replyTo: co.email ?? undefined, fromName: co.name }, co.id));
+  if (!delivery.went.length) return false;
   await admin.from("messages").insert({
     company_id: co.id, client_id: client.id, channel: "email", direction: "out", status: "sent", subject, body: text,
-    related_type: "visit", related_id: visit.id, external_id: result.id ?? null, sent_by: s.userId ?? null,
+    related_type: "visit", related_id: visit.id, external_id: delivery.id, sent_by: s.userId ?? null, recipients: recipientsColumn(delivery),
   });
   return true;
 }

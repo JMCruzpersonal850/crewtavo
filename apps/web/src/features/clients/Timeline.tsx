@@ -12,13 +12,17 @@ import { useListAnimation } from "@/lib/motion";
 import { hasRole, useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 import { MessageBody } from "./MessageBody";
+import { messageFrom, messagePeople } from "./messagePeople";
 
 const ICON: Record<string, IconName> = { note: "note", email: "mail", sms: "messages", call: "phone" };
 
-function label(m: { channel: string; direction: string; subject: string | null }) {
+function label(m: { channel: string; direction: string; subject: string | null; recipients?: unknown; from_name?: string | null }) {
   if (m.channel === "note") return m.direction === "in" ? "From client" : "Note";
   const what = m.channel === "email" ? "Email" : m.channel === "sms" ? "Text" : "Call";
-  return m.direction === "in" ? `${what} from client` : `${what} sent`;
+  // A text from a contact's phone says whose; a send says who it went to, when that was recorded.
+  if (m.direction === "in") return `${what} from ${messageFrom(m) ?? "client"}`;
+  const { to } = messagePeople(m);
+  return to ? `${what} sent to ${to}` : `${what} sent`;
 }
 
 const newestFirst = (a: { created_at: string }, b: { created_at: string }) => b.created_at.localeCompare(a.created_at);
@@ -37,7 +41,7 @@ export function Timeline({ clientId }: { clientId: string }) {
       unwrap(
         await supabase()
           .from("messages")
-          .select("id, channel, direction, subject, body, status, created_at, sent_by")
+          .select("id, channel, direction, subject, body, status, created_at, sent_by, recipients, from_name")
           .eq("client_id", clientId)
           .order("created_at", { ascending: false })
           .limit(limit + 1),
@@ -52,7 +56,7 @@ export function Timeline({ clientId }: { clientId: string }) {
         await supabase()
           .from("messages")
           .insert({ company_id: session.company.id, client_id: clientId, channel: "note", direction: "internal", body: note.trim() })
-          .select("id, channel, direction, subject, body, status, created_at, sent_by")
+          .select("id, channel, direction, subject, body, status, created_at, sent_by, recipients, from_name")
           .single(),
       ),
     onSuccess: (row) => {
@@ -127,9 +131,10 @@ export function Timeline({ clientId }: { clientId: string }) {
               <div style={{ minWidth: 0 }}>
                 <div className="row-between">
                   <span className="t-meta">
-                    <strong style={{ color: "var(--ink)" }}>{label(m)}</strong>
+                    <strong style={{ color: "var(--ink)" }} title={messagePeople(m).toFull ?? undefined}>{label(m)}</strong>
                     {m.subject ? ` · ${m.subject}` : ""} · <span title={formatDateTime(m.created_at)}>{timeAgo(m.created_at)}</span>
                     {m.status === "failed" && <span style={{ marginLeft: 6 }}><StatusPill label="Failed" tone="danger" /></span>}
+                    {messagePeople(m).missed && <span className="text-danger"> · Didn't reach {messagePeople(m).missed}</span>}
                   </span>
                   {m.channel === "note" && m.direction === "internal" && (canDelete || m.sent_by === session.userId) && (
                     <Button size="sm" variant="ghost" icon="trash" aria-label="Delete note" onClick={() => removeLater(m)} />
