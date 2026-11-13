@@ -265,6 +265,10 @@ insert into public.pay_period_lines (company_id, period_id, user_id, hours, amou
 insert into public.payments (company_id, client_id, invoice_id, amount, method) values (:'co', :'c1', :'roof_invoice', 100, 'check');
 insert into public.payouts (company_id, processor_ref, amount, status, arrival_on) values (:'co', 'po_t1070', 100, 'paid', current_date);
 insert into public.recurrence_skips (company_id, job_id, recurrence_key) values (:'co', :'j1', 'k1');
+-- Extra work on one visit of a repeating job, with its price (20261113000900_visit_extras.sql): the office's.
+insert into public.jobs (company_id, client_id, property_id, title, kind, recurrence_rule) values (:'co', :'c1', :'p1', 'Gutter cleaning plan', 'recurring', 'FREQ=MONTHLY') returning id as jr \gset
+insert into public.visits (company_id, job_id, property_id, title, scheduled_on) values (:'co', :'jr', :'p1', 'Clean the gutters', private.company_today(:'co') + 30) returning id as vr \gset
+insert into public.visit_extras (company_id, visit_id, name, unit_price) values (:'co', :'vr', 'Downspout repair', 85);
 insert into public.referrals (company_id, referrer_client_id, referred_name) values (:'co', :'c1', 'Neighbor Ned');
 -- A referral credit Ann earned, which goes on her new invoice as its line goes in, one taken off
 -- another invoice, and an ask for referrals.
@@ -617,7 +621,10 @@ select t1070.check(array(
   'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
   -- Installs Paving or Roofing: owners and admins who connect apps only, never a sub.
   'trade_app_set_enabled(uuid, text, boolean)',
-  'trash_delete_forever(uuid, jsonb)', 'visit_autopay(uuid)', 'visit_contact(uuid)', 'web_analytics_save(uuid, jsonb)', 'web_stats(uuid, date, date)',
+  'trash_delete_forever(uuid, jsonb)', 'visit_autopay(uuid)', 'visit_contact(uuid)',
+  -- A visit's extra work without prices: a sub's, for the jobs of their own visits (as job_scope).
+  'visit_extra_scope(uuid)',
+  'web_analytics_save(uuid, jsonb)', 'web_stats(uuid, date, date)',
   'website_forms_set_enabled(uuid, boolean)', 'withdraw_sub_offer(uuid)']::text[],
   'the functions a signed-in person can call are the known list (a new one needs a decision about subs, here)');
 -- Signing in with a code, by text or by email (20261025005001_sign_in_codes.sql,
