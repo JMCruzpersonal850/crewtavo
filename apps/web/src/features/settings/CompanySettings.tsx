@@ -184,7 +184,7 @@ export function CompanySettings() {
           <Field label="Minimum charge" optional hint="An invoice under it gets a Minimum charge line that makes up the difference.">
             <input className="input" inputMode="decimal" value={f.minimum_charge} placeholder="Off" onChange={(e) => setF({ ...f, minimum_charge: e.target.value.replace(/[^0-9.]/g, "") })} />
           </Field>
-          <Field label="Late fee" hint={f.late_fee === "off" ? "Added once to an invoice still unpaid after its due date." : "Added once, if it's still unpaid that many days after it's due. Late fees aren't taxed."}>
+          <Field label="Late fee" hint={f.late_fee === "off" ? "Added once to an invoice still unpaid after its due date." : "Added once, if it's still unpaid that many days after it's due. Late fees aren't taxed. You can take one off an invoice, or turn them off for it, on the invoice."}>
             <select className="select" value={f.late_fee} onChange={set("late_fee")}>
               <option value="off">Off</option>
               <option value="flat">A flat amount</option>

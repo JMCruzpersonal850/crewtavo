@@ -329,9 +329,12 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
 
 - **Jobs and invoicing:** one-off and recurring jobs, multi-day work, change orders the client
   approves, batch invoicing, payment reminders, deposits, progress billing and retainage. A one-off
-  job moves to Requires invoicing when its last visit is finished, and the office is told. Invoices
-  go through Stripe for card and bank payments; invoices made in Stripe come in too, with the fees
-  and bank deposits behind every payment. Refunds, write-offs for invoices that won't be paid,
+  job moves to Requires invoicing when its last visit is finished, and the office is told. A quote's
+  deposit is invoiced as the client approves it, whether or not you take payments online. An
+  invoice can still be edited after it's sent, payments and all, and a late fee can be taken off or
+  turned off for one invoice. Invoices go through Stripe for card and bank payments; invoices made
+  in Stripe come in too, with the fees and bank deposits behind every payment. Refunds (by hand or
+  through Stripe, taken off the invoice or left owing), write-offs for invoices that won't be paid,
   expenses and job costing, timesheets and pay. Request, quote, job and invoice numbers can carry
   on from the system you're moving from (Settings → Company).
 - **Plans and files:** plan sets, specs, permits and addenda on requests, quotes, jobs and
