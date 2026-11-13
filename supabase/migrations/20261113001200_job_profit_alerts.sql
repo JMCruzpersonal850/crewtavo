@@ -242,4 +242,7 @@ revoke all on function public.profit_alert_companies(), public.profit_alert_jobs
 grant execute on function public.profit_alert_companies(), public.profit_alert_jobs(uuid, boolean), public.record_profit_checks(uuid, integer, jsonb),
   public.finish_profit_sweep(uuid, integer) to service_role;
 
+-- Its policies look the person's roles up once a query, not once a row (20261018000990_policy_lookups.sql).
+select private.fold_member_checks('public.job_profit_alerts');
+
 notify pgrst, 'reload schema';

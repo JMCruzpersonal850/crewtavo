@@ -269,6 +269,10 @@ insert into public.recurrence_skips (company_id, job_id, recurrence_key) values 
 insert into public.jobs (company_id, client_id, property_id, title, kind, recurrence_rule) values (:'co', :'c1', :'p1', 'Gutter cleaning plan', 'recurring', 'FREQ=MONTHLY') returning id as jr \gset
 insert into public.visits (company_id, job_id, property_id, title, scheduled_on) values (:'co', :'jr', :'p1', 'Clean the gutters', private.company_today(:'co') + 30) returning id as vr \gset
 insert into public.visit_extras (company_id, visit_id, name, unit_price) values (:'co', :'vr', 'Downspout repair', 85);
+-- A receipt waiting to be confirmed, and where a job stands against the profit line
+-- (20261113001210_receipt_reading.sql, 20261113001200_job_profit_alerts.sql): the office's with job costs.
+insert into public.expense_drafts (company_id, job_id, receipt_path, user_id) values (:'co', :'j1', :'co' || '/receipts/t1070.jpg', 'd1070000-0000-0000-0000-000000000001');
+insert into public.job_profit_alerts (company_id, job_id, below, margin, line) values (:'co', :'j1', true, 8, 20);
 -- A change of prices across repeating jobs, with each line's old and new price (20261113000950_price_changes.sql): the office's.
 insert into public.price_changes (id, company_id, change, summary, jobs, lines) values ('d1070000-0000-0000-0000-0000000000e1', :'co', '{"kind": "percent", "value": 5, "round": "cent"}', 'Up 5%', 1, 1);
 insert into public.price_change_lines (company_id, change_id, job_id, line_id, name, quantity, old_price, new_price) values (:'co', 'd1070000-0000-0000-0000-0000000000e1', :'jr', gen_random_uuid(), 'Gutter cleaning', 1, 120, 126);
@@ -503,6 +507,8 @@ select t1070.expect_error(format('insert into public.visit_assignees (company_id
 select t1070.expect_error(format('insert into public.invoices (company_id, client_id) values (%L, %L)', :'co', :'c1'), 'or an invoice');
 select t1070.expect_error(format('insert into public.messages (company_id, client_id, channel, direction, body) values (%L, %L, %L, %L, %L)', :'co', :'c1', 'note', 'internal', 'Hi'), 'or a note on a client');
 select t1070.expect_error(format('insert into public.expenses (company_id, amount, user_id, job_id) values (%L, 10, %L, %L)', :'co', 'd1070000-0000-0000-0000-000000000005', :'j1'), 'or a receipt');
+select t1070.expect_error(format('select public.save_read_expense(%L)', jsonb_build_object('company_id', :'co', 'amount', 10, 'job_id', :'j1')), 'or a read one');
+select t1070.expect_error(format('insert into public.expense_drafts (company_id, receipt_path) values (%L, %L)', :'co', :'co' || '/receipts/sub.jpg'), 'or one to confirm');
 select t1070.expect_error(format('insert into public.job_materials (company_id, job_id, name, quantity, unit, logged_by) values (%L, %L, %L, 1, %L, %L)', :'co', :'j1', 'Nails', 'box', 'd1070000-0000-0000-0000-000000000005'), 'or materials');
 select t1070.expect_error(format('insert into public.chat_messages (company_id, channel_id, author_id, body) values (%L, %L, %L, %L)', :'co', :'general', 'd1070000-0000-0000-0000-000000000005', 'Hi'), 'or post in team chat');
 select t1070.expect_error(format('insert into public.time_entries (company_id, user_id, category, started_at) values (%L, %L, %L, now())', :'co', 'd1070000-0000-0000-0000-000000000005', 'visit'), 'or clock in');
@@ -617,6 +623,8 @@ select t1070.check(array(
   -- Renewing tags or an inspection sticker: runs as the caller, and only equipment managers can change them, never a sub.
   'renew_equipment_document(uuid, date, text, uuid)',
   'request_manual_charges(uuid, uuid[], numeric[])', 'review_stats(uuid)',
+  -- Saving a read receipt as an expense: runs as the caller, so a sub can no more add one this way than any other.
+  'save_read_expense(jsonb, jsonb, uuid)',
   'search_sops(uuid, text, integer, boolean)', 'send_sub_offer(uuid, timestamp with time zone)',
   -- Runs as the caller: no rule lets a sub link a checklist to an item.
   'set_checklist_services(uuid, uuid[])',

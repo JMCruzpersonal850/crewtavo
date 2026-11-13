@@ -174,4 +174,7 @@ end $$;
 revoke execute on function public.save_read_expense(jsonb, jsonb, uuid) from public, anon;
 grant execute on function public.save_read_expense(jsonb, jsonb, uuid) to authenticated;
 
+-- Its policies look the person's roles up once a query, not once a row (20261018000990_policy_lookups.sql).
+select private.fold_member_checks('public.expense_drafts');
+
 notify pgrst, 'reload schema';
