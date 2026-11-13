@@ -21,6 +21,7 @@ import { formatPhoneTyping } from "@/lib/validate";
 import { CompanyLogo } from "./CompanyLogo";
 import { JobCostSettings } from "./JobCostSettings";
 import { NextNumbers } from "./NextNumbers";
+import { QuoteSettings } from "./QuoteSettings";
 
 const BREAK_HINTS: Record<BreakPay, string> = {
   short_paid: "Breaks of 20 minutes or less count as paid time; longer ones, like lunch, don't. This follows federal rules.",
@@ -292,6 +293,7 @@ export function CompanySettings() {
     <JobCostSettings settings={(details.data?.settings ?? {}) as Record<string, unknown>} />
     {/* Saved by itself, through the database's own function: not one of the settings above. */}
     <NextNumbers />
+    <QuoteSettings />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { addDays } from "@crewtavo/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { cronMatches } from "../src/lib/cron";
+import { HttpError } from "../src/lib/http";
 import { CRON_TASKS, runTask, TASKS } from "../src/tasks";
 
 // Autopay's own work is tested in autopay.test.ts and the Stripe tests; here, only that the tasks call it.
@@ -14,6 +15,12 @@ vi.mock("../src/integrations/stripe", async (original) => ({
   ...(await original<typeof import("../src/integrations/stripe")>()),
   reconcileAutopayProcessing: autopay.reconcile,
   reconcileBankPayments: autopay.bank,
+}));
+// Sending an invoice is sales.test.ts's; here, only what the installments task sends and how it settles each.
+const sales = vi.hoisted(() => ({ sendInvoice: vi.fn() }));
+vi.mock("../src/services/sales", async (original) => ({
+  ...(await original<typeof import("../src/services/sales")>()),
+  sendInvoice: sales.sendInvoice,
 }));
 vi.mock("../src/services/autopay", async (original) => ({
   ...(await original<typeof import("../src/services/autopay")>()),
@@ -141,6 +148,7 @@ describe("hourly upkeep", () => {
       if (call.path === "rpc/raise_past_due_notices") return 2;
       if (call.path === "rpc/add_late_fees") return 6;
       if (call.path === "rpc/tell_unpaid_deposits") return 1;
+      if (call.path === "rpc/make_due_installments") return 2;
       if (call.path === "rpc/emit_invoice_reminders") return 7;
       if (call.path === "rpc/emit_visit_reminders") return 2;
       if (call.path === "rpc/emit_equipment_alerts") return 1;
@@ -161,6 +169,7 @@ describe("hourly upkeep", () => {
       owed_again: 2,
       late_fees: 6,
       deposits: 1,
+      installments: 2,
       invoice_reminders: 7,
       reminders: 2,
       equipment: 1,
@@ -177,7 +186,7 @@ describe("hourly upkeep", () => {
     });
     // Cards expiring next month are flagged before the clocks.
     expect(calls.map((c) => c.path)).toEqual([
-      "rpc/mark_overdue_invoices", "rpc/raise_past_due_notices", "rpc/add_late_fees", "rpc/tell_unpaid_deposits", "rpc/emit_invoice_reminders", "rpc/emit_visit_reminders", "rpc/emit_equipment_alerts", "rpc/emit_equipment_document_alerts", "rpc/emit_guide_reviews", "rpc/expire_sub_offers",
+      "rpc/mark_overdue_invoices", "rpc/raise_past_due_notices", "rpc/add_late_fees", "rpc/tell_unpaid_deposits", "rpc/make_due_installments", "rpc/emit_invoice_reminders", "rpc/emit_visit_reminders", "rpc/emit_equipment_alerts", "rpc/emit_equipment_document_alerts", "rpc/emit_guide_reviews", "rpc/expire_sub_offers",
       "rpc/emit_sub_document_alerts", "rpc/emit_card_expiry_alerts", "rpc/clock_upkeep", "rpc/tidy_sign_in_codes",
     ]);
     expect(autopay.reconcile).toHaveBeenCalledWith(env, expect.anything());
@@ -340,9 +349,52 @@ describe("the nightly tidy-up", () => {
   });
 });
 
+describe("scheduled payments", () => {
+  it("sends each payment the database made, by email or by text to a client with only a phone, and settles each once", async () => {
+    const withUrl = { ...env, APP_URL: "https://crew.example.com/" };
+    const claimed = [
+      { id: "in-1", company_id: "co-1", invoice_id: "inv-1" },
+      { id: "in-2", company_id: "co-1", invoice_id: "inv-2" },
+      { id: "in-3", company_id: "co-2", invoice_id: "inv-3" },
+    ];
+    const clients: Record<string, unknown> = { "inv-1": { email: "pat@example.com", phone: null }, "inv-2": { email: null, phone: "+15555550100" }, "inv-3": { email: "x@example.com", phone: null } };
+    const calls = serve((call) => {
+      if (call.path === "rpc/claim_installment_sends") return claimed;
+      if (call.path === "invoices") return { client: clients[call.url.searchParams.get("id")!.replace("eq.", "")] };
+      return null;
+    });
+    sales.sendInvoice.mockImplementation(async (_s: unknown, id: string) => {
+      if (id === "inv-3") throw new HttpError(400, "Add a valid email address for this client first.");
+      return { link: "x", sent: true };
+    });
+    expect(CRON_TASKS["*/5 * * * *"]).toContain("installments");
+    expect(await runTask("installments", withUrl)).toEqual({ claimed: 3, sent: 2, failed: 1 });
+    expect(sales.sendInvoice.mock.calls.map((c) => [c[0].companyId, c[0].baseUrl, c[1], c[2]])).toEqual([
+      ["co-1", "https://crew.example.com", "inv-1", { channel: "email" }],
+      ["co-1", "https://crew.example.com", "inv-2", { channel: "sms" }],
+      ["co-2", "https://crew.example.com", "inv-3", { channel: "email" }],
+    ]);
+    expect(calls.filter((c) => c.path === "rpc/installment_sent").map((c) => c.body)).toEqual([
+      { p_installment: "in-1", p_sent: true },
+      { p_installment: "in-2", p_sent: true },
+      { p_installment: "in-3", p_sent: false, p_error: "Add a valid email address for this client first." },
+    ]);
+  });
+
+  it("sends nothing without the server's web address, and says so to the office", async () => {
+    sales.sendInvoice.mockReset();
+    const calls = serve((call) => (call.path === "rpc/claim_installment_sends" ? [{ id: "in-1", company_id: "co-1", invoice_id: "inv-1" }] : null));
+    expect(await runTask("installments", env)).toEqual({ claimed: 1, sent: 0, failed: 1 });
+    expect(sales.sendInvoice).not.toHaveBeenCalled();
+    expect(calls.find((c) => c.path === "rpc/installment_sent")?.body).toEqual({
+      p_installment: "in-1", p_sent: false, p_error: "This server has no web address set (APP_URL), so it can't send links to clients",
+    });
+  });
+});
+
 describe("autopay", () => {
   it("charges what's due every 5 minutes, alongside the outbox that sends its receipts", async () => {
-    expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay"]);
+    expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay", "installments"]);
     const result = { claimed: 2, charged: 1, processing: 0, needs_approval: 0, called_off: 0, failed: 1, needs_client: 0, busy: 0, retry: 0, lost: 0 };
     autopay.charge.mockResolvedValueOnce(result);
     expect(await runTask("autopay", env)).toEqual(result);

@@ -35,6 +35,7 @@ import {
   type InitialedSections,
   type QuoteContract,
 } from "@/features/documents/build";
+import { quoteSchedule } from "@/features/documents/build";
 import { smallInitials } from "@/features/documents/data";
 import { DocumentSheet, PrintableDocument } from "@/features/documents/EstimateDocument";
 import { openPrintablePdf } from "@/features/documents/pdfPrint";
@@ -1247,6 +1248,8 @@ function LinesCard({ token, data, lines, optionId, chosen, onChoose, editable, t
   const listed = listedLines(lines);
   const firstOf = (l: HubLine, i: number) => groupOf(l) !== null && !listed.slice(0, i).some((x) => groupOf(x) === groupOf(l));
   const deposit = depositToBook(q.deposit_amount, totals.total, q.deposit_percent);
+  // How it's paid, on what they're choosing; signed, as it was signed.
+  const schedule = quoteSchedule({ payment_schedule: q.payment_schedule, approval: q.approval, total: totals.total }, q.status === "approved" || q.status === "converted");
   // The add-ons ticked among these lines: what the code's minimum order is checked against, as it will be when they approve.
   const ticked = chosen.filter((id) => lines.some((l) => l.id === id));
   const short = promoShortfall(q.promo, lines, ticked);
@@ -1292,7 +1295,14 @@ function LinesCard({ token, data, lines, optionId, chosen, onChoose, editable, t
         {q.client?.tax_exempt && totals.tax === 0 && <div className="line"><span>Tax exempt{q.client.tax_exempt_note ? ` · ${q.client.tax_exempt_note}` : ""}</span><span>{formatMoneyCents(0)}</span></div>}
         <div className="line grand" style={{ fontSize: 24 }}><span>{q.recurrence_rule ? "Total per visit" : "Total"}</span><span>{formatMoneyCents(totals.total)}</span></div>
         {q.recurrence_rule && <div className="line"><span>How often</span><span style={{ textAlign: "right" }}>{scheduleText(q.recurrence_rule, q.active_months)}</span></div>}
-        {deposit > 0 && <div className="line"><span>Deposit to book</span><span>{formatMoneyCents(deposit)}</span></div>}
+        {schedule ? (
+          <>
+            <div className="line" style={{ marginTop: 8 }}><strong>Payment schedule</strong><span /></div>
+            {schedule.map((p, i) => <div key={i} className="line"><span>{p.name}: {p.due}</span><span>{formatMoneyCents(p.amount)}</span></div>)}
+          </>
+        ) : (
+          deposit > 0 && <div className="line"><span>Deposit to book</span><span>{formatMoneyCents(deposit)}</span></div>
+        )}
         {q.valid_until && <div className="line"><span>Valid until</span><span className={expired ? "text-danger" : undefined}>{formatDate(q.valid_until)}</span></div>}
       </div>
     </section>

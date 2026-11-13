@@ -92,6 +92,7 @@ import styles from "./QuotePage.module.css";
 import { depthLines, lineDepths, type DepthLine } from "./depths";
 import { AddOptionsDialog, QuoteOptions } from "./QuoteOptions";
 import { QuoteSections } from "./QuoteSections";
+import { PaymentScheduleCard } from "./PaymentSchedule";
 import { DiscountRows } from "./PromoRow";
 import { SendDialog } from "./SendDialog";
 
@@ -117,7 +118,7 @@ async function loadQuoteRow(id: string) {
   return unwrapOne(
     await supabase()
       .from("quotes")
-      .select("id, number, title, status, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, valid_until, recurrence_rule, active_months, starts_on, ends_on, sent_at, approved_at, approval, lost_reason, request_id, created_at, template_id, option_id, section_ids, roof_package_id, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, every_visit), request:requests(promo_code, website_form_id, rejected_promo_code, promo_problem), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), property:properties(id, line1, city, region, postal_code, lat, lng), lines:quote_line_items(id, name, description, quantity, unit, unit_price, unit_cost, taxable, optional, selected, option_group, option_id, formula, sort, service_id), jobs!jobs_company_id_quote_id_fkey(id, number), change_order_for, change_job:jobs!quotes_change_order_fkey(id, number, title), package:roof_packages!quotes_roof_package_fkey(name, warranty, price_mode, markup_pct), range_low, range_high, range_accepted_at, priced_on_site_at, exact_sent_at, custom_fields, is_template, left_out")
+      .select("id, number, title, status, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, valid_until, recurrence_rule, active_months, starts_on, ends_on, sent_at, approved_at, approval, lost_reason, request_id, created_at, template_id, option_id, section_ids, roof_package_id, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, every_visit), request:requests(promo_code, website_form_id, rejected_promo_code, promo_problem), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), property:properties(id, line1, city, region, postal_code, lat, lng), lines:quote_line_items(id, name, description, quantity, unit, unit_price, unit_cost, taxable, optional, selected, option_group, option_id, formula, sort, service_id), jobs!jobs_company_id_quote_id_fkey(id, number), change_order_for, change_job:jobs!quotes_change_order_fkey(id, number, title), package:roof_packages!quotes_roof_package_fkey(name, warranty, price_mode, markup_pct), range_low, range_high, range_accepted_at, priced_on_site_at, exact_sent_at, custom_fields, is_template, left_out, payment_schedule")
       .eq("id", id)
       .order("sort", { referencedTable: "quote_line_items" })
       .maybeSingle(),
@@ -570,6 +571,8 @@ export function QuotePage() {
   // A percent deposit is of the total of the option looked at, as the client is asked for it.
   const percentDeposit = q.deposit_percent !== null;
   const deposit = Number(depositFor(q.deposit_amount, tab.total, q.deposit_percent));
+  // With a payment schedule, the deposit is its payment due at approval: it's changed there.
+  const scheduled = Array.isArray(q.payment_schedule) && q.payment_schedule.length > 0;
   const choose = needsChoice(q.status, offers);
   // The quote and its options are read again apart: until both are in, which option they chose waits.
   const settling = choose && (quote.isFetching || optionRows.isFetching);
@@ -782,7 +785,9 @@ export function QuotePage() {
             )}
             <div className="line">
               <span>Deposit required</span>
-              {editable ? (
+              {scheduled ? (
+                <span title="The payment due when they approve, in the payment schedule">{formatMoneyCents(deposit)}</span>
+              ) : editable ? (
                 <span className={styles.deposit}>
                   {/* A percent follows the total as lines change, and the option and add-ons the client picks. */}
                   <span className="segmented" role="group" aria-label="Deposit as">
@@ -799,8 +804,8 @@ export function QuotePage() {
                 <span>{formatMoneyCents(deposit)}{percentDeposit ? ` (${Number(q.deposit_percent)}%)` : ""}</span>
               )}
             </div>
-            {percentDeposit && editable && <div className="line"><span>Deposit amount</span><AnimatedNumber value={deposit} format={MONEY_CENTS} /></div>}
-            {!percentDeposit && cap.name && editable && Number(q.deposit_amount) > cap.amount && (
+            {percentDeposit && editable && !scheduled && <div className="line"><span>Deposit amount</span><AnimatedNumber value={deposit} format={MONEY_CENTS} /></div>}
+            {!percentDeposit && !scheduled && cap.name && editable && Number(q.deposit_amount) > cap.amount && (
               <p className={styles.warn}>That's more than {cap.name} comes to ({formatMoneyCents(cap.amount)}). Lower it so it fits whichever option they choose.</p>
             )}
             {/* A quote made from a template is valid for the usual days from then. */}
@@ -811,6 +816,8 @@ export function QuotePage() {
               </div>
             )}
           </div>
+          {/* On a template too: the quotes made from it carry it. */}
+          {canSell && <PaymentScheduleCard quote={q} editable={editable} onSaved={refresh} />}
           {/* Filled in after it's signed too: a permit number often comes later. */}
           <CustomFieldsCard record="quote" values={q.custom_fields} editable={canSell} onSave={async (values) => { unwrap(await supabase().from("quotes").update({ custom_fields: values }).eq("id", q.id)); refresh(); }} />
           {/* The paper's look is picked on each quote, so a quote template doesn't have one. */}

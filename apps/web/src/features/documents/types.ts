@@ -106,6 +106,8 @@ export interface DocumentData {
   total: number;
   /** Estimates: the deposit to get on the schedule. */
   deposit?: number | null;
+  /** Estimates with a payment schedule: each payment, when it's due (core scheduleDueText's words) and its amount. It takes the deposit's place. */
+  schedule?: Array<{ name: string; due: string; amount: number }> | null;
   /** Estimates for recurring work: how often ("Every 2 weeks, Tuesday"). Its total is then per visit. */
   repeats?: string | null;
   /**

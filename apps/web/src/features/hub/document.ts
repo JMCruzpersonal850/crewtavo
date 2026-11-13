@@ -84,6 +84,8 @@ export interface HubApproval {
   option?: ApprovalOption | null;
   contract?: ApprovalContract | null;
   initials?: { image: string; signed_at: string | null } | null;
+  /** Each payment of its schedule as it was signed, with its amount (left out without one, and by older servers). */
+  payment_schedule?: unknown;
 }
 /** A roof estimate sent as a price range: the range, what's in it and what could move it. */
 export interface HubRange {
@@ -193,6 +195,8 @@ export interface QuoteView {
     /** The options it offers, in order; none without options. */
     options?: HubOption[];
     lines: HubLine[];
+    /** How it's paid (quotes.payment_schedule), null with a price range; left out without one, and by older servers. */
+    payment_schedule?: unknown;
   } & HubFields;
 }
 /**

@@ -29,8 +29,9 @@ import { deliverNotifications } from "./services/delivery";
 import { remindSubs } from "./services/subs";
 import { dailyOutlook } from "./services/external";
 import { autoRoutes } from "./services/routes";
+import { sendScheduledPayments } from "./services/installments";
 
-export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups", "profits"] as const;
+export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups", "profits", "installments"] as const;
 export type TaskName = (typeof TASKS)[number];
 
 /** Cron expressions -> tasks, run by server.ts's scheduler. */
@@ -40,7 +41,8 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   "*/2 * * * *": ["address"],
   // Review reminders go at 1:30pm in each company's time zone (services/reviews.ts). Autopay charges
   // what's due (services/autopay.ts); its receipts and notices go out through the outbox.
-  "*/5 * * * *": ["outbox", "reviews", "autopay"],
+  // A quote's scheduled payments the database made, sent when the company sends them by themselves (services/installments.ts).
+  "*/5 * * * *": ["outbox", "reviews", "autopay", "installments"],
   "*/15 * * * *": ["calendars"],
   // Google reviews come in every 30 minutes for each company with Google Business Profile connected
   // (services/googleReviews.ts); review_syncs_due says which are due.
@@ -126,6 +128,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return runBackups(env, adminClient(env));
     case "profits":
       return checkJobProfits(adminClient(env));
+    case "installments":
+      return sendScheduledPayments(env);
   }
 }
 
@@ -419,6 +423,9 @@ async function hourlyUpkeep(env: Env) {
   // A deposit a client was sent on to pay online as they approved, still unpaid an hour later: the
   // office is told on the bell, once (the database marks each one it has looked at).
   const deposits = await step("tell_unpaid_deposits", admin.rpc("tell_unpaid_deposits"));
+  // A quote's scheduled payments whose date has come where the company is (or whose work has
+  // started): each is made once, as a draft (the database keeps it to once).
+  const installments = await step("make_due_installments", admin.rpc("make_due_installments"));
   // On a monthly job's invoice day, from 8 in the morning where the company is: one reminder a job a
   // month (the database keeps it to one, so a second run makes none) and one note to the office, or
   // a monthly plan on autopay queued to be charged by the autopay task.
@@ -480,7 +487,7 @@ async function hourlyUpkeep(env: Env) {
   // for looking into a run of requests.
   const codes = await step("tidy_sign_in_codes", admin.rpc("tidy_sign_in_codes"));
   return {
-    overdue: overdue ?? 0, owed_again: owedAgain ?? 0, late_fees: lateFees ?? 0, deposits: deposits ?? 0, invoice_reminders: invoiceReminders ?? 0, reminders: reminders ?? 0, equipment: equipment ?? 0, paperwork: paperwork ?? 0, guide_reviews: guideReviews ?? 0, offers: offers ?? 0, subs: { alerts: subAlerts?.length ?? 0, reminded },
+    overdue: overdue ?? 0, owed_again: owedAgain ?? 0, late_fees: lateFees ?? 0, deposits: deposits ?? 0, installments: installments ?? 0, invoice_reminders: invoiceReminders ?? 0, reminders: reminders ?? 0, equipment: equipment ?? 0, paperwork: paperwork ?? 0, guide_reviews: guideReviews ?? 0, offers: offers ?? 0, subs: { alerts: subAlerts?.length ?? 0, reminded },
     cards: cards ?? 0, autopay_processing: autopayProcessing, bank_payments: bankPayments, clocks, codes: codes ?? 0, problems,
   };
 }

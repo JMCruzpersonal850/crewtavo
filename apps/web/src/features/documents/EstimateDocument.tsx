@@ -780,11 +780,26 @@ function Totals({ data }: { data: DocumentData }) {
           <dd>{data.repeats}</dd>
         </>
       )}
-      {estimate && Number(data.deposit) > 0 && (
+      {/* A payment schedule says how all of it is paid, the deposit included. */}
+      {estimate && data.schedule?.length ? (
         <>
-          <dt>Deposit to get on the schedule</dt>
-          <dd>{formatMoneyCents(data.deposit)}</dd>
+          <dt className={styles.scheduleHead}>Payment schedule</dt>
+          <dd className={styles.scheduleHead} />
+          {data.schedule.map((p, i) => (
+            <Fragment key={i}>
+              <dt>{p.name}: {p.due}</dt>
+              <dd>{formatMoneyCents(p.amount)}</dd>
+            </Fragment>
+          ))}
         </>
+      ) : (
+        estimate &&
+        Number(data.deposit) > 0 && (
+          <>
+            <dt>Deposit to get on the schedule</dt>
+            <dd>{formatMoneyCents(data.deposit)}</dd>
+          </>
+        )
       )}
       {!estimate &&
         data.payments?.map((p, i) => (

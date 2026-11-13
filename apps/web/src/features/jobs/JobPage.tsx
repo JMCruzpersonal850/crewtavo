@@ -44,6 +44,7 @@ import { JobDiscountNote } from "./JobDiscountNote";
 import { FieldAddedLines } from "./FieldAddedLines";
 import { jobCosts } from "./jobCosts";
 import { JobPayCard, seesJobPay } from "./JobPayCard";
+import { JobPaymentSchedule } from "./JobPaymentSchedule";
 import { repeatText } from "./repeatText";
 import { ScopeOfWork } from "./ScopeOfWork";
 import { ExtraWorkDialog, ExtrasToReview, useEditsExtras, useJobExtras, VisitExtraLines } from "./VisitExtras";
@@ -610,6 +611,8 @@ export function JobPage() {
             </dl>
             {j.instructions && <p className="pre-wrap small" style={{ margin: 0, padding: 10, background: "var(--note)", borderRadius: "var(--radius-control)", border: "1px solid var(--note-border)" }}>{j.instructions}</p>}
           </div>
+          {/* The quote's payment schedule, for the people who look after money (nothing shows without one). */}
+          {seesInvoices && j.quote && <JobPaymentSchedule jobId={j.id} finalInvoice={live.find((i) => i.kind === "standard") ?? null} />}
           {j.client && (
             <div className="card card-pad stack-sm">
               <strong>Client</strong>

@@ -338,3 +338,119 @@ export function paymentProblem(amount: number, balance: number, currency = "USD"
   if (amount > balance + 0.005) return `That's more than the ${new Intl.NumberFormat("en-US", { style: "currency", currency }).format(balance)} balance.`;
   return null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Payment schedules (quotes.payment_schedule). The database's private.schedule_amounts and
+// private.schedule_fits do the same sums, and are what's kept with an approval.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * When a payment in a quote's schedule is due: as the client approves (the deposit), on a date,
+ * when the work starts (the job's first visit goes in progress), when the work is done (the job's
+ * final invoice), or when the office invoices it by hand.
+ */
+export const SCHEDULE_DUE = ["approval", "date", "work_starts", "work_done", "by_hand"] as const;
+export type ScheduleDue = (typeof SCHEDULE_DUE)[number];
+/** A payment as a percent of the total, a dollar amount, or (the last one only) the rest. */
+export type ScheduleKind = "percent" | "amount" | "rest";
+
+export interface ScheduleRow {
+  kind: ScheduleKind;
+  /** The percent (above 0, up to 100) or the amount; null for the rest. */
+  value?: Amount;
+  due: ScheduleDue;
+  /** The day, for a payment due on a date (YYYY-MM-DD). */
+  on?: string | null;
+}
+
+/** The most payments a schedule has. */
+export const SCHEDULE_MAX = 12;
+
+/** Each payment in dollars, and whether the schedule fits the total. */
+export interface ScheduleSums<T extends ScheduleRow = ScheduleRow> {
+  rows: Array<T & { amount: number }>;
+  /** It comes to the total exactly (ending with "the rest": it leaves at least a cent for it). */
+  fits: boolean;
+  /** What's still to place, negative when it's over. 0 when it ends with the rest and there's some left for it. */
+  left: number;
+}
+
+/** A schedule's rows as stored, or none: anything that isn't an array of objects reads as no schedule. */
+export function scheduleRows(value: unknown): ScheduleRow[] {
+  return Array.isArray(value) ? (value.filter((r) => r && typeof r === "object" && !Array.isArray(r)) as ScheduleRow[]) : [];
+}
+
+/**
+ * Each payment's amount for a total, to the cent as the database works it out: a percent is
+ * round(total × percent / 100, 2), an amount is itself, and none is more than what's still left.
+ * The last payment is what's left, so the payments always come to the total; when the schedule
+ * fits, that only takes up a cent or two of rounding. It fits when the percents and amounts come to
+ * the total exactly (within half a cent), or, ending with "the rest", leave at least a cent for it.
+ */
+export function scheduleAmounts<T extends ScheduleRow>(rows: readonly T[], total: Amount): ScheduleSums<T> {
+  const totalCents = max(toUnits(total, 2), 0n);
+  // What's left exactly, in ten-thousandths of a cent, so no rounding decides whether it fits.
+  let exact = totalCents * 10_000n;
+  let left = totalCents;
+  const out: Array<T & { amount: number }> = [];
+  rows.forEach((row, i) => {
+    let raw = 0n;
+    if (row.kind === "percent") {
+      exact -= totalCents * toUnits(row.value, 2);
+      raw = divRound(totalCents * toUnits(row.value, 2), 10_000n);
+    } else if (row.kind === "amount") {
+      exact -= toUnits(row.value, 2) * 10_000n;
+      raw = toUnits(row.value, 2);
+    }
+    const cents = i === rows.length - 1 ? max(left, 0n) : min(max(raw, 0n), max(left, 0n));
+    left -= cents;
+    out.push({ ...row, amount: toDollars(cents) });
+  });
+  const rest = rows.at(-1)?.kind === "rest";
+  const fits = rows.length > 0 && (rest ? exact >= 5_000n : abs(exact) < 5_000n);
+  return { rows: out, fits, left: rest && exact >= 5_000n ? 0 : toDollars(divRound(exact, 10_000n)) };
+}
+
+/**
+ * What's wrong with a schedule, in the editor's words (the database refuses to save it with the
+ * same ones), or null. `total` is the quote's total, which the payments have to come to.
+ */
+export function scheduleProblem(rows: readonly ScheduleRow[], total: Amount, currency = "USD"): string | null {
+  if (!rows.length) return null;
+  const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n);
+  if (rows.length > SCHEDULE_MAX) return `A payment schedule has ${SCHEDULE_MAX} payments at most.`;
+  for (const [i, row] of rows.entries()) {
+    const which = `Payment ${i + 1}`;
+    if (!SCHEDULE_DUE.includes(row.due)) return `${which} needs to say when it's due.`;
+    if (row.due === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(row.on ?? "")) return `${which} needs its date.`;
+    if (row.kind === "rest" && i !== rows.length - 1) return "Only the last payment can be the rest.";
+    if (row.kind === "percent" && !(Number(row.value) > 0 && Number(row.value) <= 100)) return `${which} needs a percent above 0, up to 100.`;
+    if (row.kind === "amount" && !(Number(row.value) > 0 && Number(row.value) <= 100_000_000)) return `${which} needs an amount.`;
+    if (row.kind !== "percent" && row.kind !== "amount" && row.kind !== "rest") return `${which} needs an amount.`;
+  }
+  if (rows.filter((r) => r.due === "approval").length > 1) return "Only one payment can be due when the quote is approved.";
+  if (rows.filter((r) => r.due === "work_done").length > 1) return "Only one payment can be due when the work is done.";
+  const sums = scheduleAmounts(rows, total);
+  if (sums.fits) return null;
+  if (rows.at(-1)?.kind === "rest") return "The payments before the last come to the whole total, so nothing is left for the rest.";
+  return sums.left > 0 ? `The payments come to ${money(sums.left)} less than the total.` : `The payments come to ${money(-sums.left)} more than the total.`;
+}
+
+/** "Payment 2 of 3", as a schedule's payment is named on the job, its invoice and the office's notice. */
+export const schedulePaymentName = (position: number, count: number) => `Payment ${position} of ${count}`;
+
+/** When a payment is due, in words: "When the quote is approved", "On Mar 3, 2027" (`day` writes the date). */
+export function scheduleDueText(row: Pick<ScheduleRow, "due" | "on">, day: (iso: string) => string): string {
+  switch (row.due) {
+    case "approval":
+      return "When the quote is approved";
+    case "date":
+      return row.on ? `On ${day(row.on)}` : "On a date";
+    case "work_starts":
+      return "When the work starts";
+    case "work_done":
+      return "When the work is done";
+    default:
+      return "When it's invoiced";
+  }
+}

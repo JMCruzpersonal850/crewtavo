@@ -18,6 +18,9 @@
 /* "Deposit required": as an amount or a percent, then the field for it. */
 .deposit { display: inline-flex; align-items: center; gap: 6px; }
 
+/* A payment in the schedule editor: its name, its amount and when it's due, wrapping on a phone. */
+.scheduleRow { display: grid; gap: 6px; padding: 8px 0; border-top: 1px solid var(--divider); }
+
 /* Which option did they choose? */
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 12px; }
 .choice {

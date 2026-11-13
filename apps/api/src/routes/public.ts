@@ -10,7 +10,7 @@ import { pickTemplate, templateSettings, type TemplateSettings } from "@crewtavo
 import { hidesExactPrice, inRangeMode, isSiteAdjustment, notIncluded, optionsRange, priceRange, rangeSettings } from "@crewtavo/core/estimates";
 import { clientAnswers, inServiceArea, type ClientChecklist } from "@crewtavo/core/forms";
 import { marketingOn, referralSettings, referralsReady, referrerLine } from "@crewtavo/core/marketing";
-import { chosenTotals, countsOn, optionBaseTotal, optionTotals, type OptionLine } from "@crewtavo/core/money";
+import { chosenTotals, countsOn, optionBaseTotal, optionTotals, scheduleRows, type OptionLine } from "@crewtavo/core/money";
 import { isPackagePicturePath, packagePictureSrc } from "@crewtavo/core/presets";
 import { quotePromoRule } from "@crewtavo/core/promos";
 import { changeableOnline, openSlots, SLOT_DAYS, SLOT_LEAD_DAYS, slotStep, workdays, type OpenSlot } from "@crewtavo/core/slots";
@@ -262,6 +262,12 @@ export function publicApproval(raw: unknown, approvedAt: string | null) {
     method: a.method === "manual" || a.method === "in_person" ? a.method : null,
     company: companySignature ? { name: text(co!.name) ?? "", signature: companySignature, signed_at: text(co!.signed_at) } : null,
     ...readFrozen(raw),
+    // Each payment of the schedule as it was signed (20261113001100_payment_schedules.sql keeps it), in plain fields.
+    ...(Array.isArray(a.payment_schedule) && {
+      payment_schedule: scheduleRows(a.payment_schedule).map((r) => ({
+        kind: r.kind, value: r.value ?? null, due: r.due, on: r.on ?? null, amount: Number((r as { amount?: unknown }).amount ?? 0),
+      })),
+    }),
   };
 }
 
@@ -405,7 +411,7 @@ publicRoutes.get("/hub/:token", async (c) => {
       await admin
         .from("quotes")
         .select(
-          "id, number, status, title, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, deposit_invoice_id, valid_until, sent_at, created_at, approved_at, approval, client_id, change_order_for, template_id, roof_package_id, work_kind, option_id, section_ids, recurrence_rule, active_months, range_low, range_high, range_sent_at, range_lines, range_accepted_at, priced_on_site_at, exact_sent_at, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, min_subtotal, every_visit), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), property:properties(line1, city, region, postal_code), custom_fields, left_out",
+          "id, number, status, title, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, deposit_invoice_id, valid_until, sent_at, created_at, approved_at, approval, client_id, change_order_for, template_id, roof_package_id, work_kind, option_id, section_ids, recurrence_rule, active_months, range_low, range_high, range_sent_at, range_lines, range_accepted_at, priced_on_site_at, exact_sent_at, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, min_subtotal, every_visit), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), property:properties(line1, city, region, postal_code), custom_fields, left_out, payment_schedule",
         )
         .eq("company_id", l.c)
         .eq("id", l.id)
@@ -555,6 +561,9 @@ publicRoutes.get("/hub/:token", async (c) => {
         recurrence_rule: quote.recurrence_rule, active_months: quote.active_months,
         // What the business shows as "Not included", by name: what it kept office only never leaves the office.
         left_out: notIncluded(quote.left_out),
+        // How it's paid: never with a price range (its amounts would say the price). Signed, the
+        // approval has each payment as it was signed.
+        payment_schedule: exact ? scheduleRows(quote.payment_schedule) : null,
         promo, client: quote.client ? { display_name: quote.client.display_name, tax_exempt: quote.client.tax_exempt, tax_exempt_note: quote.client.tax_exempt_note } : null, property: quote.property,
         package: roofPackage?.data ? { name: roofPackage.data.name } : null,
         approval: signed ? publicApproval(quote.approval, quote.approved_at) : null,

@@ -133,6 +133,8 @@
 .totals dt { color: var(--doc-text-2); }
 .totals dd { margin: 0; font-variant-numeric: tabular-nums; }
 .totals .grand { font-size: 15px; font-weight: 700; color: var(--doc-text-color); }
+/* "Payment schedule" over its payments, under the total. */
+.totals .scheduleHead { padding-top: 6px; font-weight: 600; color: var(--doc-ink); }
 
 .notes { font-size: 12px; line-height: 1.6; white-space: pre-line; }
 .notes .eyebrow { margin-bottom: 4px; }

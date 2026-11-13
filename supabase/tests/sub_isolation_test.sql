@@ -588,7 +588,10 @@ select t1070.check(array(
   'equipment_conflicts(uuid, uuid[], date, timestamp with time zone, timestamp with time zone, uuid)', 'global_search(uuid, text, integer)',
   'guide_feedback(uuid, boolean, text)', 'guide_quiz(uuid)',
   -- Bringing work over from Jobber: an owner's or admin's, never a sub's.
-  'import_jobber(uuid, text, jsonb)', 'inactive_client_count(uuid, integer)', 'invoice_summary(uuid, date)',
+  'import_jobber(uuid, text, jsonb)', 'inactive_client_count(uuid, integer)',
+  -- Invoicing a payment of a quote's schedule early: owners, admins and the office with invoices only (it checks), never a sub.
+  'invoice_installment(uuid)',
+  'invoice_summary(uuid, date)',
   -- The checklists a job's items bring up: a sub's, for the jobs of their own visits (as job_scope).
   'job_checklists(uuid)',
   -- What's on a job to log materials against, by name and unit: the office's and the crew's, never a sub's.
