@@ -269,6 +269,9 @@ insert into public.recurrence_skips (company_id, job_id, recurrence_key) values 
 insert into public.jobs (company_id, client_id, property_id, title, kind, recurrence_rule) values (:'co', :'c1', :'p1', 'Gutter cleaning plan', 'recurring', 'FREQ=MONTHLY') returning id as jr \gset
 insert into public.visits (company_id, job_id, property_id, title, scheduled_on) values (:'co', :'jr', :'p1', 'Clean the gutters', private.company_today(:'co') + 30) returning id as vr \gset
 insert into public.visit_extras (company_id, visit_id, name, unit_price) values (:'co', :'vr', 'Downspout repair', 85);
+-- A change of prices across repeating jobs, with each line's old and new price (20261113000950_price_changes.sql): the office's.
+insert into public.price_changes (id, company_id, change, summary, jobs, lines) values ('d1070000-0000-0000-0000-0000000000e1', :'co', '{"kind": "percent", "value": 5, "round": "cent"}', 'Up 5%', 1, 1);
+insert into public.price_change_lines (company_id, change_id, job_id, line_id, name, quantity, old_price, new_price) values (:'co', 'd1070000-0000-0000-0000-0000000000e1', :'jr', gen_random_uuid(), 'Gutter cleaning', 1, 120, 126);
 insert into public.referrals (company_id, referrer_client_id, referred_name) values (:'co', :'c1', 'Neighbor Ned');
 -- A referral credit Ann earned, which goes on her new invoice as its line goes in, one taken off
 -- another invoice, and an ask for referrals.
@@ -545,7 +548,11 @@ select t1070.check(array(
   'acknowledge_guide(uuid, integer[])',
   -- Adding work on site: the team on the visit only, never a sub (the job's prices are the client's).
   'add_field_line(uuid, uuid, numeric, uuid)',
-  'answer_sub_offer(uuid, boolean, text, integer, uuid)', 'apply_promo_code(text, uuid, text, uuid, uuid[])',
+  'answer_sub_offer(uuid, boolean, text, integer, uuid)',
+  -- Changing prices across repeating jobs (and price_change_history, price_change_preview and undo_price_change below): owners, admins and
+  -- the office with Quotes and sales only (each checks), never a sub.
+  'apply_price_change(uuid, uuid, jsonb, jsonb)',
+  'apply_promo_code(text, uuid, text, uuid, uuid[])',
   'apply_quote_options(uuid, jsonb, text, uuid[], jsonb)', 'apply_referral_credit(uuid, uuid)', 'approve_autopay_charge(uuid)',
   -- The company's switch for AI assistants, for the person's own assistant: on for anyone signed in
   -- themselves, and a business someone only subs for isn't counted (and tells them nothing).
@@ -595,6 +602,7 @@ select t1070.check(array(
   'my_sub_pay_totals(uuid)',
   -- The next request, quote, job and invoice numbers (and set_next_number below): owners and admins only, never a sub.
   'next_numbers(uuid)',
+  'price_change_history(uuid, integer)', 'price_change_preview(uuid, jsonb)',
   'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
   -- The quote follow-up after an exact price goes out: the office and estimators with Sales only, never a sub.
   'quote_exact_sent(uuid)',
@@ -621,7 +629,7 @@ select t1070.check(array(
   'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
   -- Installs Paving or Roofing: owners and admins who connect apps only, never a sub.
   'trade_app_set_enabled(uuid, text, boolean)',
-  'trash_delete_forever(uuid, jsonb)', 'visit_autopay(uuid)', 'visit_contact(uuid)',
+  'trash_delete_forever(uuid, jsonb)', 'undo_price_change(uuid, uuid)', 'visit_autopay(uuid)', 'visit_contact(uuid)',
   -- A visit's extra work without prices: a sub's, for the jobs of their own visits (as job_scope).
   'visit_extra_scope(uuid)',
   'web_analytics_save(uuid, jsonb)', 'web_stats(uuid, date, date)',
