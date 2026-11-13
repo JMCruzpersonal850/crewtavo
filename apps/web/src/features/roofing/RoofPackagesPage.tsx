@@ -20,7 +20,7 @@ import { STARTER_NOTE } from "@crewtavo/core/contracts";
 import { followPrice, LOW_MARGIN, marginForMarkup, marginPct, markupForMargin, priceRange, RANGE_ROUNDING, rangeSettings, TYPICAL_SQUARES_MAX, typicalRoof, typicalSquares } from "@crewtavo/core/estimates";
 import { materialsPerUnit, unpricedLinks } from "@crewtavo/core/materials";
 import { getPreset, isExampleWarranty, PACKAGE_LIMITS } from "@crewtavo/core/presets";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { Button, useJustDone } from "@/components/ui/Button";
@@ -40,6 +40,7 @@ import { useListAnimation } from "@/lib/motion";
 import { can, hasRole, useSession } from "@/lib/session";
 import { startTask } from "@/lib/tasks";
 import { toast } from "@/lib/toast";
+import { customFieldsKey, customFieldsQuery } from "../customFields/CustomFields";
 import { CATALOG_MATERIALS, useServiceMaterials, useSupplier, type ServiceMaterial } from "../materials/data";
 import { MaterialPicker } from "../materials/MaterialPicker";
 import { RoofingTabs } from "./RoofingTabs";
@@ -71,6 +72,7 @@ import {
   canSetUpRoofing,
   followedPriceOf,
   followedPrices,
+  missingRoofingFields,
   packagesKey,
   removePackagePicture,
   setPackagePicture,
@@ -452,28 +454,43 @@ function SupplierCard({ packages }: { packages: RoofPackage[] }) {
   );
 }
 
-/** The standard roofing services a price list doesn't have yet (Ridge vent, Ice and water shield…). */
+/**
+ * The standard roofing services a price list doesn't have yet (Ridge vent, Ice and water shield…),
+ * and the insurance claim fields a business's quotes and jobs don't have yet (insurance company,
+ * claim number, adjuster, date of loss, deductible). One button adds what's missing of both.
+ */
 function MissingServices({ services }: { services: PriceListService[] }) {
   const session = useSession();
   const queryClient = useQueryClient();
+  const fields = useQuery({ ...customFieldsQuery(session.company.id), meta: { silent: true } });
   const add = useMutation({
     meta: { success: setupMessage },
     mutationFn: setUpRoofing,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services", session.company.id] });
       queryClient.invalidateQueries({ queryKey: packagesKey(session.company.id) });
+      queryClient.invalidateQueries({ queryKey: customFieldsKey(session.company.id) });
     },
   });
   if (!canSetUpRoofing(session)) return null;
   const have = new Set(services.map((s) => s.name.trim().toLowerCase()));
   const missing = getPreset("roofing_exteriors").services.filter((s) => !have.has(s.name.toLowerCase()));
-  if (!missing.length) return null;
+  // Not known until the fields have loaded: nothing is said about them before then.
+  const missingFields = fields.data ? missingRoofingFields(fields.data) : [];
+  if (!missing.length && !missingFields.length) return null;
   return (
     <div className={`card card-pad ${styles.sideCard}`}>
-      <p className={styles.sideText}>
-        {missing.length} standard roofing {missing.length === 1 ? "service isn't" : "services aren't"} in your price list yet, like {missing.slice(0, 2).map((s) => s.name).join(" and ")}.
-      </p>
-      <Button size="sm" icon="plus" style={{ justifySelf: "start" }} loading={add.isPending} onClick={() => add.mutate()}>Add {missing.length === 1 ? "it" : "them"}</Button>
+      {missing.length > 0 && (
+        <p className={styles.sideText}>
+          {missing.length} standard roofing {missing.length === 1 ? "service isn't" : "services aren't"} in your price list yet, like {missing.slice(0, 2).map((s) => s.name).join(" and ")}.
+        </p>
+      )}
+      {missingFields.length > 0 && (
+        <p className={styles.sideText}>
+          Your quotes and jobs can keep an insurance claim's details: {missingFields.join(", ").toLowerCase()}. They carry from the quote to its job, and you can change them in Settings → Custom fields.
+        </p>
+      )}
+      <Button size="sm" icon="plus" style={{ justifySelf: "start" }} loading={add.isPending} onClick={() => add.mutate()}>Add {missing.length + missingFields.length === 1 ? "it" : "them"}</Button>
     </div>
   );
 }

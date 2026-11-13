@@ -1,7 +1,7 @@
 {
   "id": "roofing_exteriors",
   "name": "Roofing & Exteriors",
-  "description": "Shingle and metal roofing, repairs, gutters, siding, windows and decks, with optional insurance-claim tracking.",
+  "description": "Shingle and metal roofing, repairs, gutters, siding, windows and decks, with insurance claim details on quotes and jobs.",
   "services": [
     {
       "name": "Architectural shingle roof",
@@ -621,6 +621,62 @@
     {
       "applies_to": "Standing-seam metal roof",
       "max_rain_pct": 40
+    }
+  ],
+  "custom_fields": [
+    {
+      "key": "insurance_company",
+      "label": "Insurance company",
+      "type": "text",
+      "records": [
+        "quote",
+        "job"
+      ]
+    },
+    {
+      "key": "claim_number",
+      "label": "Claim number",
+      "type": "text",
+      "records": [
+        "quote",
+        "job"
+      ]
+    },
+    {
+      "key": "adjuster_name",
+      "label": "Adjuster name",
+      "type": "text",
+      "records": [
+        "quote",
+        "job"
+      ]
+    },
+    {
+      "key": "adjuster_phone",
+      "label": "Adjuster phone",
+      "type": "text",
+      "records": [
+        "quote",
+        "job"
+      ]
+    },
+    {
+      "key": "date_of_loss",
+      "label": "Date of loss",
+      "type": "date",
+      "records": [
+        "quote",
+        "job"
+      ]
+    },
+    {
+      "key": "deductible",
+      "label": "Deductible",
+      "type": "number",
+      "records": [
+        "quote",
+        "job"
+      ]
     }
   ],
   "sop_categories": [

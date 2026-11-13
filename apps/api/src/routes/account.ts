@@ -1,5 +1,5 @@
 /** Public config, the signed-in user, onboarding (company + trade preset), the license and team invites. */
-import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
+import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetCustomFields, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv, Env } from "../env";
@@ -380,6 +380,8 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
       })),
     ),
     db.from("sop_categories").insert(preset.sop_categories.map((name, i) => ({ company_id: companyId, name, sort: i }))),
+    // The trade's own fields on its records (roofing's insurance claim details on quotes and jobs).
+    ...(preset.custom_fields?.length ? [db.from("custom_field_definitions").insert(presetCustomFields(preset).map((f) => ({ ...f, company_id: companyId })))] : []),
     // Merged into what create_company started it with (Marketing installed, for one), with the
     // trade's own app installed, as the migration did for businesses already in it.
     db

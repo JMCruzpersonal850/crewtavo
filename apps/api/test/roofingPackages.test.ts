@@ -238,6 +238,13 @@ describe("setting up roofing", () => {
     const preset = getPreset("roofing_exteriors");
     expect(body.services_added).toEqual(preset.services.map((s) => s.name));
     expect(body.packages_created).toBe(3);
+    // And the insurance claim fields, on quotes and on jobs so a quote's values carry to its job.
+    expect(body.fields_added).toEqual(["Insurance company", "Claim number", "Adjuster name", "Adjuster phone", "Date of loss", "Deductible"]);
+    expect(rows("custom_field_definitions").map((f) => `${f.record_type}:${f.key}:${f.type}`)).toEqual([
+      "quote:insurance_company:text", "job:insurance_company:text", "quote:claim_number:text", "job:claim_number:text", "quote:adjuster_name:text", "job:adjuster_name:text",
+      "quote:adjuster_phone:text", "job:adjuster_phone:text", "quote:date_of_loss:date", "job:date_of_loss:date", "quote:deductible:number", "job:deductible:number",
+    ]);
+    expect(rows("custom_field_definitions").every((f) => f.company_id === ROOFER && f.show_on_pdf === false && f.show_in_portal === false)).toBe(true);
 
     const packages = rows("roof_packages");
     expect(packages.map((p) => [p.name, p.style, p.is_default])).toEqual([
@@ -256,8 +263,31 @@ describe("setting up roofing", () => {
     expect(packages.map((p) => [p.highlights, p.warranty])).toEqual(preset.packages!.map((p) => [p.highlights, p.warranty]));
 
     const again = await (await send("/roofing/setup", {})).json();
-    expect(again).toEqual({ services_added: [], packages_created: 0 });
+    expect(again).toEqual({ services_added: [], fields_added: [], packages_created: 0 });
     expect(rows("roof_packages")).toHaveLength(3);
+    expect(rows("custom_field_definitions")).toHaveLength(12);
+  });
+
+  it("offers a roofer already set up the insurance claim fields it doesn't have, after its own fields", async () => {
+    const preset = getPreset("roofing_exteriors");
+    state.tables = {
+      memberships: [{ company_id: ROOFER, user_id: "viewer", active: true, role: "office", role_id: null }],
+      services: preset.services.map((s, i) => ({ id: `s${i}`, company_id: ROOFER, name: s.name, active: true, sort: i })),
+      roof_packages: [{ id: PKG, company_id: ROOFER }],
+      roof_package_items: [],
+      // Its own claim number on quotes (archived, even), and a field of another business's.
+      custom_field_definitions: [
+        { id: "f1", company_id: ROOFER, record_type: "quote", key: "claim_number", label: "Claim #", type: "text", sort: 4, archived_at: "2026-11-01T00:00:00Z" },
+        { id: "f2", company_id: "someone-else", record_type: "job", key: "deductible", label: "Deductible", type: "number", sort: 9 },
+      ],
+    };
+    const body = await (await send("/roofing/setup", {})).json();
+    expect(body).toEqual({ services_added: [], fields_added: ["Insurance company", "Claim number", "Adjuster name", "Adjuster phone", "Date of loss", "Deductible"], packages_created: 0 });
+    const mine = rows("custom_field_definitions").filter((f) => f.company_id === ROOFER);
+    // Eleven added: its own claim number on quotes stays as it is, and the one on jobs is new.
+    expect(mine).toHaveLength(12);
+    expect(mine.filter((f) => f.key === "claim_number").map((f) => [f.record_type, f.label])).toEqual([["quote", "Claim #"], ["job", "Claim number"]]);
+    expect(Math.min(...mine.filter((f) => f.id !== "f1").map((f) => Number(f.sort)))).toBe(5);
   });
 
   it("is for the office", async () => {

@@ -14,6 +14,7 @@ import pestControl from "./presets/pest_control.json";
 import plumbing from "./presets/plumbing.json";
 import poolService from "./presets/pool_service.json";
 import roofingExteriors from "./presets/roofing_exteriors.json";
+import type { CustomFieldRecord, CustomFieldType } from "./customFields";
 import { isPavingWork, pavingWorkLabel, type PavingWork } from "./paving";
 import type { WeatherRule } from "./weather";
 
@@ -133,6 +134,21 @@ export interface PresetPackage {
   warranty?: string;
 }
 
+/**
+ * A custom field a trade starts with (custom_field_definitions), on each of `records`. One on both
+ * quotes and jobs carries its value from a quote to the job made from it, as any custom field of
+ * the same key and type does. Roofing's insurance claim details are these.
+ */
+export interface PresetCustomField {
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  records: CustomFieldRecord[];
+  choices?: string[];
+  show_on_pdf?: boolean;
+  show_in_portal?: boolean;
+}
+
 export interface TradePreset {
   id: string;
   name: string;
@@ -143,6 +159,7 @@ export interface TradePreset {
   checklists: PresetChecklist[];
   intake_forms: PresetIntakeForm[];
   weather_rules: WeatherRule[];
+  custom_fields?: PresetCustomField[];
   sop_categories: string[];
 }
 
@@ -166,6 +183,13 @@ export function getPreset(id: string): TradePreset {
   const preset = PRESETS[id];
   if (!preset) throw new RangeError(`Unknown trade preset "${id}"`);
   return preset;
+}
+
+/** A preset's custom fields as custom_field_definitions rows (without the company): one for each record a field is on, in the preset's order. */
+export function presetCustomFields(preset: TradePreset) {
+  return (preset.custom_fields ?? []).flatMap((f, i) =>
+    f.records.map((record) => ({ record_type: record, key: f.key, label: f.label, type: f.type, choices: f.choices ?? [], show_on_pdf: f.show_on_pdf === true, show_in_portal: f.show_in_portal === true, sort: i })),
+  );
 }
 
 /**

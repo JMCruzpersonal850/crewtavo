@@ -53,6 +53,11 @@ import {
   pavingWorkOn,
   isPavingWork,
   presetWeatherRules,
+  presetCustomFields,
+  CUSTOM_FIELD_LIMITS,
+  CUSTOM_FIELD_RECORDS,
+  CUSTOM_FIELD_TYPES,
+  RESERVED_FIELD_KEYS,
   namedWeatherRules,
   lineLengthM,
   localDate,
@@ -393,6 +398,30 @@ describe("presets", () => {
     }
     expect(services.find((s) => s.name === "Tear-off, second layer")).toMatchObject({ unit: "square", formula_name: "Roof squares without waste" });
     expect(rules.filter((r) => r.max_rain_pct === 40).map((r) => r.applies_to)).toEqual(["Architectural shingle roof", "Designer shingle roof", "Standing-seam metal roof"]);
+  });
+
+  it("starts a roofer with an insurance claim's details on quotes and jobs, as its description says", () => {
+    expect(PRESETS.roofing_exteriors.description).toContain("insurance claim details on quotes and jobs");
+    const fields = presetCustomFields(PRESETS.roofing_exteriors);
+    expect(fields.filter((f) => f.record_type === "quote").map((f) => [f.key, f.type])).toEqual([
+      ["insurance_company", "text"], ["claim_number", "text"], ["adjuster_name", "text"], ["adjuster_phone", "text"], ["date_of_loss", "date"], ["deductible", "number"],
+    ]);
+    // The same on jobs, key and type, which is what carries a quote's values to its job.
+    expect(fields.filter((f) => f.record_type === "job").map((f) => [f.key, f.type, f.sort])).toEqual(fields.filter((f) => f.record_type === "quote").map((f) => [f.key, f.type, f.sort]));
+  });
+
+  it.each(Object.values(PRESETS))("$name's custom fields are ones custom_field_definitions takes", (preset) => {
+    const rows = presetCustomFields(preset);
+    expect(new Set(rows.map((f) => `${f.record_type}:${f.key}`)).size).toBe(rows.length);
+    for (const f of rows) {
+      expect(f.key, f.key).toMatch(/^[a-z][a-z0-9_]{0,59}$/);
+      expect(RESERVED_FIELD_KEYS).not.toContain(f.key);
+      expect(CUSTOM_FIELD_RECORDS).toContain(f.record_type);
+      expect(CUSTOM_FIELD_TYPES).toContain(f.type);
+      expect(f.label.trim().length).toBeGreaterThan(0);
+      expect(f.label.length).toBeLessThanOrEqual(CUSTOM_FIELD_LIMITS.label);
+      if (f.type === "choice") expect(f.choices.length).toBeGreaterThan(0);
+    }
   });
 
   it("offers the roofing packages as Good, Better and Best, each with highlights and a warranty", () => {
