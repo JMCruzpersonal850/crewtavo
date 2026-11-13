@@ -1614,14 +1614,14 @@ isOneToOne: false
                   ]
                 },"messages": {
                   Row: {
-                    "body": string,"channel": string,"client_id": string | null,"company_id": string,"created_at": string,"direction": string,"external_id": string | null,"id": string,"related_id": string | null,"related_type": string | null,"sent_by": string | null,"status": string,"subject": string | null
+                    "body": string,"channel": string,"client_id": string | null,"company_id": string,"created_at": string,"direction": string,"external_id": string | null,"from_name": string | null,"from_phone": string | null,"id": string,"recipients": Json | null,"related_id": string | null,"related_type": string | null,"sent_by": string | null,"status": string,"subject": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "body": string,"channel": string,"client_id"?: string | null,"company_id": string,"created_at"?: string,"direction"?: string,"external_id"?: string | null,"id"?: string,"related_id"?: string | null,"related_type"?: string | null,"sent_by"?: string | null,"status"?: string,"subject"?: string | null
+                    "body": string,"channel": string,"client_id"?: string | null,"company_id": string,"created_at"?: string,"direction"?: string,"external_id"?: string | null,"from_name"?: string | null,"from_phone"?: string | null,"id"?: string,"recipients"?: Json | null,"related_id"?: string | null,"related_type"?: string | null,"sent_by"?: string | null,"status"?: string,"subject"?: string | null
                   }
                   Update: {
-                    "body"?: string,"channel"?: string,"client_id"?: string | null,"company_id"?: string,"created_at"?: string,"direction"?: string,"external_id"?: string | null,"id"?: string,"related_id"?: string | null,"related_type"?: string | null,"sent_by"?: string | null,"status"?: string,"subject"?: string | null
+                    "body"?: string,"channel"?: string,"client_id"?: string | null,"company_id"?: string,"created_at"?: string,"direction"?: string,"external_id"?: string | null,"from_name"?: string | null,"from_phone"?: string | null,"id"?: string,"recipients"?: Json | null,"related_id"?: string | null,"related_type"?: string | null,"sent_by"?: string | null,"status"?: string,"subject"?: string | null
                   }
                   Relationships: [
                     {
@@ -2666,6 +2666,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"sms_stops": {
+                  Row: {
+                    "company_id": string,"phone": string,"phone_key": string,"stopped_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"phone": string,"phone_key": string,"stopped_at"?: string
+                  }
+                  Update: {
+                    "company_id"?: string,"phone"?: string,"phone_key"?: string,"stopped_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sms_stops_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"social_post_images": {
                   Row: {
                     "attachment_id": string | null,"bytes": number,"company_id": string,"created_at": string,"expires_at": string,"height": number,"id": string,"n": number,"path": string,"post_id": string,"token": string,"variant": string,"width": number
@@ -3082,6 +3102,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"unknown_texts": {
+                  Row: {
+                    "body": string,"company_id": string,"created_at": string,"external_id": string | null,"from_phone": string,"id": string,"phone_key": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "body": string,"company_id": string,"created_at"?: string,"external_id"?: string | null,"from_phone": string,"id"?: string,"phone_key": string
+                  }
+                  Update: {
+                    "body"?: string,"company_id"?: string,"created_at"?: string,"external_id"?: string | null,"from_phone"?: string,"id"?: string,"phone_key"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "unknown_texts_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"user_signatures": {
                   Row: {
                     "company_id": string,"created_at": string,"image": string,"updated_at": string,"user_id": string
@@ -3436,6 +3476,9 @@ isOneToOne: false
                            },
 "assistant_switch":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"attach_unknown_texts":
+{ Args: { "p_as"?: string,"p_client": string,"p_company": string,"p_name"?: string,"p_phone": string }; Returns: number
                            },
 "automated_campaign_states":
 { Args: { "p_company": string }; Returns: Json
@@ -4457,6 +4500,9 @@ isOneToOne: false
       } },
 "set_checklist_services":
 { Args: { "p_services": (string)[],"p_template": string }; Returns: undefined
+                           },
+"set_contact_messages":
+{ Args: { "p_company": string,"p_enabled": boolean }; Returns: boolean
                            },
 "set_job_discount_billing":
 { Args: { "p_every_visit": boolean,"p_job": string,"p_key": string }; Returns: number
