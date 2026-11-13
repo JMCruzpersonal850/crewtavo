@@ -4375,6 +4375,9 @@ isOneToOne: false
 "remove_quote_option":
 { Args: { "p_option": string,"p_quote": string }; Returns: Json
                            },
+"remove_recurring_visits":
+{ Args: { "p_job": string,"p_visits": (string)[] }; Returns: number
+                           },
 "remove_referral_credit":
 { Args: { "p_credit": string }; Returns: undefined
                            },
