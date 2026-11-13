@@ -194,7 +194,10 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
     <td width="50%" valign="top">
       <img src="docs/images/quote.png" alt="A quote with line items from the price list and an optional add-on">
       <p><strong>Quotes.</strong> Line items from your price list, formulas and satellite map
-      measurements, optional add-ons, deposits and promo codes. Clients approve and sign online.</p>
+      measurements, optional add-ons, deposits, payment schedules and promo codes. Clients approve
+      and sign online. Draft a quote fills one in from a request (with Claude if you switch it on, else
+      from your price list), you can hear about big quotes as they're sent, approved or sent
+      back, and your Google rating and best reviews can show on the quote.</p>
     </td>
   </tr>
   <tr>
@@ -332,8 +335,26 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
 
 **And also:**
 
+- **Quotes:** a quote can carry a payment schedule: payments, each a percent of the total, an
+  amount or the rest, due when the client approves (the deposit), on a date, when the work starts,
+  when it's done (the final invoice) or when you invoice it. The payments have to come to the
+  total; the client sees them in the Client Hub and on the PDF, and approving keeps them as signed.
+  Templates and copies carry the schedule. Draft a quote, on a request, fills in a draft: with
+  Claude switched on (Settings → Company; it checks your key first), Claude reads the request and
+  your price list and picks lines only from it, at your prices, with quantities when the client gave
+  them (the others are 1, flagged to check); without it, the price list items whose names match the
+  client's choices. A request from a booking form or the Client Hub can get its draft by itself.
+  "Tell me about quotes over" an amount tells owners, admins and the quote's salesperson on the bell
+  and their phone when one is sent, approved or sent back for changes. "Show reviews on quotes"
+  (Marketing → Reviews) puts your Google rating and up to three reviews you pick (or your newest
+  5-star ones) on the quote in the Client Hub, and on its PDF if you tick it, by first name and
+  initial.
 - **Jobs and invoicing:** one-off and recurring jobs, multi-day work, change orders the client
-  approves, batch invoicing, payment reminders, deposits, progress billing and retainage. A one-off
+  approves, batch invoicing, payment reminders, deposits, progress billing and retainage. A quote's
+  payment schedule carries to its job: each payment becomes a draft invoice when its date comes
+  (where you are), when the work starts, or when you press Invoice now, once each, and the office is
+  told it's ready to send, or it's sent by itself if you turn that on. The final invoice takes off
+  what was billed before it and bills the rest. The job shows each payment and where it is. A one-off
   job moves to Requires invoicing when its last visit is finished, and the office is told. Extra
   work on one visit of a recurring job (mulch, an aeration, a storm cleanup) is added to that visit
   by the office or by the crew on site, and billed once with it, without changing the job's price.
