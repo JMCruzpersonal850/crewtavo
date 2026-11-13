@@ -19,6 +19,7 @@ import { CURRENCIES, timeZoneChoices } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { CompanyLogo } from "./CompanyLogo";
+import { JobCostSettings } from "./JobCostSettings";
 import { NextNumbers } from "./NextNumbers";
 
 const BREAK_HINTS: Record<BreakPay, string> = {
@@ -287,6 +288,8 @@ export function CompanySettings() {
       <FormError error={save.error} />
       <div className="form-actions" style={{ justifyContent: "flex-start" }}><FormChecks /><Button type="submit" variant="primary" loading={save.isPending} done={saved}>Save company settings</Button></div>
     </form>
+    {/* Saved by itself: the hourly profit check goes by when its line changes. */}
+    <JobCostSettings settings={(details.data?.settings ?? {}) as Record<string, unknown>} />
     {/* Saved by itself, through the database's own function: not one of the settings above. */}
     <NextNumbers />
     </div>

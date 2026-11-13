@@ -4,7 +4,7 @@ import { costedExtras, extrasByVisit, takesExtras, visitTakesExtras } from "@cre
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { askRefusal, marketingOn } from "@crewtavo/core/marketing";
 import { contractDiscountNote } from "@crewtavo/core/promos";
-import { expenseCosts } from "@crewtavo/core/reports";
+import { belowProfitLine, expenseCosts, profitAlertPercent } from "@crewtavo/core/reports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -263,6 +263,9 @@ export function JobPage() {
   const visitExtras = extrasByVisit(extras.data ?? []);
   const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses.counted ?? 0, expensesInLines: costs.data?.expenses.in_lines ?? 0, logged: materialRows.data ?? [], crewPay: costs.data?.crewPay ?? [], extras: costedExtras(extras.data ?? [], visits) });
   const { materials, labor, crew, expenses, profit, margin } = cost;
+  // The company's profit line (Settings → Company → Job costing), as the hourly check holds the job to it.
+  const profitLine = profitAlertPercent(session.company.settings);
+  const belowLine = j.status !== "archived" && belowProfitLine(j, { price: contract + cost.extras, margin, has_actual_costs: cost.hasActualCosts }, profitLine);
   const upcoming = visits.filter((v) => !["completed", "cancelled"].includes(v.status));
   const past = visits.filter((v) => ["completed", "cancelled"].includes(v.status));
   // A finished visit whose extra work isn't on an invoice yet stays in sight with the upcoming ones.
@@ -530,6 +533,12 @@ export function JobPage() {
               <strong>Job costing</strong>
               {costs.isPending ? <Skeleton height={60} /> : (
                 <>
+                  {belowLine && (
+                    <div className="callout callout-warning" role="status">
+                      <Icon name="alert" size={16} />
+                      <span className="grow small" style={{ fontWeight: 400 }}>At {margin}% profit, this job is below your {profitLine}%.</span>
+                    </div>
+                  )}
                   <ProfitBar price={contract + cost.extras} labor={labor} crew={crew} expenses={expenses} materials={materials} />
                   {/* The figures roll to their new values as line items, time and costs change. */}
                   <div className="totals" style={{ marginTop: 6 }}>

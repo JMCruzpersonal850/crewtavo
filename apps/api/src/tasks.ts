@@ -17,6 +17,7 @@ import { chargeDueAutopay, runAutopayJob } from "./services/autopay";
 import { checkHosting } from "./services/hosting";
 import { purgeTrash, tidyApplicantFiles, tidyPlanFiles, tidySubFiles, tidyUnrecordedFiles } from "./services/planFiles";
 import { keepRailwayAlive } from "./services/railway";
+import { checkJobProfits } from "./services/profitAlerts";
 import { checkStorage } from "./services/storageUsage";
 import { emitInactiveClients } from "./services/automatedCampaigns";
 import { processAutomations } from "./services/automations";
@@ -29,7 +30,7 @@ import { remindSubs } from "./services/subs";
 import { dailyOutlook } from "./services/external";
 import { autoRoutes } from "./services/routes";
 
-export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups"] as const;
+export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups", "profits"] as const;
 export type TaskName = (typeof TASKS)[number];
 
 /** Cron expressions -> tasks, run by server.ts's scheduler. */
@@ -62,6 +63,8 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   // The night's database backup, once it's past 2am where the business is; hourly, so a night that
   // failed is tried again, and the owners hear when backups have stopped (services/backups.ts).
   "25 * * * *": ["backups"],
+  // Jobs whose profit fell below the company's line since the last look (services/profitAlerts.ts).
+  "45 * * * *": ["profits"],
 };
 
 export async function runTask(name: TaskName, env: Env): Promise<Record<string, unknown>> {
@@ -121,6 +124,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return postDueSocial(env);
     case "backups":
       return runBackups(env, adminClient(env));
+    case "profits":
+      return checkJobProfits(adminClient(env));
   }
 }
 

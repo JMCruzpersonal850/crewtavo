@@ -1,4 +1,5 @@
 import { visitPrice } from "@crewtavo/core/promos";
+import { profitAlertPercent } from "@crewtavo/core/reports";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -36,6 +37,10 @@ const FILTERS = [
   { key: "archived", label: "Archived", states: ["archived"] },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
+const JOB_COLUMNS = "id, number, title, job_state, kind, default_crew_id, pricing, invoice_schedule, financials:job_financials(contract_total), lines:job_line_items(quantity, unit_price, discount_billing), client:clients(display_name), property:properties(line1, city), visits(id, status, scheduled_on)";
+const BELOW_COLUMNS = "profit_alert:job_profit_alerts!inner(below)";
+/** Below your margin lists jobs in every state but archived. */
+const BELOW_STATES = FILTERS.filter((f) => f.key !== "active" && f.key !== "archived").flatMap((f) => f.states);
 /** How many jobs the list shows at first, and how many more each "Load more" brings. */
 const PAGE = 200;
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
@@ -44,15 +49,18 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
  * The first `limit` jobs in some states, newest first, and how many there are in all (`total`).
  * `term` narrows them to a job number, or a title or client that has it; `kind` to one-off or recurring.
  */
-export async function loadJobs({ companyId, states, kind, term }: { companyId: string; states: readonly string[]; kind: "" | "one_off" | "recurring"; term: string }, limit: number) {
+export async function loadJobs({ companyId, states, kind, term, below = false }: { companyId: string; states: readonly string[]; kind: "" | "one_off" | "recurring"; term: string; below?: boolean }, limit: number) {
   const match = term && !/^\d+$/.test(term) ? await titleOrClientFilter(companyId, term) : null;
+  // Below your margin: only the jobs the hourly profit check last found below the company's line.
+  const columns = (below ? `${JOB_COLUMNS}, ${BELOW_COLUMNS}` : JOB_COLUMNS) as typeof JOB_COLUMNS;
   const { rows, total } = await firstRows(
     () => {
       let q = supabase()
         .from("jobs")
-        .select("id, number, title, job_state, kind, default_crew_id, pricing, invoice_schedule, financials:job_financials(contract_total), lines:job_line_items(quantity, unit_price, discount_billing), client:clients(display_name), property:properties(line1, city), visits(id, status, scheduled_on)", { count: "exact" })
+        .select(columns, { count: "exact" })
         .eq("company_id", companyId)
-        .in("job_state", [...states]);
+        .in("job_state", [...(below ? BELOW_STATES : states)]);
+      if (below) q = q.eq("profit_alert.below" as "id", true as never);
       if (kind) q = q.eq("kind", kind);
       if (term) q = match ? q.or(match) : q.eq("number", Number(term));
       return q;
@@ -88,17 +96,36 @@ export function JobsPage() {
   const canChangePrices = hasRole(session, "admin", "office") && can(session, "sales");
   const [pricing, setPricing] = useState(false);
   const [limit, setLimit] = useState(PAGE);
-  useEffect(() => setLimit(PAGE), [filter, kind, term]);
+  // Below your margin: for the people who see job costs, while the company has a profit line.
+  const seesMargins = hasRole(session, "admin", "office") && can(session, "job_costs") && profitAlertPercent(company.settings) !== null;
+  const [below, setBelow] = useState(() => params.get("margin") === "below");
+  const showBelow = seesMargins && below;
+  // The note after the margin changes links here, maybe from the Jobs page itself.
+  useEffect(() => { if (params.get("margin") === "below") setBelow(true); }, [params]);
+  useEffect(() => setLimit(PAGE), [filter, kind, term, showBelow]);
+  const belowCount = useQuery({
+    queryKey: ["jobs", company.id, "below-margin"],
+    enabled: seesMargins,
+    queryFn: async () => {
+      const { count, error } = await supabase().from("job_profit_alerts").select("job_id, job:jobs!inner(status)", { count: "exact", head: true }).eq("company_id", company.id).eq("below", true).neq("job.status", "archived");
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const pickFilter = (key: FilterKey) => {
+    setFilter(key);
+    setBelow(false);
+  };
 
-  const listKey = ["jobs", company.id, filter, kind, term, limit];
+  const listKey = ["jobs", company.id, showBelow ? "below" : filter, kind, term, limit];
   const jobs = useQuery({
     queryKey: listKey,
     placeholderData: keepPreviousData,
-    queryFn: () => loadJobs({ companyId: company.id, states, kind, term }, limit),
+    queryFn: () => loadJobs({ companyId: company.id, states, kind, term, below: showBelow }, limit),
   });
 
   // Picking several: archiving them and setting their crew, as a job's menu and details do.
-  const selection = useSelection(canSell ? (jobs.data?.rows ?? []).map((j) => j.id) : [], `${filter}|${kind}|${term}`);
+  const selection = useSelection(canSell ? (jobs.data?.rows ?? []).map((j) => j.id) : [], `${showBelow ? "below" : filter}|${kind}|${term}`);
 
   if (jobs.isPending) return <ListPageSkeleton columns={5} tabs={FILTERS.length} />;
   const rows = jobs.data?.rows ?? [];
@@ -140,11 +167,18 @@ export function JobsPage() {
         </div>
         <div className="tabs" role="group" aria-label="Filter jobs">
           {FILTERS.map((f) => (
-            <button key={f.key} type="button" className="tab" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
+            <button key={f.key} type="button" className="tab" aria-pressed={!showBelow && filter === f.key} onClick={() => pickFilter(f.key)}>
               {f.label}
               {counts.data && <span className="badge">{counts.data[f.key]}</span>}
             </button>
           ))}
+          {/* Jobs the hourly profit check found below the company's line, in any state but archived. */}
+          {seesMargins && (showBelow || (belowCount.data ?? 0) > 0) && (
+            <button type="button" className="tab" aria-pressed={showBelow} onClick={() => setBelow(!showBelow)}>
+              Below your margin
+              {belowCount.data !== undefined && <span className="badge">{belowCount.data}</span>}
+            </button>
+          )}
         </div>
         <select className="select" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Job type">
           <option value="">One-off and recurring</option>
@@ -158,6 +192,8 @@ export function JobsPage() {
         <div className="card">
           {term || kind ? (
             <EmptyState icon="search" title="No jobs match" action={<Button onClick={() => { setSearch(""); setKind(""); }}>Clear filters</Button>} />
+          ) : showBelow ? (
+            <EmptyState icon="job" title="No jobs below your margin" />
           ) : (
             // New job is the page header's green button, so the empty state points to quotes instead of repeating it.
             <EmptyState icon="job" title={EMPTY_TITLES[filter]} action={canSell && filter === "active" && <Link className="btn" to="/quotes">Go to quotes</Link>}>
