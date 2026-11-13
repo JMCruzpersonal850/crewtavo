@@ -302,7 +302,7 @@ describe("a client books a time", () => {
     });
     const res = await post(FORM, { ...lead, starts_at: nine });
     expect(res.status).toBe(409);
-    expect(plain((await res.json()).error)).toBe("You already have a booking for Tue, Nov 10, 9:00 AM. To change it, call us at 540-555-0100.");
+    expect(plain((await res.json()).error)).toBe("There's already a booking with this email or phone. To change it, call us at 540-555-0100.");
     expect(db.emails()).toEqual([]);
   });
 

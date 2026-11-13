@@ -165,14 +165,8 @@ export async function bookFormTime(
   if (error) {
     if (error.code === "CBTKN" || error.code === "CBFUL") throw new BookingRefused(TAKEN);
     if (error.code === "CBONE") {
-      let has: { scheduled_on?: string | null; starts_at?: string | null } = {};
-      try {
-        has = JSON.parse(error.details ?? "{}");
-      } catch {
-        // Said without the time.
-      }
-      const when = has.scheduled_on ? ` for ${slotLabel({ date: has.scheduled_on, starts_at: has.starts_at ?? null }, tz, arrivalWindowMin(company.settings))}` : "";
-      throw new BookingRefused(`You already have a booking${when}. To change it, ${company.phone ? `call us at ${company.phone}` : "get in touch with us"}.`);
+      // Without the time: whoever typed this email or phone may not be the person who booked.
+      throw new BookingRefused(`There's already a booking with this email or phone. To change it, ${company.phone ? `call us at ${company.phone}` : "get in touch with us"}.`);
     }
     throw dbError(error);
   }
