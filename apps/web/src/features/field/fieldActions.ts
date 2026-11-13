@@ -5,6 +5,9 @@
  */
 import type { QueryClient } from "@tanstack/react-query";
 import { api, supabase, unwrap } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
+import { toast } from "@/lib/toast";
+import { clockLost, showClockTap, startedBefore, type ClockChange } from "./clockTaps";
 import { clockTravel, clockVisit, type ClockPlace } from "./fieldData";
 
 export interface VisitStatusChange {
@@ -70,10 +73,13 @@ export function pendingChecklistSaves(queryClient: QueryClient, visitId: string)
   return new Map(waiting.map((v) => [v.responseId, v]));
 }
 
-/** Show a tapped status at once, on My day and on the visit's own screen alike. */
+/** Show a tapped status at once, on My day and on the visit's own screen alike, and what it does to the clock on the clock cards. */
 export function showVisitStatus(queryClient: QueryClient, change: VisitStatusChange) {
+  const title = queryClient.getQueryData<{ title?: string } | null>(["field-visit", change.visitId])?.title
+    ?? queryClient.getQueriesData<{ today: Array<{ id: string; title?: string }> }>({ queryKey: ["field"] }).flatMap(([, day]) => day?.today ?? []).find((v) => v.id === change.visitId)?.title;
   queryClient.setQueriesData<{ today: Array<{ id: string; status: string }> }>({ queryKey: ["field"] }, (old) => old && { ...old, today: old.today.map((v) => (v.id === change.visitId ? { ...v, status: change.status } : v)) });
   queryClient.setQueryData<{ status: string } | null>(["field-visit", change.visitId], (old) => old && { ...old, status: change.status });
+  showClockTap(queryClient, { key: "visit-status", change, title });
 }
 
 /**
@@ -135,6 +141,63 @@ export function statusSaved(result: { skipped: boolean; visitStatus?: string; cl
   if (change.status === "en_route") return result?.travel ? "On your way, your clock is running" : "On your way";
   if (change.status === "in_progress") return clocks ? "Visit started, your clock is running" : "Visit started";
   return result?.travel ? "Visit completed, your clock keeps running" : "Visit completed";
+}
+
+/**
+ * A clock tap from the clock card or the crew clock: start, switch or stop, for the person or for
+ * the people a crew lead clocks together, dated when it was tapped. `lost` is whoever it changed
+ * nothing for because a clock that began after the tap is running (clockTaps.clockLost).
+ *
+ * Sent late, after a spell with no signal, it still can't leave two clocks running or stop a clock
+ * that started after it:
+ *   - Stop ends only clocks that began before the tap, in one statement.
+ *   - Start ends what was running before the tap (with where the phone was) and adds the new clock
+ *     under the id the phone made for it, so the same tap sent twice adds it once.
+ *   - When something newer happened meanwhile (the office or a crew lead started a clock for them
+ *     after the tap), the newer clock wins. If the person's time at the tap is already on record
+ *     the tap changes nothing; if not, it's saved up to where the newer clock began, which the
+ *     database does for any clock that arrives late (20261112000410_one_running_clock.sql).
+ * Safe to send twice.
+ */
+export async function setClock(v: ClockChange): Promise<{ lost: string[] }> {
+  const db = supabase();
+  const running = async (who: string[]) =>
+    who.length ? unwrap(await db.from("time_entries").select("id, user_id, visit_id, started_at").eq("company_id", v.companyId).in("user_id", who).is("ended_at", null)) : [];
+  if (!v.target) {
+    unwrap(await db.from("time_entries").update({ ended_at: v.at, out_place: v.place }).eq("company_id", v.companyId).in("user_id", v.who).is("ended_at", null).lt("started_at", v.at));
+    // Still on the clock: one that began after this Stop was tapped.
+    return { lost: [...new Set((await running(v.who)).map((entry) => entry.user_id))] };
+  }
+  const { target } = v;
+  const ids = v.entryIds ?? {};
+  // Sent before (the app closed before it heard back): those clocks are already there.
+  const sent = Object.values(ids).length ? unwrap(await db.from("time_entries").select("id").in("id", Object.values(ids))).map((entry) => entry.id) : [];
+  let who = v.who.filter((id) => !ids[id] || !sent.includes(ids[id]!));
+  const open = await running(who);
+  // Already on that visit's clock (their own Start, or a crew lead clocked them in): left as it is.
+  if (target.visit) who = who.filter((id) => !open.some((entry) => entry.user_id === id && entry.visit_id === target.visit!.id));
+  const lost = who.filter((id) => open.some((entry) => entry.user_id === id && !startedBefore(entry, v.at)));
+  if (lost.length) {
+    // The newer clock wins. Whoever's time at the tap is already on record gets nothing more from it.
+    const covered = unwrap(await db.from("time_entries").select("user_id").eq("company_id", v.companyId).in("user_id", lost).lte("started_at", v.at).gt("ended_at", v.at)).map((entry) => entry.user_id);
+    who = who.filter((id) => !covered.includes(id));
+  }
+  if (!who.length) return { lost };
+  unwrap(await db.from("time_entries").update({ ended_at: v.at, out_place: v.place }).eq("company_id", v.companyId).in("user_id", who).is("ended_at", null).lt("started_at", v.at));
+  try {
+    unwrap(
+      await db.from("time_entries").insert(
+        who.map((user_id) => ({ ...(ids[user_id] && { id: ids[user_id] }), company_id: v.companyId, user_id, category: target.category, visit_id: target.visit?.id ?? null, job_id: target.visit?.jobId ?? null, started_at: v.at, in_place: v.place })),
+      ),
+    );
+  } catch (error) {
+    if (!(error instanceof ApiError && error.code === "23505")) throw error;
+    // Already there under these ids: this very tap got through a moment ago (sent twice at once).
+    const made = who.map((id) => ids[id]).filter((id): id is string => Boolean(id));
+    const there = made.length === who.length ? unwrap(await db.from("time_entries").select("id").in("id", made)) : [];
+    if (there.length < who.length) throw error;
+  }
+  return { lost };
 }
 
 export interface ChecklistSave {
@@ -211,6 +274,15 @@ export function pendingJobLines(queryClient: QueryClient, jobId: string): JobLin
 /** A line waiting on this phone as the job's list of work (job_scope) shows it: last, as the server adds it. */
 export const waitingScopeLine = (v: JobLineAdd) => ({ id: v.lineId, name: v.name, description: null, quantity: v.quantity, unit: v.unit, sort: Number.MAX_SAFE_INTEGER });
 
+/** A team member's name as this phone has it (the crew clock's list), for a note about their clock. */
+function teamName(queryClient: QueryClient, userId: string): string {
+  for (const [, options] of queryClient.getQueriesData<{ team?: Array<{ user_id: string; profile?: { full_name?: string | null } | null }> }>({ queryKey: ["dispatch-options"] })) {
+    const name = options?.team?.find((t) => t.user_id === userId)?.profile?.full_name;
+    if (name) return name;
+  }
+  return "A crew member";
+}
+
 /**
  * Field actions wait for signal ("online" mode): with none, React Query pauses them and lib/offline.ts
  * keeps them on the phone. Every other save fails at once instead (lib/queryClient.ts).
@@ -224,6 +296,16 @@ export function registerFieldActions(queryClient: QueryClient) {
       const result = await setVisitStatus(v);
       // Their clock was turned off: what this phone knows about them (GET /me) is out of date.
       if (result.clockOff) void queryClient.invalidateQueries({ queryKey: ["me"] });
+      return result;
+    },
+  });
+  queryClient.setMutationDefaults(["clock"], {
+    ...WAIT_FOR_SIGNAL,
+    mutationFn: async (v: ClockChange) => {
+      const result = await setClock(v);
+      // Said here, not by the screen: a tap sent after the app was closed has no screen to say it.
+      const lost = clockLost(result, v, (id) => teamName(queryClient, id));
+      if (lost) toast.info(lost.title, { description: lost.body, duration: 10_000 });
       return result;
     },
   });

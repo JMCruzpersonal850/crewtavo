@@ -108,8 +108,9 @@ export const queryClient = new QueryClient({
       retry: (count, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 2,
     },
     // Saves go out at once and fail at once with no connection, rather than waiting (React Query's
-    // "online" mode) with the button spinning. The crew's field actions wait for signal instead:
-    // their own defaults (features/field/fieldActions.ts) put them back in "online" mode.
+    // "online" mode) with the button spinning. The crew's field actions (a visit's taps, the clock,
+    // checklists, notes) wait for signal instead: their own defaults (features/field/fieldActions.ts)
+    // put them back in "online" mode.
     mutations: { retry: false, networkMode: "always" },
   },
 });

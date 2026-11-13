@@ -1,9 +1,10 @@
 /** Shared helpers for the crew (field) screens. */
 import { clockMode } from "@crewtavo/core/clock";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase, unwrap } from "@/lib/api";
 import { isSub, keepsTime, useSession, type Company, type Session } from "@/lib/session";
+import { startedBefore, withWaitingTaps } from "./clockTaps";
 import type { VisitStatusChange } from "./fieldActions";
 
 export type TimerCategory = "visit" | "assessment" | "drive" | "shop" | "break" | "other";
@@ -122,9 +123,6 @@ export async function clockVisit(companyId: string, userId: string, visit: { id:
   }
 }
 
-/** Whether a clock began before a moment. As moments, not text: the database writes a time another way than the phone does. */
-const startedBefore = (entry: { started_at: string }, at: string) => Date.parse(entry.started_at) < Date.parse(at);
-
 /**
  * The whole-day clock's travel (Driving, on no visit or job) for the signed-in person, from `at`.
  * Returns whether they're on travel afterwards.
@@ -152,35 +150,31 @@ export async function clockTravel(companyId: string, userId: string, at: string,
   return true;
 }
 
-/** Start a general timer (driving, shop time, a break), stopping whatever was running. */
-export async function startTimer(companyId: string, userId: string, category: TimerCategory, place?: ClockPlace) {
-  const db = supabase();
-  const now = new Date().toISOString();
-  unwrap(await db.from("time_entries").update({ ended_at: now, out_place: place }).eq("user_id", userId).eq("company_id", companyId).is("ended_at", null));
-  unwrap(await db.from("time_entries").insert({ company_id: companyId, user_id: userId, category, started_at: now, in_place: place }));
-}
-
-export async function stopTimers(companyId: string, userId: string, place?: ClockPlace) {
-  unwrap(await supabase().from("time_entries").update({ ended_at: new Date().toISOString(), out_place: place }).eq("user_id", userId).eq("company_id", companyId).is("ended_at", null));
-}
-
-/** The clock currently running for me, if any. `enabled` is false for someone without a clock (a sub, mostly). */
+/**
+ * The clock currently running for me, if any, with the taps still waiting on this phone on top
+ * (clockTaps.ts): what the server says is older than those. `enabled` is false for someone without
+ * a clock (a sub, mostly).
+ */
 export function useRunningTimer(companyId: string, userId: string, enabled = true) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["running-timer", companyId, userId],
     enabled,
     refetchInterval: 60_000,
-    queryFn: async () =>
-      unwrap(
-        await supabase()
-          .from("time_entries")
-          .select("id, category, started_at, visit:visits(id, title)")
-          .eq("company_id", companyId)
-          .eq("user_id", userId)
-          .is("ended_at", null)
-          .order("started_at", { ascending: false })
-          .limit(1),
-      )[0] ?? null,
+    queryFn: async () => {
+      const running =
+        unwrap(
+          await supabase()
+            .from("time_entries")
+            .select("id, category, started_at, visit:visits(id, title)")
+            .eq("company_id", companyId)
+            .eq("user_id", userId)
+            .is("ended_at", null)
+            .order("started_at", { ascending: false })
+            .limit(1),
+        )[0] ?? null;
+      return withWaitingTaps(queryClient, companyId, userId, running);
+    },
   });
 }
 
@@ -203,4 +197,4 @@ export function formatDuration(ms: number) {
   return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
 }
 
-export const CATEGORY_LABELS: Record<TimerCategory, string> = { visit: "On a visit", assessment: "Assessment", drive: "Driving", shop: "Shop time", break: "On break", other: "Other work" };
+export { CLOCK_LABELS as CATEGORY_LABELS } from "./clockTaps";

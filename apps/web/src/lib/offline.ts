@@ -1,8 +1,8 @@
 /**
  * The crew's day on the phone, for job sites with no signal. What My day and a visit show is kept
- * in this browser's storage, and field actions (on my way, start, complete, checklist, notes, work
- * added from the price list) made offline wait in order and go out when the connection is back, even if the app was closed in
- * between. Those screens are kept for crews and subs (OFFLINE_LEVELS), and a sub's My jobs too (only
+ * in this browser's storage, and field actions (on my way, start, complete, the clock, checklist,
+ * notes, work added from the price list) made offline wait in order and go out when the connection
+ * is back, even if the app was closed in between. Those screens are kept for crews and subs (OFFLINE_LEVELS), and a sub's My jobs too (only
  * to read: answering an offer needs signal). Office screens aren't kept:
  * they hold prices and client details that don't belong on a crew phone. Cleared when the person signs
  * out; when the app signs them out (an expired sign-in), only their unsent field actions are kept,
@@ -37,7 +37,7 @@ const KEEP = new Set(["field", "field-visit", "field-jobs", "checklist", "runnin
 const isGuide = (key: readonly unknown[]) => key[0] === "kb" && key[2] === "page";
 const kept = (key: readonly unknown[]) => KEEP.has(String(key[0])) || isGuide(key);
 /** Mutations that can wait for a connection (their functions are registered with setMutationDefaults). */
-export const OFFLINE_MUTATIONS = new Set(["visit-status", "checklist-save", "visit-notes", "photo-share", "job-line-add"]);
+export const OFFLINE_MUTATIONS = new Set(["visit-status", "clock", "checklist-save", "visit-notes", "photo-share", "job-line-add"]);
 /** Field actions run one at a time, in the order they were made. */
 export const FIELD_SCOPE = { id: "field-sync" };
 /** Room for everything saved, cached screens included. Unsent actions are saved even past it. */

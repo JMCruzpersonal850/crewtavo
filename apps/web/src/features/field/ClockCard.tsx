@@ -5,16 +5,23 @@
  *
  * On the whole-day clock (Settings → Company → Time clock) it runs between visits too, on Driving,
  * so the way to end the day is here: Stop for the day.
+ *
+ * Its taps work with no signal, like a visit's: each is saved on the phone with when it was tapped
+ * and sent in order when there's signal (clockTaps.ts, fieldActions.setClock), and the card shows
+ * what the waiting taps will do.
  */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button, Spinner } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
+import { FIELD_SCOPE } from "@/lib/offline";
 import { hasRole, keepsTime, useSession } from "@/lib/session";
-import { CATEGORY_LABELS, clockPlace, clockVisit, onDayClock, recordsPlaces, startTimer, stopTimers, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
+import { toast } from "@/lib/toast";
+import { clockChange, clockSaved, showClockTap, type ClockChange, type ClockTarget } from "./clockTaps";
+import { CATEGORY_LABELS, clockPlace, onDayClock, recordsPlaces, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
 
 interface VisitUnderWay { id: string; title: string; job_id: string | null }
-type ClockAction = TimerCategory | "stop" | VisitUnderWay;
 
 export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
   const session = useSession();
@@ -23,22 +30,33 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
   const day = onDayClock(session);
   const timer = useRunningTimer(session.company.id, session.userId, clocks);
   const elapsed = useElapsed(timer.data?.started_at);
+  // Sent by the action registered for it (fieldActions.ts), not a mutationFn here: lib/offline.ts
+  // notes when it's on its way, for the count of updates waiting.
   const action = useMutation({
-    meta: { success: (_: unknown, v: ClockAction) => (v === "stop" ? (day ? "Clock stopped for the day" : "Clock stopped") : typeof v === "object" ? `${v.title}: clock started` : `${CATEGORY_LABELS[v]}: clock started`) },
-    mutationFn: async (a: ClockAction) => {
-      const place = await clockPlace(session.company);
-      if (a === "stop") return stopTimers(session.company.id, session.userId, place);
-      if (typeof a === "object") return clockVisit(session.company.id, session.userId, a, "start", new Date().toISOString(), place);
-      return startTimer(session.company.id, session.userId, a, place);
+    mutationKey: ["clock"],
+    scope: FIELD_SCOPE,
+    meta: { success: (result: { lost: string[] }, change: ClockChange) => clockSaved(result, change, { day }) },
+    onMutate: (change: ClockChange) => {
+      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
+      showClockTap(queryClient, { key: "clock", change });
     },
     onSettled: () => {
       for (const k of ["running-timer", "time", "field", "field-visit", "crew-clock"]) queryClient.invalidateQueries({ queryKey: [k] });
     },
   });
+  // Finding where the phone is comes first and can take a few seconds; the tap is dated before it.
+  const [locating, setLocating] = useState<"stop" | "start" | null>(null);
+  const tap = async (target: ClockTarget | null) => {
+    const at = new Date().toISOString();
+    setLocating(target ? "start" : "stop");
+    const place = await clockPlace(session.company);
+    setLocating(null);
+    action.mutate(clockChange(session, [session.userId], target, place, at));
+  };
   const visit = timer.data?.visit as { id: string; title: string } | null | undefined;
   const on = Boolean(timer.data);
-  // Finding where the phone is can take a few seconds.
-  const starting = action.isPending && action.variables !== "stop";
+  // Which tap is on its way. One waiting for signal isn't: the card is free for the next.
+  const going = locating ?? (action.isPending && !action.isPaused ? (action.variables?.target ? "start" : "stop") : null);
   if (!clocks) return null;
   return (
     <div className="card card-pad row wrap" style={{ gap: 12, background: on ? "var(--green-tint)" : undefined, borderColor: on ? "transparent" : undefined, transition: "background var(--dur), border-color var(--dur)" }}>
@@ -58,14 +76,14 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
           </>
         )}
       </div>
-      {on && <Button variant="dark" icon="pause" loading={action.isPending && action.variables === "stop"} disabled={starting} onClick={() => action.mutate("stop")}>{day ? "Stop for the day" : "Stop"}</Button>}
+      {on && <Button variant="dark" icon="pause" loading={going === "stop"} disabled={going === "start"} onClick={() => void tap(null)}>{day ? "Stop for the day" : "Stop"}</Button>}
       <Menu
         label="Start a timer"
         triggerClassName="btn"
-        trigger={<>{starting ? <Spinner size={16} /> : <Icon name="play" size={16} />}{on ? "Switch" : "Start timer"}</>}
+        trigger={<>{going === "start" ? <Spinner size={16} /> : <Icon name="play" size={16} />}{on ? "Switch" : "Start timer"}</>}
         items={[
-          ...visits.filter((v) => v.id !== visit?.id).map((v) => ({ label: v.title, disabled: action.isPending, onSelect: () => action.mutate(v) })),
-          ...(["drive", "shop", "break", "other"] as TimerCategory[]).map((c) => ({ label: CATEGORY_LABELS[c], disabled: action.isPending, onSelect: () => action.mutate(c) })),
+          ...visits.filter((v) => v.id !== visit?.id).map((v) => ({ label: v.title, disabled: going !== null, onSelect: () => void tap({ category: "visit", visit: { id: v.id, jobId: v.job_id, title: v.title } }) })),
+          ...(["drive", "shop", "break", "other"] as TimerCategory[]).map((c) => ({ label: CATEGORY_LABELS[c], disabled: going !== null, onSelect: () => void tap({ category: c }) })),
         ]}
       />
     </div>
