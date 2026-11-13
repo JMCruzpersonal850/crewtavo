@@ -240,7 +240,8 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
       catches up when the connection is back.</p>
       <p><strong>For your clients.</strong> The Client Hub, with no account to create: approve
       quotes, pay invoices (with an optional tip), see the next visit, ask for changes, request
-      work and message the office.</p>
+      work and message the office. A booking form on your website, or its link, lets people pick a
+      time from the openings your schedule really has.</p>
     </td>
   </tr>
 </table>
@@ -342,6 +343,18 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   write-offs for invoices that won't be paid, expenses and job costing, timesheets and pay.
   Request, quote, job and invoice numbers can carry on from the system you're moving from
   (Settings → Company).
+- **Online booking:** request, estimate and booking forms to link to or embed in your website,
+  with your own questions, a service area by ZIP or postal code, file and photo uploads and promo
+  codes. Turn on "Let clients pick a time" for an estimate or booking form (Settings → Online
+  booking) and people choose a day and a time from real openings: your working days and hours,
+  around the visits and busy calendar times of the crew the form books (or, with no crew, the
+  whole schedule, so nobody is double-booked), after the lead time you set, up to the most a day
+  you set, for the next 60 days, in your time zone. A form either books at once (the visit goes on
+  the schedule at a fixed time, and two people can't take the same opening) or holds the time for
+  your OK, which is one press on the request. The client is told on the page, by email and by text,
+  gets a file for their calendar, and can ask to move or cancel the visit from their Client Hub. One
+  person holds one upcoming booking a form. Forms that were there before stay plain request forms
+  until you turn times on.
 - **Plans and files:** plan sets, specs, permits and addenda on requests, quotes, jobs and
   properties, up to 200 MB each. New versions replace old ones (with the history kept), the crew
   sees only current sheets on their phones, and clients can attach plans to a booking request. A
@@ -388,7 +401,8 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   Subs are paid by the job instead, under Subcontractors. Crewtavo doesn't move the money.
 - **Every trade:** trade presets ([`packages/core/src/presets`](packages/core/src/presets)) load
   starter services, quote formulas, checklists, weather rules, booking forms, custom fields and SOP
-  categories when a company signs up: plumbing, HVAC, electrical, cleaning, pool and spa, pest
+  categories when a company signs up (a trade's estimate or booking form starts with its visit
+  length, lead time and most a day set, and offers times from the first day): plumbing, HVAC, electrical, cleaning, pool and spa, pest
   control, handyman, landscaping, lawn and exterior maintenance, paving and sitework, roofing and
   exteriors, or a general starting point for any other trade. A paving job priced with the paving
   calculator gets the same weather holds and checklists as one priced from the price list, each

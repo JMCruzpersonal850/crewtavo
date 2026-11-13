@@ -1530,8 +1530,8 @@ publicRoutes.post("/hub/:token/message", async (c) => {
   let subject = "Message from the client portal";
   let related: { related_type: string; related_id: string } | Record<string, never> = l.t === "client" ? {} : { related_type: l.t, related_id: l.id };
   if (body.visit_id) {
-    const visit = must(await admin.from("visits").select("id, title, scheduled_on, job:jobs(client_id)").eq("company_id", l.c).eq("id", body.visit_id).maybeSingle(), "Visit not found.");
-    if ((visit.job as unknown as { client_id: string } | null)?.client_id !== clientId) throw new HttpError(404, "Visit not found.");
+    const visit = must(await admin.from("visits").select("id, title, scheduled_on, job:jobs(client_id), request:requests(client_id, asked_starts_at)").eq("company_id", l.c).eq("id", body.visit_id).maybeSingle(), "Visit not found.");
+    if (!clientsVisit(visit, clientId)) throw new HttpError(404, "Visit not found.");
     subject = `Asked to change the visit on ${visit.scheduled_on ?? "an unscheduled day"}: ${visit.title}`;
     related = { related_type: "visit", related_id: visit.id };
   }
