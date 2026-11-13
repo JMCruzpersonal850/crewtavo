@@ -1,8 +1,11 @@
 /**
  * Materials used on a job: tons of asphalt, gallons of sealer, loads of stone, logged from the
- * field with the plant ticket number and a photo of the ticket. Job costing values them at the
- * price list's cost; crews see quantities, never prices.
+ * field with the plant ticket number and a photo of the ticket. Crews see quantities, never prices.
+ * For the office with job costs, each one is set against what the job's line items estimated for it
+ * (a price list item on the job, or a material of a paving calculator line), and counts in job
+ * costing as logged in place of the estimate (packages/core/src/reports.ts materialUse).
  */
+import type { MaterialUse } from "@crewtavo/core/reports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { featureOn } from "@/components/shell/nav";
@@ -18,6 +21,7 @@ import { formatDate, formatMoneyCents } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { hasRole, useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
+import { LOGGED_MATERIALS_RULE } from "./jobCosts";
 
 const UNITS = ["ton", "yd³", "gal", "load", "bag", "ea", "lf", "sq yd"];
 const qty = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(n);
@@ -28,7 +32,7 @@ export function useJobMaterials(jobId: string) {
   return useQuery({
     queryKey: materialsKey(jobId),
     queryFn: async () => {
-      const rows = unwrap(await supabase().from("job_materials").select("id, visit_id, name, quantity, unit, ticket, supplier, photo_path, logged_by, logged_at").eq("job_id", jobId).order("logged_at", { ascending: false }));
+      const rows = unwrap(await supabase().from("job_materials").select("id, visit_id, service_id, name, quantity, unit, ticket, supplier, photo_path, logged_by, logged_at").eq("job_id", jobId).order("logged_at", { ascending: false }));
       const urls = await signedUrls(rows.flatMap((r) => (r.photo_path ? [r.photo_path] : []))).catch(() => ({}) as Record<string, string>);
       return rows.map((r) => ({ ...r, photo_url: r.photo_path ? urls[r.photo_path] ?? null : null }));
     },
@@ -39,9 +43,10 @@ type Material = NonNullable<ReturnType<typeof useJobMaterials>["data"]>[number];
 /**
  * On the job page (all of it) or a visit (just that day's), with a "Log material" button. The job
  * page shows it once something's logged, or opens it with the dialog up (startAdding) from its add
- * buttons; onAddClosed tells it that dialog has closed, so an empty card can go again.
+ * buttons; onAddClosed tells it that dialog has closed, so an empty card can go again. `use`: each
+ * logged material against the job's estimate (jobCosts), for the office with job costs.
  */
-export function MaterialsCard({ jobId, visitId, showCosts, compact = false, startAdding = false, onAddClosed }: { jobId: string; visitId?: string; showCosts?: boolean; compact?: boolean; startAdding?: boolean; onAddClosed?: () => void }) {
+export function MaterialsCard({ jobId, visitId, showCosts, use, compact = false, startAdding = false, onAddClosed }: { jobId: string; visitId?: string; showCosts?: boolean; use?: readonly MaterialUse[]; compact?: boolean; startAdding?: boolean; onAddClosed?: () => void }) {
   const session = useSession();
   const queryClient = useQueryClient();
   const [logging, setLogging] = useState(startAdding);
@@ -117,14 +122,57 @@ export function MaterialsCard({ jobId, visitId, showCosts, compact = false, star
           <div className="list-foot"><span className="muted small">Totals: {totals.map((t) => `${qty(t.quantity)} ${t.unit} ${t.name}`).join(" · ")}</span></div>
         )}
       </div>
-      {showCosts && !!costs.data?.length && (
-        <span className="muted small">
-          At price-list cost: {formatMoneyCents(costs.data.reduce((s, c) => s + Number(c.cost), 0))}
-          {costs.data.some((c) => c.unit_cost == null) ? ". Some materials have no cost in the price list yet." : ""}
-        </span>
-      )}
+      {showCosts && !!use?.length && <EstimatedAndUsed use={use} priceList={costs.data ?? []} />}
       {logging && <MaterialDialog jobId={jobId} visitId={visitId ?? null} onClose={closeLog} onSaved={() => queryClient.invalidateQueries({ queryKey: ["job", jobId] })} />}
     </section>
+  );
+}
+
+/**
+ * Each logged material against what the job's line items estimated for it. One that's on the lines
+ * counts in job costing as logged, at the line's cost; one that isn't is listed with what the price
+ * list says it costs, and isn't counted, since a line's cost may already cover it. The rule is said
+ * here, where the numbers are.
+ */
+function EstimatedAndUsed({ use, priceList }: { use: readonly MaterialUse[]; priceList: ReadonlyArray<{ name: string; unit: string; unit_cost: number | null; cost: number | null }> }) {
+  const compared = use.filter((r) => r.estimated !== null);
+  const others = use.filter((r) => r.estimated === null);
+  const listCost = (r: MaterialUse) => priceList.find((c) => c.name === r.name && c.unit === r.unit && c.unit_cost != null)?.cost ?? null;
+  return (
+    <div className="card card-pad stack-sm">
+      <strong>Estimated and used</strong>
+      {compared.map((r) => {
+        const over = Math.round((r.used - r.estimated!) * 1000) / 1000;
+        return (
+          <div key={`${r.name}|${r.unit}`} className="row-between" style={{ alignItems: "flex-start", gap: 12 }}>
+            <span>
+              {r.name}
+              <span className="muted small" style={{ display: "block" }}>Estimated {qty(r.estimated!)} {r.unit} · {formatMoneyCents(r.estimated_cost!)}</span>
+            </span>
+            <span style={{ textAlign: "right" }}>
+              <strong className="tabular">{qty(r.used)} {r.unit} · {formatMoneyCents(r.actual_cost!)}</strong>
+              <span className="muted small" style={{ display: "block" }}>{over === 0 ? "As estimated" : `${qty(Math.abs(over))} ${r.unit} ${over > 0 ? "over" : "under"}`}</span>
+            </span>
+          </div>
+        );
+      })}
+      {others.map((r) => {
+        const cost = listCost(r);
+        return (
+          <div key={`${r.name}|${r.unit}`} className="row-between" style={{ alignItems: "flex-start", gap: 12 }}>
+            <span>
+              {r.name}
+              <span className="muted small" style={{ display: "block" }}>Not on this job's line items</span>
+            </span>
+            <span className="muted tabular" style={{ textAlign: "right" }}>{qty(r.used)} {r.unit}{cost != null ? ` · ${formatMoneyCents(Number(cost))} at price list cost` : ""}</span>
+          </div>
+        );
+      })}
+      <span className="muted small">
+        {LOGGED_MATERIALS_RULE}
+        {others.length > 0 && " A material that isn't on the line items is listed, not counted: a line's cost may already cover it."}
+      </span>
+    </div>
   );
 }
 
@@ -136,6 +184,16 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
     staleTime: 5 * 60_000,
     queryFn: async () => unwrap(await supabase().rpc("material_choices", { p_company: session.company.id })),
   });
+  // What the job's own lines have on them, by name and unit (no prices): logged as one of these, a
+  // material is set against the job's estimate. Not on the phone with no signal; the rest still is.
+  const onJob = useQuery({
+    queryKey: ["job", jobId, "estimated-materials"],
+    staleTime: 5 * 60_000,
+    meta: { silent: true },
+    queryFn: async () => unwrap(await supabase().rpc("job_estimated_materials", { p_job: jobId })),
+  });
+  // The list's value: a price list item's id, or one of the job's own ("job:" and its place in onJob).
+  const [choice, setChoice] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -146,8 +204,10 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
   const [file, setFile] = useState<File | null>(null);
   const amount = Number(quantity);
   const pick = (id: string) => {
-    setServiceId(id);
-    const c = choices.data?.find((x) => x.id === id);
+    setChoice(id);
+    const mine = id.startsWith("job:") ? onJob.data?.[Number(id.slice(4))] : undefined;
+    setServiceId(mine ? mine.service_id ?? "" : id);
+    const c = mine ?? choices.data?.find((x) => x.id === id);
     if (c) {
       setName(c.name);
       setUnit(c.unit);
@@ -177,13 +237,22 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label="Material">
           {choices.isPending ? <Skeleton height={38} radius={8} /> : (
-            <select className="select" value={serviceId} onChange={(e) => pick(e.target.value)}>
+            <select className="select" value={choice} onChange={(e) => pick(e.target.value)}>
               <option value="">Something else (type it below)</option>
-              {choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
+              {!!onJob.data?.length && (
+                <optgroup label="On this job">
+                  {onJob.data.map((c, i) => <option key={`job:${i}`} value={`job:${i}`}>{c.name} ({c.unit})</option>)}
+                </optgroup>
+              )}
+              {onJob.data?.length ? (
+                <optgroup label="Price list">
+                  {choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
+                </optgroup>
+              ) : choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
             </select>
           )}
         </Field>
-        {!serviceId && <Field label="What was it" requiredMessage="Say what material it was."><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder="Surface mix, #57 stone, sealer…" required /></Field>}
+        {!choice && <Field label="What was it" requiredMessage="Say what material it was."><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder="Surface mix, #57 stone, sealer…" required /></Field>}
         <div className="form-grid">
           <Field label="How much" requiredMessage="Enter how much was used."><input className="input" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.]/g, ""))} required autoFocus /></Field>
           <Field label="Unit">

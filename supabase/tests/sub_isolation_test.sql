@@ -585,6 +585,8 @@ select t1070.check(array(
   'import_jobber(uuid, text, jsonb)', 'inactive_client_count(uuid, integer)', 'invoice_summary(uuid, date)',
   -- The checklists a job's items bring up: a sub's, for the jobs of their own visits (as job_scope).
   'job_checklists(uuid)',
+  -- What's on a job to log materials against, by name and unit: the office's and the crew's, never a sub's.
+  'job_estimated_materials(uuid)',
   'job_material_costs(uuid)', 'job_pay_accept(uuid, uuid[])', 'job_pay_cancel(uuid)', 'job_pay_costs(uuid[])', 'job_pay_covers(uuid, uuid, uuid)', 'job_pay_mark_done(uuid, date)',
   'job_pay_mark_paid(uuid[], text, date, text, numeric)', 'job_pay_start(uuid, uuid, uuid, uuid[])', 'job_pay_suggest(uuid, uuid, uuid, uuid[])',
   'job_pay_unmark_paid(uuid[])', 'job_promo_discounts(uuid)', 'job_scope(uuid)',
@@ -694,10 +696,10 @@ select t1070.check((select row(name, timezone, currency, phone, logo)::text = ro
     and array(select jsonb_object_keys(settings) order by 1) = '{branding,clock,working_hours}' from public.company_basics(:'co')),
   'company_basics: the name, time zone, currency, phone and logo, and only the clock, branding and working hours settings');
 select t1070.check(not exists (select 1 from public.company_basics(:'other')), 'and nothing about another company');
-select t1070.check(public.my_crew_ids(:'co') = '{}' and not exists (select 1 from public.material_choices(:'co')) and not exists (select 1 from public.job_material_costs(:'j1'))
+select t1070.check(public.my_crew_ids(:'co') = '{}' and not exists (select 1 from public.material_choices(:'co')) and not exists (select 1 from public.job_material_costs(:'j1')) and not exists (select 1 from public.job_estimated_materials(:'j1'))
   and not exists (select 1 from public.time_entry_places(:'co', array[:'cy_entry']::uuid[])) and not exists (select 1 from public.chat_overview(:'co'))
   and not exists (select 1 from public.chat_members(:'general')),
-  'no crews, price list, material costs, clock places or chat');
+  'no crews, price list, material costs, what a job''s materials are estimated as, clock places or chat');
 select t1070.expect_error(format('select public.add_field_line(%L, %L, 1)', :'v1', :'shingles_service'), 'add_field_line refuses, even on their own visit');
 select t1070.expect_error(format('select public.chat_mark_read(%L)', :'general'), 'chat_mark_read refuses');
 select t1070.expect_error(format('select public.chat_set_enabled(%L, false)', :'co'), 'chat_set_enabled refuses');

@@ -4,6 +4,7 @@ import { costedExtras, extrasByVisit, takesExtras, visitTakesExtras } from "@cre
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { askRefusal, marketingOn } from "@crewtavo/core/marketing";
 import { contractDiscountNote } from "@crewtavo/core/promos";
+import { expenseCosts } from "@crewtavo/core/reports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -110,7 +111,7 @@ export function JobPage() {
       unwrapOne(
         await supabase()
           .from("jobs")
-          .select("*, job_state, financials:job_financials(contract_total), client:clients(id, display_name, phone, email, status, review_opt_out, marketing_opt_out, sms_opt_out_at, reviewed_at), property:properties(id, line1, city, region, postal_code, lat, lng), quote:quotes!jobs_company_id_quote_id_fkey(id, number, deposit_amount), crew:crews(name), lines:job_line_items(id, name, description, quantity, unit, unit_price, unit_cost, unit_labor_cost, taxable, sort, service_id, source_quote_id, discount_billing, discount_key, added_in_field_by, added_in_field_at), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, hold_reason, invoice_id, completed_at, crew:crews(name, color), assignees:visit_assignees(user_id))")
+          .select("*, job_state, financials:job_financials(contract_total), client:clients(id, display_name, phone, email, status, review_opt_out, marketing_opt_out, sms_opt_out_at, reviewed_at), property:properties(id, line1, city, region, postal_code, lat, lng), quote:quotes!jobs_company_id_quote_id_fkey(id, number, deposit_amount), crew:crews(name), lines:job_line_items(id, name, description, quantity, unit, unit_price, unit_cost, unit_labor_cost, parts, taxable, sort, service_id, source_quote_id, discount_billing, discount_key, added_in_field_by, added_in_field_at), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, hold_reason, invoice_id, completed_at, crew:crews(name, color), assignees:visit_assignees(user_id))")
           .eq("id", id)
           .order("sort", { referencedTable: "job_line_items" })
           .order("scheduled_on", { referencedTable: "visits" })
@@ -179,7 +180,7 @@ export function JobPage() {
     queryFn: async () => {
       const [time, expenses, rates, crewPay] = await Promise.all([
         supabase().from("time_entries").select("id, started_at, ended_at").eq("job_id", id),
-        supabase().from("expenses").select("amount").eq("job_id", id),
+        supabase().from("expenses").select("amount, in_line_costs").eq("job_id", id),
         // Pay rates come from the server: nobody reads them on time entries directly.
         api.post<Record<string, number>>("/time/rates", { job_ids: [id] }),
         // Sub and crew pay that's agreed, done or paid (totals only).
@@ -188,7 +189,8 @@ export function JobPage() {
       const entries = unwrap(time);
       const hours = entries.reduce((s, t) => s + (t.ended_at ? (Date.parse(t.ended_at) - Date.parse(t.started_at)) / 3_600_000 : 0), 0);
       const labor = entries.reduce((s, t) => s + (t.ended_at ? ((Date.parse(t.ended_at) - Date.parse(t.started_at)) / 3_600_000) * Number(rates[t.id] ?? 0) : 0), 0);
-      return { hours, labor, crewPay: unwrap(crewPay), expenses: unwrap(expenses).reduce((s, e) => s + Number(e.amount), 0) };
+      // An expense marked as already in the line items' costs isn't counted on top of them.
+      return { hours, labor, crewPay: unwrap(crewPay), expenses: expenseCosts(unwrap(expenses)) };
     },
   });
 
@@ -259,7 +261,7 @@ export function JobPage() {
   const contract = Number(j.financials?.contract_total ?? 0);
   const visits = j.visits;
   const visitExtras = extrasByVisit(extras.data ?? []);
-  const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses ?? 0, crewPay: costs.data?.crewPay ?? [], extras: costedExtras(extras.data ?? [], visits) });
+  const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses.counted ?? 0, expensesInLines: costs.data?.expenses.in_lines ?? 0, logged: materialRows.data ?? [], crewPay: costs.data?.crewPay ?? [], extras: costedExtras(extras.data ?? [], visits) });
   const { materials, labor, crew, expenses, profit, margin } = cost;
   const upcoming = visits.filter((v) => !["completed", "cancelled"].includes(v.status));
   const past = visits.filter((v) => ["completed", "cancelled"].includes(v.status));
@@ -495,7 +497,7 @@ export function JobPage() {
           <PlansCard scope={{ kind: "job", id: j.id, propertyId: j.property?.id ?? null }} />
 
           {/* Each wrapped (display: contents) so focus can find its add button as its dialog closes. */}
-          {shows.materials && <div data-extra="materials" style={{ display: "contents" }}><MaterialsCard jobId={j.id} showCosts={seesCosts} startAdding={adding === "materials"} onAddClosed={doneAdding} /></div>}
+          {shows.materials && <div data-extra="materials" style={{ display: "contents" }}><MaterialsCard jobId={j.id} showCosts={seesCosts} use={seesCosts ? cost.materialRows : undefined} startAdding={adding === "materials"} onAddClosed={doneAdding} /></div>}
 
           {shows.expenses && <div data-extra="expenses" style={{ display: "contents" }}><ExpensesCard jobId={j.id} onChanged={() => queryClient.invalidateQueries({ queryKey: ["job", id, "costs"] })} startAdding={adding === "expenses"} onAddClosed={doneAdding} /></div>}
 
@@ -547,6 +549,8 @@ export function JobPage() {
                     </div>
                   </div>
                   {cost.note && <span className="muted small">{cost.note}</span>}
+                  {cost.materialNote && <span className="muted small">{cost.materialNote}</span>}
+                  {cost.expenseNote && <span className="muted small">{cost.expenseNote}</span>}
                   {labor === 0 && (costs.data?.hours ?? 0) > 0 && <span className="muted small">Set labor rates in Settings → Team to cost tracked hours.</span>}
                 </>
               )}

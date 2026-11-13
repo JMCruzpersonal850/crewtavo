@@ -454,7 +454,16 @@ export function scopeText(calc: Calc): string {
   return [`${n(calc.sqft)} sq ft (${n(Math.round(calc.sqyd))} sq yd)`, ...parts].join(". ") + ".";
 }
 
-/** The quote line for the whole job: priced at the bid, costed at the bid before profit, with what it's made of. */
+/**
+ * The labor in the bid's cost: its crew days. The quote line says so (unit_labor_cost), and job costs
+ * leave it out once the job has clocked time or crew pay of its own, so labor isn't counted twice.
+ */
+export const laborOf = (calc: Calc) => Math.min(calc.cost, calc.lines.reduce((t, l) => (l.item.basis === "days" && l.item.crew ? t + toCents(l.total) : t), 0) / 100);
+
+/**
+ * The quote line for the whole job: priced at the bid, costed at the bid before profit, with the
+ * labor in that cost and what the line is made of.
+ */
 export const quoteLine = (setup: CalcSetup, input: CalcInput, calc: Calc) => ({
   name: jobName(setup, input),
   description: scopeText(calc),
@@ -462,5 +471,6 @@ export const quoteLine = (setup: CalcSetup, input: CalcInput, calc: Calc) => ({
   unit: "job",
   unit_price: calc.total,
   unit_cost: calc.cost,
+  unit_labor_cost: laborOf(calc),
   parts: partsOf(calc),
 });

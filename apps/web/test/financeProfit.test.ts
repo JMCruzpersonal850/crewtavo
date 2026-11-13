@@ -40,6 +40,8 @@ function october(): Record<string, Row[]> {
     companies: [{ id: COMPANY, settings: { margin_target: 30 } }],
     time_entries: jobs.flatMap((j, i) => [0, 1].map((k) => ({ id: `t-${i}-${k}`, job_id: j.id, started_at: "2026-10-14T13:00:00.000Z", ended_at: "2026-10-14T14:00:00.000Z" }))),
     expenses: jobs.map((j, i) => ({ id: `x-${i}`, job_id: j.id, amount: 10 })),
+    // A load ticket for something that isn't on its job's lines: read with the rest, and not counted.
+    job_materials: [{ id: "m-0", job_id: jobs[0]!.id, service_id: null, name: "Stone", unit: "ton", quantity: 4 }],
   };
 }
 

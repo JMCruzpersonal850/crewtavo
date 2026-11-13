@@ -6,6 +6,7 @@
  */
 import { isUnpaidBreak, type BreakPay } from "./breaks";
 import { lineTotal } from "./money";
+import { lineParts } from "./paving";
 import { addDays, zonedTimeToUtc } from "./time";
 
 export const REPORT_PRESETS = [
@@ -96,6 +97,8 @@ export function previousRange(range: ReportRange): { from: string; to: string; s
 export const hoursBetween = (start: string, end: string | null) => (end ? Math.max(0, (Date.parse(end) - Date.parse(start)) / 3_600_000) : 0);
 const sum = <T>(rows: readonly T[], f: (r: T) => number) => rows.reduce((s, r) => s + (f(r) || 0), 0);
 const cents = (n: number) => Math.round(n * 100) / 100;
+/** Amounts of material: to the thousandth, as job_materials keeps them. */
+const thousandths = (n: number) => Math.round(n * 1000) / 1000;
 const percent = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : null);
 
 // ---------------------------------------------------------------------------------------------
@@ -238,8 +241,87 @@ export function laborRate(entry: CostedTime, approvedRates: Readonly<Record<stri
   return approvedRates[entry.id] ?? (entry.user_id ? currentRates[entry.user_id] : undefined) ?? 0;
 }
 
-/** A job line as job costs read it: unit_labor_cost is the labor estimate in its unit_cost. */
-export interface CostedLine { quantity: number | string; unit_cost: number | string | null; unit_labor_cost?: number | string | null }
+/**
+ * A job line as job costs read it: unit_labor_cost is the labor estimate in its unit_cost. Its price
+ * list item, unit and parts (what a paving calculator line is made of) are only needed to compare
+ * logged materials with it (materialUse).
+ */
+export interface CostedLine {
+  quantity: number | string;
+  unit_cost: number | string | null;
+  unit_labor_cost?: number | string | null;
+  service_id?: string | null;
+  name?: string | null;
+  unit?: string | null;
+  parts?: unknown;
+}
+
+/** A material logged on a job (job_materials): a load ticket, or what the crew used. */
+export interface CostedMaterial { job_id?: string | null; service_id?: string | null; name: string; unit: string; quantity: number | string }
+
+/** A job expense as job costs read it. in_line_costs: the office marked it as already in the line items' costs. */
+export interface CostedExpense { job_id: string | null; amount: number | string; in_line_costs?: boolean | null }
+
+/** One material on a job: what the lines estimated and what was logged. */
+export interface MaterialUse {
+  name: string;
+  unit: string;
+  /** Logged so far. */
+  used: number;
+  /** On the job's lines, in the same unit; null when the lines have no estimate to compare it with. */
+  estimated: number | null;
+  /** What one costs on the job's lines; null when the lines don't say. */
+  unit_cost: number | null;
+  estimated_cost: number | null;
+  /** The logged amount at the lines' cost. Counted in the job's costs in place of estimated_cost. */
+  actual_cost: number | null;
+}
+
+const sameText = (a: string | null | undefined, b: string | null | undefined) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+/**
+ * Logged materials against the job's lines. A material logged for a price list item that's on the
+ * job, in the line's unit, is compared with those lines; one called what a paving calculator line's
+ * material is called (a part: tons of top coat, gallons of tack), in its unit, with that part. For
+ * each, the logged amount at the line's own cost takes the place of the estimate in the job's costs:
+ * `adjustment` is the difference, added to the lines' costs. A material that's on none of the lines
+ * (or in another unit) is listed with nothing to compare, and isn't counted: its cost may already be
+ * inside a line's, and nothing says so.
+ */
+export function materialUse(lines: readonly CostedLine[], logged: readonly CostedMaterial[], actualLabor: boolean): { rows: MaterialUse[]; adjustment: number } {
+  const groups = new Map<string, { service_id: string | null; name: string; unit: string; used: number }>();
+  for (const m of logged) {
+    const key = `${m.service_id ?? `name:${m.name.trim().toLowerCase()}`}|${m.unit.trim().toLowerCase()}`;
+    const group = groups.get(key) ?? { service_id: m.service_id ?? null, name: m.name.trim(), unit: m.unit.trim(), used: 0 };
+    group.used += Number(m.quantity);
+    groups.set(key, group);
+  }
+  // What one of a line costs in materials: without its labor estimate once the job has labor of its own, as lineCosts counts it.
+  const materialCost = (l: CostedLine) => Number(l.unit_cost ?? 0) - (actualLabor ? Math.min(Math.max(0, Number(l.unit_cost ?? 0)), Number(l.unit_labor_cost ?? 0)) : 0);
+  let adjustment = 0;
+  const rows = [...groups.values()].map((g): MaterialUse => {
+    const mine = g.service_id ? lines.filter((l) => l.service_id === g.service_id && sameText(l.unit, g.unit) && Number(l.quantity) > 0) : [];
+    let estimated = sum(mine, (l) => Number(l.quantity));
+    let estimatedCost = sum(mine, (l) => Number(l.quantity) * materialCost(l));
+    if (!mine.length) {
+      // A paving calculator line's materials, by what the calculator calls them.
+      const parts = lines.flatMap((l) => lineParts(l.parts).filter((p) => p.material && p.quantity > 0 && sameText(p.name, g.name) && sameText(p.unit, g.unit)).map((p) => ({ quantity: p.quantity * Number(l.quantity), cost: p.unit_cost })));
+      estimated = sum(parts, (p) => p.quantity);
+      estimatedCost = sum(parts, (p) => p.quantity * p.cost);
+    }
+    if (!(estimated > 0)) return { name: g.name, unit: g.unit, used: thousandths(g.used), estimated: null, unit_cost: null, estimated_cost: null, actual_cost: null };
+    const unitCost = estimatedCost / estimated;
+    const actual = g.used * unitCost;
+    adjustment += actual - estimatedCost;
+    return { name: g.name, unit: g.unit, used: thousandths(g.used), estimated: thousandths(estimated), unit_cost: cents(unitCost), estimated_cost: cents(estimatedCost), actual_cost: cents(actual) };
+  });
+  return { rows: rows.sort((a, b) => Number(b.estimated !== null) - Number(a.estimated !== null) || a.name.localeCompare(b.name)), adjustment: cents(adjustment) };
+}
+
+/** A job's expenses as its costs count them: one marked as already in the line items' costs isn't counted again. */
+export function expenseCosts(expenses: ReadonlyArray<Pick<CostedExpense, "amount" | "in_line_costs">>) {
+  return { counted: sum(expenses, (e) => (e.in_line_costs ? 0 : Number(e.amount))), in_lines: sum(expenses, (e) => (e.in_line_costs ? Number(e.amount) : 0)) };
+}
 
 /**
  * A job's line costs. Once the job has labor of its own that costs something (time on it at a rate,
@@ -255,26 +337,32 @@ export function lineCosts(lines: readonly CostedLine[], actualLabor: boolean) {
 /**
  * Each job's revenue (contract total), costs and profit. Costs: labor (time at its rates), sub and
  * crew pay (`crewPay`: job pay that's agreed, done or paid, from public.job_pay_costs), expenses, and
- * the lines at cost, without their labor estimate when the job has labor of its own.
+ * the lines at cost, without their labor estimate when the job has labor of its own. Two things keep
+ * a cost from being counted twice, as on the job page: a material logged against a line counts at
+ * the logged amount in place of the line's estimate (`materials`: the jobs' job_materials rows;
+ * materialUse), and an expense marked as already in the line items' costs isn't added again.
  */
 export function jobProfit(
   jobs: ReadonlyArray<{ id: string; number?: number | null; title: string; client?: { display_name: string } | null; financials?: { contract_total: number | string | null } | null; lines: readonly CostedLine[] }>,
   time: readonly CostedTime[],
-  expenses: ReadonlyArray<{ job_id: string | null; amount: number | string }>,
+  expenses: readonly CostedExpense[],
   rateOf: (entry: CostedTime) => number,
   marginTarget: number | null = null,
   crewPay: ReadonlyArray<{ job_id: string; amount: number | string | null }> = [],
+  materials: readonly CostedMaterial[] = [],
 ) {
   const costed = jobs.map((j) => {
     const mine = time.filter((t) => t.job_id === j.id);
     const pay = crewPay.filter((p) => p.job_id === j.id);
     const labor = sum(mine, (t) => hoursBetween(t.started_at, t.ended_at) * rateOf(t));
     const crew = sum(pay, (p) => Number(p.amount ?? 0));
-    const spent = sum(expenses.filter((e) => e.job_id === j.id), (e) => Number(e.amount));
+    const spent = expenseCosts(expenses.filter((e) => e.job_id === j.id));
     const actualLabor = labor > 0 || pay.length > 0;
     const lines = lineCosts(j.lines, actualLabor);
+    const logged = materialUse(j.lines, materials.filter((m) => m.job_id === j.id), actualLabor);
+    const lineMaterials = lines.materials + logged.adjustment;
     const revenue = Number(j.financials?.contract_total ?? 0);
-    const cost = labor + crew + spent + lines.materials;
+    const cost = labor + crew + spent.counted + lineMaterials;
     return {
       id: j.id,
       number: j.number ?? null,
@@ -283,8 +371,12 @@ export function jobProfit(
       revenue: cents(revenue),
       labor: cents(labor),
       crew_pay: cents(crew),
-      expenses: cents(spent),
-      materials: cents(lines.materials),
+      expenses: cents(spent.counted),
+      /** Expenses marked as already in the line items' costs, so not in `expenses` or `cost`. */
+      expenses_in_line_costs: cents(spent.in_lines),
+      materials: cents(lineMaterials),
+      /** What logged materials changed `materials` by: their cost at the lines' rates, less the lines' estimate for them. */
+      logged_materials_adjustment: logged.adjustment,
       /** The lines' labor estimate, left out because the job has labor of its own (0 when it hasn't). */
       line_labor_left_out: cents(lines.left_out),
       actual_labor: actualLabor,
@@ -368,7 +460,10 @@ export function serviceLines(rows: readonly ServiceLineRow[], items: readonly Se
  * has labor of its own, as jobProfit counts lines) and a share of its job's labor (time at its
  * rates, and sub and crew pay) and expenses. Time and expenses aren't logged against a line, so the
  * job's are split by each line's share of everything the job's been invoiced (`costs.jobLines`:
- * every line on the job's invoices, whenever they were issued).
+ * every line on the job's invoices, whenever they were issued). As jobProfit and the job page count
+ * them: an expense marked as already in the line items' costs isn't counted again, and what logged
+ * materials came to over or under the job's estimate (`costs.costLines`: the jobs' own lines, and
+ * `costs.materials`: what was logged on them; materialUse) is split the same way as its expenses.
  */
 export function serviceFigures(
   rows: readonly ServiceLineRow[],
@@ -376,9 +471,11 @@ export function serviceFigures(
   costs?: {
     jobLines: readonly ServiceLineRow[];
     time: readonly CostedTime[];
-    expenses: ReadonlyArray<{ job_id: string | null; amount: number | string }>;
+    expenses: readonly CostedExpense[];
     rateOf: (entry: CostedTime) => number;
     crewPay?: ReadonlyArray<{ job_id: string; amount: number | string | null }>;
+    costLines?: ReadonlyArray<CostedLine & { job_id: string }>;
+    materials?: readonly CostedMaterial[];
   },
 ) {
   const lines = serviceLines(rows, items);
@@ -394,7 +491,14 @@ export function serviceFigures(
       job(p.job_id).labor += Number(p.amount ?? 0);
       job(p.job_id).actual = true;
     }
-    for (const e of costs.expenses) if (e.job_id && jobs.has(e.job_id)) job(e.job_id).spent += Number(e.amount);
+    for (const e of costs.expenses) if (e.job_id && jobs.has(e.job_id) && !e.in_line_costs) job(e.job_id).spent += Number(e.amount);
+    // Logged materials over or under the job's estimate, with the job's other costs that aren't any one line's.
+    if (costs.materials?.length) {
+      for (const [id, j] of jobs) {
+        const logged = costs.materials.filter((m) => m.job_id === id);
+        if (logged.length) j.spent += materialUse((costs.costLines ?? []).filter((l) => l.job_id === id), logged, j.actual).adjustment;
+      }
+    }
   }
   const services = new Map<string, { service_id: string | null; name: string; category: string | null; count: number; quantity: number; revenue: number; item_costs: number; labor: number; expenses: number }>();
   for (const l of lines) {

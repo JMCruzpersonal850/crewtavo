@@ -6,6 +6,7 @@ import {
   DEFAULT_SETUP,
   jobFrom,
   keptOverrides,
+  laborOf,
   newInput,
   parseSetup,
   parseWorksheet,
@@ -166,6 +167,11 @@ describe("Paving calculator", () => {
       { id: "fullCrew", name: "Full crew", unit: "day", quantity: 3, unit_cost: 5000 },
     ]);
     expect(pavingWorkOn([line])).toEqual(["asphalt", "stone", "tar_chip", "milling"]);
+    // Its crew days are the labor in its cost, which job costs leave out once the job has time of its own.
+    expect(line.unit_labor_cost).toBe(15_000);
+    const mixed = calculate(DEFAULT_SETUP, at(DEFAULT_SETUP, { top: 2, fullCrew: 1, halfCrew: 0.5, truck: 2 }, { sqft: 900 }));
+    expect(laborOf(mixed)).toBe(6250);
+    expect(laborOf(calculate(DEFAULT_SETUP, at(DEFAULT_SETUP, { top: 2, truck: 2 }, { sqft: 900 })))).toBe(0);
     expect(partsOf(calculate(DEFAULT_SETUP, at(DEFAULT_SETUP, {})))).toEqual([]);
   });
 

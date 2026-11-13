@@ -690,15 +690,19 @@ function Services({ range }: { range: Range }) {
       ]);
       if (!costs) return serviceFigures(sold, items);
       const ids = [...new Set(sold.flatMap((l) => (l.invoice?.job_id ? [l.invoice.job_id] : [])))];
-      const [jobLines, time, expenses, rates, crewPay] = await Promise.all([
+      const [jobLines, time, expenses, rates, crewPay, costLines, materials] = await Promise.all([
         // Everything the jobs have been invoiced, whenever: their labor is split across all of it.
         byJobs(ids, (jobs) => everyRow(() => db.from("invoice_line_items").select(SERVICE_LINES).eq("company_id", cid).in("invoice.job_id", jobs).not("invoice.status", "in", "(draft,void)").not("invoice.kind", "in", "(deposit,progress,retainage)"))),
         byJobs(ids, (jobs) => everyRow(() => db.from("time_entries").select("id, job_id, started_at, ended_at").in("job_id", jobs))),
-        byJobs(ids, (jobs) => everyRow(() => db.from("expenses").select("job_id, amount").in("job_id", jobs))),
+        byJobs(ids, (jobs) => everyRow(() => db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", jobs))),
         jobRates(true, ids),
         byJobs(ids, (jobs) => db.rpc("job_pay_costs", { p_jobs: jobs }).then(unwrap)),
+        // The jobs' own lines and what was logged on them: logged materials over or under the estimate
+        // count here as they do on the job and in Profit.
+        byJobs(ids, (jobs) => everyRow(() => db.from("job_line_items").select("job_id, quantity, unit_cost, unit_labor_cost, service_id, unit, parts").in("job_id", jobs))),
+        byJobs(ids, (jobs) => everyRow(() => db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", jobs))),
       ]);
-      return serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (t) => Number(rates[t.id] ?? 0), crewPay });
+      return serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (t) => Number(rates[t.id] ?? 0), crewPay, costLines, materials });
     },
   });
   const key = (s: ServiceRow) => s.service_id ?? "other";

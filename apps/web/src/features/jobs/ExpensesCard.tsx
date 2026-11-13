@@ -14,7 +14,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { signedUrls, uploadFile } from "@/lib/files";
 import { formatDate, formatMoneyCents, todayIn } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
-import { useSession } from "@/lib/session";
+import { can, hasRole, useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 
 export const EXPENSE_CATEGORIES = ["Materials", "Equipment rental", "Equipment upkeep", "Fuel", "Dump fees", "Subcontractor", "Permits", "Supplies", "Other"];
@@ -29,6 +29,8 @@ interface Expense {
   receipt_path: string | null;
   reimbursable: boolean;
   reimbursed_at: string | null;
+  /** Already in the job's line item costs (the supplier's invoice for materials the estimate covers): job costing doesn't count it again. */
+  in_line_costs: boolean;
 }
 
 const expensesKey = (jobId: string) => ["job", jobId, "expenses"];
@@ -39,7 +41,7 @@ export function useJobExpenses(jobId: string, enabled = true) {
     queryKey: expensesKey(jobId),
     enabled,
     queryFn: async () => {
-      const rows = unwrap(await supabase().from("expenses").select("id, vendor, description, category, amount, incurred_on, receipt_path, reimbursable, reimbursed_at").eq("job_id", jobId).order("incurred_on", { ascending: false }));
+      const rows = unwrap(await supabase().from("expenses").select("id, vendor, description, category, amount, incurred_on, receipt_path, reimbursable, reimbursed_at, in_line_costs").eq("job_id", jobId).order("incurred_on", { ascending: false }));
       const urls = await signedUrls(rows.flatMap((r) => (r.receipt_path ? [r.receipt_path] : []))).catch(() => ({}) as Record<string, string>);
       return rows.map((r) => ({ ...r, receipt_url: r.receipt_path ? urls[r.receipt_path] ?? null : null }));
     },
@@ -113,6 +115,7 @@ export function ExpensesCard({ jobId, onChanged, startAdding = false, onAddClose
               <span className="muted small" style={{ display: "block" }}>
                 {[e.category, e.description, formatDate(e.incurred_on)].filter(Boolean).join(" · ")}
                 {e.reimbursable && (e.reimbursed_at ? " · reimbursed" : " · to reimburse")}
+                {e.in_line_costs && " · already in the line items, not counted again"}
               </span>
             </span>
             <strong className="tabular">{formatMoneyCents(e.amount)}</strong>
@@ -143,9 +146,12 @@ export function ExpenseDialog({ jobId, expense, onClose, onSaved }: { jobId: str
     amount: expense ? String(expense.amount) : "",
     incurred_on: expense?.incurred_on ?? todayIn(session.company.timezone),
     reimbursable: expense?.reimbursable ?? false,
+    in_line_costs: expense?.in_line_costs ?? false,
   });
   const [file, setFile] = useState<File | null>(null);
   const amount = Number(f.amount);
+  // For the office with job costs, on a job: the crew adding a receipt from a visit isn't asked.
+  const onJob = (jobId !== null || Boolean(expense?.in_line_costs)) && hasRole(session, "admin", "office") && can(session, "job_costs");
   const save = useMutation({
     meta: { inline: true, success: expense ? "Expense saved" : "Expense added" },
     mutationFn: async () => {
@@ -154,6 +160,8 @@ export function ExpenseDialog({ jobId, expense, onClose, onSaved }: { jobId: str
       const row = {
         vendor: f.vendor.trim() || null, category: f.category, description: f.description.trim() || null,
         amount: Math.round(amount * 100) / 100, incurred_on: f.incurred_on, reimbursable: f.reimbursable, receipt_path,
+        // Only the office sets it (below); anyone else's save leaves it as it was.
+        in_line_costs: f.in_line_costs,
       };
       if (expense) unwrap(await supabase().from("expenses").update(row).eq("id", expense.id));
       else unwrap(await supabase().from("expenses").insert({ ...row, company_id: session.company.id, job_id: jobId }));
@@ -183,6 +191,15 @@ export function ExpenseDialog({ jobId, expense, onClose, onSaved }: { jobId: str
           <input type="file" accept="image/*,application/pdf" capture="environment" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </label>
         <label className="checkbox"><input type="checkbox" checked={f.reimbursable} onChange={(e) => setF({ ...f, reimbursable: e.target.checked })} /> Paid with my own money (reimburse me)</label>
+        {onJob && (
+          <label className="checkbox" style={{ alignItems: "flex-start" }}>
+            <input type="checkbox" checked={f.in_line_costs} onChange={(e) => setF({ ...f, in_line_costs: e.target.checked })} />
+            <span>
+              Already in the job's line item costs
+              <span className="muted small" style={{ display: "block" }}>For the supplier's invoice for materials the estimate covers. Job costing keeps the line items' cost and doesn't count this again.</span>
+            </span>
+          </label>
+        )}
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />

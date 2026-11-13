@@ -307,6 +307,29 @@ describe("the job's costs", () => {
   it("keeps the labor estimate while the job's time costs nothing yet (no rate set, or a clock running)", () => {
     expect(jobCosts({ contract: 10000, lines, labor: 0, expenses: 0, crewPay: [] })).toMatchObject({ materials: 4910, leftOut: 0, actualLabor: false, note: null });
   });
+  it("counts a material as logged in place of its line's estimate, and says so", () => {
+    // 40 tons estimated at $92; the plant tickets came to 44.
+    const byTon = [{ quantity: 40, unit_cost: 92, unit_labor_cost: null, service_id: "hot", unit: "ton" }];
+    const logged = [{ service_id: "hot", name: "Hot-mix asphalt surface", unit: "ton", quantity: 22 }, { service_id: "hot", name: "Hot-mix asphalt surface", unit: "ton", quantity: 22 }, { service_id: null, name: "Diesel", unit: "gal", quantity: 30 }];
+    const c = jobCosts({ contract: 5720, lines: byTon, labor: 0, expenses: 0, crewPay: [], logged });
+    expect(c).toMatchObject({ materials: 4048, materialAdjustment: 368, total: 4048, profit: 1672 });
+    expect(c.materialRows).toEqual([
+      { name: "Hot-mix asphalt surface", unit: "ton", used: 44, estimated: 40, unit_cost: 92, estimated_cost: 3680, actual_cost: 4048 },
+      { name: "Diesel", unit: "gal", used: 30, estimated: null, unit_cost: null, estimated_cost: null, actual_cost: null },
+    ]);
+    expect(c.materialNote).toBe("Line item costs count Hot-mix asphalt surface as logged, not as estimated: $368.00 over the estimate.");
+    expect(jobCosts({ contract: 5720, lines: byTon, labor: 0, expenses: 0, crewPay: [], logged: [{ service_id: "hot", name: "Hot-mix", unit: "ton", quantity: 40 }] }).materialNote).toBe(
+      "Line item costs count Hot-mix as logged, not as estimated: the same as the estimate.",
+    );
+    // Nothing logged that's on the lines: the estimate stands and nothing is said.
+    expect(jobCosts({ contract: 5720, lines: byTon, labor: 0, expenses: 0, crewPay: [], logged: [logged[2]!] })).toMatchObject({ materials: 3680, materialNote: null });
+  });
+  it("leaves out expenses marked as already in the line items, and says how much", () => {
+    const c = jobCosts({ contract: 10000, lines, labor: 0, expenses: 100, expensesInLines: 4875.5, crewPay: [] });
+    expect(c).toMatchObject({ materials: 4910, expenses: 100, total: 5010 });
+    expect(c.expenseNote).toBe("$4,875.50 of expenses are marked as already in the line item costs, so they aren't counted again.");
+    expect(jobCosts({ contract: 10000, lines, labor: 0, expenses: 100, crewPay: [] }).expenseNote).toBeNull();
+  });
 });
 
 describe("Timesheets → Pay's download", () => {

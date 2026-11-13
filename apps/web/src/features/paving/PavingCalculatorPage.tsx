@@ -222,8 +222,8 @@ export function PavingCalculatorPage() {
       unwrap(await db.rpc("apply_quote_options", { p_quote: quoteId, p_options: [{ name: line.name, lines: [{ ...line, sort: 0 }] }], p_mode: "add", ...(first ? { p_current: { name: first } } : {}) }));
       const added = unwrap(await db.from("quote_line_items").select("id, option_id").eq("quote_id", quoteId)).find((l) => !before.has(l.id));
       if (!added?.option_id) throw new Error("The option was added, but its line wasn't found. Open the quote to check it.");
-      // Options are made from the fields every line has; what this one is made of goes on after.
-      unwrap(await db.from("quote_line_items").update({ parts: line.parts }).eq("id", added.id));
+      // Options are made from the fields every line has; what this one is made of, and its labor, go on after.
+      unwrap(await db.from("quote_line_items").update({ parts: line.parts, unit_labor_cost: line.unit_labor_cost }).eq("id", added.id));
       const kept = await db.from("paving_worksheets").insert({ company_id: company.id, quote_id: quoteId, line_id: added.id, name: line.name, notes: notes.trim() || null, data: data as never });
       if (kept.error) {
         // Without its worksheet, the option comes back off (and a quote left with one goes back to a single estimate).
