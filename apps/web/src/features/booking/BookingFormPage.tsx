@@ -277,8 +277,8 @@ function TimePicker({ path, booking, postalCode, picked, onPick, onNoneOpen, inv
     retry: false,
     placeholderData: keepPreviousData,
     queryFn: () => {
-      const query = new URLSearchParams({ ...(from && { from }), ...(booking.needs_postal_code && { postal_code: postal }) });
-      return publicFetch<Week>(`${path}/openings${query.size ? `?${query}` : ""}`);
+      const query = new URLSearchParams({ ...(from && { from }), ...(booking.needs_postal_code && { postal_code: postal }) }).toString();
+      return publicFetch<Week>(`${path}/openings${query ? `?${query}` : ""}`);
     },
   });
   const w = week.data;
