@@ -6,7 +6,7 @@ import { addDays, localDate } from "@crewtavo/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 import type { Env } from "../src/env";
-import { googleEventId, pushUpcomingVisits, runCalendarJob, syncDueCalendars, syncSource } from "../src/integrations/calendars";
+import { googleEventId, pushNewlyUpcomingVisits, pushUpcomingVisits, runCalendarJob, syncDueCalendars, syncSource } from "../src/integrations/calendars";
 import { encryptJson } from "../src/lib/crypto";
 import type { Db } from "../src/lib/supabase";
 
@@ -56,6 +56,7 @@ function fakeDb(tables: Record<string, Row[]>, hooks: { failRead?: (table: strin
     private filters: Array<(row: Row) => boolean> = [];
     private one: "" | "single" | "maybe" = "";
     private max = Infinity;
+    private skip = 0;
     constructor(private table: string) {}
     select(fields = "*") {
       this.fields = fields;
@@ -107,6 +108,12 @@ function fakeDb(tables: Record<string, Row[]>, hooks: { failRead?: (table: strin
       this.max = n;
       return this;
     }
+    /** A page of the rows, and never more than 1,000, as Supabase's API answers. */
+    range(from: number, to: number) {
+      this.skip = from;
+      this.max = Math.min(to - from + 1, 1000);
+      return this;
+    }
     single() {
       this.one = "single";
       return this;
@@ -138,7 +145,7 @@ function fakeDb(tables: Record<string, Row[]>, hooks: { failRead?: (table: strin
       if (this.op === "select" && hooks.failRead?.(this.table, this.fields)) return { data: null, error: { message: "connection reset" } };
       if (halfEmoji(this.payload)) return { data: null, error: { code: "22P02", message: "invalid input syntax for type json" } };
       let data: Row[] = [];
-      if (this.op === "select") data = matching().slice(0, this.max);
+      if (this.op === "select") data = matching().slice(this.skip, this.skip + this.max);
       else if (this.op === "insert") {
         for (const p of [this.payload].flat() as Row[]) data.push({ id: `00000000-0000-4000-8000-${String(++made).padStart(12, "0")}`, ...DEFAULTS[this.table], ...p });
         rows.push(...data);
@@ -667,5 +674,64 @@ describe("visits on Google Calendar after reconnecting", () => {
     expect(tables.outbox!.slice(1)).toMatchObject([{ company_id: COMPANY, topic: "calendar.visit", payload: { visit_id: visit("2").id } }]);
     await runJob(db, tables.outbox![1]!);
     expect(onGoogle(google)).toEqual([eventFor("1")]);
+  });
+
+  it("sends more visits than one page holds: the soonest now, the rest as one batch", async () => {
+    const tables = await world({ visitsCalendar: true });
+    tables.visits = Array.from({ length: 1205 }, (_, i) => visit(String(i + 1), { scheduled_on: addDays(today, 1 + Math.floor(i / 10)) }));
+    const db = fakeDb(tables);
+    const google = fakeGoogle();
+    expect(await pushUpcomingVisits(env, db, COMPANY)).toEqual({ pushed: 1000, queued: 205 });
+    expect(onGoogle(google)).toHaveLength(1000);
+    expect(tables.outbox).toMatchObject([{ payload: { visit_ids: tables.visits.slice(1000).map((v) => v.id) } }]);
+    // And notes the last day it covered, for the nightly step.
+    expect(tables.integrations![0]!.settings).toMatchObject({ push_calendar_id: "visits-cal", visits_through: addDays(today, 180) });
+  });
+});
+
+describe("recurring visits coming within the visits calendar's six months", () => {
+  const visit = (key: string, day: number, extra: Row = {}) => ({
+    id: `00000000-0000-4000-8000-${key.padStart(12, "0")}`, company_id: COMPANY, title: `Visit ${key}`, kind: "job", status: "scheduled",
+    scheduled_on: addDays(today, day), starts_at: null, ends_at: null, notes: null, crew_id: null, job_id: null, property_id: null, ...extra,
+  });
+  const through = (tables: Record<string, Row[]>) => (tables.integrations![0]!.settings as Row).visits_through;
+
+  it("queues the ones past the last day covered as one batch, and notes the new last day", async () => {
+    const tables = await world({ visitsCalendar: true });
+    (tables.integrations![0]!.settings as Row).visits_through = addDays(today, 59);
+    // A year of weekly visits: the first 60 days went across as they were made.
+    tables.visits = Array.from({ length: 52 }, (_, week) => visit(String(week + 1), week * 7 + 3));
+    const db = fakeDb(tables);
+    fakeGoogle();
+    expect(await pushNewlyUpcomingVisits(env, db)).toEqual({ queued: 17, problems: [] });
+    const wanted = tables.visits.filter((v) => v.scheduled_on > addDays(today, 59) && v.scheduled_on <= addDays(today, 180)).map((v) => v.id);
+    expect(tables.outbox).toMatchObject([{ company_id: COMPANY, topic: "calendar.visit", payload: { visit_ids: wanted } }]);
+    expect(through(tables)).toBe(addDays(today, 180));
+
+    // The next night, nothing new has come within the six months.
+    expect(await pushNewlyUpcomingVisits(env, db)).toEqual({ queued: 0, problems: [] });
+    expect(tables.outbox).toHaveLength(1);
+  });
+
+  it("sends all six months once when no day was noted, and takes off what Google still has for a visit that's gone", async () => {
+    const tables = await world({ visitsCalendar: true });
+    tables.visits = [visit("1", 3), visit("2", 100), visit("3", 300)];
+    const db = fakeDb(tables);
+    const google = fakeGoogle();
+    // An event for a visit deleted while it was too far ahead to be queued.
+    const gone = visit("9", 0).id;
+    google.calendars.get("visits-cal")!.set(googleEventId(gone), { id: googleEventId(gone), extendedProperties: { private: { crewtavo_visit: gone } } });
+    expect(await pushNewlyUpcomingVisits(env, db)).toEqual({ queued: 3, problems: [] });
+    expect(tables.outbox).toMatchObject([{ payload: { visit_ids: [visit("1", 3).id, visit("2", 100).id, gone] } }]);
+    expect(through(tables)).toBe(addDays(today, 180));
+  });
+
+  it("leaves a company alone that doesn't put visits on Google", async () => {
+    const tables = await world();
+    tables.visits = [visit("1", 3)];
+    const db = fakeDb(tables);
+    expect(await pushNewlyUpcomingVisits(env, db)).toEqual({ queued: 0, problems: [] });
+    expect(tables.outbox).toEqual([]);
+    expect(tables.integrations![0]!.settings).toEqual({});
   });
 });

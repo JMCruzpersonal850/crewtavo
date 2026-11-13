@@ -543,6 +543,8 @@ type VisitJob = { visit_id?: string; visit_ids?: string[]; recheck?: boolean };
 
 /** A batch sends this many visits each outbox run (as many as one run takes; see drainOutbox). */
 const BATCH = 100;
+/** How many visits go to Google straight away when the calendar is brought in line; the rest go a batch at a time. */
+const PUSH_NOW = 1000;
 
 /** Run one queued job for the visits calendar. Throws so the caller retries. */
 export async function runCalendarJob(env: Env, admin: Db, row: { id?: number; company_id: string; topic: string; payload: Record<string, unknown> }) {
@@ -575,23 +577,50 @@ async function pushed(admin: Db, companyId: string, saved: boolean) {
 
 const VISIT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The days the visits calendar covers (last week through the next six months), and the visits on them. */
+/** The most visits one look at the days the calendar covers takes: a business past it keeps its soonest. */
+const MAX_VISITS = 20_000;
+
+/**
+ * The days the visits calendar covers (last week through the next six months), and the visits on
+ * them, soonest first. A page at a time: the database answers with at most 1,000 rows, and six
+ * months of recurring visits is more.
+ */
 async function upcoming(admin: Db, companyId: string) {
   const { data: company } = await admin.from("companies").select("timezone").eq("id", companyId).single();
   const today = localDate(new Date(), company?.timezone ?? "UTC");
   const from = addDays(today, -7);
   const to = addDays(today, WINDOW_AHEAD_DAYS);
-  const { data: visits, error } = await admin
-    .from("visits")
-    .select("id")
-    .eq("company_id", companyId)
-    .gte("scheduled_on", from)
-    .lte("scheduled_on", to)
-    .not("status", "in", "(unscheduled,cancelled)")
-    .order("scheduled_on")
-    .limit(2000);
-  if (error) throw new Error(error.message);
-  return { from, to, visits: (visits ?? []).map((v) => v.id) };
+  const rows: Array<{ id: string; scheduled_on: string | null }> = [];
+  while (rows.length < MAX_VISITS) {
+    const { data, error } = await admin
+      .from("visits")
+      .select("id, scheduled_on")
+      .eq("company_id", companyId)
+      .gte("scheduled_on", from)
+      .lte("scheduled_on", to)
+      .not("status", "in", "(unscheduled,cancelled)")
+      .order("scheduled_on")
+      .order("id")
+      .range(rows.length, rows.length + 999);
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+  return { from, to, visits: rows.map((v) => v.id), days: new Map(rows.map((v) => [v.id, v.scheduled_on])) };
+}
+
+/**
+ * Note the last day whose visits have gone to the visits calendar (settings.visits_through). A
+ * recurring job's visits past it wait for the nightly task (the google_calendar_window migration's
+ * trigger reads it), so a year of them isn't sent at once.
+ */
+async function coveredThrough(admin: Db, companyId: string, day: string) {
+  const match = { company_id: companyId, provider: "google_calendar" };
+  const { data } = await admin.from("integrations").select("settings").match(match).maybeSingle();
+  const settings = (data?.settings ?? {}) as Record<string, unknown>;
+  // Turned off meanwhile: nothing to keep.
+  if (!data || !settings.push_calendar_id) return;
+  await admin.from("integrations").update({ settings: { ...settings, visits_through: day } as never }).match(match);
 }
 
 /**
@@ -718,8 +747,10 @@ export async function pushUpcomingVisits(env: Env, admin: Db, companyId: string)
     console.error("Couldn't read the visits calendar", err);
     recheck = true;
   }
-  const ids = [...new Set([...days.visits, ...onGoogle])];
-  const retry: string[] = [];
+  const all = [...new Set([...days.visits, ...onGoogle])];
+  // The soonest go now; a long schedule's later ones follow through the outbox, a hundred a run.
+  const ids = all.slice(0, PUSH_NOW);
+  const retry: string[] = all.slice(PUSH_NOW);
   let pushed = 0;
   let failedInARow = 0;
   for (const [i, id] of ids.entries()) {
@@ -749,5 +780,37 @@ export async function pushUpcomingVisits(env: Env, admin: Db, companyId: string)
   const queued = await queueVisits(admin, companyId, retry, { together: true });
   if (recheck && !(await waiting(admin, companyId)).recheck) await enqueue(admin, companyId, [{ recheck: true }]);
   await admin.from("integrations").update({ last_sync_at: new Date().toISOString(), last_error: null }).match({ company_id: companyId, provider: "google_calendar" });
+  await coveredThrough(admin, companyId, days.to);
   return { pushed, queued };
+}
+
+/**
+ * The nightly step (the recurrence task): recurring visits are made a year ahead, and wait until
+ * they're within the six months the visits calendar covers. For each company putting visits on
+ * Google, the ones that came within them since the last run go to the outbox as one batch, with
+ * any event Google still has for a visit that's gone or cancelled, so it comes off. A company with
+ * no day noted yet (visits turned on by a server from before this) gets all six months once.
+ */
+export async function pushNewlyUpcomingVisits(env: Env, admin: Db) {
+  const { data, error } = await admin.from("integrations").select("company_id, settings").eq("provider", "google_calendar").eq("status", "connected");
+  if (error) throw new Error(error.message);
+  let queued = 0;
+  const problems: string[] = [];
+  for (const row of data ?? []) {
+    const settings = (row.settings ?? {}) as { push_calendar_id?: string; visits_through?: string };
+    if (!settings.push_calendar_id) continue;
+    try {
+      const days = await upcoming(admin, row.company_id);
+      const through = typeof settings.visits_through === "string" && /^\d{4}-\d{2}-\d{2}$/.test(settings.visits_through) ? settings.visits_through : null;
+      const fresh = through ? days.visits.filter((id) => (days.days.get(id) ?? "") > through) : days.visits;
+      // What's on Google is looked at again tomorrow night if it can't be read now.
+      const current = new Set(days.visits);
+      const gone = (await visitsOnGoogle(env, admin, row.company_id, settings.push_calendar_id, days).catch(() => [] as string[])).filter((id) => !current.has(id));
+      queued += await queueVisits(admin, row.company_id, [...fresh, ...gone], { together: true });
+      await coveredThrough(admin, row.company_id, days.to);
+    } catch (err) {
+      problems.push(`${row.company_id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  return { queued, problems };
 }

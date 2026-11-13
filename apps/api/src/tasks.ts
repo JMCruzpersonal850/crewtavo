@@ -5,7 +5,7 @@
 import { addDays, jobWeatherRules, lastDate, localDate, occurrenceDates, weatherRisks, zonedTimeToUtc } from "@crewtavo/core";
 import type { Env } from "./env";
 import { OtherBooks, runAccountingJob, SentButUnrecorded } from "./integrations/accounting";
-import { runCalendarJob, syncDueCalendars } from "./integrations/calendars";
+import { pushNewlyUpcomingVisits, runCalendarJob, syncDueCalendars } from "./integrations/calendars";
 import { reconcileAutopayProcessing, reconcileBankPayments, syncStripeInvoice } from "./integrations/stripe";
 import { reportError } from "./lib/monitoring";
 import { emailConfigured, smsConfigured } from "./lib/notify";
@@ -339,7 +339,17 @@ async function materializeRecurringVisits(env: Env) {
       problems.push(`${job.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
-  return { jobs: jobs.length, created, problems };
+  // Recurring visits that have come within the six months the Google visits calendar covers go to
+  // it now (integrations/calendars.ts); the ones further out wait their turn.
+  let google = 0;
+  try {
+    const pushed = await pushNewlyUpcomingVisits(env, admin);
+    google = pushed.queued;
+    problems.push(...pushed.problems);
+  } catch (err) {
+    problems.push(`google calendar: ${err instanceof Error ? err.message : err}`);
+  }
+  return { jobs: jobs.length, created, google, problems };
 }
 
 /**

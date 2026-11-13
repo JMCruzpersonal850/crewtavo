@@ -486,6 +486,8 @@ calendar.put("/calendars/google/visits", ...manage, async (c) => {
     await readable(() => deleteVisitsCalendar(c.env, admin, c.var.companyId, state.push_calendar_id!));
     delete settings.push_calendar_id;
     delete settings.push_calendar_name;
+    // The day its visits had reached: a new calendar starts over.
+    delete settings.visits_through;
     const { error } = await admin.from("integrations").update({ settings: asJson(settings) }).eq("company_id", c.var.companyId).eq("provider", "google_calendar");
     if (error) throw dbError(error);
     await admin.from("outbox").update({ done_at: new Date().toISOString() }).match({ company_id: c.var.companyId, topic: "calendar.visit" }).is("done_at", null);
