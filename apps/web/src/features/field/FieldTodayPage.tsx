@@ -3,6 +3,7 @@
  * and the whole route in a maps app. A sub sees the same for the visits they're on, without a clock
  * unless the office keeps their hours.
  */
+import { crewPeople, onVisit } from "@crewtavo/core/visitPeople";
 import { onlineManager, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -80,9 +81,10 @@ export function FieldTodayPage() {
         api.get<{ visits: Visit[] }>(`/schedule?from=${today}&to=${addDaysIso(today, 1)}`),
         supabase().from("crew_members").select("crew_id").eq("user_id", session.userId),
       ]);
-      const myCrews = new Set(unwrap(crews).map((c) => c.crew_id));
+      // The visits I'm on: the ones I'm listed on, and my crews' visits with nobody listed (visitPeople).
+      const myCrews = crewPeople(unwrap(crews).map((c) => ({ crew_id: c.crew_id, user_id: session.userId })));
       const mine = schedule.visits
-        .filter((v) => v.status !== "cancelled" && (v.assignees.some((a) => a.user_id === session.userId) || (v.crew_id && myCrews.has(v.crew_id))))
+        .filter((v) => v.status !== "cancelled" && onVisit(v, session.userId, myCrews))
         .map((v) => ({ ...v, status: pendingVisitStatus(queryClient, v.id) ?? v.status }));
       return { today: mine.filter((v) => v.scheduled_on === today), tomorrow: mine.filter((v) => v.scheduled_on !== today && !["completed", "cancelled"].includes(v.status)) };
     },

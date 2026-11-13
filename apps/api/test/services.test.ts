@@ -335,6 +335,32 @@ describe("calendar feed queries", () => {
     expect(calls.every((c) => !c.url.search.includes("id.in."))).toBe(true);
   });
 
+  it("puts a crew's visits with nobody listed on its members' own feeds, and the rest of the crew's on a crew lead's", async () => {
+    const token = "c".repeat(43);
+    const visit = (id: string, title: string, people: string[] = []) => ({ id, title, status: "scheduled", scheduled_on: "2999-06-01", starts_at: null, ends_at: null, notes: null, updated_at: null, crew: { name: "Mowing" }, job: null, property: null, assignees: people.map((user_id) => ({ user_id })) });
+    const feed = async (role: string) => {
+      const calls = serve((call) => {
+        if (call.path === "calendar_feeds" && call.method === "GET") return [{ id: "feed-3", company_id: "co-1", user_id: "user-1", scope: "mine", last_used_at: new Date().toISOString() }];
+        if (call.path === "memberships") return [{ role }];
+        if (call.path === "companies") return Response.json({ name: "Acme", timezone: "UTC" });
+        if (call.path === "crew_members") return [{ crew_id: "crew-1" }];
+        // Listed on one visit (of another crew's); their own crew has a recurring visit with nobody listed, and one given to someone else.
+        if (call.path === "visit_assignees") return [{ visit: visit("visit-listed", "Hedges") }];
+        if (call.path === "visits") return call.url.searchParams.get("order")!.startsWith("scheduled_on.desc") ? [] : [visit("visit-crew", "Weekly mowing"), visit("visit-other", "Stump", ["user-2"])];
+        return [];
+      });
+      const res = await app.request(`/api/calendar/${token}.ics`, {}, env);
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      const crewVisits = calls.find((c) => c.path === "visits")!.url.searchParams;
+      expect(crewVisits.get("crew_id")).toBe("in.(crew-1)");
+      expect(crewVisits.get("select")).toContain("assignees:visit_assignees(user_id)");
+      return ["Hedges", "Weekly mowing", "Stump"].filter((title) => text.includes(`SUMMARY:${title}`));
+    };
+    expect(await feed("field_crew")).toEqual(["Hedges", "Weekly mowing"]);
+    expect(await feed("crew_lead")).toEqual(["Hedges", "Weekly mowing", "Stump"]);
+  });
+
   it("fills the whole schedule's feed with what's to come before the last month, when a year of visits is more than it holds", async () => {
     const token = "b".repeat(43);
     const visit = (n: number, day: string) => ({ id: `visit-${day}-${String(n).padStart(4, "0")}`, title: `Mow ${n}`, status: "scheduled", scheduled_on: day, starts_at: null, ends_at: null, notes: null, updated_at: null, crew: null, job: null, property: null });

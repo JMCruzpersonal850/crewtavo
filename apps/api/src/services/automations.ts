@@ -43,6 +43,7 @@ import { countsOn } from "@crewtavo/core/money";
 import type { Env } from "../env";
 import { companyAddress, companyFooter, firstName, isEmail, renderEmail } from "../lib/email";
 import { clientLink } from "../lib/links";
+import { peopleOnVisits } from "./visitPeople";
 import { sendEmail, sendSms } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { CAMPAIGN_LINK_DAYS, campaignRuleOf, letStretchGo, sendCampaignEmail } from "./automatedCampaigns";
@@ -509,14 +510,15 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       if (action.user_ids?.length && !action.roles?.length) query = query.in("user_id", action.user_ids);
       const { data, error } = await query;
       if (error) throw new Error(error.message);
-      // "The people on the visit": its crew, or for a job, the people on its upcoming visits.
+      // "The people on the visit": the people listed on it, or with nobody listed its crew's members
+      // (services/visitPeople.ts); for a job, the people on its next visits (a recurring job has a
+      // year of them, so the soonest twenty).
       const onIt = new Set<string>();
       if (action.roles?.includes("assigned") && (ctx.subject === "visit" || ctx.subject === "job")) {
         const visits = ctx.subject === "visit"
           ? [ctx.id]
-          : ((await admin.from("visits").select("id").eq("job_id", ctx.id).not("status", "in", "(completed,cancelled)").limit(20)).data ?? []).map((v) => v.id);
-        const { data: assigned } = visits.length ? await admin.from("visit_assignees").select("user_id").in("visit_id", visits) : { data: [] };
-        for (const a of assigned ?? []) onIt.add(a.user_id);
+          : ((await admin.from("visits").select("id").eq("job_id", ctx.id).not("status", "in", "(completed,cancelled)").order("scheduled_on", { nullsFirst: false }).order("id").limit(20)).data ?? []).map((v) => v.id);
+        for (const people of (await peopleOnVisits(admin, ctx.company.id, visits)).values()) for (const id of people) onIt.add(id);
       }
       const named = (data ?? []).filter((m) => action.roles?.includes(m.role) || action.user_ids?.includes(m.user_id) || onIt.has(m.user_id));
       if (!named.length) throw new Error("No one on the team matches who this rule notifies.");

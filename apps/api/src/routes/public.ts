@@ -15,6 +15,7 @@ import { isPackagePicturePath, packagePictureSrc } from "@crewtavo/core/presets"
 import { quotePromoRule } from "@crewtavo/core/promos";
 import { changeableOnline, openSlots, SLOT_DAYS, SLOT_LEAD_DAYS, slotStep, workdays, type OpenSlot } from "@crewtavo/core/slots";
 import { addDays, arrivalWindowMin, localDate, zonedTimeToUtc } from "@crewtavo/core/time";
+import { visitPeople } from "@crewtavo/core/visitPeople";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
@@ -75,6 +76,7 @@ import { buildCalendar } from "../lib/ics";
 import { bookingVisit } from "../services/analytics";
 import { StripeError, verifyStripeSignature, type StripeEvent } from "../services/stripe";
 import { UPLOAD_LIMIT } from "../services/uploads";
+import { membersOfCrews } from "../services/visitPeople";
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -1338,7 +1340,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     return options.length ? optionsFrom({ ...q, options, lines: (lineRows.data ?? []).filter((line) => line.quote_id === q.id) }) : null;
   };
   const jobIds = (jobs.data ?? []).map((j) => j.id);
-  const visitFields = "id, title, scheduled_on, starts_at, ends_at, status, completed_at, property:properties(line1), assignees:visit_assignees(user_id)";
+  const visitFields = "id, title, scheduled_on, starts_at, ends_at, status, completed_at, crew_id, property:properties(line1), assignees:visit_assignees(user_id)";
   const [upcoming, done] = jobIds.length
     ? await Promise.all([
         admin.from("visits").select(visitFields).eq("company_id", companyId).in("job_id", jobIds).in("status", ["scheduled", "en_route", "in_progress"]).gte("scheduled_on", today).order("scheduled_on").order("starts_at", { nullsFirst: false }).limit(10),
@@ -1347,7 +1349,11 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     : [{ data: [] }, { data: [] }];
   // Crews by first name only. A sub is named from the office's record (their contact's first name),
   // never their profile, which they keep themselves; a sub with no contact name isn't named.
-  const people = [...new Set([...(upcoming.data ?? []), ...(done.data ?? [])].flatMap((v) => (v.assignees as Array<{ user_id: string }>).map((a) => a.user_id)))];
+  // Who's on each: the people listed on it, or with nobody listed its crew's members (visitPeople()).
+  const shown = [...(upcoming.data ?? []), ...(done.data ?? [])];
+  const crews = await membersOfCrews(admin, companyId, shown.filter((v) => !(v.assignees as unknown[]).length).map((v) => v.crew_id));
+  const onIt = (v: (typeof shown)[number]) => visitPeople({ crew_id: v.crew_id, assignees: v.assignees as Array<{ user_id: string }> }, crews).map((user_id) => ({ user_id }));
+  const people = [...new Set(shown.flatMap((v) => onIt(v).map((a) => a.user_id)))];
   const names = new Map<string, string>();
   if (people.length) {
     const [profiles, subLogins] = await Promise.all([
@@ -1374,7 +1380,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   const visit = (v: NonNullable<typeof upcoming.data>[number]) => ({
     id: v.id, title: v.title, scheduled_on: v.scheduled_on, starts_at: v.starts_at, ends_at: v.ends_at, status: v.status, completed_at: v.completed_at,
     address: (v.property as unknown as { line1: string } | null)?.line1 ?? null,
-    crew: firstNames(v.assignees as Array<{ user_id: string }>, names),
+    crew: firstNames(onIt(v), names),
     // Reschedule and Cancel, or "call us": started, done or today's visits aren't changed online.
     can_change: changeableOnline(v, today),
     change_requested: asked.find((a) => a.visit_id === v.id)?.kind ?? null,

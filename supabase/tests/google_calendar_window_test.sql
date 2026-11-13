@@ -20,10 +20,10 @@ create function tgcw.pushes(p_company uuid, p_visit uuid default null) returns b
 $$;
 
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('c7000000-0000-0000-0000-000000000001', 'owner@sierra.test', '{"full_name": "Sy Owner"}');
+  ('fc200000-0000-0000-0000-000000000001', 'owner@sierra.test', '{"full_name": "Sy Owner"}');
 begin;
 set local role authenticated;
-select set_config('request.jwt.claims', '{"sub": "c7000000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub": "fc200000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
 select public.create_company('Sierra Lawn', 'general') as co \gset
 insert into public.clients (company_id, display_name) values (:'co', 'Sierra client') returning id as client \gset
 insert into public.jobs (company_id, client_id, title, kind, recurrence_rule, starts_on) values (:'co', :'client', 'Weekly mowing', 'recurring', 'FREQ=WEEKLY;BYDAY=MO', current_date)

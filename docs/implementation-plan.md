@@ -193,7 +193,7 @@ written; a test fails if one changes without its list.
 | Clients, properties, jobs, visits, SOPs | Any member | Office and up (crew leads can update visits) |
 | Quotes, services | Any member | Owner, admin, office, estimator |
 | Invoices, payments, expenses | Owner, admin, office | Owner, admin, office |
-| Gate codes | Office and up, plus crew assigned to a visit there today | Office and up |
+| Gate codes | Office and up, plus the crew on a visit there today (the people listed on it, or its crew's members when nobody is listed) | Office and up |
 | Time entries | Own entries, plus office and up | Own entries until approved; office approves |
 | Integrations | Owner, admin | API only |
 

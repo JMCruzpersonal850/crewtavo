@@ -13,6 +13,7 @@
  */
 import { scheduleSettings } from "@crewtavo/core/routing";
 import { localDate, localTime, zonedTimeToUtc } from "@crewtavo/core/time";
+import { crewPeople, visitPeople, type CrewMember } from "@crewtavo/core/visitPeople";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -78,6 +79,8 @@ interface ScheduleData {
   visits: Visit[];
   unscheduled: Visit[];
   crews: Array<{ id: string; name: string; color: string | null }>;
+  /** Who's on each crew: a visit with nobody listed has its crew's members on it. */
+  crew_members?: CrewMember[];
   /** Other calendars' events (people who see the whole schedule). */
   events?: CalendarEvent[];
 }
@@ -223,7 +226,10 @@ export function SchedulePage() {
   const canPickPerson = hasRole(session, "admin", "office", "estimator", "crew_lead") && pickable.length > 0;
   // A remembered person who has since left the team shows everyone again.
   const shownPerson = !canPickPerson || (team.data && person && person !== "none" && person !== session.userId && !pickable.some((p) => p.user_id === person)) ? "" : person;
-  const forPerson = (v: Visit) => !shownPerson || (shownPerson === "none" ? v.assignees.length === 0 : v.assignees.some((a) => a.user_id === shownPerson));
+  // Who's on a visit: the people listed on it or, with nobody listed, its crew's members (visitPeople).
+  const crewMembers = schedule.data?.crew_members;
+  const onCrews = useMemo(() => crewPeople(crewMembers), [crewMembers]);
+  const forPerson = (v: Visit) => !shownPerson || onRow(v, shownPerson === "none" ? "" : shownPerson, onCrews);
 
   // Card times in the company's zone, like the grid and the visit dialog.
   const timeOf = (iso: string) => formatTime(iso, tz);
@@ -236,7 +242,7 @@ export function SchedulePage() {
   const board: Board = boardChoice === "crews" || boardChoice === "people" ? boardChoice : schedule.data && !crews.length ? "people" : "crews";
   const byPerson = board === "people" && (view === "day" || view === "week");
   // A row (lane) per person, and one for visits nobody's on yet, like "No crew". Picking a person shows only theirs.
-  const rowPeople = peopleRows(team.data ?? [], scheduled, nameOf, session.userId);
+  const rowPeople = peopleRows(team.data ?? [], scheduled, nameOf, session.userId, onCrews);
   const rowIds = new Set(rowPeople.map((p) => p.user_id));
   const personLanes: GridColumn[] = [
     ...rowPeople.map((p): GridColumn => ({ key: p.user_id, date: anchor, person: p.user_id, color: p.profile?.color, label: nameOf(p.user_id) })),
@@ -376,7 +382,7 @@ export function SchedulePage() {
     const changed = (Object.keys(patch) as Array<keyof Moves>).some((k) => (k === "starts_at" || k === "ends_at" ? !sameTime(visit[k], patch[k]) : (visit[k] ?? null) !== (patch[k] ?? null)));
     // People view: off the row it was dragged from, onto the row it was dropped on.
     const to = target.type === "unscheduled" ? undefined : target.person;
-    const assignees = to === undefined ? null : movePeople(visit.assignees.map((a) => a.user_id), from, to);
+    const assignees = to === undefined ? null : movePeople(visitPeople(visit, onCrews), from, to);
     const peopleNote = assignees && (to ? (from ? `Moved to ${who(to)}` : `Added ${who(to)}`) : `Took ${who(from!)} off`);
     if (changed || assignees) {
       update.mutate({ visit, patch: { ...(changed && patch), ...(assignees && { assignee_ids: assignees }) }, message: [changed && message, peopleNote].filter(Boolean).join(" · "), undoable: true });
@@ -478,7 +484,7 @@ export function SchedulePage() {
   };
 
   const inLane = (crew: string | undefined) => (v: Visit) => crew === undefined || (crew ? v.crew_id === crew : !v.crew_id || !crews.some((c) => c.id === v.crew_id));
-  const laneVisits = (col: GridColumn) => byDay(col.date).filter(inLane(col.crew)).filter((v) => col.person === undefined || onRow(v, col.person));
+  const laneVisits = (col: GridColumn) => byDay(col.date).filter(inLane(col.crew)).filter((v) => col.person === undefined || onRow(v, col.person, onCrews));
   const lanes: GridColumn[] = [
     ...(crewId ? crews.filter((c) => c.id === crewId) : crews).map((c) => ({ key: c.id, date: anchor, crew: c.id, color: c.color, label: c.name })),
     ...(crewId ? [] : [{ key: "none", date: anchor, crew: "", label: "No crew" }]),
@@ -646,7 +652,7 @@ export function SchedulePage() {
                       <tr key={row.key}>
                         <th scope="row" style={{ "--lane": row.color ?? undefined } as CSSProperties}>{row.label}</th>
                         {days.map((date) => {
-                          const visits = byDay(date).filter((v) => onRow(v, row.person!));
+                          const visits = byDay(date).filter((v) => onRow(v, row.person!, onCrews));
                           const rowEvents = eventsOn(date).filter((e) => eventOnRow(ownerOf(e), row.person!, rowIds));
                           // Marked like the person's row in Day view: on two visits at once, or busy in their calendar.
                           const marks = conflictsOf(visits, rowEvents.map((e) => onDay(e, date)), tz, row.person);

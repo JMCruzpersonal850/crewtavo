@@ -7,6 +7,7 @@
 import { documentLabel } from "@crewtavo/core/equipment";
 import { daysOff, weekday } from "@crewtavo/core/slots";
 import { isIsoDate, localDate, localTime, parseZonedTime } from "@crewtavo/core/time";
+import { crewPeople, peopleAfterCrewChange, visitPeople } from "@crewtavo/core/visitPeople";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -181,18 +182,23 @@ export function VisitDialog({ visit, onClose, onSaved }: { visit: VisitInput; on
   const subSignIns = useSubSignIns(session.company.id, canDispatch && rights.wholeTeam);
   const subs = (subSignIns.data ?? []).filter((x) => x.active || assignees.includes(x.user_id));
   const toggle = (id: string) => setAssignees(assignees.includes(id) ? assignees.filter((x) => x !== id) : [...assignees, id]);
+  // Who's on it: the people picked or, with nobody picked, its crew's members (the same rule as the
+  // schedule's People rows, My day and who hears when it changes: visitPeople).
+  const onCrews = crewPeople(options.data?.crewMembers);
+  const onIt = visitPeople({ crew_id: crewId || null, assignees: assignees.map((user_id) => ({ user_id })) }, onCrews);
+  const crewOnIt = !assignees.length && onIt.length > 0 ? (options.data?.crews ?? []).find((c) => c.id === crewId) : undefined;
   // Someone already on another visit at this time, as the schedule marks their row, on each day of
   // a multi-day booking. For one day the key is the schedule's Day view's, so the board's copy is used.
   const bookingDays = isNew && days > 1 && validDate ? workDays(date, days, skipped) : [date];
   const lastDay = bookingDays[bookingDays.length - 1]!;
   const sameDay = useQuery({
     queryKey: ["schedule", session.company.id, date, lastDay, ""],
-    enabled: canDispatch && assignees.length > 0 && Boolean(start) && !badLength,
+    enabled: canDispatch && onIt.length > 0 && Boolean(start) && !badLength,
     staleTime: 30_000,
     queryFn: () => api.get<{ visits: Array<GridVisit & { scheduled_on: string | null; assignees: Array<{ user_id: string }> }> }>(`/schedule?from=${date}&to=${lastDay}`),
   });
   const draft: GridVisit = { id: visit.id ?? "new", title, kind, status, crew_id: null, starts_at: start?.toISOString() ?? null, ends_at: start ? new Date(start.getTime() + duration * 60_000).toISOString() : null };
-  const doubleBooked = !start || badLength ? [] : doubleBookings(draft, bookingDays, assignees, sameDay.data?.visits ?? [], tz);
+  const doubleBooked = !start || badLength ? [] : doubleBookings(draft, bookingDays, onIt, sameDay.data?.visits ?? [], tz, onCrews);
   const nameOf = (id: string) => (options.data?.team ?? []).find((m) => m.user_id === id)?.profile?.full_name || subs.find((x) => x.user_id === id)?.name || "Someone";
   // Once the crews are known, a crew lead's new visit starts on their crew, with its people.
   useEffect(() => {
@@ -208,8 +214,11 @@ export function VisitDialog({ visit, onClose, onSaved }: { visit: VisitInput; on
   };
   const chooseCrew = (id: string) => {
     setCrewId(id);
-    // Picking a crew brings its people along, if nobody's been picked yet.
-    if (id && !assignees.length && options.data) setAssignees(options.data.crewMembers.filter((m) => m.crew_id === id).map((m) => m.user_id));
+    if (!options.data) return;
+    // Picking a crew for a new visit brings its people along. Changing the crew swaps the old crew's
+    // people for the new crew's and keeps anyone else picked (as the database does when a visit is
+    // dragged to another crew). A saved visit with nobody picked goes by its crew, and stays that way.
+    if (assignees.length || isNew) setAssignees(peopleAfterCrewChange(assignees, crewId || null, id || null, crewPeople(options.data.crewMembers)));
   };
 
   const findTime = useMutation({
@@ -432,6 +441,7 @@ export function VisitDialog({ visit, onClose, onSaved }: { visit: VisitInput; on
                 })}
               </div>
             )}
+            {crewOnIt && <span className="muted small">Nobody picked, so everyone on {crewOnIt.name} is on it. Pick people to send only them.</span>}
           </div>
         )}
         {canDispatch && subs.length > 0 && (

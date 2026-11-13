@@ -27,6 +27,7 @@
     "./routing": "./src/routing.ts",
     "./slots": "./src/slots.ts",
     "./weather": "./src/weather.ts",
+    "./visitPeople": "./src/visitPeople.ts",
     "./ical": "./src/ical.ts",
     "./automations": "./src/automations.ts",
     "./autopay": "./src/autopay.ts",

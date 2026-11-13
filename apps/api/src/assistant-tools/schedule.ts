@@ -3,7 +3,7 @@
  * route, open time, and on-demand visits for many jobs. All through services/schedule.ts, as the
  * schedule screen does, with times in the company's own time zone.
  */
-import { localDate, localTime, zonedTimeToUtc } from "@crewtavo/core";
+import { crewPeople, localDate, localTime, onVisit, zonedTimeToUtc } from "@crewtavo/core";
 import { z } from "zod";
 import { bulkVisits, createVisits, findTime, previewRoute, saveRoute, scheduleRange, shiftDay, updateVisit } from "../services/schedule";
 import { answerVisitChange, pendingVisitChanges } from "../services/visitChanges";
@@ -15,14 +15,15 @@ const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM.")
 export const scheduleTools = {
   get_schedule: tool({
     description:
-      "What's on the schedule from one date to another (default just today; at most two months), in the company's time zone: visits with client, address, crew, people and status, plus the unscheduled visits waiting for a date, the crews, and other calendars' events. Filter by crew, or by person (user_id from list_team) for the visits they're on.",
+      "What's on the schedule from one date to another (default just today; at most two months), in the company's time zone: visits with client, address, crew, people and status, plus the unscheduled visits waiting for a date, the crews with who's on them (crew_members), and other calendars' events. The people on a visit are its assignees, or with none its crew's members. Filter by crew, or by person (user_id from list_team) for the visits they're on.",
     input: z.object({ from: date.optional(), to: date.optional(), crew_id: z.uuid().optional(), user_id: z.uuid().optional().describe("Only the visits this person is on."), ...companyArg }),
     run: async (ctx, a) => {
       const from = a.from ?? localDate(new Date(), ctx.timezone);
       const result = await scheduleRange(scopeOf(ctx), from, a.to ?? from, a.crew_id);
       const local = (iso: string | null) => (iso ? localTime(new Date(iso), ctx.timezone) : null);
-      // Who's on a visit is its assignees, as on the schedule's People view, not its crew.
-      const theirs = (visits: Array<Record<string, any>>) => (a.user_id ? visits.filter((v) => v.assignees?.some((p: { user_id: string }) => p.user_id === a.user_id)) : visits);
+      // Who's on a visit is the people listed on it, or with nobody listed its crew's members, as on the schedule's People view.
+      const crews = crewPeople(result.crew_members);
+      const theirs = (visits: Array<Record<string, any>>) => (a.user_id ? visits.filter((v) => onVisit(v, a.user_id!, crews)) : visits);
       return {
         timezone: ctx.timezone,
         ...result,

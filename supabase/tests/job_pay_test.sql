@@ -314,8 +314,10 @@ update public.job_pay_lines set rate = 76 where job_pay_id = :'pay_a' and basis 
 update public.job_pay_lines set rate = 75 where job_pay_id = :'pay_a' and basis = 'per_unit';
 select t1080.check((select total = 2775 from public.job_pay where id = :'pay_a'), 'lines still change while it''s agreed');
 commit;
-select t1080.check((select count(*) = 1 and bool_and(body like 'You''re on Walk-through: %' and body like '%You''re off Walk-through%') from public.notifications where user_id = :'al' and kind = 'schedule'),
-  'and hears about the one still to come, as the crew does, and about coming off it (not about visits already past)');
+-- Put on the one still to come and taken off it again within moments: that's no news, so the line
+-- that said they were on it is taken back (20261113000210_visit_people.sql).
+select t1080.check((select count(*) = 0 from public.notifications where user_id = :'al' and kind = 'schedule'),
+  'and hears nothing about a visit they were put on and taken off again at once (nor about visits already past)');
 
 -- Al reads his own: the price, its lines and visits. Nobody else's.
 begin;

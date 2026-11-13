@@ -45,5 +45,6 @@ export * from "./subOffers";
 export * from "./terms";
 export * from "./time";
 export * from "./video";
+export * from "./visitPeople";
 export * from "./weather";
 export type { Database, Json, Tables, TablesInsert, TablesUpdate, Enums } from "./database.types";
