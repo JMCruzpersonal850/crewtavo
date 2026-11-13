@@ -165,7 +165,7 @@ function ContactDialog({ clientId, contact, onClose }: { clientId: string; conta
         <label className="checkbox"><input type="checkbox" checked={f.notify_sms} onChange={(e) => setF({ ...f, notify_sms: e.target.checked })} /> Gets text reminders</label>
         <span className="muted small">
           {contactsOn
-            ? "Ticked, they get what the client gets about their work: visit reminders, on-my-way texts, quotes, invoices and receipts. Marketing emails and review requests only go to the client."
+            ? "Ticked, they get what the client gets about their work: a visit booked, moved or cancelled, visit reminders, on-my-way texts, quotes, invoices and receipts. Marketing emails and review requests only go to the client."
             : <>Contacts don't get these yet. An owner or admin can turn it on in <Link to="/settings?tab=client-notifications">Settings → Client notifications</Link>.</>}
         </span>
         <FormError error={save.error} fields={["email", "phone"]} />

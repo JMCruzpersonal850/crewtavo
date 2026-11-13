@@ -114,6 +114,9 @@ delete from public.automation_rules where company_id = :'co' and template_key = 
 select tvr.as_before(:'co');
 select tvr.check(tvr.on(:'co') = '{}', 'gets the three starters switched off, with its reminder as it was');
 select tvr.check((select count(*) = 3 from public.automation_rules where company_id = :'co' and template_key in ('visit_scheduled', 'visit_rescheduled', 'visit_cancelled') and not enabled), 'all three are there to turn on');
+select tvr.check(private.add_visit_notice_texts(:'co') = 3 and tvr.on(:'co') = '{}', 'one that texts from its own Twilio account gets the text on each, and they stay off');
+select tvr.check((select count(*) = 3 and bool_and(actions -> 1 ->> 'type' = 'send_sms' and not enabled) from public.automation_rules where company_id = :'co' and template_key in ('visit_scheduled', 'visit_rescheduled', 'visit_cancelled')),
+  'ready to email and text when they''re turned on');
 select tvr.check((select enabled from public.automation_rules where id = :'own_rule') and not (select enabled from public.automation_rules where company_id = :'co' and template_key = 'invoice_overdue')
   and not exists (select 1 from public.automation_rules where company_id = :'co' and template_key = 'quote_followup'), 'and nothing else of its rules changes: one it turned off stays off, one it deleted stays deleted');
 update public.automation_rules set enabled = true, name = 'Booked, our way' where company_id = :'co' and template_key = 'visit_scheduled';
@@ -181,4 +184,4 @@ drop schema tvr cascade;
 reset client_min_messages;
 
 \o
-\echo 'All visit notice rule tests passed (32 checks).'
+\echo 'All visit notice rule tests passed (34 checks).'

@@ -10,7 +10,8 @@
 --     (companies.settings.visit_notices, answered through public.set_visit_notices).
 --   * The starters email. Where the company can text when it's created the server adds a text to
 --     each and turns the on-my-way text on (public.texting_starters, called by the API, which is
---     what knows whether texting is connected).
+--     what knows whether the server has a Twilio account). A company there already that has
+--     connected its own Twilio account gets the text on its three too, still switched off.
 --
 -- supabase/tests/visit_notice_rules_test.sql covers it.
 
@@ -55,12 +56,12 @@ begin
   return null;
 end $$;
 
--- Where the new company can text: each of the three texts as well as emails, and the on-my-way
--- text is on. Only starters still as they were made are changed. The API calls this right after
--- it creates a company, when texting is connected (its own Twilio account, or the server's).
-create function public.texting_starters(p_company uuid) returns integer
+-- Each of the three texts as well as emails, for a company that can text. Only starters still as
+-- they were made are changed: one the office reworded, or that has run, stays as it is. Returns
+-- how many it added a text to.
+create function private.add_visit_notice_texts(p_company uuid) returns integer
 language plpgsql security definer set search_path = '' as $$
-declare v_count integer; v_more integer;
+declare v_count integer;
 begin
   update public.automation_rules r
      set actions = r.actions || jsonb_build_array(jsonb_build_object('type', 'send_sms', 'body', t.body))
@@ -72,6 +73,17 @@ begin
    where r.company_id = p_company and r.template_key = t.template_key
      and jsonb_array_length(r.actions) = 1 and r.actions -> 0 ->> 'type' = 'send_email' and r.run_count = 0;
   get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+
+-- Where a new company can text: the texts above, and the on-my-way text is on (unless it has run
+-- already, which is the office's to decide). The API calls this right after it creates a company,
+-- when the server has a Twilio account. Returns how many rules it changed.
+create function public.texting_starters(p_company uuid) returns integer
+language plpgsql security definer set search_path = '' as $$
+declare v_count integer; v_more integer;
+begin
+  v_count := private.add_visit_notice_texts(p_company);
   update public.automation_rules r set enabled = true
    where r.company_id = p_company and r.template_key = 'on_my_way' and not r.enabled and r.run_count = 0;
   get diagnostics v_more = row_count;
@@ -85,6 +97,13 @@ grant execute on function public.texting_starters(uuid) to service_role;
 -- ---------------------------------------------------------------------------------------------
 
 select private.install_visit_notice_rules(id) from public.companies;
+
+-- Those that text from their own Twilio account get the text on the three as well, for when they
+-- turn them on. (Whether the server has an account for everyone isn't known here; such a company's
+-- three email, and a text can be added to each rule.)
+select private.add_visit_notice_texts(i.company_id)
+  from public.integrations i
+ where i.provider = 'twilio' and i.status <> 'disconnected' and i.external_account_id is not null;
 
 update public.companies
    set settings = jsonb_set(coalesce(settings, '{}'), '{visit_notices}', '{"pending": true}')
@@ -143,7 +162,7 @@ begin
   return v_count;
 end $$;
 
-revoke all on function private.install_visit_notice_rules(uuid), private.visit_notices_setting(), private.visit_notices_guard() from public;
+revoke all on function private.install_visit_notice_rules(uuid), private.add_visit_notice_texts(uuid), private.visit_notices_setting(), private.visit_notices_guard() from public;
 revoke execute on function public.set_visit_notices(uuid, boolean, boolean) from public, anon;
 grant execute on function public.set_visit_notices(uuid, boolean, boolean) to authenticated;
 

@@ -50,7 +50,7 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
       items: [
         managesSettings && { to: "/booking", label: "Online booking", icon: "globe", keywords: "booking form request form website embed intake" },
         // The same people as Automations, since each switch is one of its rules.
-        isOffice && can(session, "automations") && { tab: "client-notifications", label: "Client notifications", icon: "bell", keywords: "reminders follow-ups notifications visit reminder assessment on my way quote invoice past due review job follow-up emails texts" },
+        isOffice && can(session, "automations") && { tab: "client-notifications", label: "Client notifications", icon: "bell", keywords: "reminders follow-ups notifications visit booked moved rescheduled cancelled confirmation reminder assessment on my way quote invoice past due review job follow-up emails texts" },
         managesEmail && { tab: "email", label: "Email", icon: "mail", keywords: "smtp outgoing mail sender gmail outlook mailbox" },
       ],
     },

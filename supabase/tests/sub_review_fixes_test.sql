@@ -134,12 +134,12 @@ begin;
 set local role authenticated;
 select t1120.as_user(:'ona');
 select t1120.check(not exists (select 1 from public.automation_rules where starts_with(trigger, 'sub_offer.')) and exists (select 1 from public.automation_rules where id = :'quote_rule')
-    and (select array_agg(rule_id) from public.automation_runs) = array[:'quote_rule']::uuid[],
+    and (select array_agg(rule_id) from public.automation_runs where rule_id in (:'sub_rule', :'quote_rule')) = array[:'quote_rule']::uuid[],
   'without the area, neither the rule about offers nor its runs are seen');
 select t1120.check(t1120.error_of(format('delete from public.automation_rules where id = %L', :'sub_rule')) = 'none'
   and exists (select 1 from public.automation_rules where id = :'quote_rule'), 'or deleted (nothing to delete)');
 select t1120.as_user(:'opal');
-select t1120.check(exists (select 1 from public.automation_rules where id = :'sub_rule') and (select count(*) from public.automation_runs) = 2, 'with it, both rules and their runs');
+select t1120.check(exists (select 1 from public.automation_rules where id = :'sub_rule') and (select count(*) from public.automation_runs where rule_id in (:'sub_rule', :'quote_rule')) = 2, 'with it, both rules and their runs');
 rollback;
 select t1120.check(exists (select 1 from public.automation_rules where id = :'sub_rule'), 'the rule about offers is still there');
 

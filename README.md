@@ -356,13 +356,13 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   (connected on the Apps page, no server settings), a message center, and notifications in the app,
   by email, by text or as phone push, each person's choice. Clients are told when a visit is
   booked, moved or cancelled, reminded the day before (again for the new day when a visit moves
-  after its reminder went) and texted when the crew is on the way; each
-  message is a switch in Settings → Client notifications. A booking, move or cancelling goes ten
-  minutes after the change, so a visit dragged twice is one message and one put back is none, and a
-  route being re-ordered or a recurring job's whole schedule changing messages nobody. (A business
-  that was running before these three messages existed has them off until it turns them on.) A
-  client's other contacts (a spouse, a
-  property manager) can be ticked to get their reminders, quotes, invoices and receipts too, a
+  after its reminder went) and texted when the crew is on the way; each message is a switch in
+  Settings → Client notifications. A booking, move or cancelling goes ten minutes after the
+  change, so a visit dragged twice is one message and one put back is none, and a route being
+  re-ordered or a recurring job's whole schedule changing messages nobody. (A business that was
+  running before these three messages existed has them off until it turns them on.) A client's
+  other contacts (a spouse, a property manager) can be ticked to get what the client gets about
+  their visits, quotes, invoices and receipts too, a
   quote or invoice can go to several people at once, and a text from a number nobody knows is kept
   in Messages to add to a client.
 - **Automations and marketing:** rules like "when a quote is sent, wait 3 days, then email the

@@ -338,10 +338,10 @@ insert into public.visits (company_id, job_id, property_id, title, starts_at, en
 select :'co', :'job', :'place', 'Rain ' || n, tvn.at(20, '08:00') + make_interval(mins => 10 * n), tvn.at(20, '09:00') + make_interval(mins => 10 * n) from generate_series(1, 30) n;
 select tvn.sent();
 update public.visits set starts_at = starts_at + interval '1 day', ends_at = ends_at + interval '1 day', hold_reason = null where company_id = :'co' and title like 'Rain %';
-select tvn.check((select count(*) = 30 and count(distinct a.subject_id) = 30 from public.activity a join public.visits v on v.id = a.subject_id where v.title like 'Rain %' and a.verb = 'visit.rescheduled'),
+select tvn.check((select count(*) = 30 and count(distinct a.subject_id) = 30 from public.activity a join public.visits v on v.id = a.subject_id where v.company_id = :'co' and v.title like 'Rain %' and a.verb = 'visit.rescheduled'),
   'a rain day that moves 30 visits is 30 moves, one for each visit');
 select tvn.check((select count(*) = 30 and bool_and(r.run_after > now() + interval '9 minutes') from public.automation_runs r join public.activity a on a.id = r.activity_id join public.visits v on v.id = a.subject_id
-  where v.title like 'Rain %' and r.status = 'pending'), 'each waiting its ten minutes, none sent while the day is being moved');
+  where v.company_id = :'co' and v.title like 'Rain %' and r.status = 'pending'), 'each waiting its ten minutes, none sent while the day is being moved');
 select tvn.sent();
 
 insert into public.visits (company_id, job_id, property_id, title, scheduled_on, series_id, series_day, series_total)
@@ -375,7 +375,7 @@ set role service_role;
 select tvn.check(not public.visit_notice_is_repeat(:'move2') and public.visit_notice_is_repeat(:'move3'), 'when the first day goes back where it was, the next day''s move is the one that goes');
 reset role;
 select tvn.sent();
-select r.id as plain from public.automation_runs r join public.activity a on a.id = r.activity_id join public.visits v on v.id = a.subject_id where v.title = 'Rain 2' and a.verb = 'visit.rescheduled' \gset
+select r.id as plain from public.automation_runs r join public.activity a on a.id = r.activity_id join public.visits v on v.id = a.subject_id where v.company_id = :'co' and v.title = 'Rain 2' and a.verb = 'visit.rescheduled' \gset
 set role service_role;
 select tvn.check(not public.visit_notice_is_repeat(:'plain'), 'a run about a visit that isn''t multi-day work is never a repeat, however many moved with it');
 reset role;
