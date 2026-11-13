@@ -26,7 +26,7 @@ import { clientLink } from "../lib/links";
 import { roofSegments } from "../services/external";
 import { applyMeasurement } from "../services/measurements";
 import { SITE_PRICE_SET, sitePriceSet } from "../services/roofPackages";
-import { convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, type SalesScope } from "../services/sales";
+import { BATCH_JOBS, convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, TOO_MANY_JOBS, type SalesScope } from "../services/sales";
 
 export const sales = new Hono<AppEnv>();
 
@@ -93,9 +93,10 @@ sales.post("/jobs/:id/invoice", requireUser, requireCompany(OFFICE, "invoices"),
 
 // Batch invoicing: one invoice per finished job (completed visits for per-visit jobs, and each month
 // a monthly job is due), optionally with each job's logged hours (at rate_id) and materials, and
-// optionally email each one. Each job succeeds or fails on its own.
+// optionally email each one. Each job succeeds or fails on its own. 50 jobs a call: the Invoices
+// page sends more a group at a time (apps/web/src/features/invoices/batch.ts).
 sales.post("/invoices/batch", requireUser, requireCompany(OFFICE, "invoices"), async (c) => {
-  const body = await readJson(c, z.object({ job_ids: z.array(uuid).min(1).max(50), send: z.boolean().default(false), logged_work: z.boolean().default(false), rate_id: uuid.optional() }));
+  const body = await readJson(c, z.object({ job_ids: z.array(uuid).min(1).max(BATCH_JOBS, TOO_MANY_JOBS), send: z.boolean().default(false), logged_work: z.boolean().default(false), rate_id: uuid.optional() }));
   return c.json(await invoiceJobs(scope(c), body.job_ids, body.send, body.logged_work ? { rateId: body.rate_id } : undefined));
 });
 

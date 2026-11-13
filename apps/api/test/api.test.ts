@@ -13,6 +13,8 @@ import { allow, allowStrict } from "../src/lib/limit";
 import { clientLink, clientLinks, readClientLink, sentToClient } from "../src/lib/links";
 import { buildMime } from "../src/lib/smtp";
 import { twilioSignature } from "../src/routes/messages";
+import { TOOLS } from "../src/assistant-tools";
+import { BATCH_JOBS, TOO_MANY_JOBS } from "../src/services/sales";
 import { verifyStripeSignature } from "../src/services/stripe";
 import { CRON_TASKS, runTask, TASKS } from "../src/tasks";
 
@@ -641,6 +643,24 @@ describe("validation messages", () => {
     expect(issue(z.object({ secret: z.string().min(8, "That looks too short. Copy the whole thing.") }), { secret: "abc" })).toBe("That looks too short. Copy the whole thing.");
     expect(issue(z.object({ config_id: z.string().regex(/^\d+$/) }), { config_id: "abc" })).toBe("Configuration ID doesn't look right.");
     expect(issue(z.object({ due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD") }), { due_on: "soon" })).toBe("Due date doesn't look right.");
+  });
+});
+
+describe("batch invoicing", () => {
+  it("takes 50 jobs a call and says how to send more, to a person and to an assistant", () => {
+    const ids = (n: number) => Array.from({ length: n }, () => crypto.randomUUID());
+    const first = (schema: z.ZodType, value: unknown) => {
+      const r = schema.safeParse(value);
+      return r.success ? null : friendlyIssue(r.error.issues[0]!);
+    };
+    const body = z.object({ job_ids: z.array(z.uuid()).min(1).max(BATCH_JOBS, TOO_MANY_JOBS) });
+    expect(BATCH_JOBS).toBe(50);
+    expect(first(body, { job_ids: ids(50) })).toBeNull();
+    expect(first(body, { job_ids: ids(51) })).toBe("Invoice at most 50 jobs at a time: send the first 50, then the next.");
+    const tool = TOOLS.invoice_jobs!;
+    expect(tool.description).toContain("at most 50 job_ids a call");
+    expect(first(tool.input, { job_ids: ids(50) })).toBeNull();
+    expect(first(tool.input, { job_ids: ids(51) })).toBe(TOO_MANY_JOBS);
   });
 });
 

@@ -7,7 +7,7 @@
  */
 import { entryHours, localDate, paymentProblem, workLines, zonedTimeToUtc } from "@crewtavo/core";
 import { z } from "zod";
-import { invoiceJobs, loggedWork as jobWork, remindInvoices, sendInvoice, sendSchema } from "../services/sales";
+import { BATCH_JOBS, invoiceJobs, loggedWork as jobWork, remindInvoices, sendInvoice, sendSchema, TOO_MANY_JOBS } from "../services/sales";
 import { customFieldsArg, customFieldsPatch } from "./customFields";
 import { changed, companyArg, friendly, one, rows, tool, type ToolContext } from "./tool";
 
@@ -131,8 +131,8 @@ export const invoiceTools = {
   }),
   invoice_jobs: tool({
     description:
-      "Invoice many finished jobs at once (up to 50): one invoice each (completed visits for recurring and per-visit jobs), and email each one if send is true. Each job succeeds or fails on its own. Jobs charged automatically (autopay) are skipped while their charge waits.",
-    input: z.object({ job_ids: z.array(z.uuid()).min(1).max(50), send: z.boolean().default(false), ...companyArg }),
+      "Invoice many finished jobs at once, at most 50 job_ids a call (for more, call it again with the next 50): one invoice each (completed visits for recurring and per-visit jobs), and email each one if send is true. Each job succeeds or fails on its own. Jobs charged automatically (autopay) are skipped while their charge waits.",
+    input: z.object({ job_ids: z.array(z.uuid()).min(1).max(BATCH_JOBS, TOO_MANY_JOBS), send: z.boolean().default(false), ...companyArg }),
     area: "invoices",
     run: (ctx, a) => invoiceJobs(salesScope(ctx), a.job_ids, a.send),
   }),

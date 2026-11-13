@@ -327,6 +327,10 @@ export async function sendInvoice(s: SalesScope, id: string, body: SendBody) {
   return result;
 }
 
+/** The most jobs invoiceJobs takes in one call (each can send an email), and what's said for more: for a person, and for an assistant. */
+export const BATCH_JOBS = 50;
+export const TOO_MANY_JOBS = `Invoice at most ${BATCH_JOBS} jobs at a time: send the first ${BATCH_JOBS}, then the next.`;
+
 /**
  * One invoice per finished job (completed visits for per-visit jobs), and optionally email each. A
  * monthly job gets one for each month that's due (due_invoices: the month's visits, or a fixed

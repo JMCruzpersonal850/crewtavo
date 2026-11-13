@@ -21,6 +21,7 @@ import { formatDate, formatMoney, formatMoneyCents, todayIn } from "@/lib/format
 import { useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { Change } from "../finance/change";
+import { failureText, invoiceInChunks, type BatchResult } from "./batch";
 import { chargeBusy, chargeInChunks, chargeLiveText, chargeOutcomeText, chargeSummary, chargeTotal, type ChargeableInvoice, type ChargeResult } from "./charges";
 import { invoiceTotals, readyJobs, type ReadyJob } from "./totals";
 
@@ -172,26 +173,39 @@ function BatchDialog({ jobs, onClose }: { jobs: ReadyJob[]; onClose: () => void 
     queryFn: async () => laborRates(unwrap(await supabase().from("services").select("id, name, unit, unit_price, taxable, active").eq("company_id", session.company.id))),
   });
   const rate = rates.data?.find((r) => r.id === rateId) ?? rates.data?.[0];
+  // How many jobs have their invoice so far, while the groups go one after another.
+  const [progress, setProgress] = useState<{ invoiced: number; total: number } | null>(null);
   const run = useMutation({
     meta: { inline: true },
     mutationFn: async () => {
-      if (!picked.length) throw new Error("Pick at least one job to invoice.");
-      return api.post<{ results: Array<{ number: number; ok: boolean; sent?: boolean; error?: string }> }>("/invoices/batch", { job_ids: picked, send, logged_work: work, rate_id: work ? rate?.id : undefined });
+      // In the list's order, a group at a time (the server takes 50 a call): a group that fails is reported and the rest still go.
+      const chosen = jobs.filter((j) => picked.includes(j.id));
+      if (!chosen.length) throw new Error("Pick at least one job to invoice.");
+      setProgress({ invoiced: 0, total: chosen.length });
+      return invoiceInChunks(
+        chosen,
+        (job_ids) => api.post<{ results: BatchResult[] }>("/invoices/batch", { job_ids, send, logged_work: work, rate_id: work ? rate?.id : undefined }),
+        (invoiced, total) => setProgress({ invoiced, total }),
+      );
     },
-    onSuccess: ({ results }) => {
+    onSuccess: (results) => {
       const made = results.filter((r) => r.ok);
       const failed = results.filter((r) => !r.ok);
       const emailed = made.filter((r) => r.sent).length;
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       if (made.length) {
         toast.success(`${plural(made.length, "invoice")} created${send && emailed ? ` and ${emailed} emailed` : ""}`, { tone: "invoice", description: send ? undefined : "They're drafts until you send them." });
       }
-      if (failed.length) toast.error(`${failed.length} couldn't be invoiced`, { description: failed.map((f) => `Job #${f.number}: ${f.error}`).join(". ") });
+      if (failed.length) toast.error(`${failed.length} couldn't be invoiced`, { description: failureText(failed) });
       const unsent = made.filter((r) => send && !r.sent);
       if (unsent.length) toast.error(`${unsent.length} not emailed`, { description: "No email address on file. They're in Drafts." });
       onClose();
+    },
+    // Looked at again however it ends: a group that failed may still have made some.
+    onSettled: () => {
+      setProgress(null);
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
   const total = jobs.filter((j) => picked.includes(j.id)).reduce((s, j) => s + amountOf(j), 0);
@@ -234,7 +248,9 @@ function BatchDialog({ jobs, onClose }: { jobs: ReadyJob[]; onClose: () => void 
         <FormError error={run.error ?? rates.error} />
         <div className="form-actions">
           <FormChecks />
-          <span className="muted small" style={{ marginRight: "auto" }}>{total > 0 ? `${formatMoney(total)} before tax` : null}</span>
+          <span className="muted small" style={{ marginRight: "auto" }} role={progress ? "status" : undefined}>
+            {progress ? `Invoiced ${progress.invoiced} of ${progress.total}` : total > 0 ? `${formatMoney(total)} before tax` : null}
+          </span>
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" icon={send ? "send" : "invoice"} loading={run.isPending}>
             {send ? "Create and send" : "Create"} {picked.length} {picked.length === 1 ? "invoice" : "invoices"}

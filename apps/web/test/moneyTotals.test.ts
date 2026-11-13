@@ -109,6 +109,25 @@ describe("jobs ready to invoice", () => {
     expect(ready.find((j) => j.months)?.months).toEqual(["2026-10-01", "2026-11-01"]);
   });
 
+  it("lists every finished job, past the first 1,000, and asks for monthly jobs a hundred ids at a time", async () => {
+    state.answers.jobs = { rows: Array.from({ length: 1150 }, (_, i) => job(i + 1, { kind: "one_off", billing_mode: "on_completion", pricing: null })) };
+    state.answers.jobs_with_visits_to_invoice = { rows: [] };
+    state.answers.autopay_charges = { rows: [] };
+    state.answers.due_invoices = { rows: [] };
+    expect(await readyJobs("co")).toHaveLength(1150);
+    const finished = readsOf("jobs");
+    expect(finished.map((r) => r.calls.find((c) => c[0] === "range")!.slice(1))).toEqual([[0, 999], [1000, 1999]]);
+    for (const r of finished) expect(r.calls.filter((c) => c[0] === "order").map((c) => c[1])).toEqual(["number", "id"]);
+    expect(finished.some((r) => r.calls.some((c) => c[0] === "limit"))).toBe(false);
+
+    state.reads = [];
+    state.answers.jobs = { rows: [] };
+    state.answers.due_invoices = { rows: Array.from({ length: 250 }, (_, i) => ({ job_id: `monthly-${i}`, month: "2026-11-01" })) };
+    await readyJobs("co");
+    const byId = readsOf("jobs").flatMap((r) => r.calls.filter((c) => c[0] === "in" && c[1] === "id").map((c) => (c[2] as string[]).length));
+    expect(byId).toEqual([100, 100, 50]);
+  });
+
   it("carries on without autopay or monthly billing, but fails rather than list part of the jobs", async () => {
     state.answers.jobs = { rows: [job(1)] };
     state.answers.jobs_with_visits_to_invoice = { rows: [job(2)] };
