@@ -30,6 +30,7 @@
     "./weather": "./src/weather.ts",
     "./visitPeople": "./src/visitPeople.ts",
     "./visitExtras": "./src/visitExtras.ts",
+    "./priceChange": "./src/priceChange.ts",
     "./ical": "./src/ical.ts",
     "./automations": "./src/automations.ts",
     "./autopay": "./src/autopay.ts",

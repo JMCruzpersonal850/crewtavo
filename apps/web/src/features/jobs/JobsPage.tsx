@@ -20,6 +20,7 @@ import { titleOrClientFilter, useStatusCounts } from "@/lib/listing";
 import { firstRows } from "@/lib/paging";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
+import { ChangePricesDialog } from "./ChangePricesDialog";
 import { NewJobDialog, useCrews } from "./JobDialogs";
 
 /** Each tab's job_state values: an active job's is late, today, upcoming, unscheduled or paused, another job's is its status. */
@@ -83,6 +84,9 @@ export function JobsPage() {
   const today = todayIn(company.timezone);
   const queryClient = useQueryClient();
   const [assigning, setAssigning] = useState(false);
+  // Change prices across repeating jobs: the office with Quotes and sales (the database checks the same).
+  const canChangePrices = hasRole(session, "admin", "office") && can(session, "sales");
+  const [pricing, setPricing] = useState(false);
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => setLimit(PAGE), [filter, kind, term]);
 
@@ -120,7 +124,15 @@ export function JobsPage() {
 
   return (
     <>
-      <PageHeader title="Jobs" actions={canSell && <Button variant="primary" icon="plus" onClick={() => setParams({ new: "1" }, { replace: true })}>New job</Button>} />
+      <PageHeader
+        title="Jobs"
+        actions={
+          <>
+            {canChangePrices && <Button icon="dollar" onClick={() => setPricing(true)}>Change prices</Button>}
+            {canSell && <Button variant="primary" icon="plus" onClick={() => setParams({ new: "1" }, { replace: true })}>New job</Button>}
+          </>
+        }
+      />
       <div className="toolbar">
         <div className="input-group">
           <span className="addon"><Icon name="search" size={16} /></span>
@@ -205,6 +217,7 @@ export function JobsPage() {
         </div>
       )}
       <NewJobDialog open={params.get("new") === "1"} onClose={() => setParams({}, { replace: true })} onCreated={(id) => navigate(`/jobs/${id}`)} />
+      {pricing && <ChangePricesDialog picked={selection.ids} onClose={() => setPricing(false)} onChanged={() => void refresh()} />}
       {assigning && (
         <AssignCrewDialog
           jobs={rows.filter((j) => selection.has(j.id))}
