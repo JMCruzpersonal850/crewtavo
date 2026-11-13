@@ -17,7 +17,7 @@ vi.mock("../src/lib/notify", async (original) => ({
 }));
 
 const notify = await import("../src/lib/notify");
-const { buildContext, executeRun, loadContext, officeVars, visitNoticeSkip, visitWhen, withEvent } = await import("../src/services/automations");
+const { buildContext, executeRun, loadContext, officeVars, reminderSkip, visitNoticeSkip, visitWhen, withEvent } = await import("../src/services/automations");
 const { adminClient } = await import("../src/lib/supabase");
 const { readClientLink } = await import("../src/lib/links");
 const sendEmail = vi.mocked(notify.sendEmail);
@@ -245,5 +245,33 @@ describe("the engine, on a visit booked, moved or cancelled", () => {
     const calls = world("visit.reminder", { automation_rules: [rule("visit.reminder")] });
     expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("done");
     expect(calls.filter((c) => c.path === "rpc/visit_notice_is_repeat")).toEqual([]);
+  });
+});
+
+describe("the day-before reminder", () => {
+  const ctx = (over: Row = {}) => ({ visit: { status: "scheduled", scheduled_on: "2026-10-29", starts_at: null, ...over } });
+
+  it("goes for the day it was for, whatever time the visit has by then", () => {
+    expect(reminderSkip(ctx(), "2026-10-29")).toBeNull();
+    expect(reminderSkip(ctx({ starts_at: "2026-10-29T18:00:00Z" }), "2026-10-29")).toBeNull();
+    // An event that doesn't say its day, and a record that isn't a visit.
+    expect(reminderSkip(ctx(), null)).toBeNull();
+    expect(reminderSkip({}, "2026-10-29")).toBeNull();
+  });
+
+  it("isn't sent for a day the visit has left, or a visit that came off the schedule", () => {
+    expect(reminderSkip(ctx({ scheduled_on: "2026-11-05" }), "2026-10-29")).toBe("The visit moved to another day, and is reminded the day before that one");
+    expect(reminderSkip(ctx({ status: "cancelled" }), "2026-10-29")).toBe("The visit has started or is off the schedule");
+    expect(reminderSkip(ctx({ status: "unscheduled", scheduled_on: null }), "2026-10-29")).toBe("The visit has started or is off the schedule");
+  });
+
+  it("is held back by the engine when the visit moved between the event and the email", async () => {
+    let calls = world("visit.reminder", { automation_rules: [rule("visit.reminder")], activity: [event("visit.reminder", { scheduled_on: "2026-10-28" })] });
+    expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("skipped");
+    expect(finished(calls)[0]).toMatchObject({ p_status: "skipped", p_error: "The visit moved to another day, and is reminded the day before that one" });
+    expect(sendEmail).not.toHaveBeenCalled();
+    calls = world("visit.reminder", { automation_rules: [rule("visit.reminder")], activity: [event("visit.reminder", { scheduled_on: "2026-10-29" })] });
+    expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("done");
+    expect(emailed()[0]!.text).toContain("12 Oak St, Radford, VA on Thursday, October 29 at 9:00 AM.");
   });
 });

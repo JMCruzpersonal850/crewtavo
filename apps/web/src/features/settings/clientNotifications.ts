@@ -112,7 +112,7 @@ export const CLIENT_NOTIFICATIONS: ClientNotification[] = [
   {
     label: "Visit and assessment reminders",
     visit: true,
-    note: "From 8 in the morning the day before, for every visit and assessment, a recurring job's too.",
+    note: "From 8 in the morning the day before, for every visit and assessment, a recurring job's too. A visit moved to another day after its reminder went gets one for its new day.",
     recipe: {
       template_key: "visit_reminder",
       name: "Remind clients the day before a visit",

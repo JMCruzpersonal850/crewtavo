@@ -502,6 +502,27 @@ export function visitNoticeSkip(ctx: Pick<RunContext, "client" | "company" | "vi
   return null;
 }
 
+/**
+ * Why a day-before reminder isn't sent after all; null when it goes. `day` is the day the reminder
+ * was for (its event's own). A visit that has left that day since is reminded the day before its
+ * new one (public.emit_visit_reminders goes by the day), and one that came off the schedule isn't
+ * reminded at all.
+ */
+export function reminderSkip(ctx: Pick<RunContext, "visit">, day: string | null): string | null {
+  if (!ctx.visit) return null;
+  if (ctx.visit.status !== "scheduled") return "The visit has started or is off the schedule";
+  if (day && ctx.visit.scheduled_on !== day) return "The visit moved to another day, and is reminded the day before that one";
+  return null;
+}
+
+/** The day a reminder run's event was for; null when it doesn't say. */
+async function reminderDay(admin: Db, companyId: string, activityId: number | null | undefined): Promise<string | null> {
+  if (activityId == null) return null;
+  const { data } = await admin.from("activity").select("data").eq("company_id", companyId).eq("id", activityId).eq("verb", "visit.reminder").maybeSingle();
+  const day = (data?.data as Record<string, unknown> | null | undefined)?.scheduled_on;
+  return typeof day === "string" && day ? day : null;
+}
+
 /** The deleted visit a "cancelled" run is about, from the event that queued it; null when the event doesn't say. */
 async function goneVisit(admin: Db, companyId: string, activityId: number | null | undefined): Promise<GoneVisit | null> {
   if (activityId == null) return null;
@@ -870,6 +891,11 @@ export async function executeRun(env: Env, admin: Db, run: RunRow, baseUrl: stri
       const { data: repeat, error: repeatError } = await admin.rpc("visit_notice_is_repeat", { p_run: run.id });
       if (repeatError) throw new Error(repeatError.message);
       if (repeat) return finish(admin, run, "skipped", [], "Another day of the same multi-day work says it");
+    }
+    // A reminder for a day the visit has left since, or for a visit that came off the schedule, isn't sent.
+    if (rule.trigger === "visit.reminder") {
+      const why = reminderSkip(ctx, await reminderDay(admin, run.company_id, run.activity_id));
+      if (why) return finish(admin, run, "skipped", [], why);
     }
     // The actions this trigger takes (a sub's offer: notices to the office and tasks), whatever the
     // rule says: a rule written straight to the database doesn't get to text the client a sub's price.

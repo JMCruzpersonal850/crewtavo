@@ -355,7 +355,8 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
 - **Communication:** email from your own mailbox, two-way texting through your own Twilio account
   (connected on the Apps page, no server settings), a message center, and notifications in the app,
   by email, by text or as phone push, each person's choice. Clients are told when a visit is
-  booked, moved or cancelled, reminded the day before and texted when the crew is on the way; each
+  booked, moved or cancelled, reminded the day before (again for the new day when a visit moves
+  after its reminder went) and texted when the crew is on the way; each
   message is a switch in Settings → Client notifications. A booking, move or cancelling goes ten
   minutes after the change, so a visit dragged twice is one message and one put back is none, and a
   route being re-ordered or a recurring job's whole schedule changing messages nobody. (A business
