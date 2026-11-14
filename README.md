@@ -243,7 +243,9 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
       choice. Turn it on and the phone reminds the crew to start and finish a visit as they get to
       the property and leave, or starts and stops their clock there itself, while Crewtavo is open
       on the phone. It installs like an app on Android and iPhone, keeps working with no signal and
-      catches up when the connection is back.</p>
+      catches up when the connection is back. Each crew member can use it in Spanish: their day,
+      the clock, chat, guides, timesheets and the notifications they get, while the office stays in
+      English.</p>
       <p><strong>For your clients.</strong> The Client Hub, with no account to create: approve
       quotes, pay invoices (with an optional tip), see the next visit, ask for changes, request
       work and message the office. A booking form on your website, or its link, lets people pick a

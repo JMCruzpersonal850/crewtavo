@@ -7,7 +7,35 @@ quote, invoice, Client Hub, booking form, emails and texts in Spanish, while the
 working in English. Business content stays as the business typed it: service names, checklist
 items, SOPs and notes.
 
-Nothing here is built yet. This is the plan.
+**Built (2026-11-14): the crew's side, as Jobber offers it.** A team member chooses Español in
+Settings → Profile → Language, or answers My day's question when their phone speaks Spanish
+("¿Usar Crewtavo en español?"), or picks it under the sign-in screens. What's built:
+
+- The layer: `packages/core/src/i18n` (`t`, `t.plural`, contexts, `msg`, `translator(locale)`),
+  `<T>` and the locale store in `apps/web/src/lib/i18n.tsx`, and the Spanish catalog in
+  `packages/core/src/i18n/es/` with its `GLOSSARY.md`. The web app loads Spanish as its own file,
+  only for someone using it; the service worker keeps it for no signal.
+- `profiles.locale` (`en`, `es`, null), in `/me` and its PATCH and on the team list (an "Español"
+  chip). Null follows the choice made on that device, else English: a phone set to Spanish only
+  makes My day ask, so nobody's app changes language without them choosing it.
+- In Spanish: the shell (navigation, account menu, sign-in and sign-out, dialogs, empty states,
+  errors and toasts), the field app (My day, the visit, the clock and crew clock, the clock at the
+  property, checklists' chrome, photos and the photo editor, adding work, materials, receipts and
+  their reading, equipment hours and maintenance from My day, plans, billing in the field, a sub's
+  My jobs and My paperwork), team chat, reading guides, the schedule as a crew sees it, timesheets,
+  their profile and notification settings. Dates, times, money and numbers are `es-US`.
+- Notifications to a team member (the bell, push, email and texts): read by their English shape,
+  not rewritten in the database (section 6 changes there): `packages/core/src/i18n/es/notices.ts`,
+  used by `services/delivery.ts` and the bell. Old rows, and rows an older server writes during an
+  update, read in Spanish too. Error messages a crew can meet are in `es/errors.ts` the same way.
+- Checks: `packages/core/test/i18n.test.ts` (every t()/msg()/<T> text has its Spanish, nothing left
+  over, placeholders match) and `apps/web/test/i18n.test.ts` (the crew's screens, `COVERED` in
+  `scripts/i18n.mjs`, have no English outside t()). `node scripts/i18n.mjs report <folder>` lists
+  what's left anywhere; `missing` prints the lines to write; `wrap` does the plain part of a folder.
+
+Not built yet: the client side (phase 2), the office (phase 3), invites in a language, the KB's
+Spanish search and Ask in the person's language (section 7), and notifications by key (section 6:
+the shape tables do it for now). Everything below is still the plan for those.
 
 ---
 
