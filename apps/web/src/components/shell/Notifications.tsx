@@ -16,8 +16,8 @@ import { Skeleton } from "../ui/Skeleton";
 import { getLocale, t } from "@/lib/i18n";
 import { translateNotice } from "@crewtavo/core/i18n/patterns";
 
-/** A notification as the database or the server wrote it (in English), in the app's language. */
-const inMyLanguage = <N extends { title: string; body: string | null }>(n: N): N => translateNotice(getLocale(), n);
+/** A notification as the database or the server wrote it (in English), in the app's language: read by its kind, and left whole in English when it isn't one the app knows. */
+const inMyLanguage = <N extends { kind: string; title: string; body: string | null }>(n: N): N => translateNotice(getLocale(), n);
 
 // By notification kind, and by the first word of an activity's verb ("autopay.failed", "payment_method.expiring") or its subject.
 const ICONS: Record<string, IconName> = { quote: "quote", invoice: "invoice", request: "requests", job: "job", visit: "calendar", client: "clients", equipment: "truck", subs: "users", jobs: "job", applicant: "user", autopay: "card", payment_method: "card" };
