@@ -297,8 +297,8 @@ describe("Google reviews", () => {
   it("are tidied once a day: copies the sync stopped seeing are removed, in one database call, with a tally", async () => {
     expect(TASKS).toContain("review_tidy");
     expect(CRON_TASKS["55 4 * * *"]).toEqual(["review_tidy"]);
-    const calls = serve((call) => (call.path === "rpc/tidy_reviews" ? { removed: 3, blanked: 1, figures: 1 } : []));
-    expect(await runTask("review_tidy", env)).toEqual({ removed: 3, blanked: 1, figures: 1 });
+    const calls = serve((call) => (call.path === "rpc/tidy_reviews" ? { removed: 3, blanked: 1, figures: 1, notices: 2 } : []));
+    expect(await runTask("review_tidy", env)).toEqual({ removed: 3, blanked: 1, figures: 1, notices: 2 });
     // Nothing is asked of Google, and nobody's review asks are touched: the database leaves the clients as they were.
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST rpc/tidy_reviews"]);
     serve(() => Response.json({ message: "down" }, { status: 500 }));
@@ -308,7 +308,7 @@ describe("Google reviews", () => {
   it("are kept for the same number of days by the server and the database", () => {
     const migration = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261113001860_google_reviews_kept_while_fresh.sql", import.meta.url)), "utf8");
     const days = [...migration.matchAll(/interval '(\d+) days'/g)].map((m) => Number(m[1]));
-    expect(days).toHaveLength(3);
+    expect(days).toHaveLength(4);
     expect(new Set(days)).toEqual(new Set([REVIEW_FRESH_DAYS]));
     expect(REVIEW_FRESH_DAYS).toBeLessThan(30);
     const now = Date.UTC(2026, 10, 14, 12);

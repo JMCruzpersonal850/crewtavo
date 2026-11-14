@@ -4,8 +4,9 @@
 -- its client stopped from being asked again and its ask counted, and the office's match is taken
 -- up when the review comes back in; a review removed any other way still lifts the stop; a review
 -- Google says is gone loses its words, the reviewer's name and photo at once, however it's marked,
--- and gets them back if it returns; and Google's own average and count are forgotten for a sync
--- that hasn't heard them in that long.
+-- and gets them back if it returns; Google's own average and count are forgotten for a sync that
+-- hasn't heard them in that long; and a notification about a review loses the reviewer's name and
+-- words after the same time.
 -- Run with scripts/test-db.sh (plain Postgres + prelude.sql). Any failed check stops with an error.
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -102,7 +103,7 @@ reset role;
 set local role service_role;
 select public.tidy_reviews() as tidied \gset
 reset role;
-select tgrf.check(:'tidied'::jsonb = '{"removed": 3, "blanked": 0, "figures": 0}', 'three old copies are removed');
+select tgrf.check(:'tidied'::jsonb = '{"removed": 3, "blanked": 0, "figures": 0, "notices": 0}', 'three old copies are removed');
 select tgrf.check((select string_agg(review_id, ',' order by review_id) from public.reviews where company_id = :'co') = 'r-edge,r-new', 'and a copy a little under 29 days old stays');
 select tgrf.check((select count(*) = 2 from public.clients where id in (:'ana', :'bob') and reviewed_at is not null), 'the clients who left them are still counted as having reviewed');
 select tgrf.check((select reviewed_at is not null from public.review_requests where id = :'ana_ask'), 'the ask that led to one still counts');
@@ -155,7 +156,7 @@ update public.reviews set seen_at = now() - interval '30 days' where company_id 
 set local role service_role;
 select public.tidy_reviews() as tidied \gset
 reset role;
-select tgrf.check(:'tidied'::jsonb = '{"removed": 1, "blanked": 1, "figures": 0}', 'the tidy clears any gone review that still has words, and removes the next copy to get old');
+select tgrf.check(:'tidied'::jsonb = '{"removed": 1, "blanked": 1, "figures": 0, "notices": 0}', 'the tidy clears any gone review that still has words, and removes the next copy to get old');
 select tgrf.check((select comment is null and reviewer_name is null from public.reviews where company_id = :'co' and review_id = 'r-ana'), 'so none is left');
 update public.reviews set seen_at = now() - interval '30 days' where company_id = :'co' and review_id = 'r-ana';
 set local role service_role;
@@ -187,6 +188,29 @@ update public.review_syncs set locked_until = null where company_id = :'co';
 select tgrf.check((public.tidy_reviews() ->> 'figures')::int = 1, 'figures a sync hasn''t heard for that long are forgotten');
 select tgrf.check((select average_rating is null and total_reviews is null from public.review_syncs where company_id = :'co'), 'both of them');
 select tgrf.check((public.tidy_reviews() ->> 'figures')::int = 0, 'once');
+reset role;
+
+\o
+\echo 'Notifications about a review'
+\o /dev/null
+insert into public.notifications (company_id, user_id, kind, title, body, link, created_at) values
+  (:'co', :'mia', 'review', 'Dana Whitfield left a 5-star review', 'Great job on the lawn!', '/marketing?tab=reviews&review=1', now() - interval '30 days'),
+  (:'co', :'mia', 'review_low', 'Cara L. changed their review to 2 stars', 'Missed a spot.', '/marketing?tab=reviews&review=2', now() - interval '45 days'),
+  (:'co', :'mia', 'review', 'Sam left a review', null, '/marketing?tab=reviews&review=3', now() - interval '40 days'),
+  (:'co', :'mia', 'review', 'Someone left a 4-star review', null, '/marketing?tab=reviews&review=4', now() - interval '40 days'),
+  (:'co', :'mia', 'review', 'Dee New left a 5-star review', 'Just what we wanted.', '/marketing?tab=reviews&review=5', now() - interval '28 days'),
+  (:'co', :'mia', 'review_access', 'Your Google reviews are in: 5 reviews, 4.6 average', 'See them, and reply, in Marketing → Reviews.', '/marketing?tab=reviews', now() - interval '60 days'),
+  (:'co', :'mia', 'info', 'Dana Whitfield left a note', 'Gate code changed.', '/clients', now() - interval '60 days');
+set local role service_role;
+select tgrf.check((public.tidy_reviews() ->> 'notices')::int = 3, 'three notifications over 29 days old still named a reviewer or carried their words');
+reset role;
+select tgrf.check((select string_agg(title || coalesce(' | ' || body, ''), ' ; ' order by link) from public.notifications where company_id = :'co' and kind in ('review', 'review_low')) =
+  'Someone left a 5-star review ; Someone changed their review to 2 stars ; Someone left a review ; Someone left a 4-star review ; Dee New left a 5-star review | Just what we wanted.',
+  'they keep that a review came in, its stars and its link, and a newer one is left whole');
+select tgrf.check((select count(*) = 2 from public.notifications where company_id = :'co' and kind in ('review_access', 'info') and body is not null and title not like 'Someone%'),
+  'notifications about anything else are left alone');
+set local role service_role;
+select tgrf.check((public.tidy_reviews() ->> 'notices')::int = 0, 'and a second run changes nothing');
 reset role;
 
 rollback;

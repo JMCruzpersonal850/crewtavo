@@ -576,15 +576,16 @@ export async function syncDueReviews(env: Env) {
 /**
  * The review_tidy task, once a day (tidy_reviews): the copies the sync hasn't seen on Google for
  * REVIEW_FRESH_DAYS are removed, whyever it stopped seeing them (disconnected with the reviews
- * kept, a sign-in that stopped working, Google's approval gone), and Google's average and count
- * are forgotten for a sync that hasn't heard them in that long. Nobody is asked for a review again
- * because of it: a copy that got old leaves its client as they were.
+ * kept, a sign-in that stopped working, Google's approval gone), Google's average and count are
+ * forgotten for a sync that hasn't heard them in that long, and a notification about a review that
+ * old keeps only that one came in. Nobody is asked for a review again because of it: a copy that
+ * got old leaves its client as they were.
  */
 export async function tidyReviews(env: Env) {
   const { data, error } = await adminClient(env).rpc("tidy_reviews");
   if (error) throw new Error(error.message);
-  const out = (data ?? {}) as { removed?: number; blanked?: number; figures?: number };
-  return { removed: out.removed ?? 0, blanked: out.blanked ?? 0, figures: out.figures ?? 0 };
+  const out = (data ?? {}) as { removed?: number; blanked?: number; figures?: number; notices?: number };
+  return { removed: out.removed ?? 0, blanked: out.blanked ?? 0, figures: out.figures ?? 0, notices: out.notices ?? 0 };
 }
 
 // ---------------------------------------------------------------------------------------------

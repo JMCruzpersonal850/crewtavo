@@ -12,6 +12,8 @@
 --                            anymore, whatever the reason (disconnected with the reviews kept, a
 --                            sign-in that stopped working, Google's approval taken away), and forgets
 --                            Google's average and count for a sync that hasn't heard them in that long.
+--                            A notification about a review keeps the reviewer's name and the start
+--                            of their words for the same 29 days, then only says a review came in.
 --   Taken off Google         a review marked deleted keeps no words, reviewer name or photo link from
 --                            that moment (review_gone_keeps_no_words), and the ones marked before
 --                            this lose theirs here. Its row goes with the rest once it isn't fresh.
@@ -86,13 +88,15 @@ create policy reviews_fresh on public.reviews as restrictive for select to authe
 
 -- The review_tidy task (apps/api/src/services/googleReviews.ts tidyReviews), once a day. Says how
 -- many copies it removed, how many gone reviews still had words to lose (none, once the trigger
--- above is in), and how many syncs' Google figures it forgot.
+-- above is in), how many syncs' Google figures it forgot, and how many notifications about a
+-- review it took the reviewer's name and words out of.
 create function public.tidy_reviews() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   v_removed integer;
   v_blanked integer;
   v_figures integer;
+  v_notices integer;
 begin
   perform set_config('crewtavo.review_tidy', 'on', true);
   delete from public.reviews where seen_at <= now() - interval '29 days';
@@ -108,7 +112,16 @@ begin
      and coalesce(last_synced_at, '-infinity') <= now() - interval '29 days'
      and (locked_until is null or locked_until < now());
   get diagnostics v_figures = row_count;
-  return jsonb_build_object('removed', v_removed, 'blanked', v_blanked, 'figures', v_figures);
+
+  -- The office's notifications about a review carry the reviewer's name and the start of their
+  -- words (claim_review_notices). After the same 29 days one keeps only that a review came in, its
+  -- stars and its link: "Someone left a 5-star review", the words an anonymous one always had.
+  update public.notifications n
+     set title = regexp_replace(n.title, '^.* (left a |changed their review to )', 'Someone \1'), body = null
+   where n.kind in ('review', 'review_low') and n.created_at <= now() - interval '29 days'
+     and (n.body is not null or n.title !~ '^Someone (left a |changed their review to )');
+  get diagnostics v_notices = row_count;
+  return jsonb_build_object('removed', v_removed, 'blanked', v_blanked, 'figures', v_figures, 'notices', v_notices);
 end $$;
 
 revoke all on function private.review_gone_keeps_no_words() from public;
