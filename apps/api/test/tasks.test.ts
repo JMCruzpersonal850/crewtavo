@@ -2,7 +2,10 @@
  * Background tasks against a stand-in for PostgREST and the forecast: fetch is stubbed, and each
  * test answers the requests it expects. (What the database functions do is tested in supabase/tests.)
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath, URL } from "node:url";
 import { addDays } from "@crewtavo/core";
+import { isFresh, REVIEW_FRESH_DAYS, reviewsFreshSince } from "@crewtavo/core/reviews";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { cronMatches } from "../src/lib/cron";
@@ -289,6 +292,28 @@ describe("Google reviews", () => {
     expect(await runTask("review_sync", env)).toEqual({ due: 2, synced: 0, waiting: 2, problems: 0, errors: 0 });
     expect(calls.find((c) => c.path === "rpc/review_syncs_due")!.body).toEqual({ p_limit: 25 });
     expect(calls.some((c) => c.url.host !== "example.supabase.co")).toBe(false);
+  });
+
+  it("are tidied once a day: copies the sync stopped seeing are removed, in one database call, with a tally", async () => {
+    expect(TASKS).toContain("review_tidy");
+    expect(CRON_TASKS["55 4 * * *"]).toEqual(["review_tidy"]);
+    const calls = serve((call) => (call.path === "rpc/tidy_reviews" ? { removed: 3, blanked: 1, figures: 1 } : []));
+    expect(await runTask("review_tidy", env)).toEqual({ removed: 3, blanked: 1, figures: 1 });
+    // Nothing is asked of Google, and nobody's review asks are touched: the database leaves the clients as they were.
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST rpc/tidy_reviews"]);
+    serve(() => Response.json({ message: "down" }, { status: 500 }));
+    await expect(runTask("review_tidy", env)).rejects.toThrow("down");
+  });
+
+  it("are kept for the same number of days by the server and the database", () => {
+    const migration = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261113001860_google_reviews_kept_while_fresh.sql", import.meta.url)), "utf8");
+    const days = [...migration.matchAll(/interval '(\d+) days'/g)].map((m) => Number(m[1]));
+    expect(days).toHaveLength(3);
+    expect(new Set(days)).toEqual(new Set([REVIEW_FRESH_DAYS]));
+    expect(REVIEW_FRESH_DAYS).toBeLessThan(30);
+    const now = Date.UTC(2026, 10, 14, 12);
+    expect(reviewsFreshSince(now)).toBe("2026-10-16T12:00:00.000Z");
+    expect([isFresh("2026-10-16T12:00:01Z", now), isFresh("2026-10-16T12:00:00Z", now), isFresh(null, now)]).toEqual([true, false, false]);
   });
 });
 

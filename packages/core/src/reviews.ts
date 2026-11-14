@@ -258,6 +258,24 @@ export const LOCATION_PROBLEMS: Record<LocationProblem, string> = {
 };
 
 // ---------------------------------------------------------------------------------------------
+// Fresh reviews (20261113001860_google_reviews_kept_while_fresh.sql)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A review is a copy of what's on Google, kept and shown only while the sync keeps seeing it there:
+ * for this many days after it last did (reviews.seen_at). 29, so the tidy that runs once a day never
+ * leaves a copy past 30. The database's policy and tidy_reviews use the same number, and a test
+ * compares them.
+ */
+export const REVIEW_FRESH_DAYS = 29;
+
+/** The time a review must have been seen on Google since, to be shown or reused anywhere. */
+export const reviewsFreshSince = (now: Date | number = Date.now()): string => new Date(Number(now) - REVIEW_FRESH_DAYS * 86_400_000).toISOString();
+
+/** Whether something last heard from Google at `at` (a review's seen_at, a sync's last_synced_at) is still fresh. */
+export const isFresh = (at: string | null | undefined, now: Date | number = Date.now()): boolean => Boolean(at) && Date.parse(at!) > Number(now) - REVIEW_FRESH_DAYS * 86_400_000;
+
+// ---------------------------------------------------------------------------------------------
 // Reviews shown on quotes (settings.quote_reviews, 20261113001130_reviews_on_quotes.sql)
 // ---------------------------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ import { checkStorage } from "./services/storageUsage";
 import { emitInactiveClients } from "./services/automatedCampaigns";
 import { processAutomations } from "./services/automations";
 import { processCampaigns } from "./services/campaigns";
-import { syncDueReviews } from "./services/googleReviews";
+import { syncDueReviews, tidyReviews } from "./services/googleReviews";
 import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/social";
 import { postcardsTask } from "./services/postcards";
 import { tidyShowcaseCopies } from "./services/showcases";
@@ -37,7 +37,7 @@ import { sendScheduledPayments } from "./services/installments";
 export const TASKS = [
   "automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address",
   "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync",
-  "social", "backups", "profits", "installments", "postcards", "pins",
+  "social", "backups", "profits", "installments", "postcards", "pins", "review_tidy",
 ] as const;
 export type TaskName = (typeof TASKS)[number];
 
@@ -79,6 +79,8 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   // Map spots with no source kept, looked up again a few at a time; only a server with a Google
   // server key has any to do (services/properties.ts).
   "3-59/5 * * * *": ["pins"],
+  // Copies of Google reviews the sync has stopped seeing on Google are removed (services/googleReviews.ts).
+  "55 4 * * *": ["review_tidy"],
 };
 
 export async function runTask(name: TaskName, env: Env): Promise<Record<string, unknown>> {
@@ -148,6 +150,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return postcardsTask(env);
     case "pins":
       return relocatePins(env, adminClient(env));
+    case "review_tidy":
+      return tidyReviews(env);
   }
 }
 
