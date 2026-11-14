@@ -267,6 +267,15 @@ describe("notifications to the team, in Spanish", () => {
     });
   });
 
+  it("tells someone their time was changed or deleted, with what it was, what it is now and the reason as it was typed", () => {
+    expect(es("time", "Pat Owner changed your time on Mon Nov 9", "It was 8:00 AM to 12:00 PM.\nIt's now 8:00 AM to 11:30 AM.\nIt's now marked as a break.\nWhy: Left at 11:30 on Mon Nov 9")).toEqual({
+      title: "Pat Owner cambió tu tiempo del lun, 9 de nov",
+      body: "Era de las 8:00 a.m. a las 12:00 p.m.\nAhora es de las 8:00 a.m. a las 11:30 a.m.\nAhora está marcado como descanso.\nMotivo: Left at 11:30 on Mon Nov 9",
+    });
+    expect(es("time", "Lou Lead deleted your time on Tue Nov 10", "It was running since 1:05 PM.")).toEqual({ title: "Lou Lead eliminó tu tiempo del mar, 10 de nov", body: "Estaba corriendo desde la 1:05 p.m." });
+    expect(es("time", "Pat Owner changed your time on Wed Nov 11", "It was running since 8:00 AM.\nIt's now 8:00 AM to 10:00 AM.").body).toBe("Estaba corriendo desde las 8:00 a.m.\nAhora es de las 8:00 a.m. a las 10:00 a.m.");
+  });
+
   it("keeps a title whole when it has \" on \" or \": \" in it", () => {
     expect(es("schedule", "Work on deck on Thu Oct 15, 9:00 AM was cancelled").title).toBe("Se canceló Work on deck del jue, 15 de oct, 9:00 a.m.");
     expect(es("schedule", "You're on Deck: stage 2: Thu Oct 15, 9:00 AM").title).toBe("Te pusieron en Deck: stage 2: jue, 15 de oct, 9:00 a.m.");

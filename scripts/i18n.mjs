@@ -38,7 +38,7 @@ export const COVERED = [
   ...["SchedulePage.tsx", "TimeGrid.tsx", "VisitDetails.tsx", "ScheduleMap.tsx"].map((f) => `apps/web/src/features/schedule/${f}`),
   // Their own profile and notifications, and timesheets.
   ...["NotificationSettings.tsx", "ProfileSettings.tsx", "SpareKeysCard.tsx", "CalendarFeedCard.tsx", "ProfilePhoto.tsx"].map((f) => `apps/web/src/features/settings/${f}`),
-  ...["TimesheetsPage.tsx", "clockPlace.ts", "weekData.ts"].map((f) => `apps/web/src/features/timesheets/${f}`),
+  ...["TimesheetsPage.tsx", "TimeHistory.tsx", "timeChanges.ts", "clockPlace.ts", "weekData.ts"].map((f) => `apps/web/src/features/timesheets/${f}`),
   // The field app.
   "apps/web/src/features/field",
   // What the field app opens: receipts, materials, equipment hours, plans, paperwork, sending an invoice.

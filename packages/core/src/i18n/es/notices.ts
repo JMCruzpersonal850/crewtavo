@@ -39,13 +39,23 @@ export const NOTICES: readonly NoticeGroup[] = [
   // The clock
   {
     kind: "time",
-    from: ["public.clock_upkeep"],
+    from: ["public.clock_upkeep", "private.time_entry_changed"],
     titles: [
+      // Someone else changed or deleted their time (the record of it is on Timesheets, under History).
+      ["{name} changed your time on {date}", "{name} cambió tu tiempo del {date}"],
+      ["{name} deleted your time on {date}", "{name} eliminó tu tiempo del {date}"],
       ["Your clock was stopped for you", "Tu reloj se paró solo"],
       ["Your clock is still running", "Tu reloj sigue corriendo"],
       ["{name}'s clock is still running", "El reloj de {name} sigue corriendo"],
     ],
     bodies: [
+      ["It was running since {time}.", "Estaba corriendo desde las {time}."],
+      ["It was {time} to {time2}.", "Era de las {time} a las {time2}."],
+      ["It's now running since {time}.", "Ahora corre desde las {time}."],
+      ["It's now {time} to {time2}.", "Ahora es de las {time} a las {time2}."],
+      ["It's now marked as {wordType}.", "Ahora está marcado como {wordType}."],
+      // Their reason, in their own words.
+      ["Why: {reason}", "Motivo: {reason}"],
       ["It had been running since {time}, so it was stopped at {time2}. Fix the end time on Timesheets if that's wrong.", "Estaba corriendo desde las {time}, así que se paró a las {time2}. Corrige la hora de salida en Hojas de horas si no está bien."],
       ["It started at {time} and was still running, so it was stopped at {time2}. Fix the end time on Timesheets if that's wrong.", "Empezó a las {time} y seguía corriendo, así que se paró a las {time2}. Corrige la hora de salida en Hojas de horas si no está bien."],
       // The database writes "1 hours".
@@ -162,4 +172,11 @@ export const NOTICE_WORDS: Record<string, string> = {
   document: "documento",
   hours: "horas",
   miles: "millas",
+  // What a time entry is marked as (private.time_entry_changed)
+  "a visit": "visita",
+  "an assessment": "evaluación",
+  driving: "manejo",
+  "shop time": "tiempo en el taller",
+  "a break": "descanso",
+  "other work": "otro trabajo",
 };

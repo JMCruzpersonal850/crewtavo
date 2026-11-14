@@ -1,4 +1,8 @@
-/** Time for the week: the running clock, hours per person per day, edits, and approval for payroll. */
+/**
+ * Time for the week: the running clock, hours per person per day, edits, and approval for payroll.
+ * Every change to an entry is on record (timeChanges.ts): an edited entry says who changed it, each
+ * entry has its History, and time that was deleted stays listed under the person it belonged to.
+ */
 import { breakPay, isUnpaidBreak, SHORT_BREAK_MINUTES } from "@crewtavo/core/breaks";
 import { localDate, localTime } from "@crewtavo/core/time";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,6 +31,8 @@ import { timeEntryProblem } from "@crewtavo/core/pay";
 import { atPropertyNote, describePlace, type EntryPlaces, type StoredPlace } from "./clockPlace";
 import { entrySpan } from "./entrySpan";
 import { PayPeriods } from "./PayPeriods";
+import { DeleteTimeDialog, TimeHistoryDialog } from "./TimeHistory";
+import { editNote, sortEdits, spanLabel, type TimeChange } from "./timeChanges";
 import { loadWeek, type Entry, type TeamMember, type WeekData } from "./weekData";
 import { memberName } from "../subs/memberName";
 import { inEnglish, intlLocale, t } from "@/lib/i18n";
@@ -53,6 +59,9 @@ export function TimesheetsPage() {
   const seesPay = hasRole(session, "admin", "office") && can(session, "job_costs");
   const [view, setView] = useState<"hours" | "pay">("hours");
   const [editing, setEditing] = useState<Entry | "new" | null>(null);
+  // The entry whose history is open (one that's deleted has only its record), and the one being deleted.
+  const [history, setHistory] = useState<{ id: string; what: string } | null>(null);
+  const [deleting, setDeleting] = useState<Entry | null>(null);
   const days = Array.from({ length: 7 }, (_, i) => addDaysIso(week, i));
 
   const weekKey = ["time", session.company.id, week];
@@ -64,6 +73,7 @@ export function TimesheetsPage() {
     queryClient.invalidateQueries({ queryKey: ["time", session.company.id] });
     queryClient.invalidateQueries({ queryKey: ["running-timer"] });
     queryClient.invalidateQueries({ queryKey: ["job"] });
+    queryClient.invalidateQueries({ queryKey: ["time-history"] });
   };
   const approve = useMutation({
     meta: { success: (n: number) => t.plural(n, { one: "Approved {count} entry", other: "Approved {count} entries" }) },
@@ -106,10 +116,14 @@ export function TimesheetsPage() {
   const color = (id: string) => data.data?.team.find((m) => m.user_id === id)?.profile?.color ?? "var(--text-3)";
   const photo = (id: string) => data.data?.team.find((m) => m.user_id === id)?.profile?.avatar_url;
   const rows = data.data?.rows ?? [];
-  const people = [...new Set(rows.map((r) => r.user_id))].sort((a, b) => name(a).localeCompare(name(b)));
+  // What's on record as edited this week, by entry, and the entries deleted from it.
+  const edits = sortEdits(data.data?.changes ?? []);
+  const people = [...new Set([...rows.map((r) => r.user_id), ...edits.deleted.map((c) => c.user_id)])].sort((a, b) => name(a).localeCompare(name(b)));
   const dayOf = (iso: string) => localDate(new Date(iso), tz);
   const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz });
   const dayLabel = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString(intlLocale(), { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  /** Which entry a history is of: "Mon, Nov 9 · 8:00 AM – 12:00 PM · Ray Crew". */
+  const whatOf = (userId: string, start: string, end: string | null) => `${dayLabel(dayOf(start))} · ${spanLabel(start, end, tz)} · ${name(userId)}`;
   const pendingAll = rows.filter((r) => r.ended_at && !r.approved_at && approvable(r.user_id)).length;
   const isThisWeek = week === mondayOf(todayIn(tz));
   const paidHours = (r: Entry) => (isUnpaidBreak(r, pay) ? 0 : hours(r.started_at, r.ended_at));
@@ -209,6 +223,8 @@ export function TimesheetsPage() {
             <EntryRows>
               {mine.map((r) => {
                 const canEdit = isOffice || (!r.approved_at && (r.user_id === session.userId || isLead));
+                const lastEdit = edits.byEntry.get(r.id)?.at(-1);
+                const openHistory = () => setHistory({ id: r.id, what: whatOf(r.user_id, r.started_at, r.ended_at) });
                 return (
                   <div key={r.id} className="card-row">
                     <span className="small strong" style={{ width: 92 }}>{dayLabel(dayOf(r.started_at))}</span>
@@ -222,31 +238,39 @@ export function TimesheetsPage() {
                           {atPropertyNote(r)}
                         </span>
                       )}
+                      {lastEdit && (
+                        <button type="button" className="link-btn small" style={{ display: "block", textAlign: "left", fontWeight: 400 }} onClick={openHistory}>
+                          {editNote(lastEdit, session.userId, name)} · {dayLabel(dayOf(lastEdit.changed_at))}
+                        </button>
+                      )}
                     </span>
                     {isUnpaidBreak(r, pay)
                       ? <span className="tabular muted" title={pay === "unpaid" ? t("Breaks aren't paid time") : t("Breaks over {minutes} minutes aren't paid time", { minutes: SHORT_BREAK_MINUTES })}>{t("{hours} h unpaid", { hours: hours(r.started_at, r.ended_at).toFixed(2) })}</span>
                       : <span className="tabular strong">{hours(r.started_at, r.ended_at).toFixed(2)} h</span>}
                     {r.auto_stopped_at && !r.approved_at && <span title={t("The clock was left running, so Crewtavo stopped it. Check the end time.")}><StatusPill label={t("Check end time")} tone="danger" /></span>}
                     {r.approved_at ? <StatusPill label={t("Approved")} tone="good" /> : r.ended_at ? <StatusPill label={t("Pending")} tone="warning" /> : <StatusPill label={t("Running")} tone="info" />}
-                    {canEdit && (
-                      <Menu
-                        triggerClassName="btn btn-sm btn-ghost btn-icon"
-                        items={[
-                          { label: t("Edit"), icon: "edit", hidden: !r.ended_at, onSelect: () => setEditing(r) },
-                          { label: t("Remove approval"), icon: "undo", hidden: !approvable(r.user_id) || !r.approved_at, onSelect: () => unapprove.mutate(r.id) },
-                          { label: t("Delete"), icon: "trash", danger: true, onSelect: () => removeLater(r) },
-                        ]}
-                      />
-                    )}
+                    <Menu
+                      triggerClassName="btn btn-sm btn-ghost btn-icon"
+                      items={[
+                        { label: t("Edit"), icon: "edit", hidden: !canEdit || !r.ended_at, onSelect: () => setEditing(r) },
+                        { label: t("History"), icon: "clock", onSelect: openHistory },
+                        { label: t("Remove approval"), icon: "undo", hidden: !canEdit || !approvable(r.user_id) || !r.approved_at, onSelect: () => unapprove.mutate(r.id) },
+                        // Their own goes at once, with Undo. Someone else's asks why first, and they're told.
+                        { label: t("Delete"), icon: "trash", danger: true, hidden: !canEdit, onSelect: () => (r.user_id === session.userId ? removeLater(r) : setDeleting(r)) },
+                      ]}
+                    />
                   </div>
                 );
               })}
             </EntryRows>
+            {edits.deleted.filter((c) => c.user_id === userId).map((c) => <DeletedRow key={c.entry_id} change={c} what={whatOf(c.user_id, c.old_started_at!, c.old_ended_at)} note={`${editNote(c, session.userId, name)} · ${dayLabel(dayOf(c.changed_at))}`} onHistory={setHistory} />)}
           </section>
         );
       })}
 
       {editing && <TimeEntryDialog entry={editing === "new" ? null : editing} team={data.data?.team ?? []} defaultDate={isThisWeek ? todayIn(tz) : week} onClose={() => setEditing(null)} onSaved={refresh} />}
+      {history && <TimeHistoryDialog entryId={history.id} what={history.what} name={name} onClose={() => setHistory(null)} />}
+      {deleting && <DeleteTimeDialog entry={deleting} person={name(deleting.user_id)} onClose={() => setDeleting(null)} onDeleted={refresh} />}
     </>
   );
 }
@@ -255,6 +279,22 @@ export function TimesheetsPage() {
 function EntryRows({ children }: { children: ReactNode }) {
   const ref = useListAnimation<HTMLDivElement>();
   return <div ref={ref}>{children}</div>;
+}
+
+/** Time that was deleted: still listed under the person, struck through, with who deleted it and why. It counts for no hours. */
+function DeletedRow({ change, what, note, onHistory }: { change: TimeChange; what: string; note: string; onHistory: (entry: { id: string; what: string }) => void }) {
+  const tz = useSession().company.timezone;
+  return (
+    <div className="card-row">
+      <span className="small strong" style={{ width: 92 }}>{what.split(" · ")[0]}</span>
+      <span className="grow">
+        <s className="tabular muted">{spanLabel(change.old_started_at!, change.old_ended_at, tz)}</s>
+        <span className="muted small" style={{ display: "block" }}>{note}{change.reason ? ` · ${t("Why: {reason}", { reason: change.reason })}` : ""}</span>
+      </span>
+      <StatusPill label={t("Deleted")} tone="muted" />
+      <Button size="sm" variant="ghost" icon="clock" onClick={() => onHistory({ id: change.entry_id, what })}>{t("History")}</Button>
+    </div>
+  );
 }
 
 /** Where the clock started and stopped, for the office and crew leads. Each place opens on a map. */
@@ -290,6 +330,9 @@ function TimeEntryDialog({ entry, team, defaultDate, onClose, onSaved }: { entry
   const [end, setEnd] = useState(entry?.ended_at ? localTime(new Date(entry.ended_at), tz) : "16:30");
   const [category, setCategory] = useState<TimerCategory>(entry?.category ?? "other");
   const [notes, setNotes] = useState(entry?.notes ?? "");
+  // Why an entry is being changed: kept with the record of the change, where whoever's time it is reads it.
+  const [reason, setReason] = useState("");
+  const theirs = entry && entry.user_id !== session.userId ? team.find((m) => m.user_id === entry.user_id) : null;
   // Null while the date or a time is cleared (past midnight means the next day).
   const span = entrySpan(date, start, end, tz);
   const length = span ? (span.endAt.getTime() - span.startAt.getTime()) / 3_600_000 : 0;
@@ -302,8 +345,9 @@ function TimeEntryDialog({ entry, team, defaultDate, onClose, onSaved }: { entry
       // The same checks AI assistants' time tools make (packages/core/src/pay.ts).
       const problem = timeEntryProblem({ startAt, endAt });
       if (problem) throw new Error(problem);
-      // A fixed entry is no longer a guess.
-      const row = { started_at: startAt.toISOString(), ended_at: endAt.toISOString(), category, notes: notes.trim() || null, ...(entry ? { auto_stopped_at: null } : {}) };
+      // A fixed entry is no longer a guess. change_reason goes to the record of the change, never onto
+      // the entry; sent even when empty, so the record knows this was an edit and not a tap on the clock.
+      const row = { started_at: startAt.toISOString(), ended_at: endAt.toISOString(), category, notes: notes.trim() || null, ...(entry ? { auto_stopped_at: null, change_reason: reason.trim() } : {}) };
       if (entry) unwrap(await supabase().from("time_entries").update(row).eq("id", entry.id));
       else unwrap(await supabase().from("time_entries").insert({ ...row, company_id: session.company.id, user_id: userId }));
     },
@@ -333,6 +377,15 @@ function TimeEntryDialog({ entry, team, defaultDate, onClose, onSaved }: { entry
           </select>
         </Field>
         <Field label={t("Note")} optional><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} placeholder={t("Forgot to clock in at the Shah job")} /></Field>
+        {entry && (
+          <Field
+            label={t("Why it's changing")}
+            optional
+            hint={entry.user_id !== session.userId ? t("{name} is told about the change and sees this. The entry's history keeps what it said before.", { name: memberName(theirs ?? undefined, t("Team member")) }) : t("Kept in the entry's history with what it said before.")}
+          >
+            <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} />
+          </Field>
+        )}
         {length > 12 && <div className="callout callout-warning"><Icon name="alert" size={16} /><div className="grow">{t("That's a {hours}-hour entry. Double-check the times.", { hours: length.toFixed(1) })}</div></div>}
         <FormError error={save.error} />
         <div className="form-actions">

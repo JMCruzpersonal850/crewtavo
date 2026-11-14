@@ -453,6 +453,8 @@ select t1070.check(t1070.sorted(array(
       and concat(p.qual, ' ', p.with_check) ~ 'private\.(worker_companies|sub_companies|sub_clock_companies|my_subs|my_sub_ids|my_sub_visits)\(')) = t1070.sorted(array[
     'public.attachments', 'public.checklist_responses', 'public.checklist_templates', 'public.equipment', 'public.job_pay', 'public.jobs', 'public.memberships',
     'public.notification_prefs', 'public.notifications', 'public.plan_files', 'public.properties', 'public.requests', 'public.sub_documents', 'public.time_entries',
+    -- A sub on the clock reads the changes to their own time, as they read the time itself (20261113001800).
+    'public.time_entry_changes',
     'public.visit_assignees', 'public.visit_equipment', 'public.visits', 'storage.objects']),
   'the rules that let a sub in are on the tables decided for them, and no others');
 select t1070.check(not exists (
