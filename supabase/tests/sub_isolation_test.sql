@@ -596,7 +596,10 @@ select t1070.check(array(
   'create_company(text, text, text)', 'create_invoice_for_job(uuid, text, numeric, date)', 'dashboard(uuid)', 'dismiss_client_duplicate(uuid, uuid, uuid)',
   'drive_clients(uuid, text, integer)', 'drive_list(uuid, text, uuid, text, integer)', 'drive_restore(text, uuid)', 'drive_root(uuid)',
   'drive_set_enabled(uuid, boolean)', 'drive_trash(uuid)', 'drive_trash_file(uuid)', 'drive_trash_folder(uuid)', 'drive_trash_version(uuid)',
-  'drive_versions(uuid)', 'duplicate_quote(uuid, text, uuid, uuid, text, jsonb)',
+  'drive_versions(uuid)',
+  -- Dropping a job's scheduled payments that have no invoice, before it's billed visit by visit: owners, admins and the office with invoices only (it checks), never a sub.
+  'drop_unmade_installments(uuid)',
+  'duplicate_quote(uuid, text, uuid, uuid, text, jsonb)',
   -- Editing a sent invoice's lines: owners, admins and the office with invoices only (it checks), never a sub.
   'edit_invoice(uuid, jsonb, boolean, timestamp with time zone)',
   'equipment_conflicts(uuid, uuid[], date, timestamp with time zone, timestamp with time zone, uuid)', 'global_search(uuid, text, integer)',
@@ -635,6 +638,8 @@ select t1070.check(array(
   'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
   -- The quote follow-up after an exact price goes out: the office and estimators with Sales only, never a sub.
   'quote_exact_sent(uuid)',
+  -- Why a quote can't be sent as it is (a payment's date to set, or past): runs as the caller, who reads only the quotes they can see. A sub sees none.
+  'quote_send_problem(uuid)',
   'record_photos(uuid, uuid, uuid)', 'referral_auto_apply(uuid, boolean)', 'referral_credits_for(uuid, uuid)', 'referral_give_credit(uuid)', 'referral_no_reward(uuid)',
   'referral_set_given(uuid)', 'referral_stats(uuid, timestamp with time zone, timestamp with time zone)',
   -- Taking a late fee off an invoice: owners, admins and the office with invoices only (it checks), never a sub.
