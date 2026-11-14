@@ -167,6 +167,46 @@ export interface MarkupContext {
   fill(): void;
   fillText(text: string, x: number, y: number): void;
   strokeText(text: string, x: number, y: number): void;
+  /** How wide words come out in the font set. Without it the width is reckoned from the letters. */
+  measureText?(text: string): { width: number } | undefined;
+}
+
+/**
+ * Words as they go on the picture: broken into lines that fit across it (a word longer than the
+ * picture is broken too), and moved in from the edge they were tapped near, so nothing typed runs
+ * off the photo. `measure` says how wide some words are at this size.
+ */
+export function layoutWords(text: string, at: Point, size: number, picture: { width: number; height: number }, measure: (words: string) => number): { lines: string[]; x: number; y: number; lineHeight: number } {
+  const pad = Math.round(size * 0.3);
+  const room = Math.max(size, picture.width - pad * 2);
+  const lines: string[] = [];
+  let line = "";
+  const push = (word: string) => {
+    const joined = line ? `${line} ${word}` : word;
+    if (measure(joined) <= room) {
+      line = joined;
+      return;
+    }
+    if (line) lines.push(line);
+    line = "";
+    // A word wider than the picture by itself: as many letters as fit on each line.
+    let rest = word;
+    while (measure(rest) > room && rest.length > 1) {
+      let n = rest.length - 1;
+      while (n > 1 && measure(rest.slice(0, n)) > room) n--;
+      lines.push(rest.slice(0, n));
+      rest = rest.slice(n);
+    }
+    line = rest;
+  };
+  for (const word of text.trim().split(/\s+/)) if (word) push(word);
+  if (line) lines.push(line);
+  const lineHeight = Math.round(size * 1.2);
+  const width = Math.max(0, ...lines.map(measure));
+  const height = Math.max(0, lines.length - 1) * lineHeight + size;
+  const x = Math.max(pad, Math.min(at.x, picture.width - pad - width));
+  const top = Math.max(pad, Math.min(at.y - size / 2, picture.height - pad - height));
+  return { lines, x, y: top + size / 2, lineHeight };
 }
 
 /** A dark edge around light words and a light one around dark words, so they read on any photo. */
@@ -200,8 +240,12 @@ export function drawMark(ctx: MarkupContext, mark: Mark, picture: { width: numbe
     ctx.textBaseline = "middle";
     ctx.lineWidth = Math.max(2, Math.round(size / 7));
     ctx.strokeStyle = edgeFor(mark.color);
-    ctx.strokeText(mark.text, mark.at.x, mark.at.y);
-    ctx.fillText(mark.text, mark.at.x, mark.at.y);
+    // Kept on the photo: wrapped to its width and moved in from the edge (layoutWords).
+    const words = layoutWords(mark.text, mark.at, size, picture, (w) => ctx.measureText?.(w)?.width ?? w.length * size * 0.6);
+    words.lines.forEach((line, i) => {
+      ctx.strokeText(line, words.x, words.y + i * words.lineHeight);
+      ctx.fillText(line, words.x, words.y + i * words.lineHeight);
+    });
     return;
   }
   const { from, to } = mark;

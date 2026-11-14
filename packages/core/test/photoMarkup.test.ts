@@ -12,6 +12,9 @@ import {
   extendStroke,
   fitInside,
   keepsMark,
+  layoutWords,
+  leaveAnswer,
+  leaveQuestion,
   MARKUP_COLORS,
   MARKUP_MAX_SIDE,
   MARKUP_TOOLS,
@@ -236,6 +239,40 @@ describe("drawing", () => {
     const dark = recorder();
     drawMark(dark.ctx, { kind: "text", color: "#111111", width: "thin", at: { x: 1, y: 1 }, text: "Gas meter" }, picture);
     expect(dark.calls).toContain("strokeStyle=rgba(255,255,255,0.85)");
+  });
+
+  it("keeps words on the photo: wrapped to its width, and moved in from the edge they were tapped near", () => {
+    // Ten pixels a letter, on a picture 300 wide: 28 letters fit across, less the edge.
+    const measure = (w: string) => w.length * 10;
+    const small = { width: 300, height: 200 };
+    const long = layoutWords("Replace this cracked section of the walkway before winter", { x: 250, y: 190 }, 20, small, measure);
+    expect(long.lines).toEqual(["Replace this cracked section", "of the walkway before winter"]);
+    for (const line of long.lines) expect(long.x + measure(line)).toBeLessThanOrEqual(small.width);
+    expect(long.x).toBe(14);
+    // Both lines above the bottom edge: the last one's middle is half a line up from it at least.
+    expect(long.y + long.lineHeight + 10).toBeLessThanOrEqual(small.height);
+    expect(long.y - 10).toBeGreaterThanOrEqual(0);
+    // A tap near the right edge with a few words: moved left just enough.
+    const short = layoutWords("Gas meter", { x: 290, y: 100 }, 20, small, measure);
+    expect(short).toMatchObject({ lines: ["Gas meter"], x: 300 - 6 - 90, y: 100 });
+    // One word wider than the picture is broken rather than run off it.
+    const word = layoutWords("A".repeat(70), { x: 0, y: 0 }, 20, small, measure);
+    expect(word.lines.map((l) => l.length)).toEqual([28, 28, 14]);
+    expect(word.y).toBe(16);
+  });
+
+  it("draws the longest words allowed, at the larger size, inside a full-size photo", () => {
+    const { ctx, calls } = recorder();
+    const photo = { width: 2000, height: 1500 };
+    drawMark(ctx, { kind: "text", color: "#ffffff", width: "thick", at: { x: 1900, y: 1490 }, text: "word ".repeat(24).trim() }, photo);
+    const drawn = calls.filter((c) => c.startsWith("fillText(")).map((c) => /^fillText\((.*),([\d.]+),([\d.]+)\)$/.exec(c)!);
+    expect(drawn.length).toBeGreaterThan(1);
+    for (const [, line, x, y] of drawn) {
+      // 110 px letters, reckoned at 0.6 of that each.
+      expect(Number(x) + line!.length * 66).toBeLessThanOrEqual(photo.width);
+      expect(Number(y) + 55).toBeLessThanOrEqual(photo.height);
+    }
+    expect(drawn.map((d) => d[1]).join(" ")).toBe("word ".repeat(24).trim());
   });
 
   it("draws every mark in the order it was made", () => {
