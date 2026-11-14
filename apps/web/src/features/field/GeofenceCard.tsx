@@ -52,7 +52,7 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
   const tapClock = async (p: GeofencePrompt, start: boolean) => {
     dismissPrompt(p.id);
     const at = new Date().toISOString();
-    const place = await clockPlace(session.company);
+    const place = await clockPlace(session);
     const target = start ? { category: "visit" as const, visit: { id: p.visitId, jobId: p.jobId, title: p.title } } : dayClock ? { category: "drive" as const } : null;
     clock.mutate({ ...clockChange(session, [session.userId], target, place, at), ...(!start && { fromVisit: p.visitId }) });
   };

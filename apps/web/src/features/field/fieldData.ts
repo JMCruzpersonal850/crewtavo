@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase, unwrap } from "@/lib/api";
 import { isSub, keepsTime, useSession, type Company, type Session } from "@/lib/session";
 import { startedBefore, withWaitingTaps } from "./clockTaps";
+import { mayUsePlace, NOT_YET } from "./locationNotice";
 import type { VisitStatusChange } from "./fieldActions";
 
 export type TimerCategory = "visit" | "assessment" | "drive" | "shop" | "break" | "other";
@@ -42,8 +43,13 @@ export function locate(): Promise<ClockPlace> {
   });
 }
 
-/** Where to say this clock tap happened: the phone's place, or nothing when the company doesn't keep them. */
-export const clockPlace = (company: Pick<Company, "settings">) => (recordsPlaces(company) ? locate() : Promise.resolve(undefined));
+/**
+ * Where to say this clock tap happened: the phone's place, or nothing when the company doesn't keep
+ * them. Until the person has acknowledged the notice of what's saved (locationNotice.ts) the phone
+ * isn't asked where it is, and the tap says no place was found.
+ */
+export const clockPlace = (session: Pick<Session, "userId" | "role" | "subcontractor"> & { company: Pick<Company, "id" | "settings"> }): Promise<ClockPlace | undefined> =>
+  !recordsPlaces(session.company) ? Promise.resolve(undefined) : mayUsePlace(session, "clock_location") ? locate() : Promise.resolve(NOT_YET);
 
 /** Statuses that start or stop the person's clock on a visit (see setVisitStatus). */
 export const clocksOn = (status: string) => status === "in_progress" || status === "completed";
@@ -85,7 +91,10 @@ export function useStatusTap(send: (change: VisitStatusChange) => void) {
   const [locating, setLocating] = useState<{ id: string; status: string } | null>(null);
   const tap = async (visit: { id: string; jobId: string | null }, status: string) => {
     const { change, locate: withPlace } = statusChange(session, visit, status);
-    if (withPlace) {
+    if (withPlace && !mayUsePlace(session, "clock_location")) {
+      // Not told yet what's saved: the tap goes through with no place, and the phone isn't asked for one.
+      change.place = NOT_YET;
+    } else if (withPlace) {
       setLocating({ id: visit.id, status });
       change.place = await locate();
       setLocating(null);

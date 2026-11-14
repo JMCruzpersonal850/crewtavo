@@ -58,6 +58,7 @@ import { AddWork, VisitInvoice } from "./FieldBilling";
 import { addsToVisit, addsWork, fieldInvoiceKind, takesMoney, takesWork } from "./fieldMoney";
 import { VisitExtraScope } from "./FieldExtras";
 import { YourPrice } from "./YourPrice";
+import { LocationNotice } from "./LocationNotice";
 import { msg, t, T } from "@/lib/i18n";
 
 interface ChecklistItem { key: string; label: string; type: "check" | "number" | "text" | "choice" | "photo" | "signature"; required: boolean; options?: string[]; sop_page_id?: string }
@@ -251,6 +252,8 @@ export function FieldVisitPage() {
         </div>
       </div>
       <OfflineNote />
+      {/* What's saved about where they are, said once before a tap here would save it. */}
+      <LocationNotice />
       {/* The clock at the property: Complete visit goes through the checklist check, as the button below does. */}
       <GeofenceCard visitId={v.id} onStatus={(_visit, status) => (status === "completed" ? void complete() : setStatus(status))} />
       {v.status === "completed" && v.completed_at && <div className="callout callout-good"><Icon name="check" size={20} /><div className="grow">{t("Completed {when}.", { when: timeAgo(v.completed_at) })}</div></div>}

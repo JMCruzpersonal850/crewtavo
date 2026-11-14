@@ -78,7 +78,7 @@ export function CrewClockCard({ visits }: { visits: VisitTarget[] }) {
   const tap = async (who: string[], target: ClockTarget | null) => {
     const at = new Date().toISOString();
     setLocating({ who, target });
-    const place = await clockPlace(session.company);
+    const place = await clockPlace(session);
     setLocating(null);
     act.mutate(clockChange(session, who, target, place, at));
   };

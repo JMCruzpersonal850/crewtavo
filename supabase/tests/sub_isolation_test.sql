@@ -150,6 +150,9 @@ select public.chat_set_enabled(:'co', true);
 select id as general from public.chat_channels where company_id = :'co' and name = 'general' \gset
 insert into public.chat_messages (company_id, channel_id, author_id, body) values (:'co', :'general', 'd1070000-0000-0000-0000-000000000001', 'Roof at 1 Oak St starts today');
 commit;
+-- A crew member's acknowledgement of the location notice (20261113001810): theirs and the office's to
+-- read, not a sub's. Only the person themselves can record one through the app, so it's put here directly.
+insert into public.worker_notices (company_id, user_id, notice) values (:'co', 'd1070000-0000-0000-0000-000000000004', 'clock_location');
 
 -- Papa Paving. Pat puts Al on one of Papa's visits, though Al has no sign-in there.
 begin;
@@ -569,6 +572,9 @@ select t1070.check(array(
   -- Confirming a guide is read (its quiz answered), and its quiz and feedback: through
   -- private.readable_guide, which a sub never passes (is_member leaves subs out).
   'acknowledge_guide(uuid, integer[])',
+  -- Saying they've read what's saved about where they are (20261113001810): anyone with a sign-in at the
+  -- company records their own, a sub on the clock included, and nobody's but their own.
+  'acknowledge_worker_notices(uuid, text[], timestamp with time zone)',
   -- Adding work on site: the team on the visit only, never a sub (the job's prices are the client's).
   'add_field_line(uuid, uuid, numeric, uuid)',
   'answer_sub_offer(uuid, boolean, text, integer, uuid)',
@@ -596,7 +602,10 @@ select t1070.check(array(
   -- Money added up for Home, Invoices and Deposits (collected_by_day, invoice_summary, stripe_fees): each
   -- runs as the caller, and a sub reads no payments or invoices, so they get nothing or zeros.
   'collected_by_day(uuid, date, date)', 'company_basics(uuid)', 'convert_quote_to_job(uuid)',
-  'create_company(text, text, text)', 'create_invoice_for_job(uuid, text, numeric, date)', 'dashboard(uuid)', 'dismiss_client_duplicate(uuid, uuid, uuid)',
+  'create_company(text, text, text)', 'create_invoice_for_job(uuid, text, numeric, date)', 'dashboard(uuid)',
+  -- Deleting a time entry with a reason (20261113001800): runs as the caller, so a sub deletes no more this way than with a plain delete.
+  'delete_time_entry(uuid, text)',
+  'dismiss_client_duplicate(uuid, uuid, uuid)',
   'drive_clients(uuid, text, integer)', 'drive_list(uuid, text, uuid, text, integer)', 'drive_restore(text, uuid)', 'drive_root(uuid)',
   'drive_set_enabled(uuid, boolean)', 'drive_trash(uuid)', 'drive_trash_file(uuid)', 'drive_trash_folder(uuid)', 'drive_trash_version(uuid)',
   'drive_versions(uuid)',

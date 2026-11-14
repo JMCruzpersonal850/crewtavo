@@ -107,6 +107,14 @@ export default {
   "Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in. It never stops your clock by itself: once it sees you've left, it asks you. Open it when you get there and when you leave, or tap the clock yourself.": "Tu reloj empieza cuando Crewtavo está abierto en este teléfono en tu siguiente visita, no cuando llegas. Nunca para tu reloj por su cuenta: cuando ve que te fuiste, te pregunta. Ábrelo al llegar y al irte, o marca el reloj tú mismo.",
   "Crewtavo reminds you to start and finish visits when it's open on this phone at the property. It can't tell while the phone is locked.": "Crewtavo te recuerda empezar y terminar las visitas cuando está abierto en este teléfono en la propiedad. No se da cuenta con el teléfono bloqueado.",
 
+  // What's saved about where they are, said once (LocationNotice.tsx)
+  "Before Crewtavo uses your location": "Antes de que Crewtavo use tu ubicación",
+  "{company} saves where you are when you clock in and when you clock out: where this phone is at that moment, and how exact that is. It's kept with your time, where the office and your crew lead can see it on Timesheets. It isn't saved at any other time.": "{company} guarda dónde estás cuando marcas tu entrada y cuando marcas tu salida: dónde está este teléfono en ese momento y qué tan exacto es. Se guarda con tu tiempo, donde la oficina y tu jefe de cuadrilla lo pueden ver en Hojas de horas. No se guarda en ningún otro momento.",
+  "While Crewtavo is open on this phone, it compares where the phone is with the property of your visit, to remind you to start and finish or to move your clock. That's worked out on this phone: your position isn't saved and isn't sent anywhere.": "Mientras Crewtavo está abierto en este teléfono, compara dónde está el teléfono con la propiedad de tu visita, para recordarte empezar y terminar o para mover tu reloj. Eso se calcula en este teléfono: tu posición no se guarda ni se envía a ningún lado.",
+  "Your phone will ask you to allow location. If you say no, or turn it off later in your phone's settings, your clock still works.": "Tu teléfono te va a pedir permiso para usar la ubicación. Si dices que no, o la apagas después en la configuración de tu teléfono, tu reloj sigue funcionando.",
+  "You see this once. The date you tap OK is kept.": "Esto lo ves una sola vez. Se guarda la fecha en que tocas Aceptar.",
+  "OK, I understand": "Aceptar, entendido",
+
   // Installing the app (InstallAppCard.tsx)
   "Add Crewtavo to your Home Screen": "Agrega Crewtavo a tu pantalla de inicio",
   "Tap Share {icon}, then <b>Add to Home Screen</b>. It opens like any other app.": "Toca Compartir {icon} y luego <b>Agregar a pantalla de inicio</b>. Se abre como cualquier otra aplicación.",

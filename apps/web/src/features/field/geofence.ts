@@ -15,6 +15,8 @@
  *     with a buzz, and as a phone notification for someone who allowed Crewtavo's notifications.
  *   - A clock tap the person makes on a visit while there (the clock card, the crew clock) takes
  *     that visit's clock off the geofence until they leave and come back (core noteTap).
+ *   - Not until the person has acknowledged the notice of what this does with their position
+ *     (locationNotice.ts): before that the phone isn't asked where it is at all.
  *
  * What it knows is kept on the phone per person and day (localStorage), so a page reloaded at the
  * property doesn't take it for a new arrival. A phone that won't keep it (storage full or turned
@@ -35,6 +37,7 @@ import {
 } from "@crewtavo/core/geofence";
 import { onlineManager, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { mayUsePlace, NOT_YET, noticesVersion, subscribeNotices } from "./locationNotice";
 import { todayIn } from "@/lib/format";
 import { FIELD_SCOPE } from "@/lib/offline";
 import { keepsTime, useSession } from "@/lib/session";
@@ -320,7 +323,9 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
   const session = useSession();
   const queryClient = useQueryClient();
   const setting = geofenceSetting(session.company.settings);
-  const on = setting.mode !== "off" && keepsTime(session);
+  // Turns on as the notice is acknowledged, without the page loading again.
+  useSyncExternalStore(subscribeNotices, noticesVersion);
+  const on = setting.mode !== "off" && keepsTime(session) && mayUsePlace(session, "clock_at_property");
   // Only read where the company has it on: a visit's screen doesn't fetch the schedule for nothing.
   const day = useMyDay(on);
   // Loaded so their clock is on hand (shownClock) when a look needs it.
@@ -373,7 +378,9 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
       const place = visit.property?.line1 || visit.title;
       if (action.kind === "start-clock" || action.kind === "stop-clock") {
         // Where the phone was, only where the company keeps that; six places is about 10 cm.
-        const where: ClockPlace | undefined = recordsPlaces(s.company) ? { lat: Number(fix.lat.toFixed(6)), lng: Number(fix.lng.toFixed(6)), accuracy: Math.round(fix.accuracy) } : undefined;
+        const where: ClockPlace | undefined = !recordsPlaces(s.company)
+          ? undefined
+          : mayUsePlace(s, "clock_location") ? { lat: Number(fix.lat.toFixed(6)), lng: Number(fix.lng.toFixed(6)), accuracy: Math.round(fix.accuracy) } : NOT_YET;
         const target: ClockTarget | null =
           action.kind === "start-clock" ? { category: "visit", visit: { id: visit.id, jobId: visit.job?.id ?? null, title: visit.title } } : { category: "drive" };
         const change: ClockChange = { ...clockChange(s, [s.userId], target, where, new Date(action.at).toISOString()), geofence: true, ...(action.kind === "stop-clock" && { fromVisit: visit.id }) };

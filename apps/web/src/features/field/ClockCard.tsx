@@ -20,6 +20,7 @@ import { hasRole, keepsTime, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { clockChange, clockSaved, showClockTap, type ClockChange, type ClockTarget } from "./clockTaps";
 import { CATEGORY_LABELS, clockPlace, onDayClock, recordsPlaces, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
+import { LocationNotice } from "./LocationNotice";
 import { msg, t } from "@/lib/i18n";
 
 interface VisitUnderWay { id: string; title: string; job_id: string | null }
@@ -50,7 +51,7 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
   const tap = async (target: ClockTarget | null) => {
     const at = new Date().toISOString();
     setLocating(target ? "start" : "stop");
-    const place = await clockPlace(session.company);
+    const place = await clockPlace(session);
     setLocating(null);
     action.mutate(clockChange(session, [session.userId], target, place, at));
   };
@@ -61,6 +62,8 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
   if (!clocks) return null;
   return (
     <div className="card card-pad row wrap" style={{ gap: 12, background: on ? "var(--green-tint)" : undefined, borderColor: on ? "transparent" : undefined, transition: "background var(--dur), border-color var(--dur)" }}>
+      {/* What's saved about where they are, said once before the first tap that would save it. */}
+      <LocationNotice />
       <span className="avatar" style={{ width: 40, height: 40, background: on ? "var(--green-solid)" : "var(--fill-3)", color: on ? "#fff" : "var(--text-2)" }}><Icon name="clock" size={20} /></span>
       <div className="grow">
         {on ? (
