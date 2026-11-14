@@ -81,8 +81,10 @@ export function geofenceRadius(value: unknown): number {
 export const leaveMargin = (radius: number) => Math.max(50, radius / 2);
 /** How long fixes have to stay outside before it counts as leaving. */
 export const LEAVE_AFTER_MS = 3 * 60_000;
-/** Two fixes further apart than this aren't "in a row": the person may have left and come back between. */
+/** Two fixes further apart than this aren't "in a row": the person may have left and come back between (or, for fixes outside, come back and worked on). */
 export const IN_A_ROW_MS = 10 * 60_000;
+/** How long someone has been at another visit's property before a clock the phone stopped at the last one starts there: longer than driving past. */
+export const STAYED_MS = 2 * 60_000;
 
 /** Where the phone was: what the browser's geolocation gives, with when (milliseconds). */
 export interface Fix {
@@ -256,12 +258,38 @@ export type GeofenceAction =
   /** "Leaving 12 Oak St. Complete the visit, or stop your clock?": either part, as it applies. */
   | { kind: "ask-finish"; visitId: string; complete: boolean; stopClock: boolean };
 
+/** A visit whose property the person is at now, as the tracker has it after the fix. */
+export interface Stay {
+  visitId: string;
+  /** When they arrived, as the arrival was dated. */
+  since: number;
+  tapped: boolean;
+  /** The latest fix was inside (not on their way out). */
+  inNow: boolean;
+  /** Arrived, and still to be put to them. */
+  held: boolean;
+}
+
 export interface ActionContext {
   mode: GeofenceMode;
+  /** Today's visits in the day's order, which says which one is next. */
   sites: readonly GeofenceSite[];
   clock: ClockNow | null;
   /** On the whole-day clock: leaving moves the clock to travel instead of stopping it. */
   day: boolean;
+  /** When the fix was taken. A clock started for an arrival that waited its turn is dated then, not back at the arrival. */
+  now?: number;
+  /** Where they are now (stays). Without it only what the fix confirmed is acted on. */
+  here?: readonly Stay[];
+  /** Visits whose "Start the visit?" is still on the screen. */
+  asking?: readonly string[];
+}
+
+/** The visits whose property the person is at, from what the tracker knows. */
+export function stays(state: GeofenceState): Stay[] {
+  return Object.entries(state.sites)
+    .filter(([, t]) => t.where === "inside")
+    .map(([visitId, t]) => ({ visitId, since: t.arrivedAt ?? t.firstIn ?? state.last ?? 0, tapped: t.tapped, inNow: t.inRow > 0, held: t.held === true }));
 }
 
 const DONE = new Set(["completed", "cancelled"]);
@@ -269,20 +297,40 @@ const NOT_STARTED = new Set(["scheduled", "en_route"]);
 /** Which visit to act on when two properties are the same (two visits at one address): the one under way, else on its way, else the first in the day's order. */
 const RANK: Record<string, number> = { in_progress: 0, en_route: 1, scheduled: 2 };
 
+/** A clock the phone may start a visit's clock over: none, or driving. Anything else is theirs to move. */
+const clockFree = (clock: ClockNow | null) => clock == null || (clock.category === "drive" && !clock.visitId);
+
 /**
- * What to do about what a fix confirmed. Never twice for one arrival (trackFix sees to that), never
- * a clock on a finished or cancelled visit or over a break, never against a tap the person made
- * there, and never finishing a visit: that, and starting one (which can text the client), is always
- * the person's tap.
+ * Whether a visit is where they'd be expected next: under way, or they said they're on their way,
+ * or the first in the day's order that hasn't started. The phone starts a clock by itself only
+ * there, so driving past a later visit's property never starts its clock.
  */
-export function geofenceActions(events: readonly GeofenceEvent[], ctx: ActionContext): GeofenceAction[] {
-  if (ctx.mode === "off") return [];
+function isNext(site: GeofenceSite, sites: readonly GeofenceSite[]): boolean {
+  if (site.status !== "scheduled") return true;
+  return sites.find((s) => NOT_STARTED.has(s.status))?.visitId === site.visitId;
+}
+
+/**
+ * What to do about what a fix confirmed, and which arrivals wait their turn (`held`). Never twice
+ * for one arrival (trackFix and geofenceStep see to that), never a clock on a finished or
+ * cancelled visit, never over a clock that's running on anything but driving, never against a
+ * tap the person made there, and never finishing a visit: that, and starting one (which can text
+ * the client), is always the person's tap.
+ */
+function decide(events: readonly GeofenceEvent[], ctx: ActionContext): { actions: GeofenceAction[]; held: string[] } {
+  if (ctx.mode === "off") return { actions: [], held: [] };
   const site = (id: string) => ctx.sites.find((s) => s.visitId === id);
+  const byTurn = (a: GeofenceSite, b: GeofenceSite) => (RANK[a.status] ?? 3) - (RANK[b.status] ?? 3) || ctx.sites.indexOf(a) - ctx.sites.indexOf(b);
+  const here = ctx.here ?? [];
   const actions: GeofenceAction[] = [];
   let clock = ctx.clock;
+  /** When the phone stopped their clock at a property they left, from this fix. */
+  let stoppedAt: number | null = null;
+  const gone = new Set<string>();
 
   // Leaving first: a fix can show them gone from one property and at the next.
   for (const e of events.filter((x) => x.kind === "left")) {
+    gone.add(e.visitId);
     const s = site(e.visitId);
     if (!s || DONE.has(s.status)) continue;
     const clockOn = clock?.visitId === e.visitId;
@@ -290,27 +338,82 @@ export function geofenceActions(events: readonly GeofenceEvent[], ctx: ActionCon
     if (stops) {
       actions.push({ kind: "stop-clock", visitId: e.visitId, at: e.at, travel: ctx.day });
       clock = ctx.day ? { category: "drive", visitId: null } : null;
+      stoppedAt = Math.max(stoppedAt ?? e.at, e.at);
     }
     const complete = s.status === "in_progress";
     const stopClock = clockOn && !stops;
     if (complete || stopClock) actions.push({ kind: "ask-finish", visitId: e.visitId, complete, stopClock });
   }
 
-  const arrivals = events
-    .filter((x) => x.kind === "arrived")
+  // Arrivals this fix confirmed, then ones that were waiting their turn (dated now: things have moved on since).
+  const fresh = events.filter((x) => x.kind === "arrived").map((e) => ({ visitId: e.visitId, at: e.at, tapped: e.tapped }));
+  const waiting = here.filter((h) => h.held && !fresh.some((f) => f.visitId === h.visitId)).map((h) => ({ visitId: h.visitId, at: ctx.now ?? h.since, tapped: h.tapped }));
+  const arrivals = [...fresh, ...waiting]
     .map((e) => ({ e, s: site(e.visitId) }))
-    .filter((x): x is { e: GeofenceEvent; s: GeofenceSite } => Boolean(x.s) && !DONE.has(x.s!.status))
-    .sort((a, b) => (RANK[a.s.status] ?? 3) - (RANK[b.s.status] ?? 3) || ctx.sites.indexOf(a.s) - ctx.sites.indexOf(b.s));
-  const first = arrivals[0];
-  if (first) {
-    const { e, s } = first;
+    .filter((x): x is { e: (typeof fresh)[number]; s: GeofenceSite } => Boolean(x.s) && !DONE.has(x.s!.status))
+    .sort((a, b) => byTurn(a.s, b.s));
+  // A start question still showing for another visit they're at: the next one waits for it.
+  const asking = (ctx.asking ?? []).filter((id) => here.some((h) => h.visitId === id));
+  const held: string[] = [];
+  let asked = false;
+  let started = false;
+  for (const { e, s } of arrivals) {
+    if (asked || asking.some((id) => id !== e.visitId)) {
+      held.push(e.visitId);
+      continue;
+    }
     const clockOn = clock?.visitId === e.visitId;
-    const starts = ctx.mode === "clock" && !e.tapped && !clockOn && clock?.category !== "break";
-    if (starts) actions.push({ kind: "start-clock", visitId: e.visitId, at: e.at });
-    if (NOT_STARTED.has(s.status)) actions.push({ kind: "ask-start", visitId: e.visitId, clockOnly: false });
-    else if (!clockOn && !starts) actions.push({ kind: "ask-start", visitId: e.visitId, clockOnly: true });
+    const starts = ctx.mode === "clock" && !e.tapped && !clockOn && clockFree(clock) && isNext(s, ctx.sites);
+    if (starts) {
+      actions.push({ kind: "start-clock", visitId: e.visitId, at: e.at });
+      clock = { category: "visit", visitId: e.visitId };
+      started = true;
+    }
+    if (NOT_STARTED.has(s.status)) {
+      actions.push({ kind: "ask-start", visitId: e.visitId, clockOnly: false });
+      asked = true;
+    } else if (!clockOn && !starts) {
+      actions.push({ kind: "ask-start", visitId: e.visitId, clockOnly: true });
+      asked = true;
+    }
   }
-  return actions;
+
+  // Their clock was on the visit they've now surely left, and the phone stopped it there. If
+  // they've been at another visit's property a couple of minutes (they drove over with the phone
+  // locked and were only asked on arriving, the clock being busy), it goes onto that one.
+  if (ctx.mode === "clock" && stoppedAt != null && !started && clockFree(clock)) {
+    const now = ctx.now ?? stoppedAt;
+    const next = here
+      .filter((h) => h.inNow && !h.tapped && !h.held && !held.includes(h.visitId) && !gone.has(h.visitId) && now - h.since >= STAYED_MS)
+      .map((h) => ({ h, s: site(h.visitId) }))
+      .filter((x): x is { h: Stay; s: GeofenceSite } => Boolean(x.s) && !DONE.has(x.s!.status))
+      .sort((a, b) => byTurn(a.s, b.s))[0];
+    if (next) actions.push({ kind: "start-clock", visitId: next.h.visitId, at: Math.max(stoppedAt, next.h.since) });
+  }
+  return { actions, held };
+}
+
+/** What to do about what a fix confirmed (decide, above). */
+export function geofenceActions(events: readonly GeofenceEvent[], ctx: ActionContext): GeofenceAction[] {
+  return decide(events, ctx).actions;
+}
+
+/**
+ * One fix, start to finish: where it puts the person (trackFix), what to do about it, and the
+ * state to keep, with the arrivals that are still waiting their turn marked so the next fix puts
+ * them to the person.
+ */
+export function geofenceStep(
+  state: GeofenceState,
+  fix: Fix,
+  radius: number,
+  ctx: Omit<ActionContext, "now" | "here">,
+): { state: GeofenceState; events: GeofenceEvent[]; actions: GeofenceAction[] } {
+  const tracked = trackFix(state, fix, ctx.sites, radius);
+  if (tracked.state === state) return { state, events: [], actions: [] };
+  const { actions, held } = decide(tracked.events, { ...ctx, now: fix.at, here: stays(tracked.state) });
+  const sites = Object.fromEntries(Object.entries(tracked.state.sites).map(([id, t]) => [id, t.where === "inside" && (t.held === true) !== held.includes(id) ? { ...t, held: held.includes(id) } : t]));
+  return { state: { ...tracked.state, sites }, events: tracked.events, actions };
 }
 
 /**
@@ -321,7 +424,7 @@ export function nextLook(state: GeofenceState, fix: Fix | null, sites: readonly 
   const open = sites.filter((s) => !DONE.has(s.status));
   const busy = open.some((s) => {
     const t = state.sites[s.visitId];
-    return t && ((t.inRow > 0 && t.where !== "inside") || t.outSince != null);
+    return t && ((t.inRow > 0 && t.where !== "inside") || t.outSince != null || t.held === true);
   });
   if (!fix || busy) return { delayMs: 20_000, precise: true };
   const nearest = Math.min(...open.map((s) => distance(fix, s)));

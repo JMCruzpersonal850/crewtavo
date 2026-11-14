@@ -40,12 +40,26 @@ export interface MyDayVisit {
 
 export const myDayKey = (companyId: string, today: string) => ["field", companyId, today];
 
-export function useMyDay() {
+/** The day's order: the route the office or crew lead set (Organize route), else timed visits by time, then the rest. */
+export const dayOrder = (a: Pick<MyDayVisit, "route_order" | "starts_at">, b: Pick<MyDayVisit, "route_order" | "starts_at">) =>
+  a.route_order != null && b.route_order != null
+    ? a.route_order - b.route_order
+    : a.starts_at && b.starts_at
+      ? a.starts_at.localeCompare(b.starts_at)
+      : a.starts_at
+        ? -1
+        : b.starts_at
+          ? 1
+          : (a.route_order ?? 999) - (b.route_order ?? 999);
+
+/** `enabled` false: nothing is fetched (the clock at the property on a screen whose company has it off). */
+export function useMyDay(enabled = true) {
   const session = useSession();
   const queryClient = useQueryClient();
   const today = todayIn(session.company.timezone);
   return useQuery({
     queryKey: myDayKey(session.company.id, today),
+    enabled,
     refetchInterval: 60_000,
     queryFn: async () => {
       const [schedule, crews] = await Promise.all([

@@ -7,7 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/lib/api", () => ({ api: {}, supabase: () => ({}), unwrap: (r: { data: unknown }) => r.data }));
-const { actionWords, geofenceKey, geofenceSites, loadGeofence, promptStands, promptText, saveGeofence, tappedVisits } = await import("../src/features/field/geofence");
+const { actionWords, askPrompt, dismissPrompt, forgetGeofence, geofenceKey, geofencePrompts, geofenceSites, loadGeofence, LOOK_WATCHDOG_MS, promptStands, promptText, restorePrompts, saveGeofence, tappedVisits, watchPlace } = await import("../src/features/field/geofence");
+const { geofenceStep } = await import("@crewtavo/core/geofence");
+type Fix = import("@crewtavo/core/geofence").Fix;
+type GeofenceSite = import("@crewtavo/core/geofence").GeofenceSite;
 const { atPropertyNote } = await import("../src/features/timesheets/clockPlace");
 const { emptyGeofence } = await import("@crewtavo/core/geofence");
 type MyDayVisit = import("../src/features/field/myDay").MyDayVisit;
@@ -25,9 +28,15 @@ const storage = {
 };
 beforeEach(() => {
   store.clear();
+  forgetGeofence();
   vi.stubGlobal("localStorage", storage);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+/** A phone that won't keep anything: storage full. What's there already can still be read. */
+const full = { ...storage, get length() { return store.size; }, setItem: () => { throw new Error("QuotaExceededError"); } };
 
 const visit = (id: string, over: Partial<MyDayVisit> = {}): MyDayVisit => ({
   id, title: `Visit ${id}`, kind: "job", status: "scheduled", starts_at: null, ends_at: null, scheduled_on: "2026-11-13", route_order: null, hold_reason: null, crew_id: null,
@@ -54,6 +63,16 @@ describe("the visits it watches", () => {
       { visitId: "h", lat: 40, lng: -75, place: "12 Oak St", status: "scheduled" },
     ]);
     expect(geofenceSites(undefined)).toEqual([]);
+  });
+
+  it("is in the day's order, as My day lists them, which says which visit is next", () => {
+    const sites = geofenceSites([
+      visit("late", { starts_at: "2026-11-13T18:00:00Z" }),
+      visit("anytime"),
+      visit("early", { starts_at: "2026-11-13T13:00:00Z" }),
+    ]);
+    expect(sites.map((s) => s.visitId)).toEqual(["early", "late", "anytime"]);
+    expect(geofenceSites([visit("b", { route_order: 2 }), visit("a", { route_order: 1 })]).map((s) => s.visitId)).toEqual(["a", "b"]);
   });
 });
 
@@ -83,6 +102,180 @@ describe("what it kept between looks", () => {
     vi.stubGlobal("localStorage", { getItem: () => { throw new Error("off"); }, setItem: () => { throw new Error("off"); } });
     expect(loadGeofence(key)).toEqual(emptyGeofence());
     expect(() => saveGeofence(key, emptyGeofence())).not.toThrow();
+  });
+});
+
+describe("on a phone that won't keep what it knows (storage full or off)", () => {
+  const key = geofenceKey("c1", "ray", "2026-11-13");
+  const OAK: GeofenceSite = { visitId: "oak", lat: 40, lng: -75, place: "12 Oak St", status: "scheduled" };
+  const T0 = Date.parse("2026-11-13T14:00:00Z");
+  const fix = (north: number, seconds: number): Fix => ({ lat: 40 + north / 111_195, lng: -75, accuracy: 15, at: T0 + seconds * 1000 });
+  /** One look, as the phone does it: what it knew, the fix, what it knows now. */
+  const look = (f: Fix) => {
+    const out = geofenceStep(loadGeofence(key), f, 200, { mode: "clock", sites: [OAK], clock: null, day: false });
+    saveGeofence(key, out.state);
+    return out.actions.map((a) => a.kind);
+  };
+
+  it("still notices an arrival, from what the page remembers: it used to start from nothing at every look and never fire", () => {
+    vi.stubGlobal("localStorage", full);
+    expect(look(fix(10, 0))).toEqual([]);
+    expect(look(fix(10, 20))).toEqual(["start-clock", "ask-start"]);
+    // And once: not again at every look after.
+    expect(look(fix(10, 40))).toEqual([]);
+    expect(look(fix(10, 60))).toEqual([]);
+    expect(store.size).toBe(0);
+  });
+
+  it("doesn't fire the same arrival again and again from something old it once kept", () => {
+    // Kept while there was room: one fix inside, a moment ago.
+    look(fix(10, 0));
+    expect(store.has(key)).toBe(true);
+    vi.stubGlobal("localStorage", full);
+    expect(look(fix(10, 20))).toEqual(["start-clock", "ask-start"]);
+    expect(look(fix(10, 40))).toEqual([]);
+    expect(look(fix(10, 70))).toEqual([]);
+  });
+
+  it("works with storage turned off altogether, and goes back to the phone's copy once it keeps things again", () => {
+    vi.stubGlobal("localStorage", { get length(): number { throw new Error("SecurityError"); }, key: () => null, getItem: () => { throw new Error("SecurityError"); }, setItem: () => { throw new Error("SecurityError"); }, removeItem: () => undefined });
+    expect(look(fix(10, 0))).toEqual([]);
+    expect(look(fix(10, 20))).toEqual(["start-clock", "ask-start"]);
+    vi.stubGlobal("localStorage", storage);
+    expect(look(fix(10, 40))).toEqual([]);
+    expect(JSON.parse(store.get(key)!).sites.oak.where).toBe("inside");
+  });
+});
+
+describe("a question, after the page loads again", () => {
+  const key = geofenceKey("c1", "ray", "2026-11-13");
+  const prompt: GeofencePrompt = { id: "start:v1", kind: "start", visitId: "v1", jobId: "j1", title: "Mowing", place: "12 Oak St", done: "Clock started at 12 Oak St" };
+
+  it("is still there: tapping its notification reloads the page, and the arrival behind it is used up", () => {
+    restorePrompts(key);
+    askPrompt(prompt);
+    expect(geofencePrompts()).toEqual([prompt]);
+    // The page loads again (the service worker's navigate): nothing in memory.
+    forgetGeofence();
+    expect(geofencePrompts()).toEqual([]);
+    restorePrompts(key);
+    expect(geofencePrompts()).toEqual([prompt]);
+  });
+
+  it("is gone for good once it's answered or waved away", () => {
+    restorePrompts(key);
+    askPrompt(prompt);
+    dismissPrompt(prompt.id);
+    forgetGeofence();
+    restorePrompts(key);
+    expect(geofencePrompts()).toEqual([]);
+  });
+
+  it("is never shown to the next person on the phone, nor carried to the next day", () => {
+    restorePrompts(key);
+    askPrompt(prompt);
+    restorePrompts(geofenceKey("c1", "sam", "2026-11-13"));
+    expect(geofencePrompts()).toEqual([]);
+    // Ray, the next morning: yesterday's question is cleared off the phone.
+    restorePrompts(geofenceKey("c1", "ray", "2026-11-14"));
+    expect(geofencePrompts()).toEqual([]);
+    expect([...store.keys()].filter((k) => k.includes(":ray:"))).toEqual([]);
+  });
+
+  it("copes with something unreadable where the questions were kept", () => {
+    store.set("crewtavo-geofence-asks:c1:ray:2026-11-13", "{not json");
+    restorePrompts(key);
+    expect(geofencePrompts()).toEqual([]);
+    store.set("crewtavo-geofence-asks:c1:sam:2026-11-13", JSON.stringify([{ id: 1 }, null, prompt]));
+    restorePrompts(geofenceKey("c1", "sam", "2026-11-13"));
+    expect(geofencePrompts()).toEqual([prompt]);
+  });
+});
+
+describe("looking where the phone is", () => {
+  type Ok = (p: { coords: { latitude: number; longitude: number; accuracy: number }; timestamp: number }) => void;
+  type Fail = (e: { code: number; PERMISSION_DENIED: number }) => void;
+  /** A phone whose answers the test gives, one request at a time. */
+  function phone() {
+    const asked: Array<{ ok: Ok; fail: Fail; precise: boolean }> = [];
+    const geolocation = { getCurrentPosition: (ok: Ok, fail: Fail, options: { enableHighAccuracy?: boolean }) => void asked.push({ ok, fail, precise: Boolean(options.enableHighAccuracy) }) } as unknown as Geolocation;
+    const position = (at: number) => ({ coords: { latitude: 40, longitude: -75, accuracy: 12 }, timestamp: at });
+    return { asked, geolocation, position };
+  }
+
+  it("looks, hands on each fix, and looks again when the plan says", () => {
+    vi.useFakeTimers();
+    const { asked, geolocation, position } = phone();
+    const fixes: Fix[] = [];
+    const looks = watchPlace({ geolocation, onFix: (f) => fixes.push(f), onDenied: () => undefined, plan: () => ({ delayMs: 30_000, precise: false }) });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.precise).toBe(true);
+    asked[0]!.ok(position(1_000));
+    expect(fixes).toEqual([{ lat: 40, lng: -75, accuracy: 12, at: 1_000 }]);
+    vi.advanceTimersByTime(29_000);
+    expect(asked).toHaveLength(1);
+    vi.advanceTimersByTime(1_000);
+    expect(asked).toHaveLength(2);
+    expect(asked[1]!.precise).toBe(false);
+    looks.stop();
+    asked[1]!.ok(position(2_000));
+    vi.advanceTimersByTime(120_000);
+    expect(fixes).toHaveLength(1);
+    expect(asked).toHaveLength(2);
+  });
+
+  it("doesn't stop for good when the phone never answers a look: it gives up on that one and looks again", () => {
+    vi.useFakeTimers();
+    const { asked, geolocation, position } = phone();
+    const fixes: Fix[] = [];
+    const looks = watchPlace({ geolocation, onFix: (f) => fixes.push(f), onDenied: () => undefined, plan: () => ({ delayMs: 20_000, precise: true }) });
+    // Neither a position nor an error, ever (the page was put away mid-look).
+    vi.advanceTimersByTime(LOOK_WATCHDOG_MS - 1);
+    expect(asked).toHaveLength(1);
+    vi.advanceTimersByTime(1 + 20_000);
+    expect(asked).toHaveLength(2);
+    // Coming back to the screen while one is out doesn't pile up a second.
+    looks.now();
+    expect(asked).toHaveLength(2);
+    // The lost one answering at last is still a fix, and doesn't start a second chain of looks.
+    asked[0]!.ok(position(5_000));
+    expect(fixes).toHaveLength(1);
+    asked[1]!.ok(position(6_000));
+    vi.advanceTimersByTime(20_000);
+    expect(asked).toHaveLength(3);
+    vi.advanceTimersByTime(LOOK_WATCHDOG_MS + 20_000);
+    expect(asked).toHaveLength(4);
+    looks.stop();
+  });
+
+  it("stops while the phone refuses, says so, and tries again when the screen comes back", () => {
+    vi.useFakeTimers();
+    const { asked, geolocation, position } = phone();
+    const denied: boolean[] = [];
+    const looks = watchPlace({ geolocation, onFix: () => undefined, onDenied: (d) => denied.push(d), plan: () => ({ delayMs: 20_000, precise: true }) });
+    asked[0]!.fail({ code: 1, PERMISSION_DENIED: 1 });
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(asked).toHaveLength(1);
+    expect(denied).toEqual([true]);
+    looks.now();
+    asked[1]!.ok(position(1_000));
+    expect(denied).toEqual([true, false]);
+    // Any other error (no fix in time): just the next look.
+    vi.advanceTimersByTime(20_000);
+    asked[2]!.fail({ code: 3, PERMISSION_DENIED: 1 });
+    vi.advanceTimersByTime(20_000);
+    expect(asked).toHaveLength(4);
+    looks.stop();
+  });
+});
+
+describe("the schedule isn't read for nothing", () => {
+  it("fetches My day for the clock at the property only where the company has it on", async () => {
+    const { readFileSync } = await import("node:fs");
+    const read = (name: string) => readFileSync(new URL(`../src/features/field/${name}`, import.meta.url), "utf8");
+    expect(read("geofence.ts")).toContain("const day = useMyDay(on);");
+    expect(read("GeofenceCard.tsx")).toContain('const day = useMyDay(mode !== "off");');
+    expect(read("myDay.ts")).toMatch(/export function useMyDay\(enabled = true\)[\s\S]{0,400}enabled,\n\s+refetchInterval/);
   });
 });
 

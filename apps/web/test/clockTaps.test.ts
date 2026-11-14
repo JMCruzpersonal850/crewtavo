@@ -355,7 +355,32 @@ describe("the clock at the property (geofence.ts): the phone's own taps", () => 
     sound();
   });
 
+  it("never moves a clock that's on another visit, the shop or other work onto the visit it arrives at, however late it's sent", async () => {
+    const elm: ClockTarget = { category: "visit", visit: { id: "v2", jobId: "j2", title: "Elm" } };
+    // Their clock is on Gutters; the phone notices them inside Elm's circle next door.
+    await setClock(tapAt("09:00", visit));
+    expect(await setClock(byPhone(tapAt("09:30", elm)))).toEqual({ lost: [] });
+    expect(timeOf("ray")).toEqual([["v1", "09:00", null]]);
+    // At the shop, or on other work: the same.
+    for (const [target, tapped, noticed] of [[shop, "10:00", "10:20"], [{ category: "other" } as ClockTarget, "10:30", "10:50"]] as const) {
+      await setClock(tapAt(tapped, target));
+      await setClock(byPhone(tapAt(noticed, elm)));
+      expect(timeOf("ray").at(-1)![2]).toBeNull();
+      expect(timeOf("ray").at(-1)![0]).toBe(target.category);
+    }
+    // Their own tap moves it, as ever; and from driving, or from nothing, the phone starts it.
+    await setClock(tapAt("11:00", drive));
+    await setClock(byPhone(tapAt("11:15", elm)));
+    expect(timeOf("ray").at(-1)).toEqual(["v2", "11:15", null]);
+    sound();
+  });
+
   it("shows the same on the clock cards while it waits: only from that visit, never over a break", () => {
+    const elsewhere = (category: string, onVisit?: string) => ({ id: "e1", category, started_at: at("09:00"), visit: onVisit ? { id: onVisit, title: "Elm" } : null });
+    for (const clock of [elsewhere("visit", "v2"), elsewhere("shop"), elsewhere("other"), elsewhere("assessment")]) {
+      expect(clockAfter(clock, { key: "clock", change: byPhone(tapAt("09:30", visit)) }, "ray")).toEqual(clock);
+    }
+    expect(clockAfter(null, { key: "clock", change: byPhone(tapAt("09:30", visit)) }, "ray")).toMatchObject({ category: "visit", visit: { id: "v1" } });
     const running = (category: string, time: string, onVisit?: string) => ({ id: "e1", category, started_at: at(time), visit: onVisit ? { id: onVisit, title: "Gutters" } : null });
     const tap = (change: ClockChange) => ({ key: "clock" as const, change });
     expect(clockAfter(running("visit", "09:00", "v1"), tap(byPhone(tapAt("11:00", null), "v1")), "ray")).toBeNull();

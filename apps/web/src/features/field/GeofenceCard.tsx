@@ -25,7 +25,7 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
   const queryClient = useQueryClient();
   const { mode, watching, denied } = useGeofence();
   const prompts = useGeofencePrompts();
-  const day = useMyDay();
+  const day = useMyDay(mode !== "off");
   const timer = useRunningTimer(session.company.id, session.userId, mode !== "off");
   const dayClock = onDayClock(session);
   const clock = useMutation({
@@ -43,6 +43,8 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
   if (mode === "off") return null;
 
   const statusOf = (id: string) => day.data?.today.find((v) => v.id === id)?.status;
+  // Two of today's visits at one place: the question says which it means.
+  const shared = (p: GeofencePrompt) => (day.data?.today ?? []).some((v) => v.id !== p.visitId && v.status !== "completed" && v.status !== "cancelled" && (v.property?.line1 || v.title) === p.place);
   const shown = prompts.filter((p) => (!visitId || p.visitId === visitId) && promptStands(p, statusOf(p.visitId), timer.data));
   // A tap on the clock, dated now, with where the phone is where the company keeps that.
   const tapClock = async (p: GeofencePrompt, start: boolean) => {
@@ -66,6 +68,7 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
             <Icon name="pin" size={20} />
             <div className="grow stack-sm" style={{ fontWeight: 400 }}>
               <div>{text.title}</div>
+              {shared(p) && <span className="small">{p.title}</span>}
               {p.done && <span>{p.done}.</span>}
               <span>{text.question}</span>
               <span className="row wrap" style={{ gap: 8 }}>

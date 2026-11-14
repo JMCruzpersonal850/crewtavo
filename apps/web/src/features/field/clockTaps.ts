@@ -37,7 +37,8 @@ export interface ClockChange {
   entryIds?: Record<string, string>;
   /**
    * Made by the phone itself at a visit's property (the clock at the property, geofence.ts), not
-   * tapped: the clocks it starts and stops are marked so for Timesheets, and it never ends a break.
+   * tapped: the clocks it starts and stops are marked so for Timesheets, it never ends a break, and
+   * it starts a clock on a visit only when theirs is off or on driving.
    */
   geofence?: boolean;
   /** Only a clock on this visit moves (leaving its property); any other clock stays as it is. */
@@ -79,6 +80,8 @@ export function clockAfter(clock: ShownClock | null, tap: ClockTap, userId: stri
     // Leaving a property moves only a clock on that visit; the phone never ends a break by itself.
     if (tap.change.fromVisit && clock?.visit?.id !== tap.change.fromVisit) return clock;
     if (tap.change.geofence && clock?.category === "break") return clock;
+    // Arriving at a property, it starts a clock only over none or driving: never off another visit, the shop or other work.
+    if (tap.change.geofence && target?.visit && !tap.change.fromVisit && clock && clock.category !== "drive") return clock;
     if (!target) return null;
     if (target.visit && clock?.visit?.id === target.visit.id) return clock;
     return { id: `tap:${at}`, category: target.category, started_at: at, visit: target.visit ? { id: target.visit.id, title: target.visit.title } : null };

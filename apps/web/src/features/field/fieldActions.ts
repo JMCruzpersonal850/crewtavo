@@ -184,6 +184,9 @@ export async function setClock(v: ClockChange): Promise<{ lost: string[] }> {
   }
   // The phone never ends a break by itself.
   if (v.geofence) who = who.filter((id) => !open.some((entry) => entry.user_id === id && entry.category === "break" && startedBefore(entry, v.at)));
+  // Nor does it move a clock that's running on another visit, the shop or other work onto a visit
+  // (arriving at a property): only a clock that's off, or on driving, starts there by itself.
+  if (v.geofence && target.visit && !v.fromVisit) who = who.filter((id) => !open.some((entry) => entry.user_id === id && entry.category !== "drive" && startedBefore(entry, v.at)));
   // Already on that visit's clock (their own Start, or a crew lead clocked them in): left as it is.
   if (target.visit) who = who.filter((id) => !open.some((entry) => entry.user_id === id && entry.visit_id === target.visit!.id));
   const lost = who.filter((id) => open.some((entry) => entry.user_id === id && !startedBefore(entry, v.at)));

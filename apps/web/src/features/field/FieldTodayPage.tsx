@@ -26,7 +26,7 @@ import { showVisitStatus, statusSaved, type VisitStatusChange } from "./fieldAct
 import { useStatusTap } from "./fieldData";
 import { GeofenceCard } from "./GeofenceCard";
 import { InstallAppCard } from "./InstallAppCard";
-import { myDayKey, useMyDay, type MyDayVisit } from "./myDay";
+import { dayOrder, myDayKey, useMyDay, type MyDayVisit } from "./myDay";
 import { OfflineNote } from "./OfflineNote";
 import { SpanishOffer } from "./SpanishOffer";
 import { FIELD_SCOPE } from "@/lib/offline";
@@ -85,17 +85,7 @@ export function FieldTodayPage() {
   const statusTap = useStatusTap((change) => setStatus.mutate(change));
   const changeStatus = (visit: Visit, status: string) => statusTap.tap({ id: visit.id, jobId: visit.job?.id ?? null }, status);
 
-  // The route the office or crew lead set (Organize route), else timed visits by time, then the rest.
-  const order = (a: Visit, b: Visit) =>
-    a.route_order != null && b.route_order != null
-      ? a.route_order - b.route_order
-      : a.starts_at && b.starts_at
-        ? a.starts_at.localeCompare(b.starts_at)
-        : a.starts_at
-          ? -1
-          : b.starts_at
-            ? 1
-            : (a.route_order ?? 999) - (b.route_order ?? 999);
+  const order = dayOrder;
   const visits = [...(data.data?.today ?? [])].sort(order);
   const open = visits.filter((v) => v.status !== "completed");
   const done = visits.filter((v) => v.status === "completed");

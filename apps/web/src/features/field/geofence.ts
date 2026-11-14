@@ -16,16 +16,17 @@
  *     that visit's clock off the geofence until they leave and come back (core noteTap).
  *
  * What it knows is kept on the phone per person and day (localStorage), so a page reloaded at the
- * property doesn't take it for a new arrival.
+ * property doesn't take it for a new arrival. A phone that won't keep it (storage full or turned
+ * off) still works from what this page remembers. What it's asking is kept the same way, so a
+ * question is still there after the page loads again (tapping its notification can do that).
  */
 import {
   emptyGeofence,
   geofence as geofenceSetting,
-  geofenceActions,
+  geofenceStep,
   keepSites,
   nextLook,
   noteTap,
-  trackFix,
   type Fix,
   type GeofenceAction,
   type GeofenceSite,
@@ -39,7 +40,7 @@ import { keepsTime, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { clockChange, showClockTap, type ClockChange, type ClockTarget, type ShownClock } from "./clockTaps";
 import { onDayClock, recordsPlaces, useRunningTimer, type ClockPlace } from "./fieldData";
-import { useMyDay, type MyDayVisit } from "./myDay";
+import { dayOrder, useMyDay, type MyDayVisit } from "./myDay";
 import { t } from "@/lib/i18n";
 
 // ---------------------------------------------------------------------------------------------
@@ -66,9 +67,22 @@ export interface GeofencePrompt {
 }
 
 let prompts: readonly GeofencePrompt[] = [];
+/** Where the questions are kept on the phone (per person and day, as what the geofence knows is). */
+let promptsKey: string | null = null;
 const listeners = new Set<() => void>();
+const ASKS = "crewtavo-geofence-asks:";
 const setPrompts = (next: readonly GeofencePrompt[]) => {
   prompts = next;
+  // Kept on the phone as well: the page can load again with a question still unanswered (a tap on
+  // its notification reloads it), and the arrival behind it has been used up by then.
+  if (promptsKey) {
+    try {
+      if (next.length) localStorage.setItem(promptsKey, JSON.stringify(next));
+      else localStorage.removeItem(promptsKey);
+    } catch {
+      // On the screen only, then.
+    }
+  }
   listeners.forEach((listener) => listener());
 };
 const subscribe = (listener: () => void) => {
@@ -76,9 +90,41 @@ const subscribe = (listener: () => void) => {
   return () => void listeners.delete(listener);
 };
 export const useGeofencePrompts = () => useSyncExternalStore(subscribe, () => prompts);
-export const dismissPrompt = (id: string) => setPrompts(prompts.filter((p) => p.id !== id));
+export const geofencePrompts = () => prompts;
+export const dismissPrompt = (id: string) => {
+  if (prompts.some((p) => p.id === id)) setPrompts(prompts.filter((p) => p.id !== id));
+};
 /** A new question replaces one about the same visit (arriving again, then leaving). */
-const ask = (prompt: GeofencePrompt) => setPrompts([...prompts.filter((p) => p.visitId !== prompt.visitId), prompt]);
+export const askPrompt = (prompt: GeofencePrompt) => setPrompts([...prompts.filter((p) => p.visitId !== prompt.visitId), prompt]);
+
+const isPrompt = (p: unknown): p is GeofencePrompt =>
+  Boolean(p) && typeof p === "object" && typeof (p as GeofencePrompt).id === "string" && typeof (p as GeofencePrompt).visitId === "string" && ((p as GeofencePrompt).kind === "start" || (p as GeofencePrompt).kind === "finish");
+
+/**
+ * The questions for this person and day (`key`: geofenceKey), as the phone kept them: called as
+ * the geofence starts on a screen. Questions this page is already showing for them stay; another
+ * person's, or another day's, are dropped.
+ */
+export function restorePrompts(key: string) {
+  const mine = `${ASKS}${key.slice(PREFIX.length)}`;
+  if (promptsKey === mine) return;
+  promptsKey = mine;
+  let saved: GeofencePrompt[] = [];
+  try {
+    const read = JSON.parse(localStorage.getItem(mine) ?? "[]") as unknown;
+    if (Array.isArray(read)) saved = read.filter(isPrompt);
+    // Other days' questions are done with.
+    const person = mine.slice(0, mine.lastIndexOf(":") + 1);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(person) && k !== mine) localStorage.removeItem(k);
+    }
+  } catch {
+    // Storage turned off, or something unreadable: nothing kept.
+  }
+  prompts = saved;
+  listeners.forEach((listener) => listener());
+}
 
 /** The question as one line, for the card and the phone's notification. */
 export function promptText(p: GeofencePrompt): { title: string; question: string } {
@@ -102,18 +148,30 @@ export function promptStands(p: GeofencePrompt, status: string | undefined, cloc
 const PREFIX = "crewtavo-geofence:";
 export const geofenceKey = (companyId: string, userId: string, day: string) => `${PREFIX}${companyId}:${userId}:${day}`;
 
+/**
+ * What this page last knew, for a phone that wouldn't keep it. Without this, a phone whose storage
+ * is full or off would start from nothing at every look (two fixes in a row never add up, so it
+ * never fires), or from something old it once kept (the same arrival fires again and again).
+ */
+const remembered = new Map<string, { state: GeofenceState; stored: boolean }>();
+
 export function loadGeofence(key: string): GeofenceState {
+  const mine = remembered.get(key);
+  // The phone didn't take the last save: this page's own copy is the newest there is.
+  if (mine && !mine.stored) return mine.state;
   try {
     const saved = JSON.parse(localStorage.getItem(key) ?? "null") as GeofenceState | null;
     return saved && typeof saved === "object" && saved.sites && typeof saved.sites === "object" ? saved : emptyGeofence();
   } catch {
-    return emptyGeofence(); // Storage turned off, or something unreadable: start again.
+    return mine?.state ?? emptyGeofence(); // Storage turned off, or something unreadable: what this page knows, else start again.
   }
 }
 
 export function saveGeofence(key: string, state: GeofenceState) {
+  let stored = false;
   try {
     localStorage.setItem(key, JSON.stringify(state));
+    stored = true;
     // Other days' are done with.
     const mine = key.slice(0, key.lastIndexOf(":") + 1);
     for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -121,13 +179,22 @@ export function saveGeofence(key: string, state: GeofenceState) {
       if (k && k.startsWith(mine) && k !== key) localStorage.removeItem(k);
     }
   } catch {
-    // Kept in memory only for this look: at worst an arrival is noticed again after a reload.
+    // Not kept by the phone: remembered here for as long as the page is open, and at worst an arrival is noticed again after a reload.
   }
+  remembered.set(key, { state, stored });
 }
 
-/** The visits the geofence watches: today's, that this person is on, at a property with a point on the map. */
+/** For the tests: a page opened afresh. */
+export function forgetGeofence() {
+  remembered.clear();
+  prompts = [];
+  promptsKey = null;
+}
+
+/** The visits the geofence watches: today's, that this person is on, at a property with a point on the map, in the day's order (which says which is next). */
 export function geofenceSites(visits: readonly MyDayVisit[] | undefined): GeofenceSite[] {
-  return (visits ?? [])
+  return [...(visits ?? [])]
+    .sort(dayOrder)
     .filter((v) => v.mine !== false && v.property?.lat != null && v.property?.lng != null && v.status !== "completed" && v.status !== "cancelled")
     .map((v) => ({ visitId: v.id, lat: v.property!.lat!, lng: v.property!.lng!, place: v.property!.line1 || v.title, status: v.status }));
 }
@@ -168,6 +235,81 @@ function buzz(title: string, body: string, visitId: string) {
 /** Their clock as the clock card shows it now, waiting taps included. */
 const shownClock = (queryClient: QueryClient, companyId: string, userId: string) => queryClient.getQueryData<ShownClock | null>(["running-timer", companyId, userId]) ?? null;
 
+/** How long a look may go unanswered before the next is tried anyway: the phone's own time limit is 20 seconds, and a page put away mid-look sometimes never hears back at all. */
+export const LOOK_WATCHDOG_MS = 45_000;
+
+/**
+ * Looks where the phone is, again and again, for as long as a screen wants it: one look at a time,
+ * the next as `plan` says. A look the phone never answers (neither a position nor an error: it
+ * happens when the page is put away mid-look) is given up on after a while, so the looks go on.
+ * Returns how to stop, and `now` to look at once (the page is back on the screen).
+ */
+export function watchPlace(options: {
+  geolocation: Pick<Geolocation, "getCurrentPosition">;
+  onFix: (fix: Fix) => void;
+  /** The phone refused (true), or answered again after refusing (false). Looks stop while it refuses. */
+  onDenied: (denied: boolean) => void;
+  plan: (last: Fix | null) => { delayMs: number; precise: boolean };
+}): { stop: () => void; now: () => void } {
+  let stopped = false;
+  /** The look still waited on (0: none). An answer to an older one is used if it's a fix, and otherwise ignored. */
+  let looking = 0;
+  let looks = 0;
+  let next: ReturnType<typeof setTimeout> | undefined;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  let last: Fix | null = null;
+
+  const later = () => {
+    clearTimeout(next);
+    if (stopped) return;
+    const plan = options.plan(last);
+    next = setTimeout(() => look(plan.precise), plan.delayMs);
+  };
+  const look = (precise: boolean) => {
+    if (stopped || looking) return;
+    const mine = (looking = ++looks);
+    const done = () => {
+      if (looking !== mine) return false;
+      looking = 0;
+      clearTimeout(watchdog);
+      return true;
+    };
+    watchdog = setTimeout(() => {
+      if (done() && !stopped) later();
+    }, LOOK_WATCHDOG_MS);
+    options.geolocation.getCurrentPosition(
+      (p) => {
+        const current = done();
+        if (stopped) return;
+        options.onDenied(false);
+        const fix: Fix = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp || Date.now() };
+        if (!last || fix.at > last.at) last = fix;
+        options.onFix(fix);
+        if (current) later();
+      },
+      (e) => {
+        if (!done() || stopped) return;
+        // Said on the card; asked again when the screen is opened again.
+        if (e.code === e.PERMISSION_DENIED) return options.onDenied(true);
+        later();
+      },
+      { enableHighAccuracy: precise, timeout: 20_000, maximumAge: 15_000 },
+    );
+  };
+  look(true);
+  return {
+    stop: () => {
+      stopped = true;
+      clearTimeout(next);
+      clearTimeout(watchdog);
+    },
+    now: () => {
+      clearTimeout(next);
+      look(true);
+    },
+  };
+}
+
 /**
  * Runs the clock at the property while the screen that calls it is open. Returns whether it's on
  * for this person, and whether the phone refused to say where it is.
@@ -177,7 +319,8 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
   const queryClient = useQueryClient();
   const setting = geofenceSetting(session.company.settings);
   const on = setting.mode !== "off" && keepsTime(session);
-  const day = useMyDay();
+  // Only read where the company has it on: a visit's screen doesn't fetch the schedule for nothing.
+  const day = useMyDay(on);
   // Loaded so their clock is on hand (shownClock) when a look needs it.
   useRunningTimer(session.company.id, session.userId, on);
   const sites = on ? geofenceSites(day.data?.today) : [];
@@ -212,13 +355,14 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
     });
   }, [on, queryClient]);
 
+  // The questions the phone kept for this person and day: still there after the page loads again.
+  useEffect(() => {
+    if (on) restorePrompts(key);
+  }, [on, key]);
+
   const watching = on && sites.length > 0 && typeof navigator !== "undefined" && Boolean(navigator.geolocation);
   useEffect(() => {
     if (!watching) return;
-    let stopped = false;
-    let looking = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    let last: Fix | null = null;
 
     const act = (action: GeofenceAction, fix: Fix) => {
       const { session: s, visits, clock: send } = now.current;
@@ -244,12 +388,17 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
     };
 
     const handle = (fix: Fix) => {
-      const { session: s, setting: g, sites: watched, all, key: k } = now.current;
+      const { session: s, setting: g, sites: watched, all, visits, key: k } = now.current;
       const before = keepSites(loadGeofence(k), all);
-      const { state, events } = trackFix(before, fix, watched, g.radius);
-      saveGeofence(k, state);
       const running = shownClock(queryClient, s.company.id, s.userId);
-      const actions = geofenceActions(events, { mode: g.mode, sites: watched, clock: running && { category: running.category, visitId: running.visit?.id ?? null }, day: onDayClock(s) });
+      // Start questions still waiting on the screen: another visit at the same spot waits its turn behind them.
+      const asking = prompts.filter((p) => p.kind === "start" && promptStands(p, visits.find((v) => v.id === p.visitId)?.status, running)).map((p) => p.visitId);
+      const { state, events, actions } = geofenceStep(before, fix, g.radius, {
+        mode: g.mode, sites: watched, clock: running && { category: running.category, visitId: running.visit?.id ?? null }, day: onDayClock(s), asking,
+      });
+      saveGeofence(k, state);
+      // Gone from a property: "You're at 12 Oak St. Start the visit?" no longer holds.
+      for (const e of events) if (e.kind === "left") dismissPrompt(`start:${e.visitId}`);
       // What the phone did, then what it asks, one question per visit with what it did above it.
       const done = new Map<string, string>();
       for (const action of actions) {
@@ -257,7 +406,7 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
         if (typeof result === "string") done.set(action.visitId, result);
         else if (result) {
           const prompt = { ...result, done: done.get(result.visitId) };
-          ask(prompt);
+          askPrompt(prompt);
           const text = promptText(prompt);
           buzz(text.title, prompt.done ? `${prompt.done}. ${text.question}` : text.question, prompt.visitId);
         }
@@ -266,46 +415,22 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
       for (const [visitId, words] of done) if (!actions.some((a) => a.visitId === visitId && a.kind.startsWith("ask"))) buzz(words, "", visitId);
     };
 
-    const later = () => {
-      clearTimeout(next);
-      if (stopped) return;
-      const { sites: watched, setting: g, key: k } = now.current;
-      const plan = nextLook(loadGeofence(k), last, watched, g.radius);
-      next = setTimeout(() => look(plan.precise), plan.delayMs);
-    };
-    const look = (precise: boolean) => {
-      if (stopped || looking) return;
-      looking = true;
-      navigator.geolocation.getCurrentPosition(
-        (p) => {
-          looking = false;
-          if (stopped) return;
-          setDenied(false);
-          last = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp || Date.now() };
-          handle(last);
-          later();
-        },
-        (e) => {
-          looking = false;
-          if (stopped) return;
-          // Said on the card; asked again when the screen is opened again.
-          if (e.code === e.PERMISSION_DENIED) return setDenied(true);
-          later();
-        },
-        { enableHighAccuracy: precise, timeout: 20_000, maximumAge: 15_000 },
-      );
-    };
+    const looks = watchPlace({
+      geolocation: navigator.geolocation,
+      onFix: handle,
+      onDenied: setDenied,
+      plan: (last) => {
+        const { sites: watched, setting: g, key: k } = now.current;
+        return nextLook(loadGeofence(k), last, watched, g.radius);
+      },
+    });
     // Back on the screen (the phone paused it in the background): look at once.
     const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      clearTimeout(next);
-      look(true);
+      if (document.visibilityState === "visible") looks.now();
     };
-    look(true);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      stopped = true;
-      clearTimeout(next);
+      looks.stop();
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [watching, key, queryClient]);
