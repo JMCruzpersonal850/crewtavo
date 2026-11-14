@@ -122,6 +122,47 @@ select tmkpf.check((select array_agg(name order by name) = '{Ida Ash,Jo Bay}' fr
 reset role;
 
 \o
+\echo 'A merged client''s cards follow them'
+\o /dev/null
+-- Mo and Moe are one person entered twice, at two addresses; Ned is deleted outright. All three
+-- were mailed "Merged"; only Mo and Moe were mailed "Both".
+insert into public.clients (company_id, display_name, status, billing_address, tags) values
+  (:'co', 'Mo Elm', 'active', '{"line1": "1 Elm St", "city": "Springfield", "region": "IL", "postal_code": "62705"}', '{both}'),
+  (:'co', 'Moe Elm', 'active', '{"line1": "2 Elm St", "city": "Springfield", "region": "IL", "postal_code": "62705"}', '{both,merged}'),
+  (:'co', 'Ned Fir', 'active', '{"line1": "3 Elm St", "city": "Springfield", "region": "IL", "postal_code": "62705"}', '{merged}');
+select id as mo from public.clients where display_name = 'Mo Elm' \gset
+select id as moe from public.clients where display_name = 'Moe Elm' \gset
+select id as ned from public.clients where display_name = 'Ned Fir' \gset
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Merged', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["merged"]}') returning id as pc_m \gset
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Both', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["both"]}') returning id as pc_b \gset
+set local role service_role;
+select tmkpf.as_nobody();
+select public.start_postcard_campaign(:'pc_m', 'live', repeat('m', 32), 'x'), public.start_postcard_campaign(:'pc_b', 'live', repeat('n', 32), 'x');
+update public.postcard_recipients set status = 'made', lob_id = 'psc_' || id, made_at = now() - interval '2 days' where campaign_id = :'pc_m';
+reset role;
+-- Moe pays for work after the card.
+insert into public.invoices (company_id, client_id, tax_rate, issued_on) values (:'co', :'moe', 0, current_date) returning id as inv \gset
+insert into public.invoice_line_items (company_id, invoice_id, name, quantity, unit, unit_price) values (:'co', :'inv', 'Cleaning', 1, 'ea', 200);
+update public.invoices set status = 'sent' where id = :'inv';
+insert into public.payments (company_id, invoice_id, client_id, amount, method) select company_id, id, client_id, balance_due, 'check' from public.invoices where id = :'inv';
+set local role authenticated;
+select tmkpf.as_user(:'pat');
+select public.merge_clients(:'co', :'mo', :'moe');
+select tmkpf.check((select client_id = :'mo' and status = 'made' and name = 'Moe Elm' from public.postcard_recipients where campaign_id = :'pc_m' and lob_id is not null and name = 'Moe Elm'),
+  'a merged client''s card is now the kept client''s, as it was mailed');
+select tmkpf.check((select (r ->> 'revenue')::numeric = 200 and r -> 'clients_paid' = '1' from jsonb_array_elements(public.postcard_results(:'co', :'pc_m')) r),
+  'and what they paid after it still counts for the campaign');
+select tmkpf.check((select count(*) = 1 from public.postcard_recipients where campaign_id = :'pc_b' and client_id = :'mo')
+  and (select count(*) = 1 and bool_and(client_id is null) from public.postcard_recipients where campaign_id = :'pc_b' and name = 'Moe Elm'),
+  'on a campaign both were on, the kept client keeps their own card and the other stays without a client');
+-- A client deleted, not merged, takes no one else's place.
+reset role;
+select tmkpf.as_nobody();
+delete from public.clients where id = :'ned';
+select tmkpf.check((select client_id is null from public.postcard_recipients where campaign_id = :'pc_m' and name = 'Ned Fir'), 'a deleted client''s card just loses its client');
+update public.postcard_recipients set made_at = now() - interval '9 days' where campaign_id in (:'pc_m', :'pc_b');
+
+\o
 \echo 'After Lob has accepted the cards'
 \o /dev/null
 insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Spring', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["mail"]}') returning id as pc \gset
