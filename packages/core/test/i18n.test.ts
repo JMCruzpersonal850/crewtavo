@@ -358,6 +358,10 @@ describe("notifications to the team, in Spanish", () => {
     expect(translateError("es", "Your license on file has run out. We'll check the new one you sent.")).toBe("Tu licencia que tenemos venció. Vamos a revisar el documento nuevo que enviaste.");
     expect(translateError("es", "We haven't checked the workers' comp exemption you sent yet.")).toBe("Todavía no revisamos tu exención de compensación laboral que enviaste.");
     expect(translateError("es", "The lines and tax come to $86.40, not the $90.00 total. Check them.")).toBe("Las líneas y el impuesto suman $86.40, no el total de $90.00. Revísalos.");
+    // Sending from the field to someone whose texts are off.
+    expect(translateError("es", "Texts off")).toBe("Mensajes de texto desactivados");
+    expect(translateError("es", "Pat Lee asked not to be texted, so texts to them are off. Send it by email instead.")).toBe("Pat Lee pidió no recibir mensajes de texto, así que están desactivados. Envíalo por correo.");
+    expect(translateError("es", "540-555-0133 asked not to be texted, so Crewtavo can't text it.")).toBe("540-555-0133 pidió no recibir mensajes de texto, así que Crewtavo no puede enviarle.");
   });
 });
 

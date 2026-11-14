@@ -98,4 +98,8 @@ export const ERRORS: PatternTable = [
 
   // Sending (services/sales.ts reasons a send didn't go, as the field's Send dialog shows them)
   ["Link only", "Solo enlace"],
+  // Why someone can't be ticked for a text in the Send dialog, and why a text wasn't sent (services/textsOff.ts).
+  ["Texts off", "Mensajes de texto desactivados"],
+  ["{name} asked not to be texted, so texts to them are off. Send it by email instead.", "{name} pidió no recibir mensajes de texto, así que están desactivados. Envíalo por correo."],
+  ["{phone} asked not to be texted, so Crewtavo can't text it.", "{phone} pidió no recibir mensajes de texto, así que Crewtavo no puede enviarle."],
 ];
