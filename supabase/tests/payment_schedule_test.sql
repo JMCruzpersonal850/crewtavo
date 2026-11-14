@@ -280,6 +280,8 @@ select tps.check((select subtotal = 330 and tax_amount = 0 and total = 330 from 
   'a payment before the last bills its amount, tax included, with no tax of its own, and says so');
 select tps.check((select send_state = 'waiting' from public.job_installments where id = tps.row_id(:'pjob', 2))
   and tps.told('Payment 2 of 3 for job #%') is null, 'with "send by themselves" on it waits for the server to send it, and nobody is told it''s ready');
+-- A payment made as the work starts waits half an hour (see further down); this one has.
+update public.job_installments set made_at = now() - interval '31 minutes' where id = tps.row_id(:'pjob', 2);
 set role service_role;
 select tps.check((select count(*) = 1 and bool_and(invoice_id = :'pstart') from public.claim_installment_sends(10)), 'the server claims it to send');
 select tps.check((select count(*) = 0 from public.claim_installment_sends(10)), 'once');
@@ -448,6 +450,93 @@ select public.invoice_installment(tps.row_id(:'cursed_job', 1)) as cursed_invoic
 commit;
 select tps.check((select problem is null and invoice_id = :'cursed_invoice' from public.job_installments where id = tps.row_id(:'cursed_job', 1)),
   'once it''s sorted out, the office invoices it from the job and the reason is gone');
+
+-- ===== Sent by themselves: a payment made as a visit starts waits, and can be called off =========
+-- (20261113001620_started_payments_wait_before_sending.sql)
+begin;
+set local role authenticated;
+select tps.as_user(:'pat');
+select public.merge_company_settings(:'co', '{"payment_schedule": {"send": true}}');
+select tps.as_user(:'olly');
+select tps.quote(:'co', :'erin', 'Gazebo', 800) as gazebo \gset
+update public.quotes set payment_schedule = '[{"kind": "percent", "value": 50, "due": "work_starts"}, {"kind": "rest", "due": "work_done"}]', status = 'approved', approved_at = now() where id = :'gazebo';
+select public.convert_quote_to_job(:'gazebo') as gjob \gset
+commit;
+insert into public.visits (company_id, job_id, title, scheduled_on) values (:'co', :'gjob', 'Gazebo', private.company_today(:'co')) returning id as gv \gset
+insert into public.visit_assignees (company_id, visit_id, user_id) values (:'co', :'gv', :'cruz');
+begin;
+set local role authenticated;
+select tps.as_user(:'cruz');
+update public.visits set status = 'in_progress' where id = :'gv';
+commit;
+select tps.check(tps.rows(:'gjob') = '1:400.00:work_starts:progress/400.00/draft, 2:400.00:work_done:-'
+  and (select send_state = 'waiting' from public.job_installments where id = tps.row_id(:'gjob', 1)), 'Cruz taps Start: the payment is a draft waiting to be sent');
+set role service_role;
+select tps.check((select count(*) = 0 from public.claim_installment_sends(10)), 'for its first half hour the server doesn''t send it');
+reset role;
+-- It was the wrong visit: the office puts it back.
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+update public.visits set status = 'scheduled' where id = :'gv';
+commit;
+select tps.check(tps.rows(:'gjob') = '1:400.00:work_starts:-, 2:400.00:work_done:-'
+  and (select made_at is null and send_state is null from public.job_installments where id = tps.row_id(:'gjob', 1))
+  and (select count(*) = 0 from public.invoices where job_id = :'gjob'),
+  'the visit goes back to scheduled: the untouched draft is gone and the payment is as it was before the tap');
+-- The work really starts. This time the office changes the draft before the visit is put back again.
+begin;
+set local role authenticated;
+select tps.as_user(:'cruz');
+update public.visits set status = 'in_progress' where id = :'gv';
+commit;
+select invoice_id as gdraft from public.job_installments where id = tps.row_id(:'gjob', 1) \gset
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+update public.invoices set due_on = due_on + 7 where id = :'gdraft';
+update public.visits set status = 'scheduled' where id = :'gv';
+commit;
+select tps.check((select send_state is null and invoice_id = :'gdraft' and made_at is not null from public.job_installments where id = tps.row_id(:'gjob', 1))
+  and (select status = 'draft' from public.invoices where id = :'gdraft')
+  and tps.told('Payment 1 of 2 for job #' || (select number from public.jobs where id = :'gjob') || ' wasn''t sent') like
+      'olly@pine-patios.test: Payment 1 of 2 for job #% wasn''t sent | The visit that started the work was put back, and its invoice had been changed, so it''s in Drafts for you to send or delete.%',
+  'a draft the office has changed stays theirs: not sent by itself, and they''re told');
+set role service_role;
+select tps.check((select count(*) = 0 from public.claim_installment_sends(10)), 'and the server never claims it');
+reset role;
+
+-- Half an hour on, a started payment is sent; one the office already sent by hand never is.
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+select tps.quote(:'co', :'erin', 'Arbor', 600) as arbor \gset
+update public.quotes set payment_schedule = '[{"kind": "percent", "value": 50, "due": "work_starts"}, {"kind": "rest", "due": "work_done"}]', status = 'approved', approved_at = now() where id = :'arbor';
+select public.convert_quote_to_job(:'arbor') as ajob \gset
+select tps.quote(:'co', :'erin', 'Trellis', 500) as trellis \gset
+update public.quotes set payment_schedule = '[{"kind": "percent", "value": 50, "due": "work_starts"}, {"kind": "rest", "due": "work_done"}]', status = 'approved', approved_at = now() where id = :'trellis';
+select public.convert_quote_to_job(:'trellis') as tjob \gset
+commit;
+insert into public.visits (company_id, job_id, title, scheduled_on, status) values (:'co', :'ajob', 'Arbor', private.company_today(:'co'), 'in_progress'), (:'co', :'tjob', 'Trellis', private.company_today(:'co'), 'in_progress');
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+update public.invoices set status = 'sent' where id = (select invoice_id from public.job_installments where id = tps.row_id(:'tjob', 1));
+commit;
+update public.job_installments set made_at = now() - interval '31 minutes' where job_id in (:'ajob', :'tjob') and position = 1;
+set role service_role;
+select tps.check((select count(*) = 1 and bool_and(id = tps.row_id(:'ajob', 1)) from public.claim_installment_sends(10)),
+  'after half an hour the server claims the started payment to send, and not the one the office sent by hand');
+reset role;
+select tps.check((select send_state is null from public.job_installments where id = tps.row_id(:'tjob', 1)), 'the one sent by hand is no longer waiting');
+-- The office sends the claimed one by hand in the moment before the server does: the server checks, and calls its own send off.
+set role service_role;
+select public.installment_send_called_off(tps.row_id(:'ajob', 1));
+reset role;
+select tps.check((select send_state is null from public.job_installments where id = tps.row_id(:'ajob', 1))
+  and tps.told('Payment 1 of 2 for job #' || (select number from public.jobs where id = :'ajob') || '%') is null,
+  'a send the server calls off is over, with nobody told');
+select tps.check(not has_function_privilege('authenticated', 'public.installment_send_called_off(uuid)', 'execute'), 'only the server calls a send off');
 
 -- Only the server runs the hourly run and the sends.
 select tps.check(not has_function_privilege('authenticated', 'public.make_due_installments()', 'execute')

@@ -105,7 +105,7 @@ export function QuoteSettings() {
         Send scheduled payments to clients by themselves
       </label>
       <span className="muted small">
-        A quote's payment schedule becomes invoices on its job as each payment comes due. Off, each one waits in Drafts and the people who handle invoices are told. On, it's sent to the client the usual way, and they're told only if it couldn't be sent.
+        A quote's payment schedule becomes invoices on its job as each payment comes due. Off, each one waits in Drafts and the people who handle invoices are told. On, it's sent to the client the usual way, and they're told only if it couldn't be sent. A payment due when the work starts waits 30 minutes after the first visit is started, and isn't sent if that visit is put back in that time.
       </span>
       <FormError error={save.error} />
       <div className="form-actions" style={{ justifyContent: "flex-start" }}>

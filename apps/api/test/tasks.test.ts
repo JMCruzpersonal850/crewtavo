@@ -360,7 +360,7 @@ describe("scheduled payments", () => {
     const clients: Record<string, unknown> = { "inv-1": { email: "pat@example.com", phone: null }, "inv-2": { email: null, phone: "+15555550100" }, "inv-3": { email: "x@example.com", phone: null } };
     const calls = serve((call) => {
       if (call.path === "rpc/claim_installment_sends") return claimed;
-      if (call.path === "invoices") return { client: clients[call.url.searchParams.get("id")!.replace("eq.", "")] };
+      if (call.path === "invoices") return { status: "draft", client: clients[call.url.searchParams.get("id")!.replace("eq.", "")] };
       return null;
     });
     sales.sendInvoice.mockImplementation(async (_s: unknown, id: string) => {
@@ -368,7 +368,7 @@ describe("scheduled payments", () => {
       return { link: "x", sent: true };
     });
     expect(CRON_TASKS["*/5 * * * *"]).toContain("installments");
-    expect(await runTask("installments", withUrl)).toEqual({ claimed: 3, sent: 2, failed: 1 });
+    expect(await runTask("installments", withUrl)).toEqual({ claimed: 3, sent: 2, failed: 1, called_off: 0 });
     expect(sales.sendInvoice.mock.calls.map((c) => [c[0].companyId, c[0].baseUrl, c[1], c[2]])).toEqual([
       ["co-1", "https://crew.example.com", "inv-1", { channel: "email" }],
       ["co-1", "https://crew.example.com", "inv-2", { channel: "sms" }],
@@ -384,11 +384,27 @@ describe("scheduled payments", () => {
   it("sends nothing without the server's web address, and says so to the office", async () => {
     sales.sendInvoice.mockReset();
     const calls = serve((call) => (call.path === "rpc/claim_installment_sends" ? [{ id: "in-1", company_id: "co-1", invoice_id: "inv-1" }] : null));
-    expect(await runTask("installments", env)).toEqual({ claimed: 1, sent: 0, failed: 1 });
+    expect(await runTask("installments", env)).toEqual({ claimed: 1, sent: 0, failed: 1, called_off: 0 });
     expect(sales.sendInvoice).not.toHaveBeenCalled();
     expect(calls.find((c) => c.path === "rpc/installment_sent")?.body).toEqual({
       p_installment: "in-1", p_sent: false, p_error: "This server has no web address set (APP_URL), so it can't send links to clients",
     });
+  });
+
+  it("never sends an invoice the office already sent by hand, or one that's void or gone: the send is called off and nobody is told", async () => {
+    sales.sendInvoice.mockReset();
+    sales.sendInvoice.mockResolvedValue({ link: "x", sent: true });
+    const withUrl = { ...env, APP_URL: "https://crew.example.com/" };
+    const statuses: Record<string, unknown> = { "inv-1": { status: "sent", client: { email: "pat@example.com", phone: null } }, "inv-2": { status: "void", client: { email: "pat@example.com", phone: null } }, "inv-3": null, "inv-4": { status: "draft", client: { email: "pat@example.com", phone: null } } };
+    const calls = serve((call) => {
+      if (call.path === "rpc/claim_installment_sends") return ["1", "2", "3", "4"].map((n) => ({ id: `in-${n}`, company_id: "co-1", invoice_id: `inv-${n}` }));
+      if (call.path === "invoices") return statuses[call.url.searchParams.get("id")!.replace("eq.", "")];
+      return null;
+    });
+    expect(await runTask("installments", withUrl)).toEqual({ claimed: 4, sent: 1, failed: 0, called_off: 3 });
+    expect(sales.sendInvoice.mock.calls.map((c) => c[1])).toEqual(["inv-4"]);
+    expect(calls.filter((c) => c.path === "rpc/installment_send_called_off").map((c) => c.body)).toEqual([{ p_installment: "in-1" }, { p_installment: "in-2" }, { p_installment: "in-3" }]);
+    expect(calls.filter((c) => c.path === "rpc/installment_sent").map((c) => c.body)).toEqual([{ p_installment: "in-4", p_sent: true }]);
   });
 });
 

@@ -4,6 +4,10 @@
  * company has "Send scheduled payments to clients by themselves" on (settings.payment_schedule.send),
  * this sends them the usual way (sales.ts sendInvoice): every five minutes, each once. One that
  * doesn't go stays in Drafts and the office is told why (installment_sent).
+ *
+ * The database only hands over drafts, and one made because a visit was started only half an hour
+ * after (20261113001620_started_payments_wait_before_sending.sql). An invoice the office sent by
+ * hand in the moment since is never sent again: the send is called off instead.
  */
 import type { Env } from "../env";
 import { HttpError } from "../lib/http";
@@ -19,7 +23,7 @@ export async function sendScheduledPayments(env: Env) {
   const { data, error } = await admin.rpc("claim_installment_sends", { p_limit: BATCH });
   if (error) throw new Error(error.message);
   const claimed = (data ?? []) as Array<{ id: string; company_id: string; invoice_id: string }>;
-  const counts = { claimed: claimed.length, sent: 0, failed: 0 };
+  const counts = { claimed: claimed.length, sent: 0, failed: 0, called_off: 0 };
   const baseUrl = (env.APP_URL ?? "").replace(/\/$/, "");
   for (const row of claimed) {
     let sent = false;
@@ -27,7 +31,14 @@ export async function sendScheduledPayments(env: Env) {
     try {
       if (!baseUrl) throw new HttpError(501, "This server has no web address set (APP_URL), so it can't send links to clients");
       // By email, or by text to a client with a phone and no email: what the Send dialog starts with.
-      const { data: invoice } = await admin.from("invoices").select("client:clients(email, phone)").eq("id", row.invoice_id).maybeSingle();
+      const { data: invoice } = await admin.from("invoices").select("status, client:clients(email, phone)").eq("id", row.invoice_id).maybeSingle();
+      // Sent by hand, voided or deleted since it was claimed: sendInvoice would send it again.
+      if (invoice?.status !== "draft") {
+        const { error: offError } = await admin.rpc("installment_send_called_off", { p_installment: row.id });
+        if (offError) reportError(new Error(offError.message), { task: "installments", step: "installment_send_called_off" });
+        counts.called_off++;
+        continue;
+      }
       const client = invoice?.client as { email: string | null; phone: string | null } | null | undefined;
       const channel = !client?.email && client?.phone ? "sms" : "email";
       const result = await sendInvoice({ db: admin, env, companyId: row.company_id, baseUrl }, row.invoice_id, { channel });
