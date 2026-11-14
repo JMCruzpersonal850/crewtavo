@@ -59,9 +59,13 @@ export interface SnowSite {
 
 const MAX_LINES = 30;
 
-function snowLine(s: SnowSite): string {
+/** Which storm a notice is about: tomorrow's, told the day before, or one that's here today and wasn't told about. */
+export type SnowDay = "today" | "tomorrow";
+
+function snowLine(s: SnowSite, day: SnowDay): string {
   const what = s.plan.kind === "salt" ? `salt only (it plows at ${inchesText(s.trigger_in)})` : `trigger ${inchesText(s.trigger_in)}${s.plan.pushes > 1 ? `, ${s.plan.pushes} pushes` : ""}`;
-  return `${s.name}: ${inchesText(s.snow_in)} from 6pm tonight through tomorrow, ${what}${s.clear_by ? `, clear by ${clockText(s.clear_by)}` : ""}`;
+  const when = day === "today" ? "today, counted from 6pm last night" : "from 6pm tonight through tomorrow";
+  return `${s.name}: ${inchesText(s.snow_in)} ${when}, ${what}${s.clear_by ? `, clear by ${clockText(s.clear_by)}` : ""}`;
 }
 
 export interface SnowNotice { user_id: string; office: boolean; title: string; body: string }
@@ -82,22 +86,24 @@ function notices<T extends { people: string[]; priority?: number }>(sites: T[], 
 }
 
 /**
- * Who hears about the snow coming by tomorrow, and what: each site goes to its people, and every one
- * of them to the office (`office`: the people who schedule the team). The first priority first, then
- * the most snow. `asked` are the ones asked whether they can go out: the subcontractors, who work
- * for themselves; the business's own people are told. Empty for no sites.
+ * Who hears about the snow coming by tomorrow (or, for `day` "today", a storm that's here and they
+ * weren't told about), and what: each site goes to its people, and every one of them to the office
+ * (`office`: the people who schedule the team). The first priority first, then the most snow.
+ * `asked` are the ones asked whether they can go out: the subcontractors, who work for themselves;
+ * the business's own people are told. Empty for no sites.
  */
-export function snowNotices(sites: SnowSite[], office: string[], asked: string[] = []): SnowNotice[] {
+export function snowNotices(sites: SnowSite[], office: string[], asked: string[] = [], day: SnowDay = "tomorrow"): SnowNotice[] {
   const ordered = [...sites].sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2) || b.snow_in - a.snow_in);
+  const when = day === "today" ? "today" : "by tomorrow";
   return notices(
     ordered,
     office,
     (mine) => {
       const one = mine[0]!;
-      if (mine.length > 1) return `Snow by tomorrow: ${mine.length} properties to service`;
-      return `${one.plan.kind === "salt" ? "Salt run" : "Snow"} by tomorrow at ${one.name}: ${inchesText(one.snow_in)} forecast`;
+      if (mine.length > 1) return `Snow ${when}: ${mine.length} properties to service`;
+      return `${one.plan.kind === "salt" ? "Salt run" : "Snow"} ${when} at ${one.name}: ${inchesText(one.snow_in)}${day === "today" ? "" : " forecast"}`;
     },
-    snowLine,
+    (site) => snowLine(site, day),
     asked,
   );
 }

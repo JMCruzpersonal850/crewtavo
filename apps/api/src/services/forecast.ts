@@ -268,6 +268,35 @@ export async function snowFallen(places: Array<{ lat: number; lng: number }>, fo
 }
 
 /**
+ * Today's own storm at each place, by placeKey: the snow from 6pm last night to 6pm tonight (after
+ * that it's tomorrow's storm, which is told about on its own). What has fallen is Open-Meteo's
+ * estimate after the fact, as in snowFallen, since the Weather Service only looks ahead; what's
+ * still coming is the place's own forecast (`weather`, as placeWeathers gave it). A place Open-Meteo
+ * doesn't answer for counts what's coming alone, and one with no forecast isn't in the answer.
+ */
+export async function snowToday(places: Array<{ lat: number; lng: number }>, weather: Map<string, PlaceWeather>, today: string, forecaster: Forecaster = FREE): Promise<Map<string, number>> {
+  const from = `${addDays(today, -1)}T${SNOW_DAY_STARTS}:00`;
+  const to = `${today}T${SNOW_DAY_STARTS}:00`;
+  const unique = [...new Map(places.map((p) => [placeKey(p.lat, p.lng), p])).entries()].filter(([key]) => weather.has(key));
+  const paid = forecaster.source === "open_meteo_commercial" ? forecaster.key : undefined;
+  const totals = new Map<string, number>();
+  for (let i = 0; i < unique.length; i += PLACES_PER_REQUEST) {
+    const batch = unique.slice(i, i + PLACES_PER_REQUEST);
+    const answers = await openMeteo(batch.map(([, place]) => place), 1, paid, 1).catch(() => []);
+    batch.forEach(([key], n) => {
+      const hours = weather.get(key)!.hours;
+      // The forecast starts with the hour it is now: everything before that has fallen.
+      const now = hours[0]?.time ?? to;
+      const past = answers[n]?.hourly;
+      const fallen = (past?.time ?? []).reduce((total, time, h) => (time >= from && time < now && time < to ? total + (past!.snowfall?.[h] ?? 0) : total), 0);
+      const coming = hours.reduce((total, h) => (h.time >= from && h.time < to ? total + h.snow_in : total), 0);
+      totals.set(key, round(fallen + coming, 2)!);
+    });
+  }
+  return totals;
+}
+
+/**
  * The official winter alerts in force where these places are (winter storm warnings and the like),
  * from the National Weather Service whatever the business's forecast source: they're the
  * government's to give. One question for each stretch of about 15 miles, a dozen at most.

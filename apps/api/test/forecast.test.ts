@@ -4,7 +4,7 @@
  * Weather Service are stand-ins here: fetch is stubbed.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkOpenMeteoKey, dailyOutlook, placeWeather, placeWeathers, snowFallen, winterAlerts } from "../src/services/forecast";
+import { checkOpenMeteoKey, dailyOutlook, placeWeather, placeWeathers, snowFallen, snowToday, winterAlerts } from "../src/services/forecast";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -79,6 +79,19 @@ describe("Open-Meteo", () => {
     const asked = serve(() => ({ hourly: { time: hours, snowfall: openMeteo.hourly.snowfall } }));
     const fallen = await snowFallen([{ lat: 40.588, lng: -111.638 }]);
     expect([asked[0]!.searchParams.get("past_days"), fallen.get("40.59,-111.64")]).toEqual(["2", { "2026-01-15": 3, "2026-01-16": 2.25, "2026-01-17": 0 }]);
+  });
+
+  it("adds up today's own storm: what has fallen since 6pm last night, and what the forecast still has coming by 6pm tonight", async () => {
+    // It's 9:30pm on the 15th in the forecast above: 0.4 at 8pm has fallen for the 16th's storm, 0.6 at 10pm and 1.25 at 3am are coming.
+    const asked = serve(() => openMeteo);
+    const weather = await placeWeathers([{ lat: 40.59, lng: -111.64 }]);
+    expect(Object.fromEntries(await snowToday([{ lat: 40.59, lng: -111.64 }], weather, "2026-01-16"))).toEqual({ "40.59,-111.64": 2.25 });
+    // The look back is one day, and the snow at noon on the 15th, before 6pm, is the 15th's own.
+    expect(asked.at(-1)!.searchParams.get("past_days")).toBe("1");
+    expect(Object.fromEntries(await snowToday([{ lat: 40.59, lng: -111.64 }], weather, "2026-01-15"))).toEqual({ "40.59,-111.64": 2 });
+    // The look back fails: what's coming still counts. A place with no forecast isn't answered for.
+    serve((url) => (url.searchParams.has("past_days") ? new Response("busy", { status: 429 }) : openMeteo));
+    expect(Object.fromEntries(await snowToday([{ lat: 40.59, lng: -111.64 }, { lat: 1, lng: 1 }], weather, "2026-01-16"))).toEqual({ "40.59,-111.64": 1.85 });
   });
 
   it("checks a pasted key, and says in plain words what's wrong with one that doesn't work", async () => {

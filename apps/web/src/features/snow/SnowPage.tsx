@@ -5,9 +5,9 @@
  * job with the snow that sends the plow or the salt out, how it's served, who works it and what a
  * storm bills. Season: every storm, what fell, its visits and what it bills (StormLog.tsx).
  *
- * The day before, the snow task tells each customer's people what's coming (snowWatch in
- * apps/api/src/tasks.ts); sending them out is the office's call, from the Storm tab (POST
- * /api/snow/schedule puts them on tomorrow's visits). Someone told whose forecast has since dropped
+ * The day before, the snow task tells each customer's people what's coming, and on the day about a
+ * storm they weren't told of (snowWatch in apps/api/src/tasks.ts); sending them out is the office's
+ * call, from the Storm tab (POST /api/snow/schedule puts them on tomorrow's visits, or today's). Someone told whose forecast has since dropped
  * says so there, and nobody is sent an all-clear: calling it off is the office's call too.
  */
 import { clockText } from "@crewtavo/core/snow";

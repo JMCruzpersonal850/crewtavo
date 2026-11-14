@@ -56,6 +56,13 @@ describe("snowNotices", () => {
     expect(snowNotices([bank], [])[0]!.title).toBe("Salt run by tomorrow at First Bank: 0.6 in forecast");
     expect(snowNotices([], ["otto"])).toEqual([]);
   });
+  it("words a storm that's here today as today's, counted from the evening before", () => {
+    const notices = snowNotices([plaza, bank], ["otto"], ["sam"], "today");
+    const of = (id: string) => notices.find((n) => n.user_id === id)!;
+    expect([of("lena").title, of("lena").body]).toEqual(["Snow today at Maple Plaza – 1 Maple Way: 8 in", "Maple Plaza – 1 Maple Way: 8 in today, counted from 6pm last night, trigger 2 in, 3 pushes, clear by 7 AM"]);
+    expect([of("sam").title, of("sam").body.split("\n").at(-1)]).toEqual(["Salt run today at First Bank: 0.6 in", "Can you go out? Say yes or no on My day."]);
+    expect(of("otto").title).toBe("Snow today: 2 properties to service");
+  });
   it("keeps a long storm to 30 lines, and goes out as schedule news", () => {
     const many = Array.from({ length: 32 }, (_, i) => ({ ...drive, name: `Site ${i}`, people: [] }));
     const body = snowNotices(many, ["otto"])[0]!.body.split("\n");

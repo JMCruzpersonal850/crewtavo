@@ -151,8 +151,14 @@ describe("snow by tomorrow", () => {
       }
       // Sam is a sub; Lena works for the business.
       if (call.path === "memberships") return [{ user_id: "sam" }].filter((m) => call.url.searchParams.get("user_id")!.includes(m.user_id));
+      // Today's own snow, the 5 inches at noon, the church and the bank were told about yesterday: it's in the log.
+      if (call.path === "snow_events" && call.method === "GET" && call.url.searchParams.get("snow_date") === `eq.${days[0]}`) return toldToday;
+      // A storm that goes in the log, or grows there, answers with the rows it made or changed.
+      if (call.path === "snow_events" && call.method === "POST") return (call.body as Array<{ job_id: string }>).map(({ job_id }) => ({ job_id }));
+      if (call.path === "snow_events" && call.method === "PATCH" && call.url.searchParams.has("or")) return marked(call);
       return [];
     });
+  const toldToday = [{ job_id: "church", kind: "plow", pushes: 1 }, { job_id: "bank", kind: "plow", pushes: 1 }];
   // The clock, set for each test: 17:00 UTC is noon in New York.
   const at = (time: string) => vi.useFakeTimers({ toFake: ["Date"], now: new Date(time) });
   const told = (calls: Call[]) => calls.filter((c) => c.path === "notifications").flatMap((c) => c.body as Array<{ user_id: string; title: string; body: string; link: string }>);
@@ -167,13 +173,14 @@ describe("snow by tomorrow", () => {
   it("tells a customer's people and the schedulers what the snow from 6pm today through tomorrow calls for: the plow, so many times, or salt", async () => {
     at("2026-01-15T17:00:00Z");
     const calls = snowDay();
-    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 2, iced: 0, logged: 0, unknown: 0 });
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 2, today: 0, iced: 0, logged: 0, unknown: 0 });
     // Businesses with Snow, and their snow customers whose jobs are active and not paused.
     expect(calls.find((c) => c.path === "companies")!.url.searchParams.get("settings->snow_app->>enabled")).toBe("eq.true");
     const read = calls.find((c) => c.path === "snow_sites" && c.method === "GET")!.url.searchParams;
     expect([read.get("company_id"), read.get("job.status"), read.get("job.paused_at")]).toEqual(["eq.co", "eq.active", "is.null"]);
     // One request for both places, snowfall in inches; the property that isn't on the map isn't asked about.
-    const forecasts = calls.filter((c) => c.url.host === "api.open-meteo.com");
+    // (A second request looks back a day, for what has fallen today: the test after the next.)
+    const forecasts = calls.filter((c) => c.url.host === "api.open-meteo.com" && !c.url.searchParams.has("past_days"));
     expect(forecasts.map((c) => [c.url.searchParams.get("latitude"), c.url.searchParams.get("precipitation_unit")])).toEqual([["40.5900,44.2700", "inch"]]);
     expect(forecasts[0]!.url.searchParams.get("hourly")).toContain("snowfall");
     // Marked first, each with how many pushes its people are told, and only where that's news.
@@ -218,7 +225,7 @@ describe("snow by tomorrow", () => {
   it("warns a salting customer's people of a refreeze, once, and nobody else", async () => {
     at("2026-01-15T17:00:00Z");
     const calls = snowDay((call) => (call.url.host === "api.open-meteo.com" ? call.url.searchParams.get("latitude")!.split(",").map(() => thaw) : undefined));
-    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, iced: 1, logged: 0, unknown: 0 });
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, today: 0, iced: 1, logged: 0, unknown: 0 });
     const mark = calls.find((c) => c.path === "snow_sites" && c.method === "PATCH")!;
     expect([mark.body, mark.url.searchParams.get("job_id"), mark.url.searchParams.get("or")]).toEqual([{ ice_alerted_on: tomorrow }, "in.(bank)", `(ice_alerted_on.is.null,ice_alerted_on.neq.${tomorrow})`]);
     expect(told(calls).map((n) => [n.user_id, n.title, n.body])).toEqual([
@@ -227,13 +234,18 @@ describe("snow by tomorrow", () => {
     ]);
   });
 
-  it("tells nobody outside 10am to 10pm the business's time, but still writes what fell yesterday into the log", async () => {
-    for (const time of ["2026-01-15T14:59:00Z", "2026-01-16T03:00:00Z"]) {
+  it("tells nobody about tomorrow outside 10am to 10pm the business's time, or about anything from 10pm to 4am, but still writes what fell yesterday into the log", async () => {
+    for (const time of ["2026-01-15T08:59:00Z", "2026-01-16T03:00:00Z"]) {
       at(time);
       const calls = snowDay();
-      expect(await runTask("snow", env)).toEqual({ companies: 0, alerted: 0, iced: 0, logged: 0, unknown: 0 });
+      expect(await runTask("snow", env)).toEqual({ companies: 0, alerted: 0, today: 0, iced: 0, logged: 0, unknown: 0 });
       expect(calls.map((c) => c.path)).toEqual(["companies", "snow_events"]);
     }
+    // 9:59am: today's storm is checked, and tomorrow's isn't told about yet.
+    at("2026-01-15T14:59:00Z");
+    const early = snowDay();
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, today: 0, iced: 0, logged: 0, unknown: 0 });
+    expect(early.some((c) => c.method !== "GET")).toBe(false);
     at("2026-01-15T14:00:00Z");
     // Yesterday's storm at the plaza has no amount yet: the forecast's own look back fills it in.
     const calls = snowDay((call) =>
@@ -256,8 +268,51 @@ describe("snow by tomorrow", () => {
     expect(await runTask("snow", env)).toMatchObject({ alerted: 2 });
     expect([...new Set(calls.filter((c) => c.url.host !== "example.supabase.co").map((c) => c.url.host))]).toEqual(["api.weather.gov", "api.open-meteo.com"]);
     calls = snowDay((call) => (call.url.host === "api.open-meteo.com" ? new Response("busy", { status: 429 }) : undefined));
-    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, iced: 0, logged: 0, unknown: 3 });
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, today: 0, iced: 0, logged: 0, unknown: 3 });
     expect(calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("tells them on the day about a storm that's here and they weren't told about, from 4am, and again when it grows into the plow", async () => {
+    // 5am: the 5 inches at noon are still to come today, over the church's and the bank's trigger of 3, and nobody was told.
+    at("2026-01-15T10:00:00Z");
+    let calls = snowDay((call) => (call.path === "snow_events" && call.method === "GET" ? [] : undefined));
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, today: 2, iced: 0, logged: 0, unknown: 0 });
+    // What has fallen since 6pm last night is asked of Open-Meteo, a day back; what's coming is the forecast's.
+    expect(calls.filter((c) => c.url.host === "api.open-meteo.com").map((c) => c.url.searchParams.get("past_days"))).toEqual([null, "1"]);
+    // The storm goes in the log first, as what they're told: only rows this run made are told about.
+    const logged = calls.find((c) => c.path === "snow_events" && c.method === "POST")!;
+    expect([logged.body, logged.url.searchParams.get("on_conflict")]).toEqual([
+      [{ company_id: "co", job_id: "church", snow_date: days[0], kind: "plow", forecast_in: 5, pushes: 1 }, { company_id: "co", job_id: "bank", snow_date: days[0], kind: "plow", forecast_in: 5, pushes: 1 }],
+      "job_id,snow_date",
+    ]);
+    const church = "First Church – 1 Maple Way: 5 in today, counted from 6pm last night, trigger 3 in";
+    const bank = "First Bank – 1 Maple Way: 5 in today, counted from 6pm last night, trigger 3 in";
+    expect(told(calls)).toEqual([
+      { company_id: "co", user_id: "sam", kind: "snow", title: "Snow today at First Bank – 1 Maple Way: 5 in", body: `${bank}\nCan you go out? Say yes or no on My day.`, link: "/field" },
+      { company_id: "co", user_id: "otto", kind: "snow", title: "Snow today: 2 properties to service", body: `${church}\n${bank}`, link: "/snow" },
+    ]);
+    expect(calls.find((c) => c.path === "snow_availability")!.body).toEqual([{ company_id: "co", snow_date: days[0], user_id: "sam" }]);
+    // Before 10am nobody hears about tomorrow.
+    expect(calls.some((c) => c.path === "snow_sites" && c.method === "PATCH")).toBe(false);
+
+    // The bank's people were told of a salt run and the church's of one push: today's snow now calls for the plow at the bank.
+    calls = snowDay((call) => (call.path === "snow_events" && call.method === "GET" ? (call.url.searchParams.get("snow_date") === `eq.${days[0]}` ? [{ job_id: "church", kind: "plow", pushes: 1 }, { job_id: "bank", kind: "salt", pushes: 1 }] : []) : undefined));
+    expect(await runTask("snow", env)).toMatchObject({ today: 1 });
+    const grew = calls.find((c) => c.path === "snow_events" && c.method === "PATCH")!;
+    expect([grew.body, grew.url.searchParams.get("job_id"), grew.url.searchParams.get("snow_date"), grew.url.searchParams.get("or")]).toEqual([{ kind: "plow", pushes: 1 }, "in.(bank)", `eq.${days[0]}`, "(pushes.lt.1,kind.eq.salt)"]);
+    expect(told(calls).map((n) => n.user_id)).toEqual(["sam", "otto"]);
+    // Another server logged it first: nobody is told twice.
+    calls = snowDay((call) => (call.path === "snow_events" ? [] : undefined));
+    expect(await runTask("snow", env)).toMatchObject({ today: 0 });
+    expect(calls.some((c) => c.path === "notifications")).toBe(false);
+  });
+
+  it("takes today's storm back out of the log when nobody could be told, so the next hour tries again", async () => {
+    at("2026-01-15T10:00:00Z");
+    const calls = snowDay((call) => (call.path === "snow_events" && call.method === "GET" ? [] : call.path === "notifications" ? Response.json({ message: "the database is busy" }, { status: 503 }) : undefined));
+    await expect(runTask("snow", env)).rejects.toThrow("the database is busy");
+    const undone = calls.find((c) => c.path === "snow_events" && c.method === "DELETE")!.url.searchParams;
+    expect([undone.get("snow_date"), undone.get("job_id")]).toEqual([`eq.${days[0]}`, "in.(church,bank)"]);
   });
 
   it("unmarks the customers when nobody could be told, so the next hour tries again", async () => {

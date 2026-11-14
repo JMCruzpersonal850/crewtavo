@@ -14,7 +14,7 @@ import { requireCompany, requireUser } from "../lib/auth";
 import { dbError, HttpError, must, readJson, uuid } from "../lib/http";
 import { adminClient } from "../lib/supabase";
 import { placeKey } from "../services/external";
-import { forecasterFor, placeWeather, placeWeathers, winterAlerts } from "../services/forecast";
+import { forecasterFor, placeWeather, placeWeathers, snowToday, winterAlerts } from "../services/forecast";
 
 export const snow = new Hono<AppEnv>();
 
@@ -26,10 +26,11 @@ snow.post("/snow/enabled", requireUser, requireCompany(ADMINS, "apps"), async (c
   return c.json({ enabled: body.enabled });
 });
 
-/** The business's tomorrow and its forecast source: what every snow forecast here goes by. */
+/** The business's today and tomorrow and its forecast source: what every snow forecast here goes by. */
 async function snowDay(c: Context<AppEnv>) {
   const company = must(await c.var.db.from("companies").select("timezone, weather_source:settings->weather_source").eq("id", c.var.companyId).maybeSingle());
-  return { tomorrow: addDays(localDate(new Date(), company.timezone), 1), forecaster: await forecasterFor(c.env, adminClient(c.env), c.var.companyId, company) };
+  const today = localDate(new Date(), company.timezone);
+  return { today, tomorrow: addDays(today, 1), forecaster: await forecasterFor(c.env, adminClient(c.env), c.var.companyId, company) };
 }
 
 /** The business's snow customers (active jobs) with where they are, as the caller may see them. */
@@ -48,15 +49,22 @@ async function snowSites(c: Context<AppEnv>, only?: string[]) {
  * The snow forecast at each active snow customer, in inches from 6pm today through tomorrow as the
  * snow task counts it, by job id: null where there's no map location or no forecast. `date` is
  * tomorrow, `source` whose forecast it is, and `alerts` the official winter alerts in force where
- * the customers are (the National Weather Service's, whatever the source).
+ * the customers are (the National Weather Service's, whatever the source). `today` is today's own
+ * storm the same way: what has fallen since 6pm last night and what's still coming by 6pm tonight.
  */
 snow.get("/snow/forecast", requireUser, requireCompany(DISPATCH, "schedule"), async (c) => {
-  const [{ tomorrow, forecaster }, sites] = await Promise.all([snowDay(c), snowSites(c)]);
+  const [{ today, tomorrow, forecaster }, sites] = await Promise.all([snowDay(c), snowSites(c)]);
   const places = sites.flatMap((s) => (s.place ? [s.place] : []));
   const [weather, alerts] = await Promise.all([placeWeathers(places, forecaster, 3), winterAlerts(places).catch(() => [])]);
+  const fallen = await snowToday(places, weather, today, forecaster);
   const inches: Record<string, number | null> = {};
-  for (const s of sites) inches[s.job_id] = s.place ? weather.get(placeKey(s.place.lat, s.place.lng))?.snow_by_day[tomorrow] ?? null : null;
-  return c.json({ date: tomorrow, source: forecaster.source, inches, alerts });
+  const now: Record<string, number | null> = {};
+  for (const s of sites) {
+    const key = s.place ? placeKey(s.place.lat, s.place.lng) : "";
+    inches[s.job_id] = weather.get(key)?.snow_by_day[tomorrow] ?? null;
+    now[s.job_id] = fallen.get(key) ?? null;
+  }
+  return c.json({ date: tomorrow, source: forecaster.source, inches, alerts, today: { date: today, inches: now } });
 });
 
 /**
@@ -80,22 +88,27 @@ snow.get("/snow/weather", requireUser, requireCompany(DISPATCH, "schedule"), asy
 });
 
 /**
- * Schedule them, on the Snow page: tomorrow's visits for these snow customers, as many as the
- * forecast calls for now (worked out here, not taken from the page), with their people on them
- * (public.snow_schedule, which checks who's asking and never doubles a visit). A customer the
- * forecast no longer calls for anything at is left alone.
+ * Schedule them, on the Snow page: tomorrow's visits for these snow customers (or, for `day`
+ * "today", today's, for a storm that's here), as many as the forecast calls for now (worked out
+ * here, not taken from the page), with their people on them (public.snow_schedule, which checks
+ * who's asking and never doubles a visit). A customer the forecast no longer calls for anything at
+ * is left alone.
  */
 snow.post("/snow/schedule", requireUser, requireCompany(DISPATCH, "schedule"), async (c) => {
-  const body = await readJson(c, z.object({ job_ids: z.array(uuid).min(1).max(1000) }));
-  const [{ tomorrow, forecaster }, sites] = await Promise.all([snowDay(c), snowSites(c, body.job_ids)]);
-  const weather = await placeWeathers(sites.flatMap((s) => (s.place && !s.paused ? [s.place] : [])), forecaster, 3);
+  const body = await readJson(c, z.object({ job_ids: z.array(uuid).min(1).max(1000), day: z.enum(["today", "tomorrow"]).default("tomorrow") }));
+  const [{ today, tomorrow, forecaster }, sites] = await Promise.all([snowDay(c), snowSites(c, body.job_ids)]);
+  const date = body.day === "today" ? today : tomorrow;
+  const places = sites.flatMap((s) => (s.place && !s.paused ? [s.place] : []));
+  const weather = await placeWeathers(places, forecaster, 3);
+  const fallen = body.day === "today" ? await snowToday(places, weather, today, forecaster) : null;
   const plan = sites.flatMap((s) => {
-    const inches = s.place && !s.paused ? weather.get(placeKey(s.place.lat, s.place.lng))?.snow_by_day[tomorrow] : null;
+    const key = s.place && !s.paused ? placeKey(s.place.lat, s.place.lng) : "";
+    const inches = fallen ? fallen.get(key) : weather.get(key)?.snow_by_day[tomorrow];
     const called = snowPlan(s.rules, inches);
     return called && inches != null ? [{ job_id: s.job_id, inches, pushes: called.pushes, kind: called.kind }] : [];
   });
-  if (!plan.length) return c.json({ created: 0, date: tomorrow });
-  const { data, error } = await c.var.db.rpc("snow_schedule", { p_company: c.var.companyId, p_date: tomorrow, p_plan: plan });
+  if (!plan.length) return c.json({ created: 0, date });
+  const { data, error } = await c.var.db.rpc("snow_schedule", { p_company: c.var.companyId, p_date: date, p_plan: plan });
   if (error) throw dbError(error);
-  return c.json({ created: data ?? 0, date: tomorrow });
+  return c.json({ created: data ?? 0, date });
 });

@@ -2,12 +2,13 @@
  * Snow → Storm: the storm, and what's left to do about it. On top, the snow coming from 6pm today
  * through tomorrow on a sky the color of the weather (as the weather popup is, SnowWeather.tsx): how
  * much, when it falls hour by hour, and the official winter alerts in force. Under it, a storm
- * that's here today, with how far along each customer's visits are. Then the storm coming, counted
+ * that's here today: how far along each customer's visits are, and any customer it now calls for
+ * that nobody scheduled, to schedule for today. Then the storm coming, counted
  * and piled by what the office still has to do: to schedule, to check, scheduled, and not this storm
  * (storm.ts). A subcontractor's answer to "can you go out?" sits beside their name on the customers
  * they work.
  */
-import { clockText } from "@crewtavo/core/snow";
+import { clockText, snowPlan, type SnowPlan } from "@crewtavo/core/snow";
 import { WEATHER_SOURCE_LABELS, type WeatherSource } from "@crewtavo/core/weather";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useState, type CSSProperties, type ReactNode } from "react";
@@ -29,7 +30,8 @@ import { progressOf, standingOf, STORM_GROUPS, workText, type StormGroup } from 
 import styles from "./StormBoard.module.css";
 
 interface Alert { id: string; event: string; headline: string; area: string; severity: string; ends: string | null; description: string }
-interface Forecast { date: string; source: WeatherSource; inches: Record<string, number | null>; alerts: Alert[] }
+/** Tomorrow's storm at each customer by job (`inches`, for `date`), and today's own: what has fallen since 6pm last night and what's still coming by 6pm tonight. */
+interface Forecast { date: string; source: WeatherSource; inches: Record<string, number | null>; alerts: Alert[]; today?: { date: string; inches: Record<string, number | null> } }
 
 /** "Anchorage; Portage; Skilak Lake; ..." as its first two places and how many more: an alert can name a dozen. */
 function areas(area: string): string {
@@ -221,7 +223,7 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
           )}
         </div>
       )}
-      <Today sites={all} crewCell={crewCell} />
+      <Today sites={all} crewCell={crewCell} snow={forecast.data?.today} />
       <div className="toolbar">
         <div className="input-group">
           <span className="addon"><Icon name="search" size={16} /></span>
@@ -294,8 +296,8 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
   // The storm's own hours: from 6pm today (or from now, once that's passed) to the end of tomorrow.
   const hours = (w?.hours ?? []).filter((h) => h.time >= `${addDaysIso(forecast.date, -1)}T18:00` && h.time < `${addDaysIso(forecast.date, 1)}T00:00`);
   const data = hours.map((h) => ({ time: h.time, at: when(h), snow: h.snow_in }));
-  // Counted as tomorrow's is, from 6pm last night: a storm that's here now was yesterday's "by tomorrow".
-  const today = w?.snow_by_day[addDaysIso(forecast.date, -1)] ?? 0;
+  // Today's own storm there: what has fallen since 6pm last night and what's still coming by 6pm tonight.
+  const today = (featured && forecast.today?.inches[featured.job_id]) || 0;
   return (
     <section className={styles.sky} style={{ "--sky-top": backdrop[0], "--sky-bottom": backdrop[1], "--sky-glow": backdrop[2] } as CSSProperties} aria-label="The snow coming">
       <div className={styles.coming}>
@@ -337,9 +339,14 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
   );
 }
 
-/** A storm that's here today: each customer it was scheduled for, and how far along its visits are. Nothing with no storm today. */
-function Today({ sites, crewCell }: { sites: Site[]; crewCell: (s: Site) => ReactNode }) {
+/**
+ * Today's own storm: each customer it was scheduled for, with how far along its visits are, and any
+ * customer today's snow calls for that has fewer visits than that (it came up overnight, or grew),
+ * to schedule for today in one click. Nothing with no storm today.
+ */
+function Today({ sites, crewCell, snow }: { sites: Site[]; crewCell: (s: Site) => ReactNode; snow: Forecast["today"] }) {
   const { company } = useSession();
+  const queryClient = useQueryClient();
   const today = todayIn(company.timezone);
   const storm = useQuery({
     queryKey: ["snow", company.id, "today", today],
@@ -347,41 +354,76 @@ function Today({ sites, crewCell }: { sites: Site[]; crewCell: (s: Site) => Reac
     queryFn: async () => unwrap(await supabase().from("snow_events").select(TODAY_FIELDS).eq("company_id", company.id).eq("snow_date", today).limit(1000)),
   });
   const clock = new Date().toLocaleTimeString("en-GB", { timeZone: company.timezone, hour: "2-digit", minute: "2-digit" });
-  const out = (storm.data ?? []).map((e) => {
-    const site = sites.find((s) => s.job_id === e.job_id);
-    const visits = e.visits.flatMap((v) => (v.visit && v.visit.status !== "cancelled" ? [v.visit] : []));
-    return { e, site, visits, progress: progressOf(visits, site?.clear_by ?? null, clock) };
+  const logged = new Map((storm.data ?? []).map((e) => [e.job_id, e]));
+  const rows = [...new Set([...logged.keys(), ...sites.map((s) => s.job_id)])].flatMap((jobId) => {
+    const e = logged.get(jobId);
+    const site = sites.find((s) => s.job_id === jobId);
+    const visits = (e?.visits ?? []).flatMap((v) => (v.visit && v.visit.status !== "cancelled" ? [v.visit] : []));
+    const fell = snow?.inches[jobId] ?? null;
+    const plan = site && !site.job.paused_at ? snowPlan(rulesOf(site), fell) : null;
+    // How many more visits today's snow calls for than it has.
+    const more = plan ? Math.max(0, plan.pushes - visits.length) : 0;
+    // A storm nobody was sent out for, and that calls for nothing now, isn't under way: it's in the season's log.
+    if (!visits.length && !more) return [];
+    const work: SnowPlan = more && plan ? plan : { kind: e?.kind === "salt" ? "salt" : "plow", pushes: e?.pushes ?? 1 };
+    return [{ jobId, site, visits, more, fell, work, name: site ? customer(site) : e?.job.client?.display_name ?? e?.job.title ?? "", address: addressLine(site?.job.property ?? e?.job.property) || (site ?? e)?.job.title, progress: progressOf(visits, site?.clear_by ?? null, clock) }];
   });
-  // A storm nobody was sent out for isn't under way: it's in the season's log, not here.
-  if (!out.some((o) => o.visits.length)) return null;
-  const rank = (o: (typeof out)[number]) => (o.progress.status === "completed" ? 2 : o.progress.late ? 0 : 1);
-  const ordered = [...out].sort((a, b) => rank(a) - rank(b) || (a.site?.priority ?? 2) - (b.site?.priority ?? 2) || (a.site?.clear_by ?? "99").localeCompare(b.site?.clear_by ?? "99"));
-  const done = out.filter((o) => o.progress.status === "completed").length;
+  type Row = (typeof rows)[number];
+  const toSchedule = rows.filter((r) => r.more > 0);
+  const visitsToGo = toSchedule.reduce((n, r) => n + r.more, 0);
+  const schedule = useMutation({
+    meta: { success: (r: { created: number }) => (r.created ? `Scheduled ${r.created} ${r.created === 1 ? "visit" : "visits"} for today` : "They were scheduled already") },
+    mutationFn: () => api.post<{ created: number }>("/snow/schedule", { job_ids: toSchedule.map((r) => r.jobId), day: "today" }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["snow", company.id] });
+    },
+  });
+  const scheduleThem = async () => {
+    const ok = await confirm({
+      title: `Schedule ${toSchedule.length === 1 ? toSchedule[0]!.name : `${toSchedule.length} customers`} for today?`,
+      body: `${visitsToGo === 1 ? "One visit" : `${visitsToGo} visits`} today, with each job's crew and people on them. They're told they're going out, and a customer set to be told hears it's coming.`,
+      confirmLabel: "Schedule",
+    });
+    if (ok) schedule.mutate();
+  };
+  if (storm.isPending || !rows.length) return null;
+  // What's waiting on the office first, then what's late, then what's under way; the finished last.
+  const rank = (r: Row) => (!r.visits.length ? 0 : r.progress.status === "completed" ? 3 : r.progress.late ? 1 : 2);
+  const ordered = [...rows].sort((a, b) => rank(a) - rank(b) || (a.site?.priority ?? 2) - (b.site?.priority ?? 2) || (a.site?.clear_by ?? "99").localeCompare(b.site?.clear_by ?? "99"));
+  const out = rows.filter((r) => r.visits.length);
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Out today</h2>
-        <span className="muted small">{done} of {out.length} done · {formatDay(`${today}T12:00:00`)}</span>
+        <h2>Today</h2>
+        <span className="muted small">{out.length ? `${out.filter((r) => r.progress.status === "completed").length} of ${out.length} done · ` : ""}{formatDay(`${today}T12:00:00`)}</span>
+        {toSchedule.length > 0 && (
+          <Button size="sm" variant="primary" icon="calendarCheck" loading={schedule.isPending} onClick={scheduleThem}>
+            {toSchedule.length === 1 ? "Schedule it for today" : `Schedule ${toSchedule.length} for today`}
+          </Button>
+        )}
       </div>
       <table className={`table table-stack ${styles.rows}`}>
         <thead><tr><th style={{ width: "28%" }}>Customer</th><th style={{ width: "18%" }}>Work</th><th style={{ width: "11%" }}>Clear by</th><th style={{ width: "19%" }}>Crew and people</th><th style={{ width: "24%" }}>Status</th></tr></thead>
         <tbody>
-          {ordered.map(({ e, site, visits, progress }) => (
-            <tr key={e.job_id}>
+          {ordered.map(({ jobId, site, visits, more, fell, work, name, address, progress }) => (
+            <tr key={jobId}>
               <td className={styles.who}>
-                <Link className="cell-link" to={`/jobs/${e.job_id}`}>{e.job.client?.display_name ?? e.job.title}</Link>
-                <div className="muted small">{addressLine(e.job.property) || e.job.title}</div>
+                <Link className="cell-link" to={`/jobs/${jobId}`}>{name}</Link>
+                <div className="muted small">{address}</div>
               </td>
               <td>
-                <span className={styles.work}><Icon name={e.kind === "salt" ? "salt" : "truck"} size={16} />{workText({ kind: e.kind === "salt" ? "salt" : "plow", pushes: e.pushes })}</span>
+                <span className={styles.work}><Icon name={work.kind === "salt" ? "salt" : "truck"} size={16} />{workText(work)}</span>
               </td>
               <td className={site?.clear_by ? undefined : styles.blank}>
                 {site?.clear_by ? <span className="tabular"><span className={styles.phoneOnly}>Clear by </span>{clockText(site.clear_by)}</span> : <span className="muted">—</span>}
               </td>
               <td>{site ? crewCell(site) : <span className="muted">—</span>}</td>
               <td className={styles.status}>
-                {progress.late ? <StatusPill label="Late" tone="danger" /> : <EntityStatus kind="visit" status={progress.status} />}
-                {(progress.late || progress.note) && <div className="muted small">{[progress.late && (progress.status === "scheduled" ? "Not started" : statusText("visit", progress.status)), progress.note].filter(Boolean).join(" · ")}</div>}
+                {!visits.length ? <StatusPill label="To schedule" tone="warning" /> : progress.late ? <StatusPill label="Late" tone="danger" /> : <EntityStatus kind="visit" status={progress.status} />}
+                {!visits.length ? fell != null && <div className="muted small">{inches(fell)} today, and nobody's scheduled</div>
+                  : (progress.late || progress.note) && <div className="muted small">{[progress.late && (progress.status === "scheduled" ? "Not started" : statusText("visit", progress.status)), progress.note].filter(Boolean).join(" · ")}</div>}
+                {visits.length > 0 && more > 0 && <div className="small" style={{ color: "var(--warning)" }}>The storm grew: {more} more to schedule</div>}
                 {visits.map((v, i) => v.status === "completed" && <div key={v.id} className="small"><Link to={`/snow/report/${v.id}`}>{visits.length > 1 ? `Report ${i + 1}` : "Service report"}</Link></div>)}
               </td>
             </tr>
