@@ -105,8 +105,8 @@ export const noteAsked = (userId: string) => {
 /** What the language was meant to be as the app opened (Spanish can fail to load with no signal). */
 let wanted: Locale = "en";
 
-/** Pages for clients (their hub, booking forms, referral and unsubscribe links) stay in English for now. */
-const CLIENT_FACING = /^\/(hub|book|u|refer)\//;
+/** Pages for clients (their hub, booking forms, referral and unsubscribe links, a job showcase) stay in English for now. */
+const CLIENT_FACING = /^\/(hub|book|u|refer|s)\//;
 
 /**
  * Which language to open in, from what the device holds. What's kept is somebody's own only while

@@ -1,15 +1,16 @@
 /**
  * Light, dark, or follow the device. The choice is kept per device and applied as a `dark` class on
  * <html>; index.html does the same before first paint so there's no flash. Pages clients see (their
- * hub, booking forms, referral and unsubscribe links) always stay light: they carry the business's
- * own branding.
+ * hub, booking forms, referral and unsubscribe links, a job showcase) always stay light: they carry
+ * the business's own branding. The same pages are listed in index.html, lib/i18n.tsx, lib/install.ts
+ * and public/sw.js, and test/clientPages.test.ts holds every list to the routes.
  */
 import { useSyncExternalStore } from "react";
 
 export type ThemeChoice = "light" | "dark" | "system";
 
 const KEY = "crewtavo.theme"; // also read by the script in index.html
-const CLIENT_FACING = /^\/(hub|book|u|refer)\//;
+const CLIENT_FACING = /^\/(hub|book|u|refer|s)\//;
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 const listeners = new Set<() => void>();
 
