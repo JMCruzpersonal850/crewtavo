@@ -104,8 +104,8 @@ export default {
   "Location is off for Crewtavo": "La ubicación está apagada para Crewtavo",
   "Your clock can't start and stop at the property. Turn on location for Crewtavo in your phone's settings.": "Tu reloj no puede iniciar y parar en la propiedad. Activa la ubicación para Crewtavo en la configuración de tu teléfono.",
   "Crewtavo can't remind you at the property. Turn on location for Crewtavo in your phone's settings.": "Crewtavo no puede avisarte en la propiedad. Activa la ubicación para Crewtavo en la configuración de tu teléfono.",
-  "Your clock starts when you get to a visit and stops when you leave, while Crewtavo is open on this phone.": "Tu reloj inicia cuando llegas a una visita y se para cuando te vas, mientras Crewtavo esté abierto en este teléfono.",
-  "Crewtavo reminds you to start and finish visits when you get there and leave, while Crewtavo is open on this phone.": "Crewtavo te recuerda empezar y terminar las visitas cuando llegas y cuando te vas, mientras esté abierto en este teléfono.",
+  "Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in, and stops once it sees you've left. Open it when you get there and when you leave, or tap the clock yourself.": "Tu reloj empieza cuando Crewtavo está abierto en este teléfono en tu siguiente visita, no cuando llegas, y se detiene cuando ve que te fuiste. Ábrelo al llegar y al irte, o marca el reloj tú mismo.",
+  "Crewtavo reminds you to start and finish visits when it's open on this phone at the property. It can't tell while the phone is locked.": "Crewtavo te recuerda empezar y terminar las visitas cuando está abierto en este teléfono en la propiedad. No se da cuenta con el teléfono bloqueado.",
 
   // Installing the app (InstallAppCard.tsx)
   "Add Crewtavo to your Home Screen": "Agrega Crewtavo a tu pantalla de inicio",

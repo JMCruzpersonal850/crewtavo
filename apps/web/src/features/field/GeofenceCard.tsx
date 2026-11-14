@@ -90,7 +90,9 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
       )}
       {!visitId && watching && !denied && (
         <span className="muted small">
-          {mode === "clock" ? t("Your clock starts when you get to a visit and stops when you leave, while Crewtavo is open on this phone.") : t("Crewtavo reminds you to start and finish visits when you get there and leave, while Crewtavo is open on this phone.")}
+          {mode === "clock"
+            ? t("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in, and stops once it sees you've left. Open it when you get there and when you leave, or tap the clock yourself.")
+            : t("Crewtavo reminds you to start and finish visits when it's open on this phone at the property. It can't tell while the phone is locked.")}
         </span>
       )}
     </>

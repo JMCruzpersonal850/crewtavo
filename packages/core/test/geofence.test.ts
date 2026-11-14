@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   emptyGeofence,
   geofence,
+  GEOFENCE_MODE_HINTS,
+  GEOFENCE_NOTE,
   geofenceActions,
   geofenceRadius,
+  geofenceStep,
   IN_A_ROW_MS,
   keepSites,
   LEAVE_AFTER_MS,
@@ -60,6 +63,17 @@ describe("the setting (settings.clock.geofence)", () => {
     expect(geofenceRadius("wide")).toBe(200);
     expect(geofenceRadius(undefined)).toBe(200);
     expect(geofenceRadius(Number.NaN)).toBe(200);
+  });
+});
+
+describe("what the office is told under the setting", () => {
+  it("says plainly that the times go by when the phone notices, which is when Crewtavo is opened there, not when they pulled in", () => {
+    expect(GEOFENCE_NOTE).toContain("This goes by when the phone notices, and it only notices while Crewtavo is open on it");
+    expect(GEOFENCE_NOTE).toContain("Someone who pulls in at 8:00 and opens Crewtavo at 8:40 is at the property from 8:40");
+    expect(GEOFENCE_NOTE).toContain("leaving is noticed when they next open it");
+    for (const mode of ["remind", "clock"] as const) expect(GEOFENCE_MODE_HINTS[mode]).toMatch(/phone notices/);
+    // And what the phone won't do by itself.
+    expect(GEOFENCE_MODE_HINTS.clock).toContain("never moves a running clock from one visit to another by itself");
   });
 });
 

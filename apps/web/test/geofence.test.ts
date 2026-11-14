@@ -137,6 +137,16 @@ describe("what it says and asks", () => {
   });
 });
 
+describe("what the crew is told on My day", () => {
+  it("says the clock starts when Crewtavo is open at the property, not when they pull in", async () => {
+    const { readFileSync } = await import("node:fs");
+    const card = readFileSync(new URL("../src/features/field/GeofenceCard.tsx", import.meta.url), "utf8");
+    expect(card).toContain("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in, and stops once it sees you've left.");
+    expect(card).toContain("It can't tell while the phone is locked.");
+    expect(card).not.toContain("Your clock starts when you get to a visit");
+  });
+});
+
 describe("on Timesheets", () => {
   it("tells the phone's clocks from taps", () => {
     expect(atPropertyNote({ category: "visit", geofence_in: false, geofence_out: false })).toBeNull();

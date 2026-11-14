@@ -20,6 +20,17 @@
  *   Taps win   A tap the person makes on a visit while there (Start, Stop, a timer, Complete) means
  *              they're running their own clock: the geofence only asks, for that visit, until they
  *              leave and come back.
+ *   One clock  The phone starts a clock by itself only when theirs is off or on driving, and only
+ *              at their next visit (or one already under way, or that they're on their way to).
+ *              It never moves a clock that's running on one visit, the shop or anything else onto
+ *              another visit: it asks. Once it's sure they left the visit their clock was on and
+ *              stops it there, and they've been at another visit's property a couple of minutes,
+ *              it starts their clock on that one.
+ *   One at a   Two visits at one address, or with circles that overlap: one is put to the person,
+ *   time       and the other waits until that question is answered or dismissed, then gets its own.
+ *
+ * It all goes by when the phone notices, which is when Crewtavo is open on it: an arrival is
+ * dated at the first fix there, not when they pulled in, and a departure at the first fix away.
  */
 import { haversineM } from "./geo";
 
@@ -34,12 +45,13 @@ export const GEOFENCE_MODE_LABELS: Record<GeofenceMode, string> = {
 /** One line under the setting for each choice. */
 export const GEOFENCE_MODE_HINTS: Record<GeofenceMode, string> = {
   off: "The clock starts and stops only when someone taps.",
-  remind: "When someone gets to a visit's property, their phone asks them to start the visit; when they leave, to complete it or stop their clock.",
-  clock: "Their clock starts when they get to a visit's property and stops when they leave. They're still asked to start and complete the visit.",
+  remind: "When someone's phone notices them at a visit's property, it asks them to start the visit; when it notices they've left, to complete it or stop their clock.",
+  clock: "When someone's phone notices them at their next visit's property, it starts their clock if it's off or on driving, and stops it when it notices they've left. It never moves a running clock from one visit to another by itself: it asks. They're still asked to start and complete the visit.",
 };
 
-/** Said with either choice that's on: what a web app can and can't do. */
-export const GEOFENCE_NOTE = "This works while Crewtavo is open on the phone. Phones pause it in the background, so it notices once someone opens it again.";
+/** Said with either choice that's on: what a web app can and can't do, and what that does to the times. */
+export const GEOFENCE_NOTE =
+  "This goes by when the phone notices, and it only notices while Crewtavo is open on it: phones pause it in the background. Someone who pulls in at 8:00 and opens Crewtavo at 8:40 is at the property from 8:40, and leaving is noticed when they next open it. For exact times, have the crew tap the clock.";
 
 export const GEOFENCE_RADIUS = { min: 100, max: 500, default: 200 } as const;
 
