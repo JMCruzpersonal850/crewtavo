@@ -53,6 +53,7 @@ import { ReviewLinkOffer } from "../apps/GoogleBusinessPanel";
 import { askBody, askRules, askToastKind, daysInOrder, reminderDropWords, remindersDroppedWords, type AskForm, type AskResult, type AskRuleRow } from "./askForm";
 import { GoogleNumbers, GoogleReviewList, GoogleSide, useGoogleState, useReviewStats } from "./GoogleReviews";
 import { hasNumbers, hasReviews, showsList, type GoogleState } from "./googleReviewData";
+import { ReviewCompare } from "./ReviewCompare";
 import { useSettingsSaver } from "./useSettingsSaver";
 
 /** Email, Text, Both: the same order wherever a review ask's channel is picked. */
@@ -125,6 +126,7 @@ export function Reviews() {
             <AskAutomatically rules={rules.data} google={g} />
           )}
           <ReviewLink google={g} />
+          <ReviewCompare />
         </div>
         <aside className="narrow stack">
           <AskNow />

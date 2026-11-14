@@ -75,7 +75,8 @@
     "./social": "./src/social.ts",
     "./promos": "./src/promos.ts",
     "./postcards": "./src/postcards.ts",
-    "./showcases": "./src/showcases.ts"
+    "./showcases": "./src/showcases.ts",
+    "./reviewCompare": "./src/reviewCompare.ts"
   },
   "scripts": {
     "test": "vitest run",

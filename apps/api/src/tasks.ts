@@ -25,6 +25,7 @@ import { processCampaigns } from "./services/campaigns";
 import { syncDueReviews } from "./services/googleReviews";
 import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/social";
 import { processPostcards } from "./services/postcards";
+import { refreshDueComparisons } from "./services/reviewCompare";
 import { sendDueReminders } from "./services/reviews";
 import { deliverNotifications } from "./services/delivery";
 import { remindSubs } from "./services/subs";
@@ -35,7 +36,7 @@ import { sendScheduledPayments } from "./services/installments";
 export const TASKS = [
   "automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address",
   "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync",
-  "social", "backups", "profits", "installments", "postcards",
+  "social", "backups", "profits", "installments", "postcards", "review_compare",
 ] as const;
 export type TaskName = (typeof TASKS)[number];
 
@@ -53,6 +54,8 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   // Google reviews come in every 30 minutes for each company with Google Business Profile connected
   // (services/googleReviews.ts); review_syncs_due says which are due.
   "12,42 * * * *": ["review_sync"],
+  // How you compare: each company's competitors' Google ratings, weekly (services/reviewCompare.ts).
+  "47 * * * *": ["review_compare"],
   "0 * * * *": ["followups"],
   // Clients who haven't had a visit in a while: hourly, so each company's own 10am is met; at most
   // 100 a day for each rule (services/automatedCampaigns.ts). The automations task sends them.
@@ -138,6 +141,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return sendScheduledPayments(env);
     case "postcards":
       return processPostcards(env);
+    case "review_compare":
+      return refreshDueComparisons(env, adminClient(env));
   }
 }
 
