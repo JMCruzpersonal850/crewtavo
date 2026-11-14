@@ -50,7 +50,8 @@ import { renderTemplate } from "@crewtavo/core";
 import { companyAnthropicKey, complete, countAiAsk } from "../services/ai";
 import { companyAddress } from "../services/automations";
 import { logoImage } from "../services/logo";
-import { loadCampaign, requireCampaignEmail, requireCampaignsOn, startCampaign, stopCampaign } from "../services/campaigns";
+import { loadCampaign, requireCampaignEmail, requireCampaignsOn, requireSenderAddress, startCampaign, stopCampaign } from "../services/campaigns";
+import { senderAddressProblem } from "../services/senderAddress";
 import { ReferralAskRefused, sendReferralAsk } from "../services/referrals";
 import { rescheduleReminders, sendReviewRequest } from "../services/reviews";
 
@@ -79,6 +80,9 @@ async function sendTest(c: Ctx, d: { to?: string; subject: string; body: string;
   const to = d.to ?? me.email;
   if (!to || !isEmail(to)) throw new HttpError(400, "Add an email address to send the test to.");
   const company = must(await c.var.db.from("companies").select("name, phone, email, website, address, settings").eq("id", c.var.companyId).maybeSingle());
+  // A test of a marketing email is held to what the real one is: no postal address, no email.
+  const noAddress = d.unsubscribe ? senderAddressProblem(company) : null;
+  if (noAddress) throw new HttpError(400, noAddress);
   // {{title}} is the client's name for an email about a client (Re-engage), as the engine has it.
   const vars = {
     client: { first_name: firstName(me.full_name), name: me.full_name, email: to, phone: "" },
@@ -172,6 +176,8 @@ marketing.put("/campaigns/automated/:key", requireUser, requireCompany(ADMINS, "
       }
     }
     if (!(await emailReady(c.env, companyId))) throw new HttpError(400, "Connect your email first, so campaign emails can go out. An admin can connect it in Settings → Email.");
+    // A marketing campaign's emails have to show the company's postal address.
+    if (campaign.marketing) await requireSenderAddress(db, companyId);
   }
   const { data: rule, error } = await db.from("automation_rules").select(AUTOMATED_RULE_FIELDS).eq("company_id", companyId).eq("template_key", campaign.templateKey).maybeSingle();
   if (error) throw dbError(error);

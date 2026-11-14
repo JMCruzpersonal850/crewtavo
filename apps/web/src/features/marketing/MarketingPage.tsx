@@ -31,6 +31,7 @@ import { PostcardCampaigns } from "./PostcardCampaigns";
 import { PromoCodes } from "./PromoCodes";
 import { EARNED_HINT, Referrals } from "./Referrals";
 import { Reviews } from "./Reviews";
+import { SenderAddressNote } from "./SenderAddress";
 import { Showcases } from "./Showcases";
 import { Social } from "./Social";
 import { analyticsOn } from "./website";
@@ -64,6 +65,7 @@ export function MarketingPage() {
   return (
     <>
       <PageHeader title="Marketing" />
+      <SenderAddressNote what="campaigns, review asks and referral asks by email won't go out" />
       {summary.isPending ? <StatsSkeleton count={5} /> : s && (
         <div className="stat-row">
           <div className="card stat"><div className="label">Emails sent (30 days)</div><div className="value">{s.emails_sent_30d}</div><div className="hint">{emailsSentHint(s)}</div></div>

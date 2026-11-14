@@ -66,7 +66,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("campaign sending", () => {
   const campaign = {
     id: "camp-1", company_id: "co-1", subject: "Fall cleanup", body: "Hi {{client.first_name}}, leaves are coming.",
-    company: { name: "Acme Lawn Care, LLC", email: null, phone: null, address: {}, settings: { marketing: { enabled: true } } },
+    company: { name: "Acme Lawn Care, LLC", email: null, phone: null, address: { line1: "1 Main St", city: "Radford", region: "VA", postal_code: "24141" }, settings: { marketing: { enabled: true } } },
   };
   const recipients = [1, 2, 3].map((id) => ({
     id, campaign_id: "camp-1", company_id: "co-1", client_id: `client-${id}`, email: `person${id}@example.com`, name: `Person ${id}`, status: "sending", claim_token: "claim-1",
@@ -244,7 +244,7 @@ describe("review requests", () => {
   it("asks again when the last request within the window failed to send", async () => {
     const calls = serve((call) => {
       if (call.url.host === "api.resend.com") return Response.json({ id: "email-1" });
-      if (call.path === "companies") return [{ name: "Acme", phone: null, email: null, timezone: "UTC", settings: { review_url: "https://g.page/r/acme", marketing: { enabled: true } } }];
+      if (call.path === "companies") return [{ name: "Acme", phone: null, email: null, timezone: "UTC", address: { line1: "PO Box 12", city: "Radford", region: "VA", postal_code: "24141" }, settings: { review_url: "https://g.page/r/acme", marketing: { enabled: true } } }];
       // The database finds no ask in the window that went out (the only one failed), and records this one.
       if (call.path === "rpc/begin_review_request") return Response.json("rr-2");
       return [];

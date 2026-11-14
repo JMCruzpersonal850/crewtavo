@@ -317,6 +317,24 @@ export function mailable(address: LooseAddress): MailingAddress | AddressProblem
   return { line1, line2: line2 || null, city, region: state, postal_code: zip[2] ? `${zip[1]}-${zip[2]}` : zip[1]!, country: "US" };
 }
 
+/**
+ * Whether a company's own address is complete enough to stand under a marketing email. The FTC's
+ * CAN-SPAM guide: "Your message must include your valid physical postal address. This can be your
+ * current street address, a post office box you've registered with the U.S. Postal Service, or a
+ * private mailbox you've registered with a commercial mail receiving agency". Read as a postcard's
+ * return address is (mailable): a street or box, a city, a state and a ZIP code. Lob's own limits
+ * (US only, two-letter states, 64 characters a line) are for cards alone, so an address that's all
+ * there but that Lob wouldn't take still counts, and one outside the US needs no state.
+ */
+export function hasPostalAddress(address: LooseAddress): boolean {
+  if (mailable(address) !== "no_address") return true;
+  const abroad = !US.has(text(address?.country).toLowerCase());
+  return abroad && Boolean(text(address?.line1) && text(address?.city) && (text(address?.postal_code) || text(address?.zip)));
+}
+
+/** Why a marketing email can't go from a company with no complete postal address, and where to add it. */
+export const SENDER_ADDRESS_NEEDED = "Add your company's full postal address in Settings → Company first: every marketing email has to show it. A PO box is fine.";
+
 /** Which problem to show when none of a client's addresses can be mailed to: the one most worth fixing. */
 const PROBLEM_RANK: Record<AddressProblem, number> = { bad_state: 3, too_long: 2, outside_us: 1, no_address: 0 };
 

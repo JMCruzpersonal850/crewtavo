@@ -26,6 +26,7 @@ import { companyFooter, officeVars, Skip, type RunContext } from "./automations"
 import { emailClient } from "./marketingEmail";
 import { addressList, recipientsColumn, recipientsFor, sendToEach } from "./recipients";
 import { Busy, WaitUntil } from "./reviews";
+import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
 
 export const CAMPAIGN_EMAIL_NOT_CONNECTED = "Email isn't connected yet, so campaign emails can't be sent. An admin can connect it in Settings → Email.";
 /** How long a campaign email's Client Hub link lasts: a year, as a review link does, since campaign emails are kept. */
@@ -204,6 +205,14 @@ export async function sendCampaignEmail(
     if (!baseUrl) {
       await letGo(admin, ctx);
       throw new Error("APP_URL isn't set, so campaign links can't be built.");
+    }
+    // No postal address, no marketing email (services/senderAddress.ts). A campaign that was on
+    // already doesn't just go quiet: the owners hear once, and the client is emailed once it's added.
+    const noAddress = senderAddressProblem(ctx.company);
+    if (noAddress) {
+      await letGo(admin, ctx);
+      await tellAddressNeeded(admin, ctx.company.id);
+      throw new Error(noAddress);
     }
   }
   const email = client.email!.trim();

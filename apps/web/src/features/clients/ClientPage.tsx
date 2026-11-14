@@ -70,7 +70,7 @@ export function ClientPage() {
       unwrapOne(
         await supabase()
           .from("clients")
-          .select("id, display_name, company_name, email, phone, status, tags, lead_source, notes, created_at, billing_address, marketing_opt_out, review_opt_out, social_photos_opt_out, sms_opt_out_at, sms_consent_at, sms_consent_source, reviewed_at, referred_by, custom_fields, tax_exempt, tax_exempt_note, payment_terms_days, properties(id, label, line1, line2, city, region, postal_code, lat, lng, notes, tags, lot_size_sqft, custom_fields)")
+          .select("id, display_name, company_name, email, phone, status, tags, lead_source, notes, created_at, billing_address, marketing_opt_out, review_opt_out, social_photos_opt_out, sms_opt_out_at, reviewed_at, sms_consent_at, sms_consent_source, referred_by, custom_fields, tax_exempt, tax_exempt_note, payment_terms_days, properties(id, label, line1, line2, city, region, postal_code, lat, lng, notes, tags, lot_size_sqft, custom_fields)")
           .eq("id", id)
           .maybeSingle(),
         "This client",

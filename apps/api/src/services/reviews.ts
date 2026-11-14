@@ -24,6 +24,7 @@ import {
   alreadyReviewed,
   askChannels,
   DEFAULT_REVIEW_MESSAGE,
+  EMAIL_NOT_CONNECTED,
   inQuietHours,
   marketingOn,
   nextReminder,
@@ -34,6 +35,7 @@ import {
   reminderPlan,
   rescheduledReminder,
   reviewSettings,
+  sentChannels,
   textsOff,
   textsOffReason,
   withStopLine,
@@ -47,6 +49,7 @@ import { reportError } from "../lib/monitoring";
 import { emailReady, sendSms, smsReady, type SendResult } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { emailClient } from "./marketingEmail";
+import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
 import { noteTold } from "./stopLine";
 import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT, withNumberStop } from "./textsOff";
 
@@ -244,15 +247,22 @@ export async function sendReviewRequest(env: Env, admin: Db, args: ReviewArgs): 
   let channels: SendChannel[] = [];
   if (args.channel !== "link") {
     if (!automatic && args.channel === "sms" && client.phone && textsOff(client)) throw new Error(`${textsOffReason(name)} Ask by email instead.`);
-    const reach = reachOf(client, { email: await emailReady(env, args.companyId), sms: await smsReady(env, args.companyId) });
+    // An ask by email is a marketing email, which has to show the company's postal address
+    // (services/senderAddress.ts). Without one an automatic ask goes by text alone where it can,
+    // and the owners hear once; an ask by hand is refused, saying where to add it.
+    const canEmail = await emailReady(env, args.companyId);
+    const noAddress = canEmail ? senderAddressProblem(company) : null;
+    const reach = reachOf(client, { email: canEmail && !(automatic && noAddress), sms: await smsReady(env, args.companyId) });
     const plan = askChannels(args.channel, reach, quiet);
+    if (automatic && noAddress && reach.hasEmail && args.channel !== "sms") await tellAddressNeeded(admin, args.companyId);
     // Quiet hours text no one: with no email to go by instead, the ask waits for 9am.
-    if (plan.wait) throw new WaitUntil(quietHoursEnd(now, timeZone), `Quiet hours: waits until 9am to text, since ${reach.hasEmail ? "email isn't connected" : `${name} has no email`}`);
+    if (plan.wait) throw new WaitUntil(quietHoursEnd(now, timeZone), `Quiet hours: waits until 9am to text, since ${reach.hasEmail ? (noAddress ? "your company's address is missing" : "email isn't connected") : `${name} has no email`}`);
     if (!plan.send.length) {
-      // The client's reason skips an automatic ask; the business's (email or texting isn't set up) fails it, to be fixed.
+      // The client's reason skips an automatic ask; the business's (email or texting isn't set up, no address) fails it, to be fixed.
       if (automatic && !plan.setup) return skipped(plan.skip!.replace(/\.$/, ""));
-      throw new Error(plan.skip);
+      throw new Error(noAddress && plan.skip === EMAIL_NOT_CONNECTED ? noAddress : plan.skip);
     }
+    if (noAddress && plan.send.includes("email")) throw new Error(noAddress);
     channels = plan.send;
   }
 
@@ -355,12 +365,16 @@ export async function sendDueReminders(env: Env) {
     const timeZone = company.timezone || "UTC";
     if (!ready.has(company.id)) ready.set(company.id, await emailReady(env, company.id));
     if (!texting.has(company.id)) texting.set(company.id, await smsReady(env, company.id));
+    // A reminder by email has to show the company's postal address, as the ask does: without one
+    // it goes by text alone where the ask did, or stops, and the owners hear once why.
+    const noAddress = ready.get(company.id)! && sentChannels(row.channel).includes("email") ? senderAddressProblem(company) : null;
+    if (noAddress) await tellAddressNeeded(admin, company.id);
     const plan = reminderPlan({
-      request: row, client, marketingOn: marketingOn(settings), hasReviewUrl: Boolean(settings.review_url), emailReady: ready.get(company.id)!,
+      request: row, client, marketingOn: marketingOn(settings), hasReviewUrl: Boolean(settings.review_url), emailReady: ready.get(company.id)! && !noAddress,
       smsReady: texting.get(company.id)!, settings, now: new Date(), timeZone,
     });
     if (plan.kind === "stop") {
-      await finish("stop", null, plan.why);
+      await finish("stop", null, noAddress && plan.why === "Email isn't connected" ? "Your company's address is missing" : plan.why);
       return "stopped";
     }
     if (plan.kind === "later") {

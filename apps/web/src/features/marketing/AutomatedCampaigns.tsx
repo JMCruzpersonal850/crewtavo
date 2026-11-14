@@ -10,6 +10,7 @@
  * Automations area see each one's state (automated_campaign_states) and results, not its switch.
  */
 import { variablesForTrigger } from "@crewtavo/core/automations";
+import { useSenderAddress } from "./SenderAddress";
 import {
   AUTOMATED_KEYS,
   backlogWords,
@@ -291,6 +292,7 @@ function BacklogDialog({ count, onChoose, onClose }: { count: number; onChoose: 
 /** The days, the subject and the message, with a preview and a test. Saving never changes the switch. */
 function EditEmailDialog({ card, backlog, onClose }: { card: AutomatedCard; backlog: number; onClose: () => void }) {
   const session = useSession();
+  const hasAddress = useSenderAddress();
   const queryClient = useQueryClient();
   const { key, campaign, form } = card;
   const [draft, setDraft] = useState({ days: form.days, subject: form.subject, body: form.body });
@@ -340,7 +342,7 @@ function EditEmailDialog({ card, backlog, onClose }: { card: AutomatedCard; back
           value={draft.body}
           onChange={(body) => set({ body })}
           tokens={tokens}
-          hint={campaign.marketing ? "Your address and an unsubscribe link are added at the bottom. Client Hub link is theirs, where they can ask for work." : "Your address is added at the bottom."}
+          hint={campaign.marketing ? `${hasAddress ? "Your address and an unsubscribe link are added at the bottom." : "An unsubscribe link is added at the bottom. Your address goes there too, once it's filled in: until then this isn't sent."} Client Hub link is theirs, where they can ask for work.` : hasAddress ? "Your address is added at the bottom." : "Your address is added at the bottom once it's filled in (Settings → Company)."}
         />
         {!hasTrackableLink(draft.body) && NO_LINK}
         <EmailPreview companyName={session.company.name} address={companyAddressLine(session.company.address)} subject={draft.subject} body={draft.body} vars={vars} unsubscribe={campaign.marketing} linkLabel={linkButton(key)} />

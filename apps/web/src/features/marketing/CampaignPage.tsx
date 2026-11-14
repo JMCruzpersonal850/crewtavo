@@ -5,6 +5,7 @@
  */
 import { greetingName } from "@crewtavo/core/automations";
 import { audienceKeys, hasTrackableLink, HUB_HOME_BUTTON, RECURRING_CHOICES, recurringChoice, type CampaignAudience } from "@crewtavo/core/campaigns";
+import { hasPostalAddress } from "@crewtavo/core/postcards";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -29,6 +30,7 @@ import { CampaignRecipients, CampaignResults, CampaignStats } from "./CampaignRe
 import { companyAddressLine, EmailPreview, MessageField, SubjectField, TestEmailDialog } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
 import { ConnectEmailHint } from "../settings/ConnectEmailHint";
+import { SenderAddressNote } from "./SenderAddress";
 
 interface Draft {
   name: string;
@@ -216,6 +218,8 @@ function CampaignPageScreen() {
     "company.phone": session.company.phone ?? "",
     link: window.location.origin,
   };
+  // No marketing email goes without the company's postal address under it.
+  const hasAddress = hasPostalAddress(session.company.address);
   const problems = [
     !draft.subject.trim() && "Add a subject line.",
     draft.body.trim().length < 10 && "Write the email.",
@@ -230,8 +234,8 @@ function CampaignPageScreen() {
         documentTitle={c.name}
         actions={
           <>
-            {editable && <Button icon="mail" onClick={() => setDialog("test")} disabled={!session.config.features.email || problems.slice(0, 2).length > 0}>Send test</Button>}
-            {editable && <Button variant="primary" icon="send" onClick={() => setDialog("send")} disabled={problems.length > 0 || !session.config.features.email}>Send</Button>}
+            {editable && <Button icon="mail" onClick={() => setDialog("test")} disabled={!session.config.features.email || !hasAddress || problems.slice(0, 2).length > 0}>Send test</Button>}
+            {editable && <Button variant="primary" icon="send" onClick={() => setDialog("send")} disabled={problems.length > 0 || !session.config.features.email || !hasAddress}>Send</Button>}
             {(c.status === "scheduled" || c.status === "sending") && <Button variant="danger" icon="x" loading={cancel.isPending} onClick={async () => (await confirm({ title: c.status === "scheduled" ? "Unschedule this campaign?" : "Stop sending?", body: c.status === "sending" ? "Emails already sent can't be recalled." : "It goes back to being a draft.", confirmLabel: c.status === "scheduled" ? "Unschedule" : "Stop", danger: c.status === "sending" })) && cancel.mutate()}>{c.status === "scheduled" ? "Unschedule" : "Stop sending"}</Button>}
             <Menu
               items={[
@@ -249,6 +253,7 @@ function CampaignPageScreen() {
         {c.status !== "draft" && <span className="muted">{c.sent_count} of {c.recipients_count} sent{c.failed_count ? ` · ${c.failed_count} failed` : ""}</span>}
       </div>
       {!session.config.features.email && editable && <div className="callout callout-info"><Icon name="info" size={20} /><div className="grow">Email isn't connected yet, so this can't be sent.<ConnectEmailHint /></div></div>}
+      {editable && <SenderAddressNote what="this can't be sent or tested" />}
       {c.status === "sending" && <div className="progress"><span style={{ width: `${c.recipients_count ? (c.sent_count / c.recipients_count) * 100 : 0}%` }} /></div>}
       {/* Across the page, so the five numbers sit in one row. */}
       {!editable && <CampaignStats campaignId={c.id} live={c.status === "sending"} />}
@@ -269,7 +274,7 @@ function CampaignPageScreen() {
                 value={draft.body}
                 onChange={(body) => set({ body })}
                 tokens={TOKENS}
-                hint="Your address and an unsubscribe link are added at the bottom. Client Hub link is each client's own, where they can ask for work."
+                hint={`${hasAddress ? "Your address and an unsubscribe link are added at the bottom." : "An unsubscribe link is added at the bottom. Your address goes there too, once it's filled in."} Client Hub link is each client's own, where they can ask for work.`}
               />
               {!hasTrackableLink(draft.body) && <p className="small" style={{ margin: 0, color: "var(--warning)", fontWeight: 600 }}>Add a link so clicks and bookings can be counted.</p>}
               <FormError error={save.error} />
