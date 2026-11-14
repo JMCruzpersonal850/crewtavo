@@ -40,6 +40,7 @@ import { quoteSchedule } from "@/features/documents/build";
 import { smallInitials } from "@/features/documents/data";
 import { DocumentSheet, PrintableDocument } from "@/features/documents/EstimateDocument";
 import { openPrintablePdf } from "@/features/documents/pdfPrint";
+import { inkOn } from "@/features/documents/words";
 import { nextFrames, paperSettled } from "@/features/documents/paper";
 import type { DocumentSection } from "@/features/documents/types";
 import { ApiError } from "@/lib/api";
@@ -190,18 +191,6 @@ function CompanyMark({ company, logoClass = "hub-logo", tileClass = "tile" }: { 
   const [broken, setBroken] = useState(false);
   if (company.logo && !broken) return <img className={logoClass} src={company.logo} alt="" onError={() => setBroken(true)} />;
   return <span className={tileClass} aria-hidden="true">{monogram(company.name)}</span>;
-}
-
-/** Text color that reads on the company's color. */
-function inkOn(hex: string | undefined) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? "");
-  if (!m) return "#fff";
-  const n = parseInt(m[1], 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#182430" : "#fff";
 }
 
 export function HubPage() {

@@ -34,11 +34,24 @@ function luminance(hex: string): number | null {
 
 const INK = "#0f2a35";
 
-/** The text color that reads best on a band of `hex`: white, or ink on a light color. */
+/** How well two colors read against each other, as a contrast ratio from 1 to 21 (WCAG). Not a hex color: 1. */
+export function contrastRatio(a: string, b: string): number {
+  const [x, y] = [luminance(a), luminance(b)];
+  if (x === null || y === null) return 1;
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+/**
+ * The text color for words on a band or a button of `hex` (a business's brand color, a template's
+ * color): always at least 4.5:1 against it, which body-size text needs (WCAG 1.4.3). White or ink,
+ * whichever reads better, where that's enough; on the mid-tones where neither is (white and ink
+ * both come to about 3.9:1 on a medium orange or green), black, which is 4.58:1 at its worst.
+ */
 export function inkOn(hex: string): string {
-  const l = luminance(hex);
-  if (l === null) return "#ffffff";
-  return 1.05 / (l + 0.05) >= (l + 0.05) / (luminance(INK)! + 0.05) ? "#ffffff" : INK;
+  if (luminance(hex) === null) return "#ffffff";
+  const [white, ink] = [contrastRatio("#ffffff", hex), contrastRatio(INK, hex)];
+  if (Math.max(white, ink) >= 4.5) return white >= ink ? "#ffffff" : INK;
+  return "#000000";
 }
 
 /** The color for words on white paper: the document's color, or ink when it's too light to read. */
