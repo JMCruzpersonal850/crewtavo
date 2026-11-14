@@ -9,7 +9,7 @@ import { shownCustomFields } from "@crewtavo/core/customFields";
 import { pickTemplate, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import { hidesExactPrice, inRangeMode, isSiteAdjustment, notIncluded, optionsRange, priceRange, rangeSettings } from "@crewtavo/core/estimates";
 import { clientAnswers, inServiceArea, type ClientChecklist } from "@crewtavo/core/forms";
-import { marketingOn, referralSettings, referralsReady, referrerLine } from "@crewtavo/core/marketing";
+import { marketingOn, referralSettings, referralsReady, referrerDisclosure, referrerLine } from "@crewtavo/core/marketing";
 import { chosenTotals, countsOn, optionBaseTotal, optionTotals, scheduleRows, type OptionLine } from "@crewtavo/core/money";
 import { isPackagePicturePath, packagePictureSrc } from "@crewtavo/core/presets";
 import { privacyUrl } from "@crewtavo/core/privacyPolicy";
@@ -1957,10 +1957,13 @@ publicRoutes.get("/public/refer/:token", async (c) => {
     admin.from("clients").select("display_name").eq("company_id", l.c).eq("id", l.id).maybeSingle(),
   ]);
   if (!company.data || !client.data) throw new HttpError(404, "This referral link isn't valid anymore.");
+  const referrals = referralSettings(company.data.settings as Record<string, unknown> | null);
   return c.json({
     company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null, texts: await smsReady(c.env, l.c), privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null) },
     referrer: firstName(client.data.display_name),
-    offer: referralSettings(company.data.settings as Record<string, unknown> | null).offer,
+    offer: referrals.offer,
+    // That the person recommending gets a credit, for the friend to know (core referrerDisclosure). Null when none is set.
+    disclosure: referrerDisclosure(firstName(client.data.display_name), company.data.name, referrals.reward) || null,
   });
 });
 

@@ -1,13 +1,20 @@
 /**
- * The business's privacy policy link on the screens: one box for it in Settings → Company, the link
- * in the footer of the pages clients and the public use, and a note for owners on the booking
- * settings page while there's none. Checked in the screens' own source.
+ * What the pages clients and the public use say for the business: its privacy policy link (one box
+ * for it in Settings → Company, the link in each page's footer, and a note for owners on the booking
+ * settings page while there's none), and on a referral page that the person recommending gets a
+ * credit. Checked in the screens' own source.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const source = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+
+describe("a referral page", () => {
+  it("shows the friend that the person recommending gets a credit, under the recommendation", () => {
+    expect(source("../src/features/public/ReferralPage.tsx")).toContain("{view.data.disclosure && <p style={{ margin: 0 }}>{view.data.disclosure}</p>}");
+  });
+});
 
 describe("the privacy policy link", () => {
   it("is one setting in Settings → Company, saved as a web address or cleared", () => {

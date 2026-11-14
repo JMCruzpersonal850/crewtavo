@@ -59,6 +59,7 @@ import {
   referralSettings,
   referralsReady,
   referrerLine,
+  referrerDisclosure,
   type CreditReferral,
   type AskRule,
   type Reach,
@@ -586,6 +587,14 @@ describe("referrals", () => {
     expect(referralSettings(null)).toEqual({ reward: { kind: "amount", value: 0 }, offer: null, message: DEFAULT_REFERRAL_MESSAGE });
     // The old keys were moved by a migration and aren't read.
     expect(referralSettings({ referral_reward: { amount: 50 }, referral_offer: "Old" })).toEqual({ reward: { kind: "amount", value: 0 }, offer: null, message: DEFAULT_REFERRAL_MESSAGE });
+  });
+
+  it("tells the friend, on the referral page, that the person recommending gets a credit when one is set", () => {
+    expect(referrerDisclosure("Ana", "Acme Lawn", { kind: "amount", value: 50 })).toBe("Ana gets a credit from Acme Lawn if you become a client.");
+    expect(referrerDisclosure("Ana", "Acme Lawn", { kind: "percent", value: 10 })).toBe("Ana gets a credit from Acme Lawn if you become a client.");
+    expect(referrerDisclosure(" ", "Acme Lawn", { kind: "amount", value: 50 })).toBe("The person who sent you this gets a credit from Acme Lawn if you become a client.");
+    // Only an offer for the friend, nothing for the client who shares: nothing to disclose.
+    expect(referrerDisclosure("Ana", "Acme Lawn", { kind: "amount", value: 0 })).toBe("");
   });
 
   it("is ready with a credit or an offer", () => {

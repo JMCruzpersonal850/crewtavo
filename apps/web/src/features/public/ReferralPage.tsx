@@ -15,6 +15,8 @@ interface ReferralView {
   company: { name: string; phone: string | null; website: string | null; logo?: string | null; texts?: boolean; privacy_url?: string | null };
   referrer: string;
   offer: string | null;
+  /** "Ana gets a credit from Acme if you become a client.", when the business gives one. */
+  disclosure?: string | null;
 }
 
 export function ReferralPage() {
@@ -66,6 +68,8 @@ export function ReferralPage() {
                   <span className="chip chip-green" style={{ justifySelf: "start" }}><Icon name="gift" size={12} />Referred by {view.data.referrer}</span>
                   <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)" }}>{view.data.referrer} thinks you'll like working with {view.data.company.name}</h1>
                   {view.data.offer && <p style={{ margin: 0, fontWeight: 600, color: "var(--green-dark)" }}>{view.data.offer}</p>}
+                  {/* The person recommending gets a credit: the friend is told, where they read the recommendation. */}
+                  {view.data.disclosure && <p style={{ margin: 0 }}>{view.data.disclosure}</p>}
                 </div>
                 <div className="form-grid">
                   <Field label="Your name" requiredMessage="Enter your name, so we know who to reply to."><input className="input" value={f.name} onChange={set("name")} required minLength={2} maxLength={120} autoComplete="name" /></Field>

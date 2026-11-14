@@ -1,7 +1,8 @@
 /**
  * The business's privacy policy link (companies.settings.privacy_url) on the pages its clients and
  * the public use: the booking form, the referral page, the unsubscribe page and a website form's
- * own pages each get it when it's set, as a plain web address, and nothing when it isn't.
+ * own pages each get it when it's set, as a plain web address, and nothing when it isn't. And the
+ * referral page tells the friend when the person recommending gets a credit.
  * PostgREST is a stand-in answering over fetch.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +42,28 @@ const tokenOf = (link: string) => link.split("/").pop()!;
 const get = async (path: string) => (await app.request(`/api${path}`, {}, env)).json() as Promise<Record<string, any>>;
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("a referral page", () => {
+  it("says the person recommending gets a credit when the business gives one, and nothing when it doesn't", async () => {
+    const refer = tokenOf(await clientLink(env, env.APP_URL!, { c: CO, t: "refer", id: ANA }));
+    const settings = (referrals: Row) => {
+      world();
+      const stub = globalThis.fetch;
+      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith("/companies")) return Response.json([{ id: CO, name: "Acme Lawn", phone: null, website: null, settings: { referrals } }]);
+        return stub(input, init);
+      });
+    };
+    settings({ reward: { kind: "amount", value: 50 }, offer: "10% off your first service" });
+    expect(await get(`/public/refer/${refer}`)).toMatchObject({ referrer: "Ana", offer: "10% off your first service", disclosure: "Ana gets a credit from Acme Lawn if you become a client." });
+    settings({ reward: { kind: "percent", value: 10 } });
+    expect((await get(`/public/refer/${refer}`)).disclosure).toBe("Ana gets a credit from Acme Lawn if you become a client.");
+    // An offer for the friend alone: the client who shares gets nothing, so there's nothing to say.
+    settings({ offer: "10% off your first service" });
+    expect(await get(`/public/refer/${refer}`)).toMatchObject({ offer: "10% off your first service", disclosure: null });
+  });
+});
 
 describe("the business's privacy policy link", () => {
   it("goes to the booking form, the referral page and the unsubscribe page when it's set", async () => {

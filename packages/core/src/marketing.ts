@@ -809,6 +809,17 @@ export function referrerLine(reward: ReferralReward, currency = "USD"): string {
 }
 
 /**
+ * On a referral page, to the friend: that the person recommending the business gets something for
+ * it. 16 CFR 255.5 (the FTC's Endorsement Guides): a connection between an endorser and the seller
+ * "that might materially affect the weight or credibility of the endorsement", and that the
+ * audience wouldn't expect, "must be disclosed clearly and conspicuously". "" when no credit is set.
+ */
+export function referrerDisclosure(referrer: string, company: string, reward: ReferralReward): string {
+  if (reward.value <= 0) return "";
+  return `${referrer.trim() || "The person who sent you this"} gets a credit from ${company} if you become a client.`;
+}
+
+/**
  * The offer as the client who shares their link reads it. It's written to the friend ("10% off
  * your first service"), so it's quoted: "For your friends: “10% off your first service”".
  */
