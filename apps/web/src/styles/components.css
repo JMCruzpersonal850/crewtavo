@@ -39,8 +39,9 @@ a.card-row:hover, button.card-row:hover { background: var(--fill); color: inheri
 }
 .btn:hover { background: var(--fill); border-color: var(--border-strong); color: var(--ink); }
 .btn:active:not(:disabled) { transform: scale(0.97); }
-.btn:focus-visible { outline: none; box-shadow: var(--ring); }
-/* A file picker inside a label (its input is .sr-only, so it can take focus): the label shows it. */
+/* The outline of base.css's :focus-visible, with the soft glow inside it. */
+.btn:focus-visible { box-shadow: var(--ring); }
+/* A file picker inside a label (its input is .sr-only, so it can take focus): the label shows it (and base.css gives it the outline). */
 label.btn:focus-within { box-shadow: var(--ring); }
 .btn-primary { background: var(--green-solid); border-color: var(--green-solid); color: #fff; box-shadow: 0 1px 2px rgba(44, 97, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
 .btn-primary:hover { background: var(--green-solid-hover); border-color: var(--green-solid-hover); color: #fff; }
@@ -181,7 +182,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform var(--dur) var(--ease-spring); }
 .switch:checked { background: var(--green); }
 .switch:checked::after { transform: translateX(16px); }
-.switch:focus-visible { outline: none; box-shadow: var(--ring); }
+.switch:focus-visible { box-shadow: var(--ring); }
 .switch:disabled { opacity: 0.5; cursor: not-allowed; }
 .switch-row { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
 
@@ -432,7 +433,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   font-weight: 600; font-size: var(--fs-14); color: var(--ink); text-align: left; white-space: nowrap;
 }
 .menu-item svg { color: var(--text-3); }
-.menu-item:hover, .menu-item:focus-visible { background: var(--fill-2); outline: none; color: var(--ink); }
+.menu-item:hover, .menu-item:focus-visible { background: var(--fill-2); color: var(--ink); }
 .menu-item[data-danger] { color: var(--danger); }
 .menu-item[data-danger] svg { color: var(--danger); }
 .menu-item[data-danger]:hover { background: var(--danger-tint); }
