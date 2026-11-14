@@ -12,6 +12,8 @@ export interface Drafted {
   by: "claude" | "price_list";
   request_number?: number | null;
   check?: string[];
+  /** How many lines the draft came with: none means the price list had nothing for the request. */
+  lines?: number | null;
   notes?: string | null;
   note?: string | null;
 }
@@ -25,6 +27,7 @@ export function readDrafted(value: unknown): Drafted | null {
     by: d.by,
     request_number: typeof d.request_number === "number" ? d.request_number : null,
     check: Array.isArray(d.check) ? d.check.filter((x): x is string => typeof x === "string") : [],
+    lines: typeof d.lines === "number" ? d.lines : null,
     notes: typeof d.notes === "string" ? d.notes : null,
     note: typeof d.note === "string" ? d.note : null,
   };
@@ -33,7 +36,8 @@ export function readDrafted(value: unknown): Drafted | null {
 /** What the callout says first: who drafted it, and from what. */
 export function draftedWords(d: Drafted, checkNames: readonly string[]): string[] {
   const from = d.request_number ? `request #${d.request_number}` : "the request";
-  const out = [d.by === "claude" ? `Claude drafted this from ${from} and your price list. Look it over before you send it.` : `Drafted from ${from} and your price list. Look it over before you send it.`];
+  // A draft that came with no lines isn't said to be drafted: its note says why, and to add them.
+  const out = [d.lines === 0 ? `Started from ${from}.` : d.by === "claude" ? `Claude drafted this from ${from} and your price list. Look it over before you send it.` : `Drafted from ${from} and your price list. Look it over before you send it.`];
   if (checkNames.length) out.push(`Check the quantity on ${checkNames.join(", ")}: the request didn't say, so it's 1.`);
   if (d.note) out.push(d.note);
   return out;
@@ -52,7 +56,7 @@ export function DraftedCallout({ drafted, lines, requestId, admin }: { drafted: 
       <div className="grow stack-sm" style={{ gap: 4 }}>
         <span>{first}</span>
         {rest.map((line, i) => <span key={i} style={{ fontWeight: 400 }}>{line}</span>)}
-        {d.by === "price_list" && !d.note && (
+        {d.by === "price_list" && (!d.note || d.lines === 0) && (
           <span className="small" style={{ fontWeight: 400 }}>
             {admin ? <>Turn on <Link to="/settings?tab=company">Draft quotes with Claude</Link> in Settings → Company to draft them better.</> : "An owner or admin can turn on Draft quotes with Claude in Settings → Company, which drafts them better."}
           </span>

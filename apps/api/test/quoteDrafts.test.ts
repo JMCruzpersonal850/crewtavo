@@ -75,6 +75,15 @@ describe("what a draft goes by", () => {
       { service_id: MOW, name: "Mowing", description: "Up to a quarter acre", quantity: 1, unit: "visit", unit_price: 45, taxable: false, check: true },
     ]);
   });
+
+  it("takes items the request's title or details name outright, and nothing a sentence only brushes", () => {
+    // No form and no choices: a request typed in from a phone call.
+    expect(priceListDraft([], null, items, ["Leaf cleanup and mowing at the rental", null]).map((l) => l.name)).toEqual(["Mowing", "Leaf cleanup"]);
+    // An item already matched from a choice isn't added twice.
+    expect(priceListDraft(requestAnswers(questions, answers), "Lawn care request", items, ["Mowing please"]).map((l) => l.name)).toEqual(["Mowing"]);
+    // Part of an item's name in a sentence isn't the item ("leaf" isn't "Leaf cleanup").
+    expect(priceListDraft([], null, items, ["A leaf fell on my car"])).toEqual([]);
+  });
 });
 
 describe("checking what Claude proposes", () => {

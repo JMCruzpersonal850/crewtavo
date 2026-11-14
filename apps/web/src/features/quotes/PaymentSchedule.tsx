@@ -128,7 +128,8 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
             Add a payment
           </Button>
         )}
-        <div className="line"><span>{sums.left < 0 ? "Over the total by" : "Left to place"}</span><strong className="tabular">{formatMoneyCents(Math.abs(sums.left))}</strong></div>
+        {/* .line lays out as a row only inside .totals (components.css). */}
+        <div className="totals"><div className="line"><span>{sums.left < 0 ? "Over the total by" : "Left to place"}</span><strong className="tabular">{formatMoneyCents(Math.abs(sums.left))}</strong></div></div>
         {problem && <p className={styles.warn} role="status">{problem}</p>}
         <FormError error={save.error} />
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -148,9 +149,11 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
       </div>
       {shown.rows.length ? (
         <>
-          {shown.rows.map((r, i) => (
-            <div key={i} className="line"><span>Payment {i + 1}: {scheduleDueText(r, (iso) => formatDate(iso))}</span><span className="tabular">{formatMoneyCents(r.amount)}</span></div>
-          ))}
+          <div className="totals">
+            {shown.rows.map((r, i) => (
+              <div key={i} className="line"><span>Payment {i + 1}: {scheduleDueText(r, (iso) => formatDate(iso))}</span><span className="tabular">{formatMoneyCents(r.amount)}</span></div>
+            ))}
+          </div>
           {!shown.fits && (
             <p className={styles.warn} role="status">
               <Icon name="alert" size={14} /> The total changed, so these payments {shown.left > 0 ? `leave ${formatMoneyCents(shown.left)} out` : `come to ${formatMoneyCents(-shown.left)} more than it`}. The last one takes what's left: edit the schedule to change that.

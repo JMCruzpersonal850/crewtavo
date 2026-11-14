@@ -112,11 +112,32 @@ const lineOf = (item: PriceItem, quantity: number | null): DraftLine => ({
   service_id: item.id, name: item.name, description: item.description, quantity: quantity ?? 1, unit: item.unit, unit_price: Number(item.unit_price), taxable: item.taxable, check: quantity === null,
 });
 
-/** The draft without Claude: matched items, a quantity of 1 each to check. */
-export function priceListDraft(answers: readonly RequestAnswer[], formName: string | null, items: readonly PriceItem[]): DraftLine[] {
-  const picked = [...answers.filter((a) => a.choice).map((a) => a.value), ...(formName ? [formName] : [])];
-  return matchPriceList(picked, items).map((item) => lineOf(item, null));
+/**
+ * Price list items named, whole, in something written freely (the request's title or details):
+ * "Sealcoat my driveway" names "Sealcoat". Only that way round: a few words of a sentence inside an
+ * item's longer name say nothing. In price list order, each once.
+ */
+export function namedInText(texts: readonly (string | null | undefined)[], items: readonly PriceItem[]): PriceItem[] {
+  const written = texts.filter((t): t is string => Boolean(t?.trim())).map(words);
+  return items.filter((item) => {
+    const name = words(item.name);
+    return name.trim().length >= 3 && written.some((w) => w.includes(name));
+  });
 }
+
+/**
+ * The draft without Claude: the items matching what the client picked or the form they used, then
+ * any the request's title or details name outright, a quantity of 1 each to check.
+ */
+export function priceListDraft(answers: readonly RequestAnswer[], formName: string | null, items: readonly PriceItem[], written: readonly (string | null | undefined)[] = []): DraftLine[] {
+  const picked = [...answers.filter((a) => a.choice).map((a) => a.value), ...(formName ? [formName] : [])];
+  const matched = matchPriceList(picked, items);
+  const named = namedInText(written, items).filter((item) => !matched.some((m) => m.id === item.id));
+  return [...matched, ...named].slice(0, MAX_DRAFT_LINES).map((item) => lineOf(item, null));
+}
+
+/** Said on the quote when the price list had nothing for the request, so nobody takes an empty draft for a drafted one. */
+export const NOTHING_MATCHED = "Nothing on your price list matched what they asked for. Add the lines yourself.";
 
 const proposal = z.object({
   description: z.string().optional().nullable(),
@@ -242,7 +263,10 @@ export async function draftQuote(s: SalesScope, requestId: string, userId: strin
       note = `Claude couldn't draft this one (${error instanceof HttpError ? error.message.replace(/\.$/, "") : "it didn't answer"}), so it was drafted from your price list.`;
     }
   }
-  if (by === "price_list") lines = priceListDraft(answers, request.form?.name ?? null, priceList);
+  if (by === "price_list") {
+    lines = priceListDraft(answers, request.form?.name ?? null, priceList, [request.title, request.details]);
+    if (!lines.length) note = note ? `${note} ${NOTHING_MATCHED}` : NOTHING_MATCHED;
+  }
 
   const quote = await quoteFromRequest(s, requestId);
   if (lines.length) {
@@ -252,15 +276,15 @@ export async function draftQuote(s: SalesScope, requestId: string, userId: strin
       .select("id, sort");
     if (error) throw new HttpError(500, error.message);
     const check = (saved ?? []).filter((row) => lines[row.sort]?.check).map((row) => row.id);
-    await saveDrafted(s.db, quote.id, { by, request: request.number, check, answers, note, description });
+    await saveDrafted(s.db, quote.id, { by, request: request.number, check, lines: lines.length, answers, note, description });
   } else {
-    await saveDrafted(s.db, quote.id, { by, request: request.number, check: [], answers, note, description });
+    await saveDrafted(s.db, quote.id, { by, request: request.number, check: [], lines: 0, answers, note, description });
   }
   return { id: quote.id, number: quote.number, by, lines: lines.length, check: lines.filter((l) => l.check).length, note };
 }
 
-async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; request: number | null; check: string[]; answers: readonly RequestAnswer[]; note: string | null; description: string | null }) {
-  const drafted = { by: d.by, at: new Date().toISOString(), request_number: d.request, check: d.check, notes: answerNotes(d.answers) || null, note: d.note };
+async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; request: number | null; check: string[]; lines: number; answers: readonly RequestAnswer[]; note: string | null; description: string | null }) {
+  const drafted = { by: d.by, at: new Date().toISOString(), request_number: d.request, check: d.check, lines: d.lines, notes: answerNotes(d.answers) || null, note: d.note };
   const { error } = await db.from("quotes").update({ drafted, ...(d.description ? { message: d.description } : {}) }).eq("id", quoteId);
   if (error) throw new HttpError(500, error.message);
 }

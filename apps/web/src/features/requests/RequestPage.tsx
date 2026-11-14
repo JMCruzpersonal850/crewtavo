@@ -65,7 +65,7 @@ export function RequestPage() {
   });
   // A draft filled in from the request (services/quoteDrafts.ts): Claude's when it's on, else from the price list.
   const toDraft = useMutation({
-    meta: { success: (d: { by: string }) => (d.by === "claude" ? "Claude drafted the quote. Look it over before you send it." : "Quote drafted from your price list"), tone: "quote" },
+    meta: { success: (d: { by: string; lines?: number }) => (d.lines === 0 ? "Quote started. Nothing on your price list matched, so add the lines yourself." : d.by === "claude" ? "Claude drafted the quote. Look it over before you send it." : "Quote drafted from your price list"), tone: "quote" },
     mutationFn: () => api.post<{ id: string; by: "claude" | "price_list" }>(`/requests/${id}/draft-quote`),
     onSuccess: (q) => {
       refresh();
