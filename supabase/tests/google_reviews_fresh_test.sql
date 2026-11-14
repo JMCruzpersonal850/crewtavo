@@ -51,6 +51,11 @@ grant execute on all functions in schema tgrf to authenticated, service_role;
 
 -- Everything below is rolled back at the end, so every now() here is the same moment.
 begin;
+-- The tidy counts across every company: anything another test left behind is set aside first
+-- (and comes back with the rollback), so the counts below are this test's own.
+delete from public.reviews;
+update public.review_syncs set average_rating = null, total_reviews = null;
+delete from public.notifications where kind in ('review', 'review_low');
 insert into auth.users (id, email, raw_user_meta_data) values (:'mia', 'mia@fresh.test', '{"full_name": "Mia Owner"}');
 set local role authenticated;
 select tgrf.as_user(:'mia');

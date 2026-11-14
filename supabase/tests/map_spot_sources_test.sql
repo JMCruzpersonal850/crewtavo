@@ -100,11 +100,11 @@ select tmss.check(tmss.error_of('select * from public.depots_to_relocate()') lik
 select tmss.check(tmss.error_of(format('select public.relocate_depot(%L, %L, %L, %L)', :'co', '{}', '{}', '{"lat": 1, "lng": 2, "source": "census"}')) like '42501:%', 'or save a shop''s spot that way');
 reset role;
 set local role service_role;
-select tmss.check((select count(*) = 0 from public.depots_to_relocate()), 'a company with no shop spot isn''t listed');
+select tmss.check((select count(*) = 0 from public.depots_to_relocate(100) where company_id in (:'co', :'other')), 'a company with no shop spot isn''t listed');
 update public.companies set settings = settings || '{"depot": {"lat": 36.9, "lng": -79.8}}' where id = :'co';
 update public.companies set settings = settings || '{"depot": {"lat": 40.1, "lng": -75.2, "source": "census"}}' where id = :'other';
 select tmss.check((select count(*) = 1 and min(company_id::text) = :'co' and min(address ->> 'line1') = '1 Main St' and min(depot ->> 'lat') = '36.9'
-  from public.depots_to_relocate()), 'a shop spot with no source is listed with the company''s address, and one with a source isn''t');
+  from public.depots_to_relocate(100) where company_id in (:'co', :'other')), 'a shop spot with no source is listed with the company''s address, and one with a source isn''t');
 select tmss.check(tmss.error_of(format('select public.relocate_depot(%L, %L, %L, %L)', :'co', '{}', '{}', '{"lat": 1, "lng": 2, "source": "google"}')) like '22023:%', 'a spot is saved with a source that can be kept');
 select tmss.check(tmss.error_of(format('select public.relocate_depot(%L, %L, %L, %L)', :'co', '{}', '{}', '{"lat": 1, "source": "census"}')) like '22023:%', 'and with both coordinates');
 select address as shop_address, settings -> 'depot' as shop_was from public.companies where id = :'co' \gset
@@ -115,7 +115,7 @@ update public.companies set address = :'shop_address' where id = :'co';
 select tmss.check(not public.relocate_depot(:'co', :'shop_address', '{"lat": 1, "lng": 2}', '{"lat": 36.99, "lng": -79.88, "source": "census"}'), 'nor over a spot that isn''t the one that was read');
 select tmss.check(public.relocate_depot(:'co', :'shop_address', :'shop_was', '{"lat": 36.99, "lng": -79.88, "source": "census"}'), 'the spot as read, at the address as read, is replaced');
 select tmss.check((select settings -> 'depot' = '{"lat": 36.99, "lng": -79.88, "source": "census"}' from public.companies where id = :'co'), 'with its source beside it');
-select tmss.check((select count(*) = 0 from public.depots_to_relocate()), 'and it isn''t listed again');
+select tmss.check((select count(*) = 0 from public.depots_to_relocate(100) where company_id in (:'co', :'other')), 'and it isn''t listed again');
 -- Settings → Company on a phone that hasn't updated saves a new spot without a source: merged into the one saved.
 reset role;
 set local role authenticated;
@@ -126,7 +126,7 @@ select public.merge_company_settings(:'co', '{"depot": null}');
 select tmss.check((select settings -> 'depot' = 'null' from public.companies where id = :'co'), 'and a shop that isn''t found has no spot');
 reset role;
 set local role service_role;
-select tmss.check((select count(*) = 0 from public.depots_to_relocate()), 'which leaves nothing to look up');
+select tmss.check((select count(*) = 0 from public.depots_to_relocate(100) where company_id in (:'co', :'other')), 'which leaves nothing to look up');
 
 rollback;
 
