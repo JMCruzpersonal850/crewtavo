@@ -14,6 +14,7 @@ import {
   payrollMethod,
   paySummary,
   PIECE_OVERTIME_NOTE,
+  STATE_OVERTIME_NOTE,
   wcAuditCsv,
   wcAuditTotals,
   wcPartNote,
@@ -177,6 +178,8 @@ describe("piece pay in a pay period", () => {
     ]);
     expect(pay).toMatchObject({ hours: 45, hourly_amount: 900, piece_amount: 814.8, amount: 1714.8, overtime_hours: 5, overtime_note: PIECE_OVERTIME_NOTE });
     expect(PIECE_OVERTIME_NOTE).toMatch(/worked out from total pay and hours/);
+    // Said under every period, piece pay or not: only the federal weekly figure is worked out here.
+    expect(STATE_OVERTIME_NOTE).toMatch(/^State daily overtime isn't worked out\./);
   });
 });
 

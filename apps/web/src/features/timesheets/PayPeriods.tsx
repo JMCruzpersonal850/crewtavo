@@ -6,7 +6,7 @@
  * tools (apps/api/src/services/pay.ts).
  */
 import { breakPay, SHORT_BREAK_MINUTES, type BreakPay } from "@crewtavo/core/breaks";
-import { mondayOf } from "@crewtavo/core/pay";
+import { mondayOf, STATE_OVERTIME_NOTE } from "@crewtavo/core/pay";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
@@ -144,7 +144,8 @@ export function PayPeriods() {
           ))}
           <p className="muted small" style={{ margin: 12 }}>
             Approved time at each person's pay rate{piece ? ", plus piece pay for work done on jobs in this period" : ""}. {BREAK_RULE[breakPay(session.company.settings)]}{" "}
-            {d.overtime_note ?? "Hours over 40 in a week are shown for your payroll service; the amounts here are at straight time."}
+            {d.overtime_note ?? "Hours over 40 in a week are shown for your payroll service; the amounts here are at straight time."}{" "}
+            {STATE_OVERTIME_NOTE}
             {d.people.some((p) => (p.already_paid_hours ?? 0) > 0) && " Hours already paid with another period aren't counted again."}
           </p>
         </section>
