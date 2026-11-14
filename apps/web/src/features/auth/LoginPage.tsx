@@ -317,7 +317,7 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
         {mode === "sign_up" && (
           <Field label={t("Your name")}><input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} maxLength={120} autoFocus /></Field>
         )}
-        {!(mode === "recover" && !typingKey) && <Field label="Email"><input className="input" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }} autoComplete="email" required autoFocus={mode !== "sign_up"} inputMode="email" /></Field>}
+        {!(mode === "recover" && !typingKey) && <Field label={t("Email")}><input className="input" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }} autoComplete="email" required autoFocus={mode !== "sign_up"} inputMode="email" /></Field>}
         {mode === "recover" && typingKey && (
           <Field label={t("Spare key")} hint={t("Like 7K4M-PQ2X-9DRF. Dashes and capitals don't matter.")}>
             <input className="input" value={code} onChange={(e) => { setCode(e.target.value); setError(null); }} autoComplete="off" autoCapitalize="characters" spellCheck={false} required minLength={12} maxLength={500} style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace" }} />
@@ -509,7 +509,7 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
                 <input className="input" type="tel" inputMode="tel" autoComplete="tel" value={typed.text} onChange={(e) => { setTyped({ ...typed, text: formatPhoneTyping(e.target.value) }); setError(null); }} maxLength={40} required autoFocus />
               </Field>
             ) : (
-              <Field label="Email">
+              <Field label={t("Email")}>
                 <input className="input" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={typed.email} onChange={(e) => { setTyped({ ...typed, email: e.target.value }); setError(null); }} maxLength={254} required autoFocus />
               </Field>
             )}
