@@ -181,6 +181,7 @@ export function CompanySettings() {
       </div>
       <div className="card card-pad stack">
         <strong>Shop address</strong>
+        <span className="muted small">Your postal address. It's shown at the bottom of marketing emails, which can't go out without a street or PO box, city, state and ZIP.</span>
         <Field label="Street"><input className="input" value={f.line1} onChange={set("line1")} maxLength={200} /></Field>
         <div className="form-grid-3">
           <Field label="City"><input className="input" value={f.city} onChange={set("city")} maxLength={100} /></Field>

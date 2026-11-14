@@ -1,6 +1,6 @@
 import { autopaySettings } from "@crewtavo/core/autopay";
 import { shownCustomFields } from "@crewtavo/core/customFields";
-import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, textConsentLine, textsOff, type AskChannel } from "@crewtavo/core/marketing";
+import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, RESUBSCRIBE_HINT, textConsentLine, textsOff, type AskChannel } from "@crewtavo/core/marketing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -493,6 +493,7 @@ export function ClientPage() {
                       <input type="checkbox" className="switch" checked={!c.marketing_opt_out} onChange={(e) => update.mutate({ marketing_opt_out: !e.target.checked })} />
                       Gets campaigns, review and referral asks
                     </label>
+                    {c.marketing_opt_out && <span className="muted small" style={{ display: "block" }}>{RESUBSCRIBE_HINT}</span>}
                   </dd>
                   <dt>Reviews</dt>
                   <dd>

@@ -27,7 +27,7 @@ import {
   type SubjectKind,
 } from "@crewtavo/core/automations";
 import { AUTOMATED_CAMPAIGNS, campaignKeyOf } from "@crewtavo/core/campaigns";
-import { marketingOn, ordinal, RECURRING_TRIGGER, reviewSettings } from "@crewtavo/core/marketing";
+import { marketingOn, ordinal, RECURRING_TRIGGER, reviewSettings, RULE_EMAIL_HINT, RULE_TEXT_CONSENT_HINT } from "@crewtavo/core/marketing";
 import { STAFF } from "@crewtavo/core/roles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -335,6 +335,7 @@ function RulePageScreen() {
                   count={draft.actions.length}
                   subject={subject}
                   verb={draft.trigger}
+                  campaign={Boolean(campaign)}
                   value={a}
                   onChange={(next) => set({ actions: draft.actions.map((x, j) => (j === i ? next : x)) })}
                   onRemove={() => set({ actions: draft.actions.filter((_, j) => j !== i) })}
@@ -503,7 +504,7 @@ function Tokens({ verb, forTask = false, target, onInsert }: { verb: string; for
   );
 }
 
-function ActionEditor({ index, count, subject, verb, value, onChange, onRemove, onMove }: { index: number; count: number; subject: SubjectKind; verb: string; value: Action; onChange: (a: Action) => void; onRemove: () => void; onMove: (dir: -1 | 1) => void }) {
+function ActionEditor({ index, count, subject, verb, campaign = false, value, onChange, onRemove, onMove }: { index: number; count: number; subject: SubjectKind; verb: string; /** The rule is an automated campaign's, whose email goes as one (tracked, with an unsubscribe link). */ campaign?: boolean; value: Action; onChange: (a: Action) => void; onRemove: () => void; onMove: (dir: -1 | 1) => void }) {
   const tags = useClientTags();
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -549,6 +550,8 @@ function ActionEditor({ index, count, subject, verb, value, onChange, onRemove, 
           <Field label="Subject"><input ref={titleRef} className="input" value={value.subject} maxLength={200} onFocus={() => setTarget("title")} onChange={(e) => onChange({ ...value, subject: e.target.value })} /></Field>
           <Field label="Message"><textarea ref={bodyRef} className="textarea" style={{ minHeight: 140 }} value={value.body} maxLength={8000} onFocus={() => setTarget("body")} onChange={(e) => onChange({ ...value, body: e.target.value })} /></Field>
           <Tokens verb={verb} target={tokenTarget} onInsert={insertToken} />
+          {/* A rule's own email has no unsubscribe link, so promotions belong in Campaigns. */}
+          {!campaign && <span className="muted small">{RULE_EMAIL_HINT}</span>}
         </>
       )}
 
@@ -558,7 +561,7 @@ function ActionEditor({ index, count, subject, verb, value, onChange, onRemove, 
             <textarea ref={bodyRef} className="textarea" style={{ minHeight: 80 }} value={value.body} maxLength={640} onChange={(e) => onChange({ ...value, body: e.target.value })} />
           </Field>
           <Tokens verb={verb} target={bodyRef} onInsert={(text) => onChange({ ...value, body: text })} />
-          {textQuietHint(verb) && <span className="muted small">{textQuietHint(verb)}</span>}
+          <span className="muted small">{RULE_TEXT_CONSENT_HINT}{textQuietHint(verb) ? ` ${textQuietHint(verb)}` : ""}</span>
         </>
       )}
 

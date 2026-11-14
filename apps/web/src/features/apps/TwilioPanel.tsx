@@ -6,6 +6,7 @@
  * that sets it on the number. A Crewtavo whose server was given a Twilio account works without any
  * of this, and says so.
  */
+import { TEXT_CONSENT_HINT } from "@crewtavo/core/marketing";
 import { useMutation } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
@@ -68,6 +69,7 @@ function ConnectForm({ app, changing, optional, onSaved, onCancel }: { app: AppR
           About five minutes once you have a Twilio number. Twilio bills you directly for the texts you send, a fraction of a cent to a few cents each. In the US, Twilio also asks you to register
           your business before a new number can text (A2P 10DLC), which can take a few days.
         </span>
+        <span className="muted small">{TEXT_CONSENT_HINT}</span>
       </div>
       <ol className="app-steps">
         <li>

@@ -653,6 +653,28 @@ export function textConsentLine(source: string | null | undefined, on: string | 
   }
 }
 
+/**
+ * For the business, where it sets texting up: who it may text is its own to see to. Twilio's
+ * messaging policy: "you must obtain prior express consent from the message recipient", and
+ * promotional messages need "prior express written consent from the recipient".
+ */
+export const TEXT_CONSENT_HINT =
+  "Text only people who agreed to get texts from you. Texts that promote something (a sale, a discount, a new service) need their agreement in writing.";
+
+/** Under "Text the client" in a rule: the same, in a line. */
+export const RULE_TEXT_CONSENT_HINT = "Goes to clients who agreed to get your texts. A text that promotes something needs their agreement in writing.";
+
+/** Under "Email the client" in a rule: these emails carry no unsubscribe link, so they aren't for promotions. */
+export const RULE_EMAIL_HINT = "For messages about a client's own work. For promotions, use Marketing → Campaigns: a rule's email has no unsubscribe link.";
+
+/** Beside the office's Marketing switch on a client who unsubscribed. */
+export const RESUBSCRIBE_HINT = "They unsubscribed. Turn this back on only if they asked you to.";
+
+/** Under the review ask's message: what Google doesn't allow of a business asking for reviews. */
+export const REVIEW_ASK_RULES = "Don't offer anything for a review, and don't ask only your happy clients: Google doesn't allow either.";
+/** Google's "Prohibited & restricted content" for Maps contributions: merchants may not offer incentives for reviews or selectively solicit positive ones. */
+export const REVIEW_ASK_POLICY_URL = "https://support.google.com/contributionpolicy/answer/7400114";
+
 /** How someone asked the office to stop their texts (sms_stops.how). */
 export const STOP_HOWS = ["phone", "email", "in_person", "text", "other"] as const;
 export type StopHow = (typeof STOP_HOWS)[number];
