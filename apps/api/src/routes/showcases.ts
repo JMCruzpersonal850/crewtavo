@@ -10,6 +10,7 @@
  */
 import { OFFICE } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
+import { privacyUrl } from "@crewtavo/core/privacyPolicy";
 import { publishCheck, showcaseProblem, unsharedQuestion, type ShowcasePhotoFact } from "@crewtavo/core/showcases";
 import { brandColor, mentionsClient } from "@crewtavo/core/social";
 import { Hono } from "hono";
@@ -199,7 +200,7 @@ showcases.get("/public/showcases/:token", async (c) => {
   // Get a quote: the business's booking form (its first active one), on this same site.
   const { data: form } = company.slug ? await admin.from("intake_forms").select("slug").eq("company_id", view.company_id).eq("active", true).order("created_at").limit(1).maybeSingle() : { data: null };
   return c.json({
-    company: { name: company.name, phone: company.phone, website: company.website, logo: logoImage("", view.company_id, company.settings)?.src ?? null, color: brandColor(company.settings) },
+    company: { name: company.name, phone: company.phone, website: company.website, logo: logoImage("", view.company_id, company.settings)?.src ?? null, color: brandColor(company.settings), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null) },
     title: view.title,
     description: view.description,
     town: view.town ? [view.town, view.region].filter(Boolean).join(", ") : null,

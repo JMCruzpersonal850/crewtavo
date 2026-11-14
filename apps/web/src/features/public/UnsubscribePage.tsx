@@ -5,6 +5,7 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { PrivacyFooter } from "@/components/ui/PrivacyLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { publicFetch } from "@/lib/publicApi";
 
@@ -15,7 +16,7 @@ export function UnsubscribePage() {
     queryKey: ["unsubscribe", token],
     enabled: !isTest,
     retry: false,
-    queryFn: () => publicFetch<{ company: string; unsubscribed: boolean }>(`/public/unsubscribe/${token}`),
+    queryFn: () => publicFetch<{ company: string; unsubscribed: boolean; privacy_url?: string | null }>(`/public/unsubscribe/${token}`),
   });
   const change = useMutation({
     mutationFn: (resubscribe: boolean) => publicFetch<{ unsubscribed: boolean }>(`/public/unsubscribe/${token}`, { resubscribe }),
@@ -65,6 +66,7 @@ export function UnsubscribePage() {
           )}
           <FormError error={change.error} />
         </div>
+        <PrivacyFooter url={status.data?.privacy_url} />
       </div>
     </div>
   );

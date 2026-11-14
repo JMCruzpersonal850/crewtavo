@@ -40,6 +40,7 @@
     "./billing": "./src/billing.ts",
     "./equipment": "./src/equipment.ts",
     "./privacy": "./src/privacy.ts",
+    "./privacyPolicy": "./src/privacyPolicy.ts",
     "./email": "./src/email.ts",
     "./notifications": "./src/notifications.ts",
     "./terms": "./src/terms.ts",

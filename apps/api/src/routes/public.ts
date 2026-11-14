@@ -12,6 +12,7 @@ import { clientAnswers, inServiceArea, type ClientChecklist } from "@crewtavo/co
 import { marketingOn, referralSettings, referralsReady, referrerLine } from "@crewtavo/core/marketing";
 import { chosenTotals, countsOn, optionBaseTotal, optionTotals, scheduleRows, type OptionLine } from "@crewtavo/core/money";
 import { isPackagePicturePath, packagePictureSrc } from "@crewtavo/core/presets";
+import { privacyUrl } from "@crewtavo/core/privacyPolicy";
 import { quotePromoRule } from "@crewtavo/core/promos";
 import { changeableOnline, openSlots, SLOT_DAYS, SLOT_LEAD_DAYS, slotStep, workdays, type OpenSlot } from "@crewtavo/core/slots";
 import { addDays, arrivalWindowMin, localDate, zonedTimeToUtc } from "@crewtavo/core/time";
@@ -207,7 +208,7 @@ async function verifyTurnstile(c: Parameters<typeof appUrl>[0], token: string | 
 // trade are read here but never sent: the room on top is the business's own, Roofing only decides
 // whether a preview shows a roofing range, autopay's only say whether a card is required, and the
 // trade only picks the starter terms.
-const BRANDING = "name, phone, email, website, timezone, currency, address, trade_preset, settings->branding, settings->hub_tips, settings->roofing, settings->roofing_app, settings->paving_app, settings->autopay";
+const BRANDING = "name, phone, email, website, timezone, currency, address, trade_preset, settings->branding, settings->hub_tips, settings->roofing, settings->roofing_app, settings->paving_app, settings->autopay, settings->privacy_url";
 
 /** The company as its clients see it, with where its logo loads from (null without one). */
 const withLogo = <T extends { branding?: unknown }>(companyId: string, company: T) => ({ ...company, logo: logoImage("", companyId, { branding: company.branding })?.src ?? null });
@@ -220,8 +221,9 @@ export { addressLines };
  * whether it has Roofing, whether it needs a card on file, and its trade for the server's own use.
  */
 async function hubCompany(admin: ReturnType<typeof adminClient>, companyId: string) {
-  const { address, roofing, roofing_app, paving_app, autopay, trade_preset: trade, ...row } = must(await admin.from("companies").select(BRANDING).eq("id", companyId).maybeSingle());
-  return { company: withLogo(companyId, { ...row, address: addressLines(address) }), roofing, roofer: roofingOn({ roofing_app }), apps: { roofing_app, paving_app }, cardRequired: autopaySettings({ autopay }).card_required, trade };
+  const { address, roofing, roofing_app, paving_app, autopay, trade_preset: trade, privacy_url, ...row } = must(await admin.from("companies").select(BRANDING).eq("id", companyId).maybeSingle());
+  // privacy_url: the business's privacy policy link for the page's footer, when it set one (core privacyPolicy.ts).
+  return { company: withLogo(companyId, { ...row, address: addressLines(address), privacy_url: privacyUrl({ privacy_url }) }), roofing, roofer: roofingOn({ roofing_app }), apps: { roofing_app, paving_app }, cardRequired: autopaySettings({ autopay }).card_required, trade };
 }
 
 /**
@@ -1081,7 +1083,7 @@ publicRoutes.get("/public/forms/:company/:form", async (c) => {
   const { company, form } = await findForm(c);
   return c.json({
     // `texts`: the business can text, so the phone box says what giving a number agrees to.
-    company: { name: company.name, phone: company.phone, texts: await smsReady(c.env, company.id) },
+    company: { name: company.name, phone: company.phone, texts: await smsReady(c.env, company.id), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null) },
     form: { name: form.name, kind: form.kind, questions: form.questions },
     // With "Let clients pick a time" on: what the page needs to offer times (the openings themselves come from /openings).
     ...(form.pick_time && { booking: bookingView(company, form as BookingForm, (form.service_area_zips ?? []) as string[]) }),
@@ -1827,11 +1829,11 @@ publicRoutes.get("/public/unsubscribe/:token", async (c) => {
   const l = await link(c, ["unsub"]);
   const admin = adminClient(c.env);
   const [company, client] = await Promise.all([
-    admin.from("companies").select("name").eq("id", l.c).maybeSingle(),
+    admin.from("companies").select("name, settings").eq("id", l.c).maybeSingle(),
     admin.from("clients").select("marketing_opt_out").eq("company_id", l.c).eq("id", l.id).maybeSingle(),
   ]);
   if (!company.data || !client.data) throw new HttpError(404, "This link isn't valid anymore.");
-  return c.json({ company: company.data.name, unsubscribed: client.data.marketing_opt_out });
+  return c.json({ company: company.data.name, unsubscribed: client.data.marketing_opt_out, privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null) });
 });
 
 publicRoutes.post("/public/unsubscribe/:token", async (c) => {
@@ -1956,7 +1958,7 @@ publicRoutes.get("/public/refer/:token", async (c) => {
   ]);
   if (!company.data || !client.data) throw new HttpError(404, "This referral link isn't valid anymore.");
   return c.json({
-    company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null, texts: await smsReady(c.env, l.c) },
+    company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null, texts: await smsReady(c.env, l.c), privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null) },
     referrer: firstName(client.data.display_name),
     offer: referralSettings(company.data.settings as Record<string, unknown> | null).offer,
   });

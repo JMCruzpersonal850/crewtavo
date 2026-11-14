@@ -3,9 +3,11 @@
  * and for an estimate or booking form, letting clients pick a time from the schedule's openings.
  */
 import { formSlug as slugify, isPostalCode, normalizeIntakeForm } from "@crewtavo/core/forms";
+import { privacyUrl } from "@crewtavo/core/privacyPolicy";
 import { slotLabel, type OpenSlot } from "@crewtavo/core/slots";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -85,6 +87,12 @@ export function BookingAdminPage() {
     <>
       <BackLink to="/settings">Settings</BackLink>
       <PageHeader title="Online booking" actions={canEdit && <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>New form</Button>} />
+      {/* For the people who can add it (Settings → Company is the owners' and admins'), while there's none. */}
+      {hasRole(session, "admin") && !privacyUrl(company.settings) && (
+        <p className="muted small" style={{ margin: 0 }}>
+          <Icon name="info" size={14} /> Forms that collect personal details should link your privacy policy. <Link to="/settings?tab=company">Add the link in Settings → Company</Link> and it shows under every form.
+        </p>
+      )}
       {forms.isPending ? <Loading><div className="grid-cards">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={3} />)}</div></Loading> : forms.error ? <div className="card"><ErrorState error={forms.error} onRetry={() => forms.refetch()} /></div> : !forms.data?.length ? (
         <div className="card"><EmptyState icon="globe" title="No booking forms yet" action={canEdit && <Button icon="plus" onClick={() => setEditing("new")}>Create a form</Button>} /></div>
       ) : (

@@ -8,12 +8,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
+import { PrivacyFooter } from "@/components/ui/PrivacyLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { initials, inkOn } from "@/features/documents/words";
 import { publicFetch } from "@/lib/publicApi";
 
 interface ShowcaseView {
-  company: { name: string; phone: string | null; website: string | null; logo: string | null; color: string | null };
+  company: { name: string; phone: string | null; website: string | null; logo: string | null; color: string | null; privacy_url?: string | null };
   title: string;
   description: string;
   town: string | null;
@@ -74,6 +75,7 @@ export function ShowcasePage() {
                 <a className="btn" href={d.book_url} style={{ background: "var(--brand)", color: "var(--on-brand)", borderColor: "var(--brand)" }}>Get a quote</a>
               </div>
             )}
+            <PrivacyFooter url={d.company.privacy_url} />
           </div>
         )}
       </div>

@@ -36,6 +36,7 @@ export * from "./phone";
 export * from "./paving";
 export * from "./presets";
 export * from "./privacy";
+export * from "./privacyPolicy";
 export * from "./recipients";
 export * from "./recurrence";
 export * from "./reviews";

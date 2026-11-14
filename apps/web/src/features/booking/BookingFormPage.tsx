@@ -7,6 +7,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { PrivacyFooter } from "@/components/ui/PrivacyLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { publicFetch, useTurnstile } from "@/lib/publicApi";
 import { formatPhoneTyping } from "@/lib/validate";
@@ -37,7 +38,7 @@ interface Question {
 }
 interface FormView {
   /** `texts`: the business can text, so the phone box says what giving a number agrees to. */
-  company: { name: string; phone: string | null; texts?: boolean };
+  company: { name: string; phone: string | null; texts?: boolean; privacy_url?: string | null };
   form: { name: string; kind: string; questions: Question[] };
   booking?: Booking;
 }
@@ -233,6 +234,7 @@ export function BookingFormPage() {
             </Button>
           </form>
         )}
+        <PrivacyFooter url={view.data?.company.privacy_url} />
       </div>
     </div>
   );

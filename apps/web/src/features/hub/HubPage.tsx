@@ -21,6 +21,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Button, cx } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { PrivacyLink } from "@/components/ui/PrivacyLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { BrandMark } from "@/components/shell/BrandMark";
 import {
@@ -727,6 +728,7 @@ function RangeHub({ token, data, onChanged, onAsk, onPrint }: { token: string; d
               </span>
             )}
             {credits && <span>{credits}</span>}
+            {company.privacy_url && <span><PrivacyLink url={company.privacy_url} /></span>}
           </div>
           <span className={styles.private}>A private link{clientName ? ` for ${clientName}` : ""}. Powered by Crewtavo.</span>
         </div>

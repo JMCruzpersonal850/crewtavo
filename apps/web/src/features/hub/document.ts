@@ -53,6 +53,8 @@ export interface HubCompany {
   logo?: string | null;
   /** The letterhead's address lines: the street, then "City, ST 12345". */
   address?: string[];
+  /** The business's privacy policy link, when it set one (Settings → Company). */
+  privacy_url?: string | null;
 }
 /** A map drawing the office chose to show the client, with the sizes measured on it. */
 export interface HubDrawing {

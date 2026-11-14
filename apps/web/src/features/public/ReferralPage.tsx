@@ -6,12 +6,13 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { PrivacyFooter } from "@/components/ui/PrivacyLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { publicFetch, useTurnstile } from "@/lib/publicApi";
 import { formatPhoneTyping } from "@/lib/validate";
 
 interface ReferralView {
-  company: { name: string; phone: string | null; website: string | null; logo?: string | null; texts?: boolean };
+  company: { name: string; phone: string | null; website: string | null; logo?: string | null; texts?: boolean; privacy_url?: string | null };
   referrer: string;
   offer: string | null;
 }
@@ -84,6 +85,7 @@ export function ReferralPage() {
                 <Button type="submit" variant="primary" size="lg" icon="send" loading={submit.isPending} disabled={turnstile.required && !turnstile.token}>Request a quote</Button>
               </form>
             )}
+            <PrivacyFooter url={view.data.company.privacy_url} />
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import { GEOFENCE_MODE_HINTS, GEOFENCE_MODE_LABELS, GEOFENCE_NOTE, GEOFENCE_RADI
 import { completesWhenVisitsDone } from "@crewtavo/core/jobBilling";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
 import { PRESETS } from "@crewtavo/core/presets";
+import { PRIVACY_URL_MAX, privacyUrlTyped } from "@crewtavo/core/privacyPolicy";
 import { workdays } from "@crewtavo/core/slots";
 import { arrivalWindowMin } from "@crewtavo/core/time";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -52,6 +53,7 @@ export function CompanySettings() {
     const fee = lateFeeSettings(s);
     setF({
       name: d.name, phone: d.phone ?? "", email: d.email ?? "", website: d.website ?? "", trade: d.trade_preset,
+      privacy_url: typeof s.privacy_url === "string" ? s.privacy_url : "",
       line1: a.line1 ?? "", city: a.city ?? "", region: a.region ?? "", postal_code: a.postal_code ?? "",
       timezone: d.timezone, currency: d.currency, payment_terms_days: String(s.payment_terms_days ?? 30), default_tax_rate: String(taxPercent(s.default_tax_rate ?? 0)),
       quote_valid_days: String(s.quote_valid_days ?? 30), hours_start: s.working_hours?.start ?? "07:00", hours_end: s.working_hours?.end ?? "18:00",
@@ -81,6 +83,8 @@ export function CompanySettings() {
       if (v.hours_end <= v.hours_start) throw new Error("The workday has to end after it starts.");
       if (!v.workdays) throw new Error("Pick at least one workday.");
       if (v.website && !/^https?:\/\//.test(v.website)) v.website = `https://${v.website}`;
+      const privacy = privacyUrlTyped(v.privacy_url ?? "");
+      if (privacy === "invalid") throw new Error("Enter the link to your privacy policy as a web address, like https://example.com/privacy.");
       const minimum = Number(v.minimum_charge || 0);
       if (!(minimum >= 0 && minimum <= 1_000_000)) throw new Error("Enter a minimum charge of 0 or more, or leave it empty.");
       let lateFee: LateFee | null = null;
@@ -120,6 +124,8 @@ export function CompanySettings() {
         // Both off unless set (the database adds the lines: 20261104000100 and 000200).
         minimum_charge: minimum > 0 ? Math.round(minimum * 100) / 100 : null,
         late_fee: lateFee,
+        // Shown in the footer of the pages clients and the public use (core privacyPolicy.ts).
+        privacy_url: privacy,
         // Only when the shop was looked up again: routes start there.
         ...(located !== null && { depot }),
       };
@@ -152,6 +158,9 @@ export function CompanySettings() {
           <Field label="Phone"><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: formatPhoneTyping(e.target.value) })} maxLength={40} /></Field>
           <Field label="Email"><input className="input" type="email" value={f.email} onChange={set("email")} maxLength={200} /></Field>
           <Field label="Website" optional><input className="input" value={f.website} onChange={set("website")} maxLength={200} placeholder="https://" /></Field>
+          <Field label="Privacy policy link" optional hint="Shown at the bottom of your booking forms, Client Hub, referral, showcase and unsubscribe pages. Pages that collect personal details should link one.">
+            <input className="input" value={f.privacy_url} onChange={set("privacy_url")} maxLength={PRIVACY_URL_MAX} placeholder="https://" />
+          </Field>
           <Field label="Trade" hint="Picks your starter prices and terms. Paving and Roofing are apps: turn on either or both in Apps.">
             <select className="select" value={f.trade} onChange={set("trade")}>
               {Object.values(PRESETS).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
