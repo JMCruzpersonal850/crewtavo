@@ -523,6 +523,7 @@ export default {
   "{count} photos haven't sent yet": { one: "{count} foto todavía no se ha enviado", other: "{count} fotos todavía no se han enviado" },
   "It's waiting on this phone and goes out when you have signal. Signing out now deletes it.": "Está esperando en este teléfono y se envía cuando tengas señal. Si cierras sesión ahora, se borra.",
   "They're waiting on this phone and go out when you have signal. Signing out now deletes them.": "Están esperando en este teléfono y se envían cuando tengas señal. Si cierras sesión ahora, se borran.",
+  "{count} updates are waiting to be sent. Open Crewtavo to send them.": { one: "{count} cambio está esperando para enviarse. Abre Crewtavo para enviarlo.", other: "{count} cambios están esperando para enviarse. Abre Crewtavo para enviarlos." },
   "Sign out anyway": "Cerrar sesión de todos modos",
   "Couldn't sign out. Try again when you have signal.": "No se pudo cerrar sesión. Intenta de nuevo cuando tengas señal.",
   "Can't reach Crewtavo": "No se puede conectar con Crewtavo",

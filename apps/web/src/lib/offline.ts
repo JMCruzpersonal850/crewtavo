@@ -304,6 +304,9 @@ export const WAITING_CACHE = "crewtavo-waiting";
 type SyncRegistration = ServiceWorkerRegistration & { sync?: { register: (tag: string) => Promise<void> } };
 
 /** Everyone's waiting field actions on this phone, as the service worker counts them. */
+/** Where the worker finds its notification's words, apart from the counts (public/sw.js WORDS). */
+const WORDS_CACHE = "crewtavo-words";
+
 async function waitingOnPhone(cache: Cache) {
   let total = 0;
   for (const entry of await cache.keys()) total += Number(await (await cache.match(entry))?.text()) || 0;
@@ -326,6 +329,9 @@ function tellServiceWorker(userId: string, waiting: number) {
       const entry = `/waiting/${encodeURIComponent(userId)}`;
       if (waiting) await cache.put(entry, new Response(String(waiting)));
       else await cache.delete(entry);
+      // The worker's own notification, in the app's language: it can't read the app's (public/sw.js).
+      const words = (n: number) => t.plural(n, { one: "{count} update is waiting to be sent. Open Crewtavo to send them.", other: "{count} updates are waiting to be sent. Open Crewtavo to send them." }, { count: n === 1 ? 1 : "{count}" });
+      await (await caches.open(WORDS_CACHE)).put("/waiting", new Response(JSON.stringify({ one: words(1), other: words(2) })));
       const registration = (await navigator.serviceWorker.getRegistration()) as SyncRegistration | undefined;
       if (!registration) return;
       if (waiting) await registration.sync?.register(SYNC_TAG);

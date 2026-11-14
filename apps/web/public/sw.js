@@ -255,8 +255,10 @@ self.addEventListener("sync", (event) => {
         if (event.lastChance) return;
         throw new Error("Crewtavo is open on the screen: it sends them itself.");
       }
+      // In the app's language when it left its words (src/lib/offline.ts tellServiceWorker), else English.
+      const words = await waitingWords();
       await self.registration.showNotification("Crewtavo", {
-        body: `${waiting === 1 ? "1 update is" : `${waiting} updates are`} waiting to be sent. Open Crewtavo to send them.`,
+        body: words ? (waiting === 1 ? words.one : words.other.replace("{count}", String(waiting))) : `${waiting === 1 ? "1 update is" : `${waiting} updates are`} waiting to be sent. Open Crewtavo to send them.`,
         tag: SYNC_TAG,
         icon: "/icon-192.png",
         badge: "/icon-192.png",
@@ -265,6 +267,16 @@ self.addEventListener("sync", (event) => {
     })(),
   );
 });
+
+/** The waiting notification's words in the app's language, or null for English. */
+async function waitingWords() {
+  try {
+    const words = await (await (await caches.open("crewtavo-words")).match("/waiting"))?.json();
+    return typeof words?.one === "string" && typeof words?.other === "string" ? words : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Everyone's updates waiting on this phone, as the app last counted them. */
 async function waitingUpdates() {
