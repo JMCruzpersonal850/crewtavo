@@ -4,7 +4,7 @@
  * be sent to be read says why instead of sitting at "Reading…".
  */
 import { describe, expect, it } from "vitest";
-import { draftState, dropZoneOff, OLD_SERVER, STUCK_MS, TO_FILL_LINE, unreadReason } from "@/features/jobs/receiptDraftWords";
+import { draftState, dropZoneOff, nextWaiting, OLD_SERVER, STUCK_MS, TO_FILL_LINE, unreadReason, WAITING_LINE, WAITING_RETRY_MS, WAITING_WHY } from "@/features/jobs/receiptDraftWords";
 import { ApiError } from "@/lib/errors";
 
 const at = "2026-11-14T15:00:00.000Z";
@@ -25,6 +25,24 @@ describe("a receipt waiting in the list", () => {
     expect(draftState({ status: "reading", created_at: "2026-11-01T00:00:00Z", updated_at: at }, now + 1000)).toBe("reading");
     expect(draftState({ status: "read", created_at: at }, now)).toBe("read");
     expect(draftState({ status: "failed", created_at: at }, now)).toBe("failed");
+  });
+});
+
+describe("a stack larger than the hour's allowance", () => {
+  const draft = (id: string, status: string, created_at: string) => ({ id, status, created_at });
+
+  it("waits its turn: not read yet, not failed, and it says nothing needs doing", () => {
+    expect(draftState({ status: "waiting", created_at: "2026-01-01T00:00:00Z" }, now)).toBe("waiting");
+    expect(WAITING_LINE).toBe("Waiting its turn to be read");
+    expect(WAITING_WHY).toBe("That's all that can be read this hour. The rest are read by themselves while this page is open, or you can fill one in now.");
+  });
+
+  it("carries on with the one that has waited longest, a few minutes apart", () => {
+    const drafts = [draft("c", "waiting", "2026-11-14T10:02:00Z"), draft("a", "read", "2026-11-14T10:00:00Z"), draft("b", "waiting", "2026-11-14T10:01:00Z"), draft("d", "failed", "2026-11-14T09:00:00Z")];
+    expect(nextWaiting(drafts)?.id).toBe("b");
+    expect(nextWaiting(drafts.filter((d) => d.id !== "b"))?.id).toBe("c");
+    expect(nextWaiting(drafts.filter((d) => d.status !== "waiting"))).toBeNull();
+    expect(WAITING_RETRY_MS).toBe(5 * 60_000);
   });
 });
 

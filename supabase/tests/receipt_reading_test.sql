@@ -71,6 +71,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub": "c0613000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
 insert into public.expense_drafts (company_id, receipt_path, file_name, status) values (:'co', :'co' || '/receipts/off.jpg', 'off.jpg', 'to_fill') returning id as draft_off \gset
 select t_rcr.check((select status = 'to_fill' and error is null from public.expense_drafts where id = :'draft_off'), 'a receipt dropped in with reading off waits to be filled in, with nothing said to have failed');
+update public.expense_drafts set status = 'waiting' where id = :'draft_off';
+select t_rcr.check((select status = 'waiting' from public.expense_drafts where id = :'draft_off'), 'one past the hour''s reading allowance waits its turn (20261113001685_receipt_drafts_wait_their_turn.sql)');
 select t_rcr.check(t_rcr.error_of(format('insert into public.expense_drafts (company_id, receipt_path, status) values (%L, %L, %L)', :'co', :'co' || '/receipts/odd.jpg', 'lost')) like '23514:%', 'and a draft is only ever in a state the list knows');
 delete from public.expense_drafts where id = :'draft_off';
 commit;

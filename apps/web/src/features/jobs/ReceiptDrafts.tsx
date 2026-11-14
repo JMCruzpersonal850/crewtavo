@@ -10,7 +10,7 @@
  * connection) says why on its row rather than sitting at "Reading…" (receiptDraftWords.ts).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
@@ -22,7 +22,7 @@ import { everyRow } from "@/lib/paging";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { ExpenseDialog } from "./ExpensesCard";
-import { draftState, dropZoneOff, READ_IT, TO_FILL_LINE, unreadReason } from "./receiptDraftWords";
+import { draftState, dropZoneOff, nextWaiting, READ_IT, TO_FILL_LINE, unreadReason, WAITING_LINE, WAITING_RETRY_MS, WAITING_WHY } from "./receiptDraftWords";
 import { readingOn, type ReadAnswer } from "./receiptReading";
 import { translateError } from "@crewtavo/core/i18n/patterns";
 import { getLocale, t } from "@/lib/i18n";
@@ -77,14 +77,41 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
   // says why and is there to fill in, rather than waiting at "Reading…" for an answer that won't come.
   const read = async (id: string) => {
     try {
-      await supabase().from("expense_drafts").update({ status: "reading", error: null }).eq("id", id).in("status", ["failed", "to_fill"]);
-      await api.post(`/receipts/drafts/${id}/read`);
+      await supabase().from("expense_drafts").update({ status: "reading", error: null }).eq("id", id).in("status", ["failed", "to_fill", "waiting"]);
+      return (await api.post<{ draft: { status: string } | null }>(`/receipts/drafts/${id}/read`)).draft?.status ?? null;
     } catch (error) {
       await supabase().from("expense_drafts").update({ status: "failed", error: unreadReason(error) }).eq("id", id).eq("status", "reading");
+      return null;
     } finally {
       void refresh();
     }
   };
+
+  // More dropped than can be read in an hour: the rest wait their turn (the server marks them), and
+  // this asks again every few minutes while the page is open, oldest first, until one is told to
+  // keep waiting. So a big stack carries on by itself instead of failing part-way.
+  const waiting = (drafts.data ?? []).some((d) => d.status === "waiting");
+  const latest = useRef({ drafts: drafts.data ?? [], read });
+  latest.current = { drafts: drafts.data ?? [], read };
+  useEffect(() => {
+    if (!waiting || !on) return;
+    let busy = false;
+    const carryOn = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const asked = new Set<string>();
+        for (let next = nextWaiting(latest.current.drafts); next && !asked.has(next.id); next = nextWaiting(latest.current.drafts.filter((d) => !asked.has(d.id)))) {
+          asked.add(next.id);
+          if ((await latest.current.read(next.id)) === "waiting") break;
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(() => void carryOn(), WAITING_RETRY_MS);
+    return () => clearInterval(timer);
+  }, [waiting, on]);
   // Each file uploaded and made a draft, then read: two at a time, so a stack of them doesn't wait on one.
   const add = async (files: FileList | null) => {
     const list = [...(files ?? [])];
@@ -116,6 +143,7 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
 
   if (!seesCosts) return null;
   const rows = drafts.data ?? [];
+  const firstWaiting = rows.find((d) => d.status === "waiting")?.id;
   return (
     <div className="stack-sm">
       {rows.length > 0 && (
@@ -132,19 +160,20 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
                   <strong>{r?.vendor || d.file_name || t("Receipt")}</strong>
                   <span className="muted small" style={{ display: "block" }}>
                     {state === "reading" ? t("Reading…")
-                      : state === "to_fill" ? [TO_FILL_LINE, !jobId && d.job ? t("Job #{number}", { number: d.job.number }) : null].filter(Boolean).join(" · ")
+                      : state === "to_fill" || state === "waiting" ? [state === "waiting" ? WAITING_LINE : TO_FILL_LINE, !jobId && d.job ? t("Job #{number}", { number: d.job.number }) : null].filter(Boolean).join(" · ")
                         : state === "failed" ? t("Couldn't be read: fill it in")
                           : [r?.total != null ? formatMoneyCents(r.total) : null, r?.date ? formatDate(r.date) : null, !jobId && job ? (d.job ? t("Job #{number}", { number: job.number }) : t("Job #{number} (suggested)", { number: job.number })) : null, d.read?.problems.length ? t("{count} to check", { count: d.read.problems.length }) : null].filter(Boolean).join(" · ")}
                   </span>
                   {/* Why, when it's known: reading is off now, the server is from before this, the file couldn't be opened. */}
                   {state === "failed" && d.error && <span className="muted small" style={{ display: "block" }}>{translateError(getLocale(), d.error)}</span>}
+                  {state === "waiting" && d.id === firstWaiting && <span className="muted small" style={{ display: "block" }}>{WAITING_WHY}</span>}
                 </span>
                 <Button size="sm" disabled={state === "reading"} onClick={() => setChecking(d)}>{t("Check and save")}</Button>
                 <Menu
                   triggerClassName="btn btn-sm btn-ghost btn-icon"
                   label={t("Receipt actions")}
                   items={[
-                    { label: state === "to_fill" ? READ_IT : t("Read again"), icon: "refresh", hidden: !(state === "failed" || (state === "to_fill" && on)), onSelect: () => void read(d.id) },
+                    { label: state === "failed" ? t("Read again") : READ_IT, icon: "refresh", hidden: !(state === "failed" || ((state === "to_fill" || state === "waiting") && on)), onSelect: () => void read(d.id) },
                     { label: t("Discard"), icon: "trash", danger: true, onSelect: () => discard.mutate(d.id) },
                   ]}
                 />

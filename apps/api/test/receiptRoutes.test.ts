@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
+import { RECEIPT_READS_PER_COMPANY, RECEIPT_READS_PER_PERSON } from "../src/services/ai";
 
 type Row = Record<string, unknown>;
 const state = vi.hoisted(() => ({
@@ -13,13 +14,16 @@ const state = vi.hoisted(() => ({
   updates: [] as Array<{ table: string; patch: Row }>,
   role: "owner",
   file: null as Uint8Array | null,
+  /** The rate limit keys that are past their allowance (matched by how they start, before hashing isn't known: by call order instead). */
+  refuse: null as ((call: number) => boolean) | null,
+  hits: 0,
 }));
 vi.mock("../src/lib/supabase", () => {
   const client = () => ({
     auth: { getClaims: async () => ({ data: { claims: { sub: "viewer" } }, error: null }) },
     rpc: async (fn: string, args: Record<string, unknown>) => {
       state.rpcs.push({ fn, args });
-      if (fn === "rate_limit_hit") return { data: true, error: null };
+      if (fn === "rate_limit_hit") return { data: !(state.refuse?.(state.hits++) ?? false), error: null };
       if (fn === "job_estimated_materials") return { data: [{ service_id: null, name: "Top coat asphalt", unit: "ton" }], error: null };
       return { data: null, error: null };
     },
@@ -111,6 +115,8 @@ afterEach(() => {
   state.rpcs = [];
   state.updates = [];
   state.file = null;
+  state.refuse = null;
+  state.hits = 0;
 });
 
 describe("the switch", () => {
@@ -157,8 +163,48 @@ describe("reading a receipt picked in Add expense", () => {
     expect(body.candidates[0]).toEqual({ service_id: null, name: "Top coat asphalt", unit: "ton", estimated: true });
     expect(body.matches).toEqual([0]);
     expect(state.rpcs.find((r) => r.fn === "job_estimated_materials")?.args).toEqual({ p_job: "j-birch" });
-    // Counted as an ask of the AI, for the person and for the company.
-    expect(state.rpcs.filter((r) => r.fn === "rate_limit_hit")).toHaveLength(2);
+    // Counted against the hour's receipts, for the person and for the company: 60 and 300.
+    expect(state.rpcs.filter((r) => r.fn === "rate_limit_hit").map((r) => [r.args.p_max, r.args.p_window_seconds])).toEqual([[RECEIPT_READS_PER_PERSON, 3600], [RECEIPT_READS_PER_COMPANY, 3600]]);
+    expect([RECEIPT_READS_PER_PERSON, RECEIPT_READS_PER_COMPANY]).toEqual([60, 300]);
+  });
+
+  it("has its own hourly allowance, apart from the other AI features': its keys aren't theirs", async () => {
+    const limiter = await import("../src/lib/limit");
+    const allowed = vi.spyOn(limiter, "allow");
+    try {
+      company({ receipt_reading: true }, "office");
+      anthropic(reading());
+      await request("POST", "/receipts/read", { file });
+      expect(allowed.mock.calls.map((c) => c[1])).toEqual(["receipts:person:viewer", `receipts:company:${CO}`]);
+      expect(allowed.mock.calls.some((c) => String(c[1]).startsWith("ai:"))).toBe(false);
+    } finally {
+      allowed.mockRestore();
+    }
+  });
+
+  it("is filled in by hand once the hour's receipts are used up, without asking Claude", async () => {
+    company({ receipt_reading: true }, "office");
+    const asked = anthropic(reading());
+    state.refuse = () => true;
+    const res = await request("POST", "/receipts/read", { file });
+    expect(res.status).toBe(429);
+    expect(((await res.json()) as { error: string }).error).toBe("That's all the receipts that can be read this hour. Fill this one in by hand, or add it again later.");
+    expect(asked).toEqual([]);
+  });
+
+  it("is for the people who can add an expense: the crew, yes; a subcontractor, who can't add one, no", async () => {
+    for (const role of ["owner", "admin", "office", "estimator", "crew_lead", "field_crew"]) {
+      company({ receipt_reading: true }, role);
+      anthropic(reading());
+      expect((await request("POST", "/receipts/read", { file })).status, role).toBe(200);
+    }
+    // (They were already turned away before this: the route's default is the team.)
+    company({ receipt_reading: true }, "subcontractor");
+    state.rpcs = [];
+    const asked = anthropic(reading());
+    expect((await request("POST", "/receipts/read", { file })).status).toBe(403);
+    expect(asked).toEqual([]);
+    expect(state.rpcs.some((r) => r.fn === "rate_limit_hit")).toBe(false);
   });
 
   it("gives the crew what the receipt says, without the price list", async () => {
@@ -194,6 +240,21 @@ describe("a draft dropped in with others", () => {
     expect(state.tables.expense_drafts![0]).toMatchObject({ status: "to_fill", read: null, error: null });
     expect(asked).toEqual([]);
     expect(state.rpcs.some((r) => r.fn === "rate_limit_hit")).toBe(false);
+  });
+
+  it("waits when the hour's receipts are used up, and is read when it's asked again with room", async () => {
+    company({ receipt_reading: true }, "office");
+    state.file = JPEG;
+    const asked = anthropic(reading());
+    state.refuse = () => true;
+    expect((await request("POST", `/receipts/drafts/${id}/read`)).status).toBe(200);
+    // Not a failure, and nothing asked of Claude: it waits.
+    expect(state.tables.expense_drafts![0]).toMatchObject({ status: "waiting", read: null, error: null });
+    expect(asked).toEqual([]);
+    // The next hour, the page asks again.
+    state.refuse = null;
+    expect((await request("POST", `/receipts/drafts/${id}/read`)).status).toBe(200);
+    expect(state.tables.expense_drafts![0]).toMatchObject({ status: "read", error: null });
   });
 
   it("is marked as not read when reading fails, to be filled in by hand", async () => {

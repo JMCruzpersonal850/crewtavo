@@ -40,6 +40,21 @@ export async function countAiAsk(env: Env, companyId: string, userId: string | n
   }
 }
 
+/** How many receipts and supplier invoices one person may have read in an hour, and everyone at one company between them. */
+export const RECEIPT_READS_PER_PERSON = 60;
+export const RECEIPT_READS_PER_COMPANY = 300;
+
+/**
+ * Counts one receipt or supplier invoice read, for the person and for their company, and says
+ * whether it's within the hour's allowance. Reading has an allowance of its own, apart from the
+ * asks countAiAsk counts: a bookkeeper catching up on a stack of receipts would otherwise use up
+ * the hour's asks for everyone's replies, captions and drafts. Past it nothing is refused for good:
+ * whoever asked decides what waits (routes/receipts.ts).
+ */
+export async function allowReceiptRead(env: Env, companyId: string, userId: string): Promise<boolean> {
+  return (await allow(env, `receipts:person:${userId}`, RECEIPT_READS_PER_PERSON, 3600)) && (await allow(env, `receipts:company:${companyId}`, RECEIPT_READS_PER_COMPANY, 3600));
+}
+
 /** The model in-app AI uses. */
 export const aiModel = (env: Env) => env.AI_MODEL || "claude-opus-5-5";
 
