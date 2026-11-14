@@ -470,6 +470,23 @@ describe("the service worker, when the phone has signal again (Background Sync)"
     expect(sw.windows[0]!.navigate).toHaveBeenCalledWith("https://crew.example.com/schedule");
   });
 
+  it("brings the app forward as it is for a question from the clock at the property that's already on that screen", async () => {
+    const tap = { notification: { close: () => undefined, tag: "geofence:v1", data: { link: "/field/visits/v1" } } };
+    for (const url of ["https://crew.example.com/field", "https://crew.example.com/field/visits/v1"]) {
+      const sw = loadServiceWorker({ windows: [{ url, visibilityState: "hidden" }] });
+      await sw.dispatch("notificationclick", tap);
+      expect(sw.windows[0]!.focus).toHaveBeenCalled();
+      expect(sw.windows[0]!.navigate).not.toHaveBeenCalled();
+    }
+    // On another screen (the question is kept on the phone, so it's there once the visit opens), or with the app closed.
+    const elsewhere = loadServiceWorker({ windows: [{ url: "https://crew.example.com/chat", visibilityState: "hidden" }] });
+    await elsewhere.dispatch("notificationclick", tap);
+    expect(elsewhere.windows[0]!.navigate).toHaveBeenCalledWith("https://crew.example.com/field/visits/v1");
+    const closed = loadServiceWorker({ windows: [] });
+    await closed.dispatch("notificationclick", tap);
+    expect(closed.openWindow).toHaveBeenCalledWith("https://crew.example.com/field/visits/v1");
+  });
+
   it("stays quiet with notifications not allowed, with nothing waiting, and for other sync tags", async () => {
     const blocked = loadServiceWorker({ caches, permission: "default" });
     await expect(blocked.dispatch("sync", { tag: SYNC_TAG })).resolves.toBe("done");

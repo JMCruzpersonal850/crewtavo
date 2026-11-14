@@ -228,7 +228,12 @@ self.addEventListener("notificationclick", (event) => {
       const open = windows.find(ours);
       if (open) {
         await open.focus();
-        if ("navigate" in open) await open.navigate(link).catch(() => undefined);
+        // A question from the clock at the property (src/features/field/geofence.ts) is already on My
+        // day and on that visit's screen: brought to the front, the screen stays as it is. Loading
+        // it again would drop what's only on that screen.
+        const at = new URL(open.url).pathname;
+        const asked = String(event.notification.tag || "").startsWith("geofence:") && (at === "/field" || at === new URL(link).pathname);
+        if (!asked && "navigate" in open) await open.navigate(link).catch(() => undefined);
         return;
       }
       await self.clients.openWindow(link);
