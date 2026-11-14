@@ -57,6 +57,7 @@ import {
 } from "../services/autopay";
 import { geocodeAddress } from "../services/external";
 import { quoteReviewsFor } from "../services/googleReviews";
+import { saveLocation } from "../services/properties";
 import { draftArrivedRequest } from "../services/quoteDrafts";
 import { LETTERHEAD_MAX_BYTES } from "../services/letterhead";
 import { isDrawnPng, isPng, LOGO_MAX_BYTES, logoImage, logoOf } from "../services/logo";
@@ -174,7 +175,7 @@ export function geocodeLater(c: Parameters<typeof appUrl>[0], propertyId: string
     c,
     (async () => {
       const hit = await geocodeAddress([address.line1, address.city, address.postal_code].filter(Boolean).join(", "));
-      if (hit) await adminClient(c.env).from("properties").update({ lat: hit.lat, lng: hit.lng }).eq("id", propertyId);
+      if (hit) await saveLocation(adminClient(c.env), propertyId, hit);
     })(),
   );
 }

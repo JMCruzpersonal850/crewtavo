@@ -31,12 +31,13 @@ import { deliverNotifications } from "./services/delivery";
 import { remindSubs } from "./services/subs";
 import { dailyOutlook } from "./services/external";
 import { autoRoutes } from "./services/routes";
+import { relocatePins } from "./services/properties";
 import { sendScheduledPayments } from "./services/installments";
 
 export const TASKS = [
   "automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address",
   "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync",
-  "social", "backups", "profits", "installments", "postcards",
+  "social", "backups", "profits", "installments", "postcards", "pins",
 ] as const;
 export type TaskName = (typeof TASKS)[number];
 
@@ -75,6 +76,9 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   "25 * * * *": ["backups"],
   // Jobs whose profit fell below the company's line since the last look (services/profitAlerts.ts).
   "45 * * * *": ["profits"],
+  // Map spots with no source kept, looked up again a few at a time; only a server with a Google
+  // server key has any to do (services/properties.ts).
+  "3-59/5 * * * *": ["pins"],
 };
 
 export async function runTask(name: TaskName, env: Env): Promise<Record<string, unknown>> {
@@ -142,6 +146,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return sendScheduledPayments(env);
     case "postcards":
       return postcardsTask(env);
+    case "pins":
+      return relocatePins(env, adminClient(env));
   }
 }
 

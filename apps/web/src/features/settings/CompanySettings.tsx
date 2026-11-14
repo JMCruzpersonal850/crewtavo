@@ -97,9 +97,10 @@ export function CompanySettings() {
       let depot = previous.depot ?? null;
       let located: boolean | null = null;
       if (address.line1 && (address.line1 !== oldAddress.line1 || address.city !== oldAddress.city || !depot)) {
-        const hit = await api.post<{ found: boolean; lat?: number; lng?: number }>("/geocode", { address: [address.line1, address.city, address.region, address.postal_code].filter(Boolean).join(", ") }).catch(() => ({ found: false }) as { found: boolean; lat?: number; lng?: number });
+        const hit = await api.post<{ found: boolean; lat?: number; lng?: number; source?: string }>("/geocode", { address: [address.line1, address.city, address.region, address.postal_code].filter(Boolean).join(", ") }).catch(() => ({ found: false }) as { found: boolean; lat?: number; lng?: number; source?: string });
         located = hit.found;
-        depot = hit.found ? { lat: hit.lat, lng: hit.lng } : null;
+        // With the geocoder that found it, as the server keeps for every spot on the map.
+        depot = hit.found ? { lat: hit.lat, lng: hit.lng, source: hit.source } : null;
       }
       // Only the settings on this screen, merged into the ones saved when it saves (merge_company_settings),
       // so a change made since it opened (a weather rule, an app turned on) isn't undone.

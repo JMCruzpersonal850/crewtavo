@@ -10,6 +10,7 @@ import type { Env } from "../env";
 import { dbError, HttpError, must } from "../lib/http";
 import { adminClient, type Db } from "../lib/supabase";
 import { geocodeAddress } from "./external";
+import { addressOf, saveLocation } from "./properties";
 import type { Scope } from "./schedule";
 
 /** Ordering takes about a quarter second at 100 stops and grows fast (2.6 s at 200), blocking the server. */
@@ -56,12 +57,10 @@ export async function loadDay(db: Db, companyId: string, crewId: string | null, 
 export async function locateMissing(db: Db, env: Env, visits: DayVisit[], limit = 8): Promise<void> {
   const missing = [...new Map(visits.filter((v) => v.status === "scheduled" && v.property && v.property.lat == null && v.property.line1).map((v) => [v.property!.id, v.property!])).values()].slice(0, limit);
   for (const p of missing) {
-    const abroad = Boolean(p.country && !/^(us|usa|united states( of america)?)$/i.test(p.country.trim()));
-    const address = [p.line1, p.line2, p.city, p.region, p.postal_code, abroad ? p.country : null].filter(Boolean).join(", ");
+    const { address, abroad } = addressOf(p);
     const hit = await geocodeAddress(address, { world: abroad }).catch(() => null);
     if (!hit) continue;
-    const { error } = await db.from("properties").update({ lat: hit.lat, lng: hit.lng }).eq("id", p.id);
-    if (error) continue;
+    if (!(await saveLocation(db, p.id, hit).then(() => true, () => false))) continue;
     for (const v of visits) if (v.property?.id === p.id) Object.assign(v.property, { lat: hit.lat, lng: hit.lng });
   }
 }
