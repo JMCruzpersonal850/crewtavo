@@ -151,7 +151,7 @@ describe("a check", () => {
     vi.stubGlobal("fetch", google(() => answer(400, { error: { status: "INVALID_ARGUMENT", message: "API key not valid. Please pass a valid API key." } })).fetcher);
     await expect(setComparison(env, db as never, CO, "u1", true)).rejects.toThrow(/didn't accept the key/);
     expect(tables.review_comparisons).toHaveLength(0);
-    tables.companies[0]!.settings = { marketing: { enabled: true } };
+    (tables.companies[0] as { settings: unknown }).settings = { marketing: { enabled: true } };
     await expect(setComparison(env, db as never, CO, "u1", true)).rejects.toThrow(/Add a Google key in Settings → Maps/);
   });
 });
