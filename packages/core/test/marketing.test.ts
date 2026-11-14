@@ -35,6 +35,8 @@ import {
   reviewSettings,
   smsKeyword,
   asksToStopTexts,
+  textConsentLine,
+  textDisclosure,
   addStopLine,
   smsSegments,
   textsOffWhy,
@@ -492,6 +494,23 @@ describe("a text that asks for texts to stop without the keyword", () => {
       "Stop texting me about the invoice because I already paid it last week by check and your office confirmed it on the phone",
     ];
     for (const body of ordinary) expect(asksToStopTexts(body), String(body)).toBe(false);
+  });
+});
+
+describe("agreeing to texts", () => {
+  it("says under a form's phone box, in the business's name, what giving a number agrees to", () => {
+    expect(textDisclosure("Acme Lawn")).toBe("By giving your number you agree that Acme Lawn may text you about this request and your visits. Msg & data rates may apply. Reply STOP to stop, HELP for help.");
+  });
+
+  it("tells the office where a client's number came from, and when", () => {
+    expect(textConsentLine("booking_form", "Nov 14, 2026")).toBe("They gave this number on your booking form, Nov 14, 2026, agreeing to texts.");
+    expect(textConsentLine("referral_form", "Nov 14, 2026")).toBe("They gave this number on a referral page, Nov 14, 2026, agreeing to texts.");
+    expect(textConsentLine("office", "Nov 14, 2026")).toBe("Number entered by the office, Nov 14, 2026. Text them only if they agreed to it.");
+    // A number from before this was kept.
+    expect(textConsentLine(null, null)).toBe("No record of where this number came from. Text them only if they agreed to it.");
+    // A contact's is their tick.
+    expect(textConsentLine("office", "Nov 14, 2026", true)).toBe("Ticked for texts by the office, Nov 14, 2026.");
+    expect(textConsentLine(null, null, true)).toBe("Ticked for texts before Crewtavo kept who agreed.");
   });
 });
 

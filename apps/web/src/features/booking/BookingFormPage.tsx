@@ -1,4 +1,5 @@
 /** Public booking / request form: /book/:company/:form (?embed=1 inside an iframe; see embed.ts). No account needed. */
+import { textDisclosure } from "@crewtavo/core/marketing";
 import { slotLabel, slotTime, type OpenSlot } from "@crewtavo/core/slots";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -35,7 +36,8 @@ interface Question {
   options?: string[];
 }
 interface FormView {
-  company: { name: string; phone: string | null };
+  /** `texts`: the business can text, so the phone box says what giving a number agrees to. */
+  company: { name: string; phone: string | null; texts?: boolean };
   form: { name: string; kind: string; questions: Question[] };
   booking?: Booking;
 }
@@ -183,7 +185,7 @@ export function BookingFormPage() {
             <div className="form-grid">
               <Field label="Your name" requiredMessage={NAME_NEEDED} error={touched && contact.name.trim().length < 2 ? NAME_NEEDED : null}><input className="input" value={contact.name} onChange={set("name")} required minLength={2} maxLength={120} autoComplete="name" /></Field>
               <Field label="Email" error={touched && noContact ? "Add an email or a phone number, so we can reach you." : null}><input className="input" type="email" value={contact.email} onChange={set("email")} maxLength={200} autoComplete="email" aria-invalid={touched && noContact} /></Field>
-              <Field label="Phone"><input className="input" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: formatPhoneTyping(e.target.value) })} maxLength={30} autoComplete="tel" aria-invalid={touched && noContact} /></Field>
+              <Field label="Phone" hint={view.data.company.texts ? textDisclosure(view.data.company.name) : undefined}><input className="input" type="tel" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: formatPhoneTyping(e.target.value) })} maxLength={30} autoComplete="tel" aria-invalid={touched && noContact} /></Field>
             </div>
             <Field label="Service address" requiredMessage={ADDRESS_NEEDED} error={touched && contact.line1.trim().length < 3 ? ADDRESS_NEEDED : null}><input className="input" value={contact.line1} onChange={set("line1")} required minLength={3} maxLength={200} autoComplete="street-address" /></Field>
             <div className="form-grid">

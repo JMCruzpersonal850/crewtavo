@@ -127,7 +127,9 @@ describe("a booking form that lets clients pick a time", () => {
       timezone: NY, timezone_label: "Eastern Time (New York)", minutes: 60, window_min: 0, needs_ok: false, needs_postal_code: false, first: "2026-11-03", last: "2027-01-01",
     });
     database({ form: { pick_time: false } });
-    expect(await (await get(FORM)).json()).toEqual({ company: { name: "Acme Roofing", phone: "540-555-0100" }, form: { name: "Free roof inspection", kind: "assessment", questions: [] } });
+    expect(await (await get(FORM)).json()).toEqual({ company: { name: "Acme Roofing", phone: "540-555-0100", texts: false }, form: { name: "Free roof inspection", kind: "assessment", questions: [] } });
+    // A business that can text says so, so the phone box says what giving a number agrees to.
+    expect((await (await get(FORM, connectedFrom("203.0.113.9", texting))).json()).company).toEqual({ name: "Acme Roofing", phone: "540-555-0100", texts: true });
     database({ form: { requires_approval: true, service_area_zips: ["24141"] } });
     expect((await (await get(FORM)).json()).booking).toMatchObject({ needs_ok: true, needs_postal_code: true });
   });
@@ -257,6 +259,27 @@ describe("a client books a time", () => {
     const quiet = database();
     expect((await (await post(FORM, { ...lead, starts_at: nine }, connectedFrom("203.0.113.9", texting))).json()).booking.texted).toBe(false);
     expect(quiet.texts()).toEqual([]);
+  });
+
+  it("keeps where the number came from when it's given on a form of a business that texts", async () => {
+    const noted = (db: ReturnType<typeof database>) => db.calls.filter((c) => c.method === "PATCH" && c.path === "clients").map((c) => [c.url.searchParams.get("id"), c.body.sms_consent_source, typeof c.body.sms_consent_at]);
+    // The number typed is the one on their record: noted as given on the booking form.
+    let db = database();
+    await post(FORM, { ...lead, phone: "(540) 555-0177", starts_at: nine }, connectedFrom("203.0.113.9", texting));
+    expect(noted(db)).toEqual([["eq.client-2", "booking_form", "string"]]);
+    // A form with no times does the same.
+    db = database({ form: { pick_time: false } });
+    await post(FORM, { ...lead, phone: "540-555-0177" }, connectedFrom("203.0.113.9", texting));
+    expect(noted(db)).toEqual([["eq.client-2", "booking_form", "string"]]);
+    // A client already here keeps the number on their record: another one typed isn't theirs to note.
+    db = database();
+    await post(FORM, { ...lead, phone: "540-555-0199", starts_at: nine }, connectedFrom("203.0.113.9", texting));
+    expect(noted(db)).toEqual([]);
+    // No number, or a business that can't text (the form said nothing about texts): nothing to note.
+    db = database();
+    await post(FORM, { ...lead, starts_at: nine }, connectedFrom("203.0.113.9", texting));
+    await post(FORM, { ...lead, phone: "540-555-0177", starts_at: nine });
+    expect(noted(db)).toEqual([]);
   });
 
   it("holds the time for the office's OK on a form that needs it, and says it isn't confirmed yet", async () => {

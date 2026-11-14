@@ -69,6 +69,8 @@ import { optionsFrom } from "../services/sales";
 import { signatureImage } from "../services/signing";
 import { formPage } from "../services/websiteForms";
 import { firstName } from "../lib/email";
+import { smsReady } from "../lib/notify";
+import { noteTextConsent } from "../services/textsOff";
 import { fromBase64Url, signToken, verifyToken } from "../lib/crypto";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
@@ -1078,7 +1080,8 @@ publicRoutes.post("/public/forms/:company/:form/promo", async (c) => {
 publicRoutes.get("/public/forms/:company/:form", async (c) => {
   const { company, form } = await findForm(c);
   return c.json({
-    company: { name: company.name, phone: company.phone },
+    // `texts`: the business can text, so the phone box says what giving a number agrees to.
+    company: { name: company.name, phone: company.phone, texts: await smsReady(c.env, company.id) },
     form: { name: form.name, kind: form.kind, questions: form.questions },
     // With "Let clients pick a time" on: what the page needs to offer times (the openings themselves come from /openings).
     ...(form.pick_time && { booking: bookingView(company, form as BookingForm, (form.service_area_zips ?? []) as string[]) }),
@@ -1206,6 +1209,8 @@ publicRoutes.post("/public/forms/:company/:form", async (c) => {
         .single(),
     );
   }
+  // The number they typed, under the line that says the business may text it: where their say-so came from.
+  if (body.phone && (await smsReady(c.env, company.id))) await noteTextConsent(admin, company.id, found.client_id, body.phone, "booking_form");
   if (found.new_property && found.property_id) geocodeLater(c, found.property_id, body.address);
   kickAutomations(c, company.id);
   // A draft quote for it, when the business has them made as requests come in.
@@ -1949,7 +1954,7 @@ publicRoutes.get("/public/refer/:token", async (c) => {
   ]);
   if (!company.data || !client.data) throw new HttpError(404, "This referral link isn't valid anymore.");
   return c.json({
-    company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null },
+    company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null, texts: await smsReady(c.env, l.c) },
     referrer: firstName(client.data.display_name),
     offer: referralSettings(company.data.settings as Record<string, unknown> | null).offer,
   });
@@ -1980,6 +1985,7 @@ publicRoutes.post("/public/refer/:token", async (c) => {
   });
   if (error) throw error.code === "P0002" ? new HttpError(404, "This referral link isn't valid anymore.") : dbError(error);
   const result = made as unknown as { client_id: string; property_id: string; new_property: boolean; request_id: string; number: number };
+  if (body.phone && (await smsReady(c.env, l.c))) await noteTextConsent(admin, l.c, result.client_id, body.phone, "referral_form");
   if (result.new_property) geocodeLater(c, result.property_id, body.address);
   kickAutomations(c, l.c);
   return c.json({ ok: true, reference: result.number }, 201);

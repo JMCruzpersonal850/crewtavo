@@ -1,6 +1,6 @@
 import { autopaySettings } from "@crewtavo/core/autopay";
 import { shownCustomFields } from "@crewtavo/core/customFields";
-import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, textsOff, type AskChannel } from "@crewtavo/core/marketing";
+import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, textConsentLine, textsOff, type AskChannel } from "@crewtavo/core/marketing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -70,7 +70,7 @@ export function ClientPage() {
       unwrapOne(
         await supabase()
           .from("clients")
-          .select("id, display_name, company_name, email, phone, status, tags, lead_source, notes, created_at, billing_address, marketing_opt_out, review_opt_out, social_photos_opt_out, sms_opt_out_at, reviewed_at, referred_by, custom_fields, tax_exempt, tax_exempt_note, payment_terms_days, properties(id, label, line1, line2, city, region, postal_code, lat, lng, notes, tags, lot_size_sqft, custom_fields)")
+          .select("id, display_name, company_name, email, phone, status, tags, lead_source, notes, created_at, billing_address, marketing_opt_out, review_opt_out, social_photos_opt_out, sms_opt_out_at, sms_consent_at, sms_consent_source, reviewed_at, referred_by, custom_fields, tax_exempt, tax_exempt_note, payment_terms_days, properties(id, label, line1, line2, city, region, postal_code, lat, lng, notes, tags, lot_size_sqft, custom_fields)")
           .eq("id", id)
           .maybeSingle(),
         "This client",
@@ -445,7 +445,14 @@ export function ClientPage() {
               <dt>Email</dt><dd>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : "—"}</dd>
               <dt>Phone</dt><dd>{c.phone ? <a href={`tel:${c.phone}`}>{c.phone}</a> : "—"}</dd>
               {isOffice && c.phone ? (
-                <><dt>Texts</dt><dd><TextsSwitch clientId={c.id} name={c.display_name} phone={c.phone} stop={stopFor(c.phone)} since={c.sms_opt_out_at} /></dd></>
+                <>
+                  <dt>Texts</dt>
+                  <dd>
+                    <TextsSwitch clientId={c.id} name={c.display_name} phone={c.phone} stop={stopFor(c.phone)} since={c.sms_opt_out_at} />
+                    {/* Where their number came from: the record of their say-so to be texted. */}
+                    {!stopped && <span className="muted small" style={{ display: "block" }}>{textConsentLine(c.sms_consent_source, c.sms_consent_at ? formatDate(c.sms_consent_at) : null)}</span>}
+                  </dd>
+                </>
               ) : c.sms_opt_out_at ? (
                 <><dt>Texts</dt><dd>Off since {formatDate(c.sms_opt_out_at)}. They asked not to be texted.</dd></>
               ) : null}

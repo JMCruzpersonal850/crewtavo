@@ -626,6 +626,33 @@ export function smsKeyword(body: string | null | undefined): "stop" | "start" | 
   return null;
 }
 
+/**
+ * Under the phone box on a public form, in the business's name: what giving a number agrees to.
+ * Twilio's messaging policy wants a recipient "informed of the sender's identity, how a recipient's
+ * phone number will be used" and "made aware of how to withdraw" before they're texted.
+ */
+export const textDisclosure = (company: string) =>
+  `By giving your number you agree that ${company} may text you about this request and your visits. Msg & data rates may apply. Reply STOP to stop, HELP for help.`;
+
+/** Where a number that gets texts came from (clients.sms_consent_source, client_contacts.sms_consent_source). */
+export type TextConsentSource = "booking_form" | "referral_form" | "website_form" | "hub" | "office";
+
+/**
+ * Where a client's number came from, for the office: "Given on your booking form". `on` is the day,
+ * already written out. Null source: a number from before this was kept.
+ */
+export function textConsentLine(source: string | null | undefined, on: string | null, contact = false): string {
+  const when = on ? `, ${on}` : "";
+  switch (source) {
+    case "booking_form": return `They gave this number on your booking form${when}, agreeing to texts.`;
+    case "referral_form": return `They gave this number on a referral page${when}, agreeing to texts.`;
+    case "website_form": return `They gave this number on your website's form${when}.`;
+    case "hub": return `They gave this number in their Client Hub${when}.`;
+    case "office": return contact ? `Ticked for texts by the office${when}.` : `Number entered by the office${when}. Text them only if they agreed to it.`;
+    default: return contact ? "Ticked for texts before Crewtavo kept who agreed." : "No record of where this number came from. Text them only if they agreed to it.";
+  }
+}
+
 /** How someone asked the office to stop their texts (sms_stops.how). */
 export const STOP_HOWS = ["phone", "email", "in_person", "text", "other"] as const;
 export type StopHow = (typeof STOP_HOWS)[number];

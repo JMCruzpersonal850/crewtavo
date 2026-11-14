@@ -1,4 +1,5 @@
 /** A client's referral link (/refer/:token): their friend asks for a quote, credited to the client. */
+import { textDisclosure } from "@crewtavo/core/marketing";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
@@ -10,7 +11,7 @@ import { publicFetch, useTurnstile } from "@/lib/publicApi";
 import { formatPhoneTyping } from "@/lib/validate";
 
 interface ReferralView {
-  company: { name: string; phone: string | null; website: string | null; logo?: string | null };
+  company: { name: string; phone: string | null; website: string | null; logo?: string | null; texts?: boolean };
   referrer: string;
   offer: string | null;
 }
@@ -68,7 +69,7 @@ export function ReferralPage() {
                 <div className="form-grid">
                   <Field label="Your name" requiredMessage="Enter your name, so we know who to reply to."><input className="input" value={f.name} onChange={set("name")} required minLength={2} maxLength={120} autoComplete="name" /></Field>
                   <Field label="Email" error={tried && missingContact ? "Add an email or a phone number, so we can reach you." : null}><input className="input" type="email" value={f.email} onChange={set("email")} maxLength={200} autoComplete="email" /></Field>
-                  <Field label="Phone"><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: formatPhoneTyping(e.target.value) })} maxLength={30} autoComplete="tel" /></Field>
+                  <Field label="Phone" hint={view.data.company.texts ? textDisclosure(view.data.company.name) : undefined}><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: formatPhoneTyping(e.target.value) })} maxLength={30} autoComplete="tel" /></Field>
                 </div>
                 <Field label="Address where you need the work" requiredMessage="Enter the address where the work is."><input className="input" value={f.line1} onChange={set("line1")} required minLength={3} maxLength={200} autoComplete="address-line1" /></Field>
                 <div className="form-grid">

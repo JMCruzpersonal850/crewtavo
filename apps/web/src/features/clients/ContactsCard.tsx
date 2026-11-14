@@ -1,4 +1,5 @@
 /** Extra people on a client account: a spouse, property manager or billing contact. */
+import { textConsentLine } from "@crewtavo/core/marketing";
 import { contactMessages } from "@crewtavo/core/recipients";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
@@ -10,6 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { supabase, unwrap } from "@/lib/api";
 import { fieldError } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
@@ -25,7 +27,13 @@ interface Contact {
   is_primary: boolean;
   notify_email: boolean;
   notify_sms: boolean;
+  /** When and where their say-so to be texted came from (the database notes it when they're ticked). */
+  sms_consent_at: string | null;
+  sms_consent_source: string | null;
 }
+
+/** Under "Gets text reminders": a contact's number is often one the business was given by someone else. */
+export const TEXT_TICK_HINT = "Tick only if they've agreed to get texts.";
 
 const contactsKey = (clientId: string) => ["client", clientId, "contacts"];
 /** The order the list loads in: the primary contact first, then by name. */
@@ -35,7 +43,7 @@ const byPrimaryThenName = (a: Contact, b: Contact) => Number(b.is_primary) - Num
 export function useClientContacts(clientId: string) {
   return useQuery({
     queryKey: contactsKey(clientId),
-    queryFn: async () => unwrap(await supabase().from("client_contacts").select("id, name, email, phone, role, is_primary, notify_email, notify_sms").eq("client_id", clientId).order("is_primary", { ascending: false }).order("name")),
+    queryFn: async () => unwrap(await supabase().from("client_contacts").select("id, name, email, phone, role, is_primary, notify_email, notify_sms, sms_consent_at, sms_consent_source").eq("client_id", clientId).order("is_primary", { ascending: false }).order("name")),
   });
 }
 
@@ -139,7 +147,8 @@ function ContactDialog({ clientId, contact, onClose }: { clientId: string; conta
     role: contact?.role ?? "",
     is_primary: contact?.is_primary ?? false,
     notify_email: contact?.notify_email ?? true,
-    notify_sms: contact?.notify_sms ?? true,
+    // A new contact isn't texted until someone says they agreed to it.
+    notify_sms: contact?.notify_sms ?? false,
   });
   const save = useMutation({
     meta: { inline: true, success: contact ? "Contact saved" : "Contact added" },
@@ -167,6 +176,7 @@ function ContactDialog({ clientId, contact, onClose }: { clientId: string; conta
         <label className="checkbox"><input type="checkbox" checked={f.is_primary} onChange={(e) => setF({ ...f, is_primary: e.target.checked })} /> Primary contact</label>
         <label className="checkbox"><input type="checkbox" checked={f.notify_email} onChange={(e) => setF({ ...f, notify_email: e.target.checked })} /> Gets emailed reminders and receipts</label>
         <label className="checkbox"><input type="checkbox" checked={f.notify_sms} onChange={(e) => setF({ ...f, notify_sms: e.target.checked })} /> Gets text reminders</label>
+        <span className="muted small">{TEXT_TICK_HINT}{contact?.notify_sms && contact.phone ? ` ${textConsentLine(contact.sms_consent_source, contact.sms_consent_at ? formatDate(contact.sms_consent_at) : null, true)}` : ""}</span>
         <span className="muted small">
           {contactsOn
             ? "Ticked, they get what the client gets about their work: a visit booked, moved or cancelled, visit reminders, on-my-way texts, quotes, invoices and receipts. Marketing emails and review requests only go to the client."

@@ -139,6 +139,26 @@ export const textsOffRefusal = (name: string) => `${textsOffReason(name)} Send i
 /** Why a text to any other stopped number isn't sent, when someone sends it by hand. */
 export const numberStoppedRefusal = (to: string) => `${to} asked not to be texted, so Crewtavo can't text it.`;
 
+/**
+ * A number someone typed on a public form, under the line that says the business may text it
+ * (core textDisclosure): kept on the client as where their say-so came from, when it's the number
+ * on their record. A form's word outranks "entered by the office"; an earlier form's is kept, as
+ * the first time they agreed. Never stops the request it came with.
+ */
+export async function noteTextConsent(admin: Db, companyId: string, clientId: string, phone: string | null | undefined, source: "booking_form" | "referral_form"): Promise<void> {
+  const key = phoneMatchKey(phone);
+  if (!key) return;
+  try {
+    const { data: client, error } = await admin.from("clients").select("phone, sms_consent_source").eq("company_id", companyId).eq("id", clientId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!client || phoneMatchKey(client.phone) !== key || (client.sms_consent_source && client.sms_consent_source !== "office")) return;
+    const { error: noteError } = await admin.from("clients").update({ sms_consent_at: new Date().toISOString(), sms_consent_source: source }).eq("company_id", companyId).eq("id", clientId);
+    if (noteError) throw new Error(noteError.message);
+  } catch (error) {
+    console.error(`Couldn't note where a client's number came from: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // The office's switch
 // ---------------------------------------------------------------------------------------------
