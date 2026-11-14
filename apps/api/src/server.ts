@@ -33,6 +33,7 @@ import { cronMatches } from "./lib/cron";
 import { gateway } from "./lib/gateway";
 import { reportError } from "./lib/monitoring";
 import { describeRecovery } from "./lib/recovery";
+import { previewOf, showcasePage } from "./lib/showcaseTags";
 import { startMonitoring } from "./lib/monitoring-node";
 import { stackServices, withStack } from "./lib/stack";
 import { retryStartup, setStartup, startup, whenIdle, worthRetrying, type Startup } from "./lib/startup";
@@ -101,6 +102,19 @@ server.use("*", async (c, next) => {
   if (c.req.path.startsWith("/assets/")) c.res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   else if (c.res.headers.get("content-type")?.includes("text/html")) c.res.headers.set("Cache-Control", "no-cache");
 });
+// A showcase's link, shared on Facebook, Nextdoor or in a text: the same page, with the showcase's
+// title, write-up and first photo in its head for the preview (lib/showcaseTags.ts). Read as any
+// visitor reads it, through the public route, so only a published showcase has tags.
+server.get(
+  "/s/:token",
+  showcasePage<Context<{ Bindings: HttpBindings }>>({
+    indexHtml,
+    lookup: async (token, c) => {
+      const res = await app.fetch(new Request(new URL(`/api/public/showcases/${token}`, c.req.url)), { ...env, incoming: c.env.incoming });
+      return res.ok ? previewOf(await res.json(), env.APP_URL || new URL(c.req.url).origin, token) : null;
+    },
+  }),
+);
 server.use("/*", serveStatic({ root: staticDir }));
 server.all("/assets/*", (c) => c.text("Not found", 404, { "Cache-Control": "no-store" }));
 server.get("*", (c) => {
