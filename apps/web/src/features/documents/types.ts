@@ -169,4 +169,6 @@ export interface DocumentReviews {
   rating: number | null;
   count: number | null;
   reviews: ReadonlyArray<{ name: string; rating: number; date: string; text: string }>;
+  /** The business's profile on Google Maps: a review too long for the page is cut only beside this link. */
+  link?: string | null;
 }

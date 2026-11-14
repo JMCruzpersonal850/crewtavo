@@ -352,8 +352,10 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   "Tell me about quotes over" an amount tells owners, admins and the quote's salesperson on the bell
   and their phone when one is sent, approved or sent back for changes. "Show reviews on quotes"
   (Marketing → Reviews) puts your Google rating and up to three reviews you pick (or your newest
-  5-star ones) on the quote in the Client Hub, and on its PDF if you tick it, by first name and
-  initial.
+  5-star ones) on the quote in the Client Hub, and on its PDF if you tick it, as they are on Google:
+  the reviewer's name and words, with a link to your profile on Google Maps. Reviews show only
+  while Google Business Profile is syncing: a copy the sync hasn't seen on Google for 30 days is
+  removed.
 - **Jobs and invoicing:** one-off and recurring jobs, multi-day work, change orders the client
   approves, batch invoicing, payment reminders, deposits, progress billing and retainage. A quote's
   payment schedule carries to its job: each payment becomes a draft invoice when its date comes

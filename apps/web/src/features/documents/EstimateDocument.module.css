@@ -143,7 +143,8 @@
 .reviewsRating { font-weight: 600; color: var(--doc-ink); }
 .reviewsRating span { color: #e3a008; }
 .review { margin: 0; padding: 8px 12px; border-left: 3px solid var(--doc-rule); }
-.review blockquote { margin: 0; }
+.review blockquote { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.review blockquote a { color: inherit; text-decoration: underline; }
 .review figcaption { margin-top: 2px; font-size: 11px; color: var(--doc-text-2); }
 .review figcaption span { color: #e3a008; letter-spacing: 1px; }
 /* The template's own terms, a paragraph at a time; the first has the rule above. */

@@ -91,7 +91,10 @@ export interface HubApproval {
 export interface HubReviews {
   rating: number | null;
   count: number | null;
+  /** Each as it is on Google: the reviewer's name and words unchanged (an older server sends them already shortened). */
   reviews: Array<{ name: string; rating: number; date: string; text: string }>;
+  /** The business's profile on Google Maps, where a review can be read in full. Left out by older servers. */
+  link?: string | null;
   pdf: boolean;
 }
 /** A roof estimate sent as a price range: the range, what's in it and what could move it. */

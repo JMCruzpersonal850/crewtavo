@@ -279,9 +279,14 @@ export const isFresh = (at: string | null | undefined, now: Date | number = Date
 // Reviews shown on quotes (settings.quote_reviews, 20261113001130_reviews_on_quotes.sql)
 // ---------------------------------------------------------------------------------------------
 
-/** How many reviews a quote shows, and how much of each one's words. */
+/**
+ * How many reviews a quote shows, and how many characters of each one's words there's room for: in
+ * the Client Hub, and on the quote's PDF (a printed page). A longer review is cut there only beside
+ * a link to read all of it on Google (fitReviews).
+ */
 export const QUOTE_REVIEWS = 3;
-export const QUOTE_REVIEW_CHARS = 280;
+export const HUB_REVIEW_CHARS = 600;
+export const PDF_REVIEW_CHARS = 280;
 
 /** A Google review as the server reads it for a quote (public.reviews). */
 export interface QuoteReviewRow {
@@ -296,7 +301,7 @@ export interface QuoteReviewRow {
   deleted_at?: string | null;
 }
 
-/** A review as the client sees it on a quote. */
+/** A review as a quote carries it: the reviewer's name and their words as they are on Google. */
 export interface QuoteReview {
   name: string;
   rating: number;
@@ -304,30 +309,49 @@ export interface QuoteReview {
   text: string;
 }
 
+/** The reviewer as Google names them, unchanged; "A Google user" for an anonymous one, or when Google gave no name. */
+export const reviewerDisplayName = (review: { reviewer_name: string | null; reviewer_anonymous: boolean }): string => reviewerName(review) ?? "A Google user";
+
 /**
- * The reviewer as a quote names them, their first name and last initial ("Dana W."), so a client's
- * full name isn't put in front of other clients; "A Google user" when Google gave no name.
+ * A review's words where there's room for `max` characters: all of them when they fit, else the
+ * start, ending at a word with "…". Nothing else about them changes (line breaks stay), and a cut
+ * one is only shown with a link to the whole review on Google.
  */
-export function reviewerShortName(review: { reviewer_name: string | null; reviewer_anonymous: boolean }): string {
-  const words = (reviewerName(review) ?? "").split(/\s+/).filter(Boolean);
-  if (!words.length) return "A Google user";
-  const initial = words.length > 1 ? [...words.at(-1)!].find((ch) => /\p{L}/u.test(ch)) : undefined;
-  return initial ? `${words[0]} ${initial.toUpperCase()}.` : words[0]!;
+export function cutReview(text: string | null | undefined, max: number): { text: string; cut: boolean } {
+  const whole = (text ?? "").trim();
+  if (whole.length <= max) return { text: whole, cut: false };
+  const start = whole.slice(0, max - 1);
+  const space = start.search(/\s\S*$/);
+  return { text: `${(space > max / 2 ? start.slice(0, space) : start).replace(/[\s.,;:!?-]+$/, "")}…`, cut: true };
 }
 
-/** A review's words, trimmed to `max` characters at a word, with "…" when cut. Spaces and line breaks fold to one. */
-export function trimReview(text: string | null | undefined, max = QUOTE_REVIEW_CHARS): string {
-  const plain = (text ?? "").replace(/\s+/g, " ").trim();
-  if (plain.length <= max) return plain;
-  const cut = plain.slice(0, max - 1);
-  const space = cut.lastIndexOf(" ");
-  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s.,;:!?-]+$/, "")}…`;
+/**
+ * The reviews as a layout with room for `max` characters of each shows them. A review too long to
+ * show whole is cut, when there's a link to read it on Google; with no link it's left out, so a
+ * review is never shown shortened with nowhere to read the rest.
+ */
+export function fitReviews<T extends { text: string }>(reviews: readonly T[], max: number, link: string | null | undefined): Array<T & { cut: boolean }> {
+  return reviews.flatMap((r) => {
+    const fitted = cutReview(r.text, max);
+    return fitted.cut && !link ? [] : [{ ...r, ...fitted }];
+  });
+}
+
+/**
+ * The link to a business's profile on Google Maps, where its reviews can be read: the one Google
+ * gives for the location, else one made from its place ID the way Google's Maps URLs are written.
+ * Null when Google gave neither.
+ */
+export function profileLink(location: { maps_uri?: string | null; place_id?: string | null; title?: string | null }): string | null {
+  if (location.maps_uri && /^https:\/\//.test(location.maps_uri)) return location.maps_uri;
+  if (!location.place_id) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.title?.trim() || "Google")}&query_place_id=${encodeURIComponent(location.place_id)}`;
 }
 
 /**
  * The reviews a quote shows: the ones the office picked, in their order; when none of those is still
- * on Google, the newest with 5 stars and words. Three at most, each named by first name and initial,
- * its words trimmed. None at all when there are none to show.
+ * on Google, the newest with 5 stars and words. Three at most, each with the reviewer's name and
+ * words as Google has them. None at all when there are none to show.
  */
 export function quoteReviews(rows: readonly QuoteReviewRow[]): QuoteReview[] {
   const live = rows.filter((r) => !r.deleted_at && r.rating != null && r.rating >= 1 && r.rating <= 5);
@@ -335,7 +359,7 @@ export function quoteReviews(rows: readonly QuoteReviewRow[]): QuoteReview[] {
   const chosen = picked.length
     ? picked
     : live.filter((r) => r.rating === 5 && (r.comment ?? "").trim()).sort((a, b) => Date.parse(b.posted_at) - Date.parse(a.posted_at));
-  return chosen.slice(0, QUOTE_REVIEWS).map((r) => ({ name: reviewerShortName(r), rating: r.rating!, date: r.posted_at.slice(0, 10), text: trimReview(r.comment) }));
+  return chosen.slice(0, QUOTE_REVIEWS).map((r) => ({ name: reviewerDisplayName(r), rating: r.rating!, date: r.posted_at.slice(0, 10), text: (r.comment ?? "").trim() }));
 }
 
 /** The Google Cloud project number in an OAuth client ID ("123456789012-abc.apps.googleusercontent.com"), which Google's access form asks for. */

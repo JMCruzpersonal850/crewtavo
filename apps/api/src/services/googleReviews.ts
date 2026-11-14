@@ -28,6 +28,7 @@ import {
   LOCATION_PROBLEMS,
   NOT_ENABLED_MESSAGE,
   OWN_APP_APPROVAL_MESSAGE,
+  profileLink,
   quoteReviews,
   REPLY_MAX,
   REVIEW_STOP_NOTE,
@@ -824,14 +825,19 @@ export interface QuoteReviews {
   /** As Google shows them: the average and how many. */
   rating: number | null;
   count: number | null;
+  /** Each with the reviewer's name and words as they are on Google: the page cuts a long one only beside `link`. */
   reviews: QuoteReview[];
+  /** The business's profile on Google Maps, where every review can be read in full. Null when Google gave none. */
+  link: string | null;
   /** On the quote's PDF too. */
   pdf: boolean;
 }
 
 /**
  * The business's Google rating and count, and up to three reviews, for a quote (core quoteReviews:
- * the office's picks, else the newest 5-star ones with words, each named by first name and initial).
+ * the office's picks, else the newest 5-star ones with words), as they are on Google: the rating
+ * and count are Google's own, never worked out here or mixed with another number, and each review
+ * has the reviewer's name and words unchanged, with the link to the profile on Google Maps.
  * Only Google reviews of the location being synced that are still on Google, and that the sync has
  * seen there lately (core REVIEW_FRESH_DAYS): a quote shows nothing from a copy older than that, so
  * a business that disconnected, or whose sign-in stopped working, has no reviews block until it's
@@ -847,14 +853,18 @@ export async function quoteReviewsFor(admin: Db, companyId: string): Promise<Quo
   const fields = "reviewer_name, reviewer_anonymous, rating, comment, posted_at, quote_pick, deleted_at";
   const since = reviewsFreshSince();
   const live = () => admin.from("reviews").select(fields).eq("company_id", companyId).eq("location_id", sync.location_id!).is("deleted_at", null).gt("seen_at", since);
-  const [picked, newest] = await Promise.all([
+  const [picked, newest, app] = await Promise.all([
     live().not("quote_pick", "is", null).order("quote_pick").limit(3),
     live().eq("rating", 5).not("comment", "is", null).order("posted_at", { ascending: false }).limit(20),
+    admin.from("integrations").select("settings").match({ company_id: companyId, provider: "google_business" }).maybeSingle(),
   ]);
   const reviews = quoteReviews(picked.data?.length ? picked.data : (newest.data ?? []));
+  const business = (app.data?.settings ?? {}) as BusinessSettings;
   // Google's own average and count, while the sync has heard them lately.
   const heard = isFresh(sync.last_synced_at);
   const count = heard ? (sync.total_reviews ?? null) : null;
   if (!reviews.length && !(Number(count) > 0)) return null;
-  return { rating: !heard || sync.average_rating === null ? null : Number(sync.average_rating), count, reviews, pdf: on.pdf === true };
+  // The link only for the location these reviews are of.
+  const link = business.location === sync.location_id ? profileLink(business) : null;
+  return { rating: !heard || sync.average_rating === null ? null : Number(sync.average_rating), count, reviews, link, pdf: on.pdf === true };
 }

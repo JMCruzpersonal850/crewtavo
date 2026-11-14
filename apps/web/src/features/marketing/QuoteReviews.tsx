@@ -3,10 +3,10 @@
  * 20261113001130_reviews_on_quotes.sql). Off, nothing changes. On, a quote in the Client Hub (and its
  * PDF, with the second tick) shows the business's Google rating and count and up to three reviews:
  * the ones picked here with "Show on quotes" on a review, else the newest with 5 stars and words.
- * Each shows with the reviewer's first name and initial (core reviews.ts quoteReviews), so the
+ * Each shows as it is on Google, the reviewer's name and their words (core reviews.ts quoteReviews), so the
  * office sees here what clients will see.
  */
-import { QUOTE_REVIEWS, reviewerShortName, type QuoteReviewRow } from "@crewtavo/core/reviews";
+import { QUOTE_REVIEWS, reviewerDisplayName, type QuoteReviewRow } from "@crewtavo/core/reviews";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
@@ -93,14 +93,14 @@ export function QuoteReviewsCard({ hasReviews }: { hasReviews: boolean }) {
         </label>
       )}
       <span className="muted small">
-        Clients see your Google rating and up to three reviews on the quote, each with the reviewer's first name and initial. {hasReviews ? "" : "Nothing shows until Google reviews come in."}
+        Clients see your Google rating and up to three reviews on the quote as they are on Google: the reviewer's name and their words, with a link to Google to read the rest of a long one. {hasReviews ? "" : "Nothing shows until Google reviews come in."}
       </span>
       {picked.length ? (
         <div className="stack-sm" style={{ gap: 4 }}>
           {picked.map((r) => (
             <div key={r.id} className="row-between small">
-              <span>{reviewerShortName(r)} · {"★".repeat(r.rating ?? 0)} · {formatDate(r.posted_at)}</span>
-              <Button size="sm" variant="ghost" aria-label={`Stop showing ${reviewerShortName(r)}'s review on quotes`} onClick={() => set({ ids: ids.filter((id) => id !== r.id) })}>Take off</Button>
+              <span>{reviewerDisplayName(r)} · {"★".repeat(r.rating ?? 0)} · {formatDate(r.posted_at)}</span>
+              <Button size="sm" variant="ghost" aria-label={`Stop showing ${reviewerDisplayName(r)}'s review on quotes`} onClick={() => set({ ids: ids.filter((id) => id !== r.id) })}>Take off</Button>
             </div>
           ))}
         </div>

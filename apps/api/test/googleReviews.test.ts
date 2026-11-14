@@ -1228,4 +1228,23 @@ describe("reviews on quotes", () => {
     expect(await shown({ sync: { last_synced_at: old } })).toMatchObject({ rating: null, count: null, reviews: [{}, {}] });
     expect(await shown({ sync: { last_synced_at: null }, reviews: [] })).toBeNull();
   });
+
+  it("sends each review as it is on Google, with the link to the business's profile there", async () => {
+    const words = `Fast,\n\nfriendly   and fair. ${"Really great work on the deck. ".repeat(40)}`.trim();
+    const reviews = [row("a", { reviewer_name: "Dana Whitfield-Jones", comment: words }), row("b", { reviewer_name: "Hidden Name", reviewer_anonymous: true })];
+    serve({ tables: { ...(await connected({ company: { quote_reviews: { show: true } }, settings: { maps_uri: "https://maps.google.com/?cid=9", place_id: "place-9" }, sync: { average_rating: 4.8, total_reviews: 120, last_synced_at: now() } })), reviews } });
+    const out = (await quoteReviewsFor(adminClient(env), CO))!;
+    // The whole name and every word: nothing is shortened or folded on the way.
+    expect(out.reviews).toEqual([
+      { name: "Dana Whitfield-Jones", rating: 5, date: "2026-10-01", text: words },
+      { name: "A Google user", rating: 5, date: "2026-10-01", text: "Great work (b)" },
+    ]);
+    // Google's own average and count, as it gave them.
+    expect(out).toMatchObject({ rating: 4.8, count: 120, link: "https://maps.google.com/?cid=9", pdf: false });
+    // No Maps link from Google: one made from the place's ID. Neither: none, and the page leaves long reviews out.
+    serve({ tables: { ...(await connected({ company: { quote_reviews: { show: true } }, settings: { place_id: "place-9" }, sync: { last_synced_at: now() } })), reviews } });
+    expect((await quoteReviewsFor(adminClient(env), CO))!.link).toBe("https://www.google.com/maps/search/?api=1&query=Radford%20Lawn%20Care&query_place_id=place-9");
+    serve({ tables: { ...(await connected({ company: { quote_reviews: { show: true } }, sync: { last_synced_at: now() } })), reviews } });
+    expect((await quoteReviewsFor(adminClient(env), CO))!.link).toBeNull();
+  });
 });
