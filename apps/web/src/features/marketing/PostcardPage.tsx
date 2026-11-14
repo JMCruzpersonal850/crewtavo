@@ -8,7 +8,7 @@
  * After sending: what was made, what failed and why, and what the clients mailed have paid since.
  */
 import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
-import { addressLine, backFit, backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, ONE_PER_ADDRESS, POSTCARD_KEEP_DAYS, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
+import { addressLine, backFit, backHtml, BLEED_IN, frontHtml, frontResolutionWarning, leftOutLine, messageProblem, ONE_PER_ADDRESS, POSTCARD_KEEP_DAYS, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
 import { greetingName } from "@crewtavo/core/automations";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from "react";
@@ -143,6 +143,8 @@ function PostcardScreen() {
 
   const shown: Draft | null = draft && c ? (editable ? draft : { ...draft, name: c.name, size: c.size as PostcardSize, message: c.message, audience: (c.audience ?? {}) as CampaignAudience, front_attachment_id: c.front_attachment_id, front_marked: c.front_marked, front_path: c.front_path }) : null;
   const front = useFrontUrl(shown);
+  // The picture's own size in pixels, to say when it's below what Lob asks for at the size chosen.
+  const frontSize = useQuery({ queryKey: ["postcard-front-size", front.data?.url], enabled: Boolean(front.data?.url), staleTime: Infinity, meta: { silent: true }, queryFn: () => pictureSize(front.data!.url!) });
 
   const refresh = async () => {
     await campaign.refetch();
@@ -208,6 +210,7 @@ function PostcardScreen() {
   };
   const message = postcardMessage(shown.message, vars);
   const fit = backFit(shown.size, message);
+  const soft = frontSize.data && (draft.front_attachment_id || draft.front_path) ? frontResolutionWarning(shown.size, frontSize.data) : null;
   // Send mails what's saved: it waits for the save of what's on screen.
   const unsaved = waitForSave(saving.status);
   // What stands in the way of making any card at all, one to ourselves included.
@@ -325,6 +328,7 @@ function PostcardScreen() {
                   </label>
                 )}
                 <span className="hint">The picture fills the front, past the edges, so keep what matters away from them.</span>
+                {soft && <div className="callout callout-warning" role="note" style={{ marginTop: 8 }}><Icon name="alert" size={20} /><div className="grow">{soft}</div></div>}
               </div>
               <MessageField value={draft.message} onChange={(m) => set({ message: m })} tokens={[...POSTCARD_TOKENS]} hint={`The back of the card. About ${POSTCARD_SIZE_INFO[draft.size].maxMessage.toLocaleString("en-US")} characters fit, fewer with many short lines. Lob prints your return address beside the client's. Booking link is your booking form's address.`} />
               <span className={`small${fit.fits ? " muted" : ""}`} style={fit.fits ? undefined : { color: "var(--danger)", fontWeight: 600 }}>
@@ -385,6 +389,16 @@ function useFrontUrl(d: Pick<Draft, "front_attachment_id" | "front_marked" | "fr
       const urls = await signedUrls([d!.front_path!]);
       return { url: urls[d!.front_path!] ?? null, marked: false };
     },
+  });
+}
+
+/** A picture's size in pixels, as the browser reads it. */
+function pictureSize(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const picture = new Image();
+    picture.onload = () => resolve({ width: picture.naturalWidth, height: picture.naturalHeight });
+    picture.onerror = () => reject(new Error("The picture couldn't be read."));
+    picture.src = url;
   });
 }
 

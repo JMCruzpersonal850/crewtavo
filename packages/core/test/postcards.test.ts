@@ -5,6 +5,8 @@ import {
   backFit,
   backHtml,
   backLayout,
+  frontResolution,
+  frontResolutionWarning,
   POSTCARD_SIZES,
   frontHtml,
   leftOutLine,
@@ -127,6 +129,25 @@ describe("what's printed", () => {
     expect(front).toContain("width:9.25in;height:6.25in");
     expect(front).toContain("center/cover");
     expect(front).toContain("&quot;1&quot;");
+  });
+
+  it("warns, with the numbers, when the front's picture is below Lob's 300 dots per inch at the size", () => {
+    // Lob's numbers: 300 dpi over the artwork with its bleed, 1275 × 1875 pixels for a 4.25 × 6.25 in card.
+    expect(frontResolution("4x6", { width: 1875, height: 1275 })).toMatchObject({ ok: true, dpi: 300, need: { width: 1875, height: 1275 } });
+    expect(frontResolution("6x9", { width: 2775, height: 1875 }).ok).toBe(true);
+    expect(frontResolution("6x11", { width: 3375, height: 1875 }).ok).toBe(true);
+    expect(frontResolution("6x11", { width: 3374, height: 1875 }).ok).toBe(false);
+    // A job photo as the app keeps it, 2,000 pixels at most: fine on a 4x6, soft on the big cards.
+    const jobPhoto = { width: 2000, height: 1500 };
+    expect(frontResolutionWarning("4x6", jobPhoto)).toBeNull();
+    expect(frontResolutionWarning("6x9", jobPhoto)).toBe(
+      "This picture is 2,000 × 1,500 pixels, which prints at about 216 dots per inch on a 6 × 9 in card. Lob asks for at least 300, which at this size is 2,775 × 1,875 pixels, so it may print soft. It's sharp enough for a 4 × 6 in card.",
+    );
+    expect(frontResolutionWarning("6x11", jobPhoto)).toMatch(/about 177 dots per inch on a 6 × 11 in card.*3,375 × 1,875 pixels/);
+    // Held upright, the same photo is cropped across the card: fewer dots still, and no size is sharp.
+    expect(frontResolutionWarning("4x6", { width: 1000, height: 1500 })).toMatch(/about 160 dots per inch.*may print soft\.$/);
+    // An upload at 3,400 pixels across is enough everywhere.
+    expect(frontResolutionWarning("6x11", { width: 3400, height: 2267 })).toBeNull();
   });
 
   it("escapes what's written and keeps paragraphs", () => {

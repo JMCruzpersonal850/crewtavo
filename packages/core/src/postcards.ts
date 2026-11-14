@@ -93,6 +93,35 @@ export function backLayout(size: PostcardSize) {
   return { left: inset, top: inset, width, height, cutWidth, aboveBlock, cutHeight: inches(height - aboveBlock), besideBlock: inches(width - cutWidth), fontIn, lineIn: fontIn * LINE_HEIGHT, paragraphGapIn: fontIn * PARAGRAPH_GAP_EM };
 }
 
+/**
+ * The fewest dots per inch Lob asks of a picture ("When using PNGs or JPEGs with Lob, we require a
+ * minimum of 300 dpi": help.lob.com → Creative formatting; its example is a 1275 × 1875 pixel image
+ * for a 4.25 × 6.25 in postcard). Measured over the artwork with its bleed.
+ */
+export const LOB_MIN_DPI = 300;
+
+/**
+ * How sharp a picture prints on the front of a card of this size, where it fills the card past its
+ * edges (cropped, never stretched out of shape): the dots per inch it comes to, the pixels Lob's
+ * minimum takes at this size, and the biggest size it's sharp enough for (null when none).
+ */
+export function frontResolution(size: PostcardSize, picture: { width: number; height: number }) {
+  const dpiAt = (s: PostcardSize) => Math.min(picture.width / artboard(s).width, picture.height / artboard(s).height);
+  const art = artboard(size);
+  const dpi = Math.floor(dpiAt(size));
+  const sharpAt = [...POSTCARD_SIZES].reverse().find((s) => dpiAt(s) >= LOB_MIN_DPI) ?? null;
+  return { ok: dpiAt(size) >= LOB_MIN_DPI, dpi, need: { width: Math.round(art.width * LOB_MIN_DPI), height: Math.round(art.height * LOB_MIN_DPI) }, sharpAt };
+}
+
+/** What to say when the front's picture is below Lob's minimum for the size, with the numbers, or null. */
+export function frontResolutionWarning(size: PostcardSize, picture: { width: number; height: number }): string | null {
+  const r = frontResolution(size, picture);
+  if (r.ok) return null;
+  const n = (value: number) => value.toLocaleString("en-US");
+  const other = r.sharpAt ? ` It's sharp enough for a ${POSTCARD_SIZE_INFO[r.sharpAt].label} card.` : "";
+  return `This picture is ${n(picture.width)} × ${n(picture.height)} pixels, which prints at about ${r.dpi} dots per inch on a ${POSTCARD_SIZE_INFO[size].label} card. Lob asks for at least ${LOB_MIN_DPI}, which at this size is ${n(r.need.width)} × ${n(r.need.height)} pixels, so it may print soft.${other}`;
+}
+
 // ---------------------------------------------------------------------------------------------
 // The message
 // ---------------------------------------------------------------------------------------------

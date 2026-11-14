@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ONE_PER_ADDRESS } from "@crewtavo/core/postcards";
+import { frontResolutionWarning, ONE_PER_ADDRESS } from "@crewtavo/core/postcards";
 import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, leftOutWords, needsAdmin, pickablePhotos, proofLink, proofQuestion, waitForSave, type AudienceRow } from "../src/features/marketing/postcardForm";
 import { toCsv } from "../src/lib/csv";
 
@@ -141,6 +141,16 @@ describe("a campaign after it's sent", () => {
     expect(proofLink(card, now + 29 * DAY)).toBeNull();
     expect(proofLink({ proof_url: null, proof_at: null }, now)).toBeNull();
     expect(proofLink({ proof_url: "javascript:alert(1)", proof_at: card.proof_at }, now)).toBeNull();
+  });
+});
+
+describe("the picture on the front", () => {
+  it("is measured, and the page says when it's below what Lob asks for at the size chosen", () => {
+    const page = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardPage.tsx", import.meta.url)), "utf8");
+    expect(page).toContain("frontResolutionWarning(shown.size, frontSize.data)");
+    expect(page).toMatch(/\{soft && <div className="callout callout-warning"/);
+    // A job photo (2,000 pixels at most) on the biggest card: the numbers are said.
+    expect(frontResolutionWarning("6x11", { width: 2000, height: 1500 })).toMatch(/2,000 × 1,500 pixels.*about 177 dots per inch.*at least 300.*3,375 × 1,875 pixels/);
   });
 });
 
