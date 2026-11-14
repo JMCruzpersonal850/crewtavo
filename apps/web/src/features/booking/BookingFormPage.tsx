@@ -2,7 +2,7 @@
 import { textDisclosure } from "@crewtavo/core/marketing";
 import { slotLabel, slotTime, type OpenSlot } from "@crewtavo/core/slots";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -17,6 +17,14 @@ import { postToHost } from "./embed";
 /** The most files a request can bring (the API's limit too). */
 const MAX_FILES = 10;
 const isFileQuestion = (q: Question) => q.type === "files" || q.type === "photos";
+/**
+ * Where the keyboard goes when the form can't be sent yet: the first thing to fix, in the form's
+ * order. A field says so itself (:invalid, aria-invalid); a group of choices, the times and a file
+ * question are marked data-invalid on what holds them, and their first button or their file picker
+ * takes the focus. What's wrong is said beside each in a role="alert", so it's read out as well.
+ */
+export const FIRST_PROBLEM = ":invalid:not(form):not(fieldset), [aria-invalid='true'], [data-invalid='true'] button:not(:disabled), [data-invalid='true'] input:not(:disabled)";
+
 /** What the field says when it's left empty: why it's needed, in the business's voice. */
 const NAME_NEEDED = "Enter your name, so we know who to reply to.";
 const ADDRESS_NEEDED = "Enter the address where the work is.";
@@ -57,6 +65,12 @@ export function BookingFormPage() {
   const [sending, setSending] = useState<{ done: number; total: number; progress: number } | null>(null);
   const fileCount = Object.values(files).reduce((n, list) => n + list.length, 0);
   const [touched, setTouched] = useState(false);
+  // Each try at sending with something missing: the keyboard goes to the first thing to fix, once the form says what's wrong.
+  const [refused, setRefused] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (refused) formRef.current?.querySelector<HTMLElement>(FIRST_PROBLEM)?.focus();
+  }, [refused]);
   // A promo code from the link (?promo=SPRING10) or typed in, checked before sending.
   const [promo, setPromo] = useState({ code: (params.get("promo") ?? "").toUpperCase().slice(0, 24), offer: "" as string, open: Boolean(params.get("promo")) });
   const checkPromo = useMutation({
@@ -166,6 +180,7 @@ export function BookingFormPage() {
         )}
         {view.data && !submit.data && (
           <form
+            ref={formRef}
             className="card card-pad stack"
             noValidate
             onSubmit={(e: FormEvent) => {
@@ -173,7 +188,8 @@ export function BookingFormPage() {
               setTouched(true);
               const form = e.currentTarget as HTMLFormElement;
               if (!form.checkValidity() || unanswered.length || noContact || noTime) {
-                form.querySelector<HTMLElement>(":invalid, [aria-invalid='true']")?.focus();
+                // After this render, when a missing time, choice or file is marked: the effect above moves the focus.
+                setRefused((n) => n + 1);
                 return;
               }
               submit.mutate();
@@ -304,7 +320,7 @@ function TimePicker({ path, booking, postalCode, picked, onPick, onNoneOpen, inv
     <button key={key} type="button" className="tab" aria-pressed={on} style={{ height: "var(--control)", padding: "0 14px" }} onClick={pick}>{on && <Icon name="check" size={14} strokeWidth={2} />}{label}</button>
   );
   return (
-    <fieldset className="field" style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10 }}>
+    <fieldset className="field" data-invalid={invalid || undefined} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10 }}>
       <legend style={{ marginBottom: 6 }}>{booking.needs_ok ? "Pick a time you'd like" : "Pick a time"}</legend>
       <span className="muted small">Times are in {booking.timezone_label}. {booking.window_min ? "We arrive within the window you pick." : `Set aside about ${visitLength(booking.minutes)}.`}</span>
       {waiting ? (
@@ -337,8 +353,8 @@ function TimePicker({ path, booking, postalCode, picked, onPick, onNoneOpen, inv
           {picked && <span className="strong" role="status">{booking.needs_ok ? "You're asking for" : "You picked"} {slotLabel(picked, booking.timezone, booking.window_min)}.</span>}
         </>
       )}
-      {invalid && !waiting && !week.isError && <span className="field-error">Pick a time for your visit.</span>}
-      {invalid && waiting && <span className="field-error">Enter your ZIP / postal code, then pick a time.</span>}
+      {invalid && !waiting && !week.isError && <span className="field-error" role="alert">Pick a time for your visit.</span>}
+      {invalid && waiting && <span className="field-error" role="alert">Enter your ZIP / postal code, then pick a time.</span>}
     </fieldset>
   );
 }
@@ -356,8 +372,12 @@ function useFitFrame(embedded: boolean) {
   return ref;
 }
 
-/** A "Files" or "Photos" question: pick or drop files; they're sent once the request is in. */
-function FileQuestion({ q, files, room, invalid, disabled, onChange }: { q: Question; files: File[]; room: number; invalid: boolean; disabled: boolean; onChange: (files: File[]) => void }) {
+/**
+ * A "Files" or "Photos" question: pick or drop files; they're sent once the request is in. The
+ * picker is a real file input kept in the page (only hidden from sight), so Tab reaches it, Enter
+ * and Space open it, and a screen reader says what it's for; its label shows the focus.
+ */
+export function FileQuestion({ q, files, room, invalid, disabled, onChange }: { q: Question; files: File[]; room: number; invalid: boolean; disabled: boolean; onChange: (files: File[]) => void }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const photos = q.type === "photos";
@@ -373,9 +393,12 @@ function FileQuestion({ q, files, room, invalid, disabled, onChange }: { q: Ques
     if (taken.length) onChange([...files, ...taken]);
   };
   const label = <>{q.label}{!q.required && <span className="optional"> (optional)</span>}</>;
+  const errorId = useId();
+  const error = problem ?? (invalid ? "Add a file to send with your request." : null);
   return (
     <div
       className="field"
+      data-invalid={invalid || undefined}
       onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); if (!disabled) add([...e.dataTransfer.files]); }}
@@ -395,15 +418,27 @@ function FileQuestion({ q, files, room, invalid, disabled, onChange }: { q: Ques
       )}
       <label className="btn" style={{ justifySelf: "start" }} aria-disabled={disabled || room <= 0}>
         <Icon name={photos ? "camera" : "upload"} size={16} />{photos ? "Add photos" : "Add files"}
-        <input type="file" multiple hidden accept={photos ? "image/*" : undefined} disabled={disabled || room <= 0} onChange={(e) => { const picked = [...(e.target.files ?? [])]; e.target.value = ""; add(picked); }} />
+        <input
+          type="file"
+          multiple
+          className="sr-only"
+          // Its name starts with the words on the button, then says which question it answers.
+          aria-label={`${photos ? "Add photos" : "Add files"}: ${q.label}${q.required ? "" : " (optional)"}`}
+          aria-required={q.required || undefined}
+          aria-invalid={invalid || undefined}
+          aria-describedby={error ? errorId : undefined}
+          accept={photos ? "image/*" : undefined}
+          disabled={disabled || room <= 0}
+          onChange={(e) => { const picked = [...(e.target.files ?? [])]; e.target.value = ""; add(picked); }}
+        />
       </label>
       <span className="muted small">{photos ? "Pictures" : "Plans, PDFs or pictures"}, up to {fileSize(PLAN_MAX_BYTES)} each. You can also drop them here.</span>
-      {(problem || invalid) && <span className="field-error">{problem ?? "Add a file to send with your request."}</span>}
+      {error && <span id={errorId} className="field-error" role="alert">{error}</span>}
     </div>
   );
 }
 
-function QuestionField({ q, value, invalid, onChange }: { q: Question; value: unknown; invalid: boolean; onChange: (v: unknown) => void }) {
+export function QuestionField({ q, value, invalid, onChange }: { q: Question; value: unknown; invalid: boolean; onChange: (v: unknown) => void }) {
   const label = <>{q.label}{!q.required && <span className="optional"> (optional)</span>}</>;
   const error = invalid ? "Answer this one to send your request." : null;
   switch (q.type) {
@@ -417,7 +452,7 @@ function QuestionField({ q, value, invalid, onChange }: { q: Question; value: un
       const options = q.type === "yes_no" ? ["Yes", "No"] : q.options ?? [];
       const list = Array.isArray(value) ? (value as string[]) : [];
       return (
-        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+        <fieldset className="field" data-invalid={invalid || undefined} style={{ border: 0, padding: 0, margin: 0 }}>
           <legend style={{ marginBottom: 6 }}>{label}</legend>
           <div className="row wrap" style={{ gap: 6 }}>
             {options.map((o) => {
@@ -429,7 +464,7 @@ function QuestionField({ q, value, invalid, onChange }: { q: Question; value: un
               );
             })}
           </div>
-          {error && <span className="field-error">{error}</span>}
+          {error && <span className="field-error" role="alert">{error}</span>}
         </fieldset>
       );
     }
