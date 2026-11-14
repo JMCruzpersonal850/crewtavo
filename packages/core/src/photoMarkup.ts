@@ -145,6 +145,72 @@ export function redo(h: MarkupHistory): MarkupHistory {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The marks kept beside a photo, so drawing again starts from the photo as taken
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A photo's marks as they're kept on its row (attachments.marks): what was drawn, the size of the
+ * picture they were drawn on, and which drawing they made (`for`, the drawing's path). Drawing
+ * again opens the photo as taken with these marks on it, each still its own (undo, clear), rather
+ * than the flattened copy, which would lose a little each time it's saved again. Marks that belong
+ * to another drawing (an older app drew on the photo since, and knows nothing of this) aren't used.
+ */
+export interface SavedMarks {
+  v: 1;
+  for: string;
+  width: number;
+  height: number;
+  marks: Mark[];
+}
+
+/** Marks longer than this as text aren't kept: the drawing is still saved, and drawing again starts from it. */
+export const SAVED_MARKS_MAX = 200_000;
+
+const whole = (p: Point): Point => ({ x: Math.round(p.x), y: Math.round(p.y) });
+const isPoint = (p: unknown): p is Point => Boolean(p) && typeof p === "object" && Number.isFinite((p as Point).x) && Number.isFinite((p as Point).y);
+const isMark = (m: unknown): m is Mark => {
+  if (!m || typeof m !== "object") return false;
+  const mark = m as Record<string, unknown>;
+  if (typeof mark.color !== "string" || !/^#[0-9a-f]{6}$/i.test(mark.color) || (mark.width !== "thin" && mark.width !== "thick")) return false;
+  if (mark.kind === "pen") return Array.isArray(mark.points) && mark.points.length > 0 && mark.points.every(isPoint);
+  if (mark.kind === "text") return isPoint(mark.at) && typeof mark.text === "string" && mark.text.trim().length > 0 && mark.text.length <= 120;
+  return (mark.kind === "arrow" || mark.kind === "ellipse" || mark.kind === "box") && isPoint(mark.from) && isPoint(mark.to);
+};
+
+/** The marks to keep with a drawing saved at `path`, to the pixel. Null when there are none, or too many to keep. */
+export function packMarks(marks: readonly Mark[], picture: { width: number; height: number }, path: string): SavedMarks | null {
+  if (!marks.length) return null;
+  const packed: SavedMarks = {
+    v: 1,
+    for: path,
+    width: picture.width,
+    height: picture.height,
+    marks: marks.map((m): Mark => (m.kind === "pen" ? { ...m, points: m.points.map(whole) } : m.kind === "text" ? { ...m, at: whole(m.at) } : { ...m, from: whole(m.from), to: whole(m.to) })),
+  };
+  return JSON.stringify(packed).length > SAVED_MARKS_MAX ? null : packed;
+}
+
+/**
+ * The marks to start from when a photo is drawn on again: those kept for the drawing it shows now
+ * (`markedPath`), fitted to the size the picture is being drawn on. Null when there are none, they
+ * belong to another drawing, or anything about them isn't as this app writes them: the editor then
+ * opens the drawing itself, as before.
+ */
+export function unpackMarks(saved: unknown, markedPath: string | null | undefined, picture: { width: number; height: number }): Mark[] | null {
+  if (!saved || typeof saved !== "object" || !markedPath) return null;
+  const s = saved as Partial<SavedMarks>;
+  if (s.v !== 1 || s.for !== markedPath || !(Number(s.width) > 0) || !(Number(s.height) > 0) || !Array.isArray(s.marks) || !s.marks.length || !s.marks.every(isMark)) return null;
+  const kx = picture.width / s.width!;
+  const ky = picture.height / s.height!;
+  if (kx === 1 && ky === 1) return s.marks;
+  const fit = (p: Point): Point => ({ x: p.x * kx, y: p.y * ky });
+  return s.marks.map((m): Mark => (m.kind === "pen" ? { ...m, points: m.points.map(fit) } : m.kind === "text" ? { ...m, at: fit(m.at) } : { ...m, from: fit(m.from), to: fit(m.to) }));
+}
+
+/** A history that starts from marks made before: nothing to undo yet. */
+export const historyFrom = (marks: Mark[]): MarkupHistory => ({ past: [], marks, future: [] });
+
+// ---------------------------------------------------------------------------------------------
 // Leaving the editor
 // ---------------------------------------------------------------------------------------------
 

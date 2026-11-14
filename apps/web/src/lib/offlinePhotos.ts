@@ -19,6 +19,7 @@ import { ApiError, errorMessage, isAuthError, isNetworkError, isRestarting } fro
 import { storedExtension, storedType, uploadBody, uploadOnce } from "./files";
 import { toast } from "./toast";
 import { t } from "@/lib/i18n";
+import type { SavedMarks } from "@crewtavo/core/photoMarkup";
 
 export interface PhonePhoto {
   /** Made on the phone: the attachment's id and the file's name in storage. */
@@ -36,9 +37,10 @@ export interface PhonePhoto {
   body: Blob;
   /**
    * The photo drawn on before it was added (the photo editor): a copy that goes up beside it and is
-   * shown instead, while the photo as taken is kept (attachments.marked_path).
+   * shown instead, while the photo as taken is kept (attachments.marked_path), with the marks that
+   * made it so it can be drawn on again from the photo as taken (attachments.marks).
    */
-  marked?: { path: string; body: Blob };
+  marked?: { path: string; body: Blob; marks?: SavedMarks | null };
   takenAt: number;
   /** False when the phone wouldn't keep it: it's only in memory, and closing the app loses it. */
   kept: boolean;
@@ -52,7 +54,7 @@ interface StoredPhoto extends Omit<PhonePhoto, "body" | "kept" | "sending" | "pr
   bytes: ArrayBuffer;
   type: string;
   /** Its drawing, the same way. */
-  marked?: { path: string; bytes: ArrayBuffer; type: string };
+  marked?: { path: string; bytes: ArrayBuffer; type: string; marks?: SavedMarks | null };
 }
 
 const DB = "crewtavo-phone";
@@ -122,7 +124,7 @@ export const photosWaiting = (userId: string) => photos.filter((p) => p.userId =
 async function keep(photo: PhonePhoto): Promise<boolean> {
   try {
     const { body, kept: _kept, sending: _sending, problem: _problem, marked, ...rest } = photo;
-    const stored: StoredPhoto = { ...rest, bytes: await body.arrayBuffer(), type: body.type, ...(marked && { marked: { path: marked.path, bytes: await marked.body.arrayBuffer(), type: marked.body.type } }) };
+    const stored: StoredPhoto = { ...rest, bytes: await body.arrayBuffer(), type: body.type, ...(marked && { marked: { path: marked.path, bytes: await marked.body.arrayBuffer(), type: marked.body.type, ...(marked.marks && { marks: marked.marks }) } }) };
     await inStore("readwrite", (store) => store.put(stored));
     return true;
   } catch {
@@ -147,16 +149,17 @@ function askToStay() {
  * Adds a photo to a visit: shrunk, written to the phone, then sent (now, or once there's signal).
  * Resolves false when the phone wouldn't keep it, so the screen can say so as it's taken. Throws
  * when the photo can't be sent at all (too big). `marked`: the photo drawn on (the photo editor),
- * kept and sent with it, in the visit's folder beside it.
+ * kept and sent with it, in the visit's folder beside it, with the marks that made it (`marksFor`).
  */
-export async function addVisitPhoto(at: { userId: string; companyId: string; visitId: string }, file: File, marked?: Blob | null): Promise<boolean> {
+export async function addVisitPhoto(at: { userId: string; companyId: string; visitId: string }, file: File, marked?: Blob | null, marksFor?: (path: string) => SavedMarks | null): Promise<boolean> {
   const body = await uploadBody(file);
   const id = crypto.randomUUID();
   const folder = `${at.companyId}/visit/${at.visitId}/`;
   const path = `${folder}${id}.${storedExtension(file, body)}`;
+  const markedPath = `${folder}${crypto.randomUUID()}.jpg`;
   const photo: PhonePhoto = {
     userId: at.userId, companyId: at.companyId, visitId: at.visitId, id, path, fileName: file.name.slice(0, 200), contentType: storedType(path, file), size: file.size, body, takenAt: Date.now(), kept: false, sending: false,
-    ...(marked && { marked: { path: `${folder}${crypto.randomUUID()}.jpg`, body: marked } }),
+    ...(marked && { marked: { path: markedPath, body: marked, marks: marksFor?.(markedPath) ?? null } }),
   };
   askToStay();
   photo.kept = await keep(photo);
@@ -200,7 +203,7 @@ async function load(userId: string) {
     .sort((a, b) => a.takenAt - b.takenAt)
     .map(({ bytes, type, marked, ...rest }): PhonePhoto => ({
       ...rest, body: new Blob([bytes], { type }), kept: true, sending: false,
-      ...(marked && { marked: { path: marked.path, body: new Blob([marked.bytes], { type: marked.type }) } }),
+      ...(marked && { marked: { path: marked.path, body: new Blob([marked.bytes], { type: marked.type }), ...(marked.marks && { marks: marked.marks }) } }),
     }));
   if (fresh.length) set([...fresh, ...photos]);
 }
@@ -216,7 +219,7 @@ export async function uploadPhonePhoto(photo: PhonePhoto) {
     unwrap(
       await supabase()
         .from("attachments")
-        .insert({ id: photo.id, company_id: photo.companyId, owner_type: "visit", owner_id: photo.visitId, path: photo.path, file_name: photo.fileName, content_type: photo.contentType, size_bytes: photo.size, ...(photo.marked && { marked_path: photo.marked.path }) }),
+        .insert({ id: photo.id, company_id: photo.companyId, owner_type: "visit", owner_id: photo.visitId, path: photo.path, file_name: photo.fileName, content_type: photo.contentType, size_bytes: photo.size, ...(photo.marked && { marked_path: photo.marked.path, ...(photo.marked.marks && { marks: photo.marked.marks as never }) }) }),
     );
   } catch (error) {
     if (!(error instanceof ApiError && error.code === "23505")) throw error;

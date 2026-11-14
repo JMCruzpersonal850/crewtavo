@@ -15,7 +15,7 @@ import { onlineManager, useIsMutating, useMutation, useQueries, useQuery, useQue
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type ChangeEvent, type RefObject } from "react";
 import { Link, useParams } from "react-router-dom";
 import { canDrawOn, DrawOnPhoto, OriginalLink } from "@/components/DrawOnPhoto";
-import { PhotoEditor } from "@/components/PhotoEditor";
+import { PhotoEditor, type MarksFor } from "@/components/PhotoEditor";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
@@ -779,11 +779,11 @@ function useVisitPhotos(visitId: string) {
     },
   });
   // `drawn`: one photo drawn on before it's added (the photo editor), kept beside it.
-  const add = async (files: File[], drawn?: Blob | null) => {
+  const add = async (files: File[], drawn?: Blob | null, marks?: MarksFor) => {
     setAdding((n) => n + files.length);
     for (const file of files) {
       try {
-        const kept = await addVisitPhoto({ userId: session.userId, companyId: company.id, visitId }, file, files.length === 1 ? drawn : null);
+        const kept = await addVisitPhoto({ userId: session.userId, companyId: company.id, visitId }, file, files.length === 1 ? drawn : null, marks);
         // Said as it's taken: with no signal and nowhere to keep it, only the open app holds it.
         if (!kept && !onlineManager.isOnline()) toast.warning(t("This phone couldn't save the photo"), { description: t("Keep Crewtavo open until you have signal, or the photo will be lost.") });
       } catch (error) {
@@ -811,7 +811,7 @@ function useVisitPhotos(visitId: string) {
     adding,
     waiting,
     uploading: adding > 0 || waiting.some((p) => p.sending),
-    add: (files: File[], drawn?: Blob | null) => void add(files, drawn),
+    add: (files: File[], drawn?: Blob | null, marks?: MarksFor) => void add(files, drawn, marks),
     /** Reloads them: a drawing saved or taken off. */
     refresh: () => void refreshPhotos(),
     /** One that hasn't uploaded is only on this phone, so removing it has no Undo: asked first. */
@@ -886,8 +886,8 @@ function PhotoPicker({ photos }: { photos: VisitPhotos }) {
           saveLabel={t("Add photo")}
           keepsBlank
           onCancel={() => setDrawing(null)}
-          onSave={(drawn) => {
-            photos.add([drawing], drawn);
+          onSave={(drawn, marks) => {
+            photos.add([drawing], drawn, marks);
             setDrawing(null);
           }}
         />

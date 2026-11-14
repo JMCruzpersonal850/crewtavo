@@ -7,9 +7,12 @@
  *
  * The marks are data (core/photoMarkup.ts) drawn over the picture on a canvas the size the copy is
  * saved at: never larger than the photo, and no longer than 2000 pixels on its long side, as an
- * upload is. Saving gives back that copy as a JPEG; what becomes of it is the caller's (a photo
- * being added keeps it beside the original through the phone's queue; one already up saves it
- * beside the original: lib/photoMarkup.ts).
+ * upload is. Saving gives back that copy as a JPEG, and the marks to keep with it; what becomes of
+ * them is the caller's (a photo being added keeps them beside the original through the phone's
+ * queue; one already up saves them beside the original: lib/photoMarkup.ts).
+ *
+ * A photo drawn on before opens as it was taken with its earlier marks on it, each still its own
+ * (core unpackMarks), when those were kept; else it opens the drawing itself and adds to that.
  */
 import {
   addMark,
@@ -22,18 +25,22 @@ import {
   exportSize,
   extendStroke,
   fitInside,
+  historyFrom,
   leaveAnswer,
   leaveQuestion,
   MARKUP_COLORS,
   MARKUP_TOOLS,
+  packMarks,
   redo,
   toPicture,
   undo,
+  unpackMarks,
   type Mark,
   type MarkupHistory,
   type MarkupTool,
   type MarkupWidth,
   type Point,
+  type SavedMarks,
 } from "@crewtavo/core/photoMarkup";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { announceTopLayer } from "@/lib/motion";
@@ -46,6 +53,19 @@ import { t } from "@/lib/i18n";
 const TOOL_ICONS: Record<MarkupTool, IconName> = { pen: "pen", arrow: "arrowUpRight", ellipse: "circle", box: "square", text: "type" };
 
 type Picture = ImageBitmap | HTMLImageElement;
+
+/**
+ * A stored photo to draw on. `original`: the photo as taken (with `marks`, what was drawn on it
+ * before and the drawing that made: attachments.marks, marked_path), so its marks can be kept.
+ * Not `original`: a drawing from before marks were kept, which can only be added to.
+ */
+export interface PictureToDrawOn {
+  picture: Blob;
+  original: boolean;
+  marks?: { saved: unknown; path: string };
+}
+/** Given the path the drawing is saved at: the marks to keep with it, or null when they can't be kept. */
+export type MarksFor = (path: string) => SavedMarks | null;
 
 /** Opens a picture to draw on: the way that turns it upright as the camera took it, else an <img>. */
 async function openPicture(blob: Blob): Promise<Picture> {
@@ -99,14 +119,14 @@ export function PhotoEditor({
   onCancel,
   onRemoveDrawing,
 }: {
-  /** The photo, or how to fetch it (a stored one). */
-  picture: Blob | (() => Promise<Blob>);
+  /** The photo, or how to fetch it (a stored one, with what was drawn on it before). */
+  picture: Blob | (() => Promise<PictureToDrawOn>);
   title?: string;
   saveLabel?: string;
   /** Save with nothing drawn: a photo being added goes in as it was taken (onSave gets null). */
   keepsBlank?: boolean;
-  /** Given the drawing, or null when nothing was drawn (only with keepsBlank). Closes on its own once this resolves. */
-  onSave: (drawn: Blob | null) => Promise<void> | void;
+  /** Given the drawing and its marks to keep, or null when nothing was drawn (only with keepsBlank). Closes on its own once this resolves. */
+  onSave: (drawn: Blob | null, marks: MarksFor) => Promise<void> | void;
   onCancel: () => void;
   /** For a photo drawn on before: back to the original, the drawing off. */
   onRemoveDrawing?: () => Promise<void> | void;
@@ -116,6 +136,9 @@ export function PhotoEditor({
   const [picture, setPicture] = useState<Picture | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [history, setHistory] = useState<MarkupHistory>(emptyHistory);
+  // What was drawn on it before, when the editor started from that; and whether the marks can be kept (the picture is the photo as taken).
+  const [earlier, setEarlier] = useState<Mark[] | null>(null);
+  const [keepsMarks, setKeepsMarks] = useState(true);
   const [tool, setTool] = useState<MarkupTool>("pen");
   const [color, setColor] = useState(MARKUP_COLORS[0]!.color);
   const [width, setWidth] = useState<MarkupWidth>("thin");
@@ -132,10 +155,17 @@ export function PhotoEditor({
     let gone = false;
     (async () => {
       try {
-        const blob = typeof source === "function" ? await source() : source;
-        const opened = await openPicture(blob);
-        if (gone) closePicture(opened);
-        else setPicture(opened);
+        const from: PictureToDrawOn = typeof source === "function" ? await source() : { picture: source, original: true };
+        const opened = await openPicture(from.picture);
+        if (gone) return closePicture(opened);
+        const before = from.original && from.marks ? unpackMarks(from.marks.saved, from.marks.path, exportSize(naturalSize(opened).width, naturalSize(opened).height)) : null;
+        if (before) {
+          setEarlier(before);
+          setHistory(historyFrom(before));
+        }
+        // Marks that weren't kept, or can't be read: the photo as taken would lose them, so the loader gives the drawing instead (not `original`).
+        setKeepsMarks(from.original && (!from.marks || Boolean(before)));
+        setPicture(opened);
       } catch (error) {
         if (!gone) setFailed(error instanceof Error && /couldn't be opened/.test(error.message) ? t(error.message) : t("This photo can't be drawn on in this browser."));
       }
@@ -229,15 +259,17 @@ export function PhotoEditor({
     setWords("");
   };
 
+  // Something to save: a mark made, or the earlier marks changed.
+  const drawn = earlier ? history.marks !== earlier : history.marks.length > 0;
   const leave = async () => {
     if (busy) return;
     // A photo being added isn't anywhere yet: leaving asks whether it goes on as it was taken, so it's never lost quietly.
-    const question = leaveQuestion({ adding: keepsBlank, drawn: history.marks.length > 0 });
+    const question = leaveQuestion({ adding: keepsBlank, drawn });
     const answer =
       question === "add-without-drawing"
         ? await choose({
             title: t("Add the photo without drawing?"),
-            body: history.marks.length ? t("What you drew won't be saved. The photo can still be added as it was taken.") : t("The photo hasn't been added yet."),
+            body: drawn ? t("What you drew won't be saved. The photo can still be added as it was taken.") : t("The photo hasn't been added yet."),
             confirmLabel: t("Add without drawing"),
             cancelLabel: t("Don't add it"),
           })
@@ -250,7 +282,7 @@ export function PhotoEditor({
     setBusy("save");
     setProblem(null);
     try {
-      await onSave(null);
+      await onSave(null, () => null);
     } catch (error) {
       setProblem(errorMessage(error));
       setBusy(null);
@@ -261,7 +293,9 @@ export function PhotoEditor({
     setBusy("save");
     setProblem(null);
     try {
-      await onSave(history.marks.length ? await render(picture, history.marks, size) : null);
+      // Every earlier mark cleared: the same as taking the drawing off.
+      if (earlier && !history.marks.length && onRemoveDrawing) await onRemoveDrawing();
+      else await onSave(history.marks.length ? await render(picture, history.marks, size) : null, (path) => (keepsMarks ? packMarks(history.marks, size, path) : null));
     } catch (error) {
       setProblem(errorMessage(error));
       setBusy(null);
@@ -288,7 +322,7 @@ export function PhotoEditor({
     e.preventDefault();
   };
 
-  const nothing = !history.marks.length && !keepsBlank;
+  const nothing = !drawn && !keepsBlank;
   return (
     <dialog
       ref={dialog}
@@ -372,7 +406,7 @@ export function PhotoEditor({
         {problem ? <span className="grow small photo-editor-problem" role="alert">{problem}</span> : <span className="grow" />}
         {onRemoveDrawing && <Button variant="ghost" loading={busy === "remove"} disabled={busy === "save"} onClick={() => void removeDrawing()}>{t("Take the drawing off")}</Button>}
         <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void leave()}>{t("Cancel")}</Button>
-        <Button variant="primary" icon="check" loading={busy === "save"} disabled={(nothing || !picture) && !(keepsBlank && failed) || busy === "remove"} onClick={() => (failed && keepsBlank ? void onSave(null) : void save())}>
+        <Button variant="primary" icon="check" loading={busy === "save"} disabled={(nothing || !picture) && !(keepsBlank && failed) || busy === "remove"} onClick={() => (failed && keepsBlank ? void onSave(null, () => null) : void save())}>
           {saveLabel ?? t("Save")}
         </Button>
       </div>

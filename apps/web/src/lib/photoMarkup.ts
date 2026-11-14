@@ -7,7 +7,12 @@
  *
  * A photo drawn on as it's added to a visit goes through the phone's queue with its drawing
  * (lib/offlinePhotos.ts), so it works with no signal. Drawing on one that's already up needs signal.
+ *
+ * The marks themselves are kept on the row too (attachments.marks, named for the drawing they
+ * made), so drawing again starts from the photo as taken with the earlier marks on it, rather
+ * than from the flattened drawing (20261113001500_photo_marks.sql; core packMarks, unpackMarks).
  */
+import { unpackMarks, type SavedMarks } from "@crewtavo/core/photoMarkup";
 import { supabase, unwrap } from "./api";
 import { signedUrls, uploadOnce } from "./files";
 import { msg } from "./i18n";
@@ -45,15 +50,35 @@ export async function photoPicture(path: string): Promise<Blob> {
 }
 
 /**
+ * What the editor opens for a stored photo. One drawn on with its marks kept (and still the marks
+ * of the drawing it shows): the photo as taken, with those marks. Else what the photo shows: the
+ * photo itself, or a drawing from before marks were kept (or drawn again by an older app), which
+ * can only be added to.
+ */
+export async function photoToDrawOn(photo: MarkablePhoto): Promise<{ picture: Blob; original: boolean; marks?: { saved: unknown; path: string } }> {
+  if (photo.marked_path) {
+    // The row as it is now: the list on screen may be a moment old.
+    const row = await supabase().from("attachments").select("path, marked_path, marks").eq("id", photo.id).limit(1).then((r) => (r.error ? null : r.data?.[0]), () => null);
+    // Any size does to tell whether they can be used; the editor fits them to the picture it opens.
+    if (row?.marked_path && unpackMarks(row.marks, row.marked_path, { width: 1, height: 1 })) {
+      return { picture: await photoPicture(row.path), original: true, marks: { saved: row.marks, path: row.marked_path } };
+    }
+    return { picture: await photoPicture(row?.marked_path ?? photo.marked_path), original: false };
+  }
+  return { picture: await photoPicture(photo.path), original: true };
+}
+
+/**
  * Saves a drawing on a photo that's already up: the picture beside it, then the row pointing at
  * it (the old drawing, if any, goes to the Trash). A picture the row then can't take (someone else's
  * photo) is taken back off.
  */
-export async function saveMarkup(photo: Pick<MarkablePhoto, "id" | "path">, picture: Blob): Promise<string> {
+export async function saveMarkup(photo: Pick<MarkablePhoto, "id" | "path">, picture: Blob, marksFor?: (path: string) => SavedMarks | null): Promise<string> {
   const path = markedPathFor(photo.path);
   await uploadOnce(path, picture);
   try {
-    const rows = unwrap(await supabase().from("attachments").update({ marked_path: path }).eq("id", photo.id).select("id"));
+    // With the marks that made it (or none, so marks from an earlier drawing never outlive it).
+    const rows = unwrap(await supabase().from("attachments").update({ marked_path: path, marks: (marksFor?.(path) ?? null) as never }).eq("id", photo.id).select("id"));
     if (!rows.length) throw new Error(t("You can draw on photos you added. Ask the office to draw on this one."));
   } catch (error) {
     await supabase().storage.from("files").remove([path]).catch(() => undefined);
@@ -64,6 +89,6 @@ export async function saveMarkup(photo: Pick<MarkablePhoto, "id" | "path">, pict
 
 /** Takes the drawing off a photo: the original shows again, and the drawing goes to the Trash. */
 export async function removeMarkup(photo: Pick<MarkablePhoto, "id">): Promise<void> {
-  const rows = unwrap(await supabase().from("attachments").update({ marked_path: null }).eq("id", photo.id).select("id"));
+  const rows = unwrap(await supabase().from("attachments").update({ marked_path: null, marks: null }).eq("id", photo.id).select("id"));
   if (!rows.length) throw new Error(t("You can change photos you added. Ask the office to change this one."));
 }

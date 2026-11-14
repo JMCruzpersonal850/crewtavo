@@ -11,6 +11,7 @@ import {
   exportSize,
   extendStroke,
   fitInside,
+  historyFrom,
   keepsMark,
   layoutWords,
   leaveAnswer,
@@ -18,11 +19,14 @@ import {
   MARKUP_COLORS,
   MARKUP_MAX_SIDE,
   MARKUP_TOOLS,
+  packMarks,
   redo,
+  SAVED_MARKS_MAX,
   strokeWidth,
   textSize,
   toPicture,
   undo,
+  unpackMarks,
   type Mark,
   type MarkupContext,
 } from "../src/photoMarkup";
@@ -203,6 +207,52 @@ describe("undo and redo", () => {
   it("doesn't count a mark that isn't worth keeping as a step", () => {
     const h = addMark(emptyHistory(), { kind: "box", color: red, width: "thin", from: { x: 1, y: 1 }, to: { x: 1, y: 1 } });
     expect(h).toEqual(emptyHistory());
+  });
+});
+
+describe("the marks kept beside a photo", () => {
+  const photo = { width: 2000, height: 1500 };
+  const DRAWING = "c1/visit/v1/drawing-1.jpg";
+  const marks: Mark[] = [
+    { kind: "pen", color: red, width: "thin", points: [{ x: 10.4, y: 20.6 }, { x: 30.2, y: 41 }] },
+    { kind: "arrow", color: red, width: "thick", from: { x: 100, y: 100 }, to: { x: 400.5, y: 300 } },
+    { kind: "text", color: "#ffffff", width: "thin", at: { x: 500, y: 600.2 }, text: "Crack here" },
+  ];
+
+  it("come back as they were drawn, each still its own, for the drawing they made", () => {
+    const saved = packMarks(marks, photo, DRAWING)!;
+    expect(saved).toMatchObject({ v: 1, for: DRAWING, width: 2000, height: 1500 });
+    const back = unpackMarks(JSON.parse(JSON.stringify(saved)), DRAWING, photo)!;
+    expect(back).toHaveLength(3);
+    expect(back[0]).toEqual({ kind: "pen", color: red, width: "thin", points: [{ x: 10, y: 21 }, { x: 30, y: 41 }] });
+    expect(back[1]).toMatchObject({ kind: "arrow", from: { x: 100, y: 100 }, to: { x: 401, y: 300 } });
+    expect(back[2]).toMatchObject({ kind: "text", text: "Crack here" });
+    // Drawing again starts from them with nothing to undo, and one can still be taken off by drawing over and undoing.
+    const history = addMark(historyFrom(back), box(10));
+    expect(history.marks).toHaveLength(4);
+    expect(undo(history).marks).toBe(back);
+    expect(canUndo(historyFrom(back))).toBe(false);
+  });
+
+  it("aren't used for another drawing: an older app drew on the photo since, or took the drawing off", () => {
+    const saved = packMarks(marks, photo, DRAWING)!;
+    expect(unpackMarks(saved, "c1/visit/v1/drawing-2.jpg", photo)).toBeNull();
+    expect(unpackMarks(saved, null, photo)).toBeNull();
+  });
+
+  it("fit a picture opened at another size", () => {
+    const back = unpackMarks(packMarks(marks, photo, DRAWING), DRAWING, { width: 1000, height: 750 })!;
+    expect(back[1]).toMatchObject({ from: { x: 50, y: 50 }, to: { x: 200.5, y: 150 } });
+  });
+
+  it("aren't kept when there are none or far too many, and anything not as this app writes them is left alone", () => {
+    expect(packMarks([], photo, DRAWING)).toBeNull();
+    const scribble: Mark = { kind: "pen", color: red, width: "thin", points: Array.from({ length: 20_000 }, (_, i) => ({ x: i % 2000, y: (i * 7) % 1500 })) };
+    expect(JSON.stringify(scribble).length).toBeGreaterThan(SAVED_MARKS_MAX);
+    expect(packMarks([scribble], photo, DRAWING)).toBeNull();
+    for (const bad of [null, "marks", { v: 2, for: DRAWING, width: 2000, height: 1500, marks }, { v: 1, for: DRAWING, width: 0, height: 1500, marks }, { v: 1, for: DRAWING, width: 2000, height: 1500, marks: [{ kind: "pen", color: "red", width: "thin", points: [] }] }, { v: 1, for: DRAWING, width: 2000, height: 1500, marks: [{ kind: "stamp" }] }]) {
+      expect(unpackMarks(bad, DRAWING, photo)).toBeNull();
+    }
   });
 });
 

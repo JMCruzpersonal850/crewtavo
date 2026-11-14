@@ -1,12 +1,12 @@
 /**
  * Drawing on a stored photo, where photos are shown (a visit's Photos card, a job's or client's,
- * a quote's notes): the pen in the photo's corner opens the editor on what the photo shows (its
- * drawing, if it has one, so more can be added), and saves the drawing beside the original
- * (lib/photoMarkup.ts). "Original" opens the photo as taken.
+ * a quote's notes): the pen in the photo's corner opens the editor on the photo with what was
+ * drawn on it before (so more can be added, and earlier marks undone or cleared), and saves the
+ * drawing beside the original with its marks (lib/photoMarkup.ts). "Original" opens the photo as taken.
  */
 import { useState } from "react";
 import { hasRole, isSub, type Session } from "@/lib/session";
-import { photoPicture, removeMarkup, saveMarkup, shownPath, type MarkablePhoto } from "@/lib/photoMarkup";
+import { photoToDrawOn, removeMarkup, saveMarkup, type MarkablePhoto } from "@/lib/photoMarkup";
 import { toast } from "@/lib/toast";
 import { PhotoEditor } from "./PhotoEditor";
 import { Icon } from "./ui/Icon";
@@ -30,10 +30,10 @@ export function DrawOnPhoto({ photo, label, onSaved }: { photo: MarkablePhoto; l
       </button>
       {open && (
         <PhotoEditor
-          picture={() => photoPicture(shownPath(photo))}
+          picture={() => photoToDrawOn(photo)}
           onCancel={() => setOpen(false)}
-          onSave={async (drawn) => {
-            if (drawn) await saveMarkup(photo, drawn);
+          onSave={async (drawn, marks) => {
+            if (drawn) await saveMarkup(photo, drawn, marks);
             done(t("Drawing saved"));
           }}
           onRemoveDrawing={photo.marked_path ? async () => {

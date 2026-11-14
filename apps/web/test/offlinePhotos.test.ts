@@ -235,7 +235,9 @@ describe("a photo taken with no signal", () => {
     const app = await openApp(false);
     app.startPhotoQueue(app.queryClient, "u1", () => undefined);
     const drawn = new Blob([new Uint8Array(1_500)], { type: "image/jpeg" });
-    expect(await app.addVisitPhoto({ userId: "u1", companyId: "c1", visitId: "v1" }, photo(), drawn)).toBe(true);
+    // The marks that made the drawing go with it, named for the drawing's own path.
+    const marksFor = (path: string) => ({ v: 1 as const, for: path, width: 2000, height: 1500, marks: [{ kind: "box" as const, color: "#e5243b", width: "thin" as const, from: { x: 1, y: 2 }, to: { x: 30, y: 40 } }] });
+    expect(await app.addVisitPhoto({ userId: "u1", companyId: "c1", visitId: "v1" }, photo(), drawn, marksFor)).toBe(true);
     expect(app.phonePhotos()[0]!.marked).toMatchObject({ path: expect.stringMatching(/^c1\/visit\/v1\/[0-9a-f-]{36}\.jpg$/) });
 
     // Closed, and opened again in town: both come back off the phone and go up.
@@ -246,6 +248,7 @@ describe("a photo taken with no signal", () => {
     expect(row).toMatchObject({ owner_id: "v1", file_name: "gate.jpg", marked_path: expect.any(String) });
     expect(row!.marked_path).not.toBe(row!.path);
     expect(String(row!.marked_path).replace(/[^/]*$/, "")).toBe(String(row!.path).replace(/[^/]*$/, ""));
+    expect(row!.marks).toMatchObject({ v: 1, for: row!.marked_path, marks: [{ kind: "box" }] });
     expect(new Map(server.files)).toEqual(new Map([[row!.path, 2_000], [row!.marked_path, 1_500]]));
     expect(kept()).toEqual([]);
   });
@@ -256,6 +259,7 @@ describe("a photo taken with no signal", () => {
     await app.addVisitPhoto({ userId: "u1", companyId: "c1", visitId: "v1" }, photo(), null);
     await settled();
     expect(server.rows[0]).not.toHaveProperty("marked_path");
+    expect(server.rows[0]).not.toHaveProperty("marks");
     expect(server.files.size).toBe(1);
   });
 });

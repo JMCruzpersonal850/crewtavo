@@ -9,7 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const server = vi.hoisted(() => ({
   files: new Map<string, number>(),
-  rows: new Map<string, { id: string; path: string; marked_path: string | null }>(),
+  rows: new Map<string, { id: string; path: string; marked_path: string | null; marks?: unknown }>(),
+  /** The row can't be read just now. */
+  offline: false,
   removed: [] as string[],
   /** The row isn't the person's to change (attachments_update). */
   refuse: false,
@@ -38,6 +40,11 @@ vi.mock("../src/lib/api", () => ({
       }),
     },
     from: () => ({
+      select: () => ({
+        eq: (_k: string, id: string) => ({
+          limit: async () => (server.offline ? { data: null, error: { message: "Failed to fetch" } } : { data: server.rows.has(id) ? [{ ...server.rows.get(id)! }] : [], error: null }),
+        }),
+      }),
       update: (values: Record<string, unknown>) => ({
         eq: (_k: string, id: string) => ({
           select: async () => {
@@ -53,7 +60,9 @@ vi.mock("../src/lib/api", () => ({
   }),
 }));
 
-const { markedPathFor, photoLinks, photoPaths, photoPicture, removeMarkup, saveMarkup, shownPath } = await import("../src/lib/photoMarkup");
+const { markedPathFor, photoLinks, photoPaths, photoPicture, photoToDrawOn, removeMarkup, saveMarkup, shownPath } = await import("../src/lib/photoMarkup");
+const { packMarks } = await import("@crewtavo/core/photoMarkup");
+type Mark = import("@crewtavo/core/photoMarkup").Mark;
 
 const ORIGINAL = "c1/visit/v1/aa000000-0000-0000-0000-000000000001.jpg";
 beforeEach(() => {
@@ -62,6 +71,7 @@ beforeEach(() => {
   server.removed = [];
   server.updates = [];
   server.refuse = false;
+  server.offline = false;
   server.files.set(ORIGINAL, 3000);
   server.rows.set("p1", { id: "p1", path: ORIGINAL, marked_path: null });
 });
@@ -102,7 +112,7 @@ describe("what a photo shows", () => {
 describe("saving a drawing on a photo that's up", () => {
   it("uploads it beside the photo and points the photo at it, leaving the photo as it was", async () => {
     const path = await saveMarkup({ id: "p1", path: ORIGINAL }, new Blob([new Uint8Array(1200)], { type: "image/jpeg" }));
-    expect(server.rows.get("p1")).toEqual({ id: "p1", path: ORIGINAL, marked_path: path });
+    expect(server.rows.get("p1")).toEqual({ id: "p1", path: ORIGINAL, marked_path: path, marks: null });
     expect(server.files.get(path)).toBe(1200);
     expect(server.files.get(ORIGINAL)).toBe(3000);
   });
@@ -121,12 +131,79 @@ describe("saving a drawing on a photo that's up", () => {
   });
 });
 
+describe("drawing on a photo again", () => {
+  const BOX: Mark = { kind: "box", color: "#e5243b", width: "thin", from: { x: 10, y: 10 }, to: { x: 200, y: 150 } };
+  const ARROW: Mark = { kind: "arrow", color: "#e5243b", width: "thick", from: { x: 300, y: 300 }, to: { x: 500, y: 400 } };
+  const size = { width: 2000, height: 1500 };
+  const jpeg = (bytes: number) => new Blob([new Uint8Array(bytes)], { type: "image/jpeg" });
+
+  it("keeps the marks with the drawing, and opens the photo as taken with them the next time, however often it's drawn on", async () => {
+    // Nobody has drawn on it: the photo itself.
+    const first = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: null });
+    expect(first).toMatchObject({ original: true });
+    expect(first.marks).toBeUndefined();
+    expect(first.picture.size).toBe(3000);
+
+    const drawing = await saveMarkup({ id: "p1", path: ORIGINAL }, jpeg(1200), (path) => packMarks([BOX], size, path));
+    expect(server.rows.get("p1")!.marks).toMatchObject({ v: 1, for: drawing, marks: [BOX] });
+
+    // Drawn on again: the original (3000 bytes), never the flattened drawing (1200), with the box still a mark.
+    const second = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: drawing });
+    expect(second.original).toBe(true);
+    expect(second.picture.size).toBe(3000);
+    expect(second.marks).toEqual({ saved: server.rows.get("p1")!.marks, path: drawing });
+
+    const again = await saveMarkup({ id: "p1", path: ORIGINAL }, jpeg(1300), (path) => packMarks([BOX, ARROW], size, path));
+    const third = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: again });
+    expect(third.picture.size).toBe(3000);
+    expect((third.marks!.saved as { marks: Mark[] }).marks).toEqual([BOX, ARROW]);
+  });
+
+  it("goes by the row as it is now, not the list on screen", async () => {
+    const drawing = await saveMarkup({ id: "p1", path: ORIGINAL }, jpeg(1200), (path) => packMarks([BOX], size, path));
+    // The screen still thinks it shows an older drawing.
+    const opened = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: "c1/visit/v1/older.jpg" });
+    expect(opened.marks?.path).toBe(drawing);
+  });
+
+  it("opens the drawing itself, and keeps no marks over it, when its marks weren't kept or are another drawing's", async () => {
+    // Drawn on before marks were kept.
+    server.files.set("c1/visit/v1/m.jpg", 2000);
+    server.rows.get("p1")!.marked_path = "c1/visit/v1/m.jpg";
+    const old = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: "c1/visit/v1/m.jpg" });
+    expect(old).toMatchObject({ original: false });
+    expect(old.picture.size).toBe(2000);
+    expect(old.marks).toBeUndefined();
+
+    // Marks kept, then an app from before this drew on it again: a new drawing, the old marks left behind.
+    const drawing = await saveMarkup({ id: "p1", path: ORIGINAL }, jpeg(1200), (path) => packMarks([BOX], size, path));
+    server.files.set("c1/visit/v1/by-old-app.jpg", 1700);
+    server.rows.get("p1")!.marked_path = "c1/visit/v1/by-old-app.jpg";
+    const stale = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: "c1/visit/v1/by-old-app.jpg" });
+    expect(stale.original).toBe(false);
+    expect(stale.picture.size).toBe(1700);
+    expect(drawing).not.toBe("c1/visit/v1/by-old-app.jpg");
+
+    // Saved with no marks (the editor keeps none over a flattened drawing): none are left to mislead the next time.
+    await saveMarkup({ id: "p1", path: ORIGINAL }, jpeg(1800));
+    expect(server.rows.get("p1")!.marks).toBeNull();
+  });
+
+  it("still opens what the photo shows when the row can't be read", async () => {
+    server.files.set("c1/visit/v1/m.jpg", 2000);
+    server.offline = true;
+    const opened = await photoToDrawOn({ id: "p1", path: ORIGINAL, marked_path: "c1/visit/v1/m.jpg" });
+    expect(opened).toMatchObject({ original: false });
+    expect(opened.picture.size).toBe(2000);
+  });
+});
+
 describe("taking a drawing off", () => {
   it("points the photo back at the original (the database puts the drawing in the Trash)", async () => {
     server.rows.get("p1")!.marked_path = "c1/visit/v1/m.jpg";
     await removeMarkup({ id: "p1" });
     expect(server.rows.get("p1")!.marked_path).toBeNull();
-    expect(server.updates).toEqual([{ marked_path: null }]);
+    expect(server.updates).toEqual([{ marked_path: null, marks: null }]);
   });
 
   it("says so when the photo isn't theirs to change", async () => {
