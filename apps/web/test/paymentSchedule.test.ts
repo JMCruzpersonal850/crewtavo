@@ -74,18 +74,22 @@ describe("the job's payments", () => {
     expect(installmentState({ invoice: invoice("paid") }, null)).toEqual({ kind: "invoiced", invoice: invoice("paid") });
     expect(installmentState({ invoice: invoice("void") }, null)).toEqual({ kind: "voided", invoice: invoice("void") });
     expect(installmentState({ invoice: null }, null)).toEqual({ kind: "to_come" });
-    // Once the final invoice is made, what's not invoiced is on it.
-    expect(installmentState({ invoice: null }, final)).toEqual({ kind: "final", invoice: final });
-    expect(installmentState({ invoice: invoice("void") }, final)).toEqual({ kind: "final", invoice: final });
     expect(installmentState({ invoice: invoice("sent") }, final)).toEqual({ kind: "invoiced", invoice: invoice("sent") });
+    // The last payment's own invoice is the final invoice: it reads as its invoice.
+    expect(installmentState({ invoice: { ...invoice("sent"), id: "f1", number: 15 } }, final)).toEqual({ kind: "invoiced", invoice: { ...invoice("sent"), id: "f1", number: 15 } });
+    // A final invoice made while several payments had none billed them together: they're on it.
+    expect(installmentState({ invoice: { ...invoice("sent"), id: "f1", number: 15 } }, final, true)).toEqual({ kind: "final", invoice: final });
+    expect(installmentState({ invoice: null }, final)).toEqual({ kind: "final", invoice: final });
+    // One whose own invoice was voided reads as voided, final invoice or not.
+    expect(installmentState({ invoice: invoice("void") }, final)).toEqual({ kind: "voided", invoice: invoice("void") });
   });
 
-  it("offers Invoice now for a payment to come or voided, never for the final invoice's own", () => {
-    expect(canInvoiceNow({ due: "date" }, { kind: "to_come" })).toBe(true);
-    expect(canInvoiceNow({ due: "by_hand" }, { kind: "voided", invoice: invoice("void") })).toBe(true);
-    expect(canInvoiceNow({ due: "work_done" }, { kind: "to_come" })).toBe(false);
-    expect(canInvoiceNow({ due: "approval" }, { kind: "invoiced", invoice: invoice("sent") })).toBe(false);
-    expect(canInvoiceNow({ due: "date" }, { kind: "final", invoice: final })).toBe(false);
+  it("offers Invoice now for a payment to come or voided, the one for when the work is done too, until the job has its final invoice", () => {
+    expect(canInvoiceNow({ kind: "to_come" }, null)).toBe(true);
+    expect(canInvoiceNow({ kind: "voided", invoice: invoice("void") }, null)).toBe(true);
+    expect(canInvoiceNow({ kind: "invoiced", invoice: invoice("sent") }, null)).toBe(false);
+    expect(canInvoiceNow({ kind: "final", invoice: final }, final)).toBe(false);
+    expect(canInvoiceNow({ kind: "voided", invoice: invoice("void") }, final)).toBe(false);
   });
 });
 

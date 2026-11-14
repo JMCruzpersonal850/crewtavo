@@ -2,9 +2,11 @@
 -- it's saved, its deposit follows it, copies and templates carry it, approving keeps each payment's
 -- amount, and the job made from it makes each payment's invoice once when its moment comes (a
 -- trigger as the work starts, the hourly run for dates), as a draft the office is told about or sent
--- by itself, never twice, made again by hand after a void, with the final invoice taking each off and
--- the tax coming out right. Autopay charges none of them, and the server before this one approving
--- a quote with a schedule gets the deposit it always got.
+-- by itself, never twice, made again by hand after a void, each for the amount signed with the last
+-- of them the job's final invoice, which takes the others off and carries the tax
+-- (20261113001600_scheduled_payments_bill_what_was_signed.sql; payment_shapes_test.sql runs every
+-- shape). Autopay charges none of them, and the server before this one approving a quote with a
+-- schedule gets the deposit it always got.
 -- Run with scripts/test-db.sh (plain Postgres + prelude.sql). Any failed check stops with an error.
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -235,15 +237,16 @@ select tps.check(:'date_again' <> :'date_invoice' and (select total = 200 and st
   'the office makes it again by hand');
 select tps.check(tps.error_of(format('select public.invoice_installment(%L)', tps.row_id(:'job', 2))) = (select format('22023: Payment 2 of 5 is on invoice #%s already', number) from public.invoices where id = :'date_again'),
   'but never twice');
-select tps.check(tps.error_of(format('select public.invoice_installment(%L)', tps.row_id(:'job', 5))) = '22023: Payment 5 of 5 is the job''s final invoice. Make it with Invoice once the work is done',
-  'the last payment is the final invoice');
 select public.invoice_installment(tps.row_id(:'job', 4)) as by_hand \gset
--- The final invoice takes each payment off and bills what's left.
+select tps.check((select kind = 'progress' and total = 200 and tax_amount = 0 and subject = 'Payment 4 of 5: Back patio' from public.invoices where id = :'by_hand')
+  and (select name = 'Payment 4 of 5 for Back patio' and description = 'Part of the $1,000.00 total' and not taxable from public.invoice_line_items where invoice_id = :'by_hand'),
+  'a payment before the last is an invoice on account for its amount, named for it');
+-- The last payment without an invoice is the job's final invoice: it takes each of the others off.
 select public.create_invoice_for_job(:'job') as final \gset
 commit;
 select tps.check((select total = 200 from public.invoices where id = :'final')
-  and (select string_agg(name, ', ' order by sort) from public.invoice_line_items where invoice_id = :'final' and unit_price < 0) like 'Less deposit (invoice #%), Less progress billing (invoice #%), Less progress billing (invoice #%), Less progress billing (invoice #%)',
-  'the final invoice takes off the deposit and the three payments billed (not the voided one) and bills the last $200');
+  and (select string_agg(name, ', ' order by sort) from public.invoice_line_items where invoice_id = :'final' and unit_price < 0) like 'Less payment 1 of 5 (invoice #%), Less payment 3 of 5 (invoice #%), Less payment 2 of 5 (invoice #%), Less payment 4 of 5 (invoice #%)',
+  'the final invoice takes off the four payments billed, by name and in the order of their invoices (not the voided one), and bills the last $200');
 select tps.check(tps.rows(:'job') = '1:200.00:approval:deposit/200.00/sent, 2:200.00:date:progress/200.00/draft, 3:200.00:work_starts:progress/200.00/draft, 4:200.00:by_hand:progress/200.00/draft, 5:200.00:work_done:standard/200.00/draft',
   'the last payment is the final invoice');
 select tps.check((select sum(total) = 1000 from public.invoices where job_id = :'job' and status <> 'void'), 'and together they come to the quote''s total');
@@ -272,8 +275,9 @@ select tps.check(tps.rows(:'pjob') = '1:330.00:approval:deposit/330.00/draft, 2:
   'the office''s Deposit button makes the payment due at approval, untaxed as deposits are');
 insert into public.visits (company_id, job_id, title, scheduled_on, status) values (:'co', :'pjob', 'Build', private.company_today(:'co'), 'in_progress');
 select invoice_id as pstart from public.job_installments where id = tps.row_id(:'pjob', 2) \gset
-select tps.check((select subtotal = 300 and tax_amount = 30 and total = 330 from public.invoices where id = :'pstart'),
-  'a progress payment bills its amount before tax, so with the tax it comes to the payment');
+select tps.check((select subtotal = 330 and tax_amount = 0 and total = 330 from public.invoices where id = :'pstart')
+  and (select description = 'Part of the $1,100.00 total, tax included' from public.invoice_line_items where invoice_id = :'pstart'),
+  'a payment before the last bills its amount, tax included, with no tax of its own, and says so');
 select tps.check((select send_state = 'waiting' from public.job_installments where id = tps.row_id(:'pjob', 2))
   and tps.told('Payment 2 of 3 for job #%') is null, 'with "send by themselves" on it waits for the server to send it, and nobody is told it''s ready');
 set role service_role;
@@ -291,9 +295,9 @@ set local role authenticated;
 select tps.as_user(:'olly');
 select public.create_invoice_for_job(:'pjob') as pfinal \gset
 commit;
-select tps.check((select subtotal = 370 and tax_amount = 70 and total = 440 from public.invoices where id = :'pfinal')
+select tps.check((select subtotal = 340 and tax_amount = 100 and total = 440 from public.invoices where id = :'pfinal')
   and (select sum(total) = 1100 and sum(tax_amount) = 100 from public.invoices where job_id = :'pjob'),
-  'the final invoice takes the deposit off untaxed and the progress payment taxed: the rest is $440, and the job''s tax is $100');
+  'the final invoice takes both payments off and carries the job''s tax: the rest is $440, and the job''s tax is $100');
 
 -- A job whose final invoice comes first: the payments still to come are on it.
 begin;
@@ -311,9 +315,27 @@ commit;
 set role service_role;
 select tps.check(public.make_due_installments() = 0, 'a date payment after the final invoice isn''t made');
 reset role;
-select tps.check((select made_at is not null and problem = format('The final invoice (#%s) bills it', (select number from public.invoices where id = :'pitfinal'))
-                    from public.job_installments where id = tps.row_id(:'pitjob', 1))
-  and (select total = 500 from public.invoices where id = :'pitfinal'), 'the final invoice billed it, and says so');
+select tps.check((select count(*) = 2 and bool_and(invoice_id = :'pitfinal' and problem is null) from public.job_installments where job_id = :'pitjob')
+  and (select total = 500 from public.invoices where id = :'pitfinal'), 'the final invoice billed it, so both payments are on that invoice');
+-- Voiding that final invoice frees both payments: nothing is written on them, the one whose date has
+-- passed isn't made by itself, and each is invoiced again by hand for what was signed.
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+update public.invoices set status = 'void' where id = :'pitfinal';
+commit;
+set role service_role;
+select tps.check(public.make_due_installments() = 0, 'after the final invoice is voided, a payment it billed isn''t made again by itself');
+reset role;
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+select public.invoice_installment(tps.row_id(:'pitjob', 1)) as pit_one \gset
+select public.invoice_installment(tps.row_id(:'pitjob', 2)) as pit_two \gset
+commit;
+select tps.check(tps.rows(:'pitjob') = '1:250.00:date:progress/250.00/draft, 2:250.00:work_done:standard/250.00/draft'
+  and (select count(*) = 0 from public.job_installments where job_id = :'pitjob' and problem is not null),
+  'and each is invoiced again by hand, the payment for when the work is done included: $250 on account, then the final invoice for $250');
 
 -- Autopay is as it was: it charges the invoices it makes itself (the final one, as the work is marked
 -- complete), never a progress invoice, so a payment's invoice queues no charge.
@@ -360,7 +382,7 @@ select public.convert_quote_to_job(:'steps') as sjob \gset
 select public.create_invoice_for_job(:'sjob', 'progress', 400) as sall \gset
 commit;
 insert into public.visits (company_id, job_id, title, scheduled_on, status) values (:'co', :'sjob', 'Steps', private.company_today(:'co'), 'completed');
-select tps.check((select invoice_id is null and made_at is not null and problem = 'Nothing is left to bill on this job before its final invoice' from public.job_installments where id = tps.row_id(:'sjob', 2))
+select tps.check((select invoice_id is null and made_at is not null and problem = 'That''s more than what''s left to bill on this job ($0.00)' from public.job_installments where id = tps.row_id(:'sjob', 2))
   and (select count(*) = 2 from public.notifications where title = format('Payment 2 of 2 for job #%s couldn''t be invoiced', (select number from public.jobs where id = :'sjob'))),
   'a payment with nothing left to bill is noted, and the owner and office are told');
 set role service_role;

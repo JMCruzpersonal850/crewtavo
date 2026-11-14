@@ -3,7 +3,8 @@
  * 20261113001100_payment_schedules.sql): each payment, when it's due, and where it is: to come, its
  * invoice (and whether it's paid), or on the final invoice. The office can invoice one early, or
  * again after its invoice was voided ("Invoice now"); the database makes each once, so pressing it
- * twice says which invoice it's on.
+ * twice says which invoice it's on. Each invoice is for the amount signed, and the last payment to
+ * be invoiced is the job's final invoice (20261113001600_scheduled_payments_bill_what_was_signed.sql).
  */
 import { scheduleDueText, schedulePaymentName } from "@crewtavo/core/money";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,18 +32,24 @@ export type InstallmentState =
   | { kind: "to_come" };
 
 /**
- * Where a payment is: its invoice; voided (to invoice again by hand); on the job's final invoice,
- * which bills what's left once it's made; or still to come.
+ * Where a payment is: its invoice; on the job's final invoice along with others (that invoice was
+ * made while several had none, so it billed them together); voided (to invoice again by hand); or
+ * still to come. `shared`: another payment has the same invoice.
  */
-export function installmentState(row: Pick<InstallmentRow, "invoice">, finalInvoice: { id: string; number: number | null } | null): InstallmentState {
-  if (row.invoice && row.invoice.status !== "void") return { kind: "invoiced", invoice: row.invoice };
-  if (finalInvoice) return { kind: "final", invoice: finalInvoice };
+export function installmentState(row: Pick<InstallmentRow, "invoice">, finalInvoice: { id: string; number: number | null } | null, shared = false): InstallmentState {
+  if (row.invoice && row.invoice.status !== "void") {
+    return shared && finalInvoice?.id === row.invoice.id ? { kind: "final", invoice: finalInvoice } : { kind: "invoiced", invoice: row.invoice };
+  }
   if (row.invoice) return { kind: "voided", invoice: row.invoice };
+  if (finalInvoice) return { kind: "final", invoice: finalInvoice };
   return { kind: "to_come" };
 }
 
-/** Whether "Invoice now" is offered: not for the final invoice's own payment, and not once it's invoiced or on the final invoice. */
-export const canInvoiceNow = (row: Pick<InstallmentRow, "due">, state: InstallmentState) => row.due !== "work_done" && (state.kind === "to_come" || state.kind === "voided");
+/**
+ * Whether "Invoice now" is offered: for a payment to come or one whose invoice was voided, until
+ * the job has its final invoice (that one bills what's left, so it's voided first).
+ */
+export const canInvoiceNow = (state: InstallmentState, finalInvoice: { id: string } | null) => !finalInvoice && (state.kind === "to_come" || state.kind === "voided");
 
 export function JobPaymentSchedule({ jobId, finalInvoice }: { jobId: string; finalInvoice: { id: string; number: number | null } | null }) {
   const queryClient = useQueryClient();
@@ -72,7 +79,8 @@ export function JobPaymentSchedule({ jobId, finalInvoice }: { jobId: string; fin
     <div className="card card-pad stack-sm">
       <strong>Payment schedule</strong>
       {rows.data.map((row) => {
-        const state = installmentState(row, finalInvoice);
+        const shared = !!row.invoice && rows.data.some((other) => other.id !== row.id && other.invoice?.id === row.invoice?.id);
+        const state = installmentState(row, finalInvoice, shared);
         return (
           <div key={row.id} className="stack-sm" style={{ gap: 4, paddingTop: 6, borderTop: "1px solid var(--divider)" }}>
             <div className="row-between">
@@ -91,11 +99,11 @@ export function JobPaymentSchedule({ jobId, finalInvoice }: { jobId: string; fin
               ) : state.kind === "voided" ? (
                 <span className="muted">Invoice #{state.invoice.number} was voided</span>
               ) : (
-                <span className="muted">{row.due === "work_done" ? "The final invoice" : "To come"}</span>
+                <span className="muted">To come</span>
               )}
             </div>
             {row.problem && state.kind !== "invoiced" && state.kind !== "final" && <span className="small text-danger">{row.problem}</span>}
-            {canInvoiceNow(row, state) && (
+            {canInvoiceNow(state, finalInvoice) && (
               <Button size="sm" variant="ghost" style={{ justifySelf: "start" }} loading={invoiceNow.isPending && invoiceNow.variables === row.id} onClick={() => invoiceNow.mutate(row.id)}>
                 {state.kind === "voided" ? "Invoice it again" : "Invoice now"}
               </Button>

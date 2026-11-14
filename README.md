@@ -355,8 +355,10 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   approves, batch invoicing, payment reminders, deposits, progress billing and retainage. A quote's
   payment schedule carries to its job: each payment becomes a draft invoice when its date comes
   (where you are), when the work starts, or when you press Invoice now, once each, and the office is
-  told it's ready to send, or it's sent by itself if you turn that on. The final invoice takes off
-  what was billed before it and bills the rest. The job shows each payment and where it is. A one-off
+  told it's ready to send, or it's sent by itself if you turn that on. Each invoice is for the amount
+  the client signed, tax included; the last payment to be invoiced is the job's final invoice, which
+  takes off the others and carries the tax, so together they come to the quote's total and nothing
+  more needs invoicing. The job shows each payment and where it is. A one-off
   job moves to Requires invoicing when its last visit is finished, and the office is told. Extra
   work on one visit of a recurring job (mulch, an aeration, a storm cleanup) is added to that visit
   by the office or by the crew on site, and billed once with it, without changing the job's price.
