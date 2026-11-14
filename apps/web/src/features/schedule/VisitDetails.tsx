@@ -182,7 +182,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
               {office && v.job && <Link className="btn" to={`/jobs/${v.job.id}`} onClick={onClose}><Icon name="job" size={16} />{t("Open job")}</Link>}
               {/* A finished visit's before and after photos, on a page to share (Marketing → Showcases). */}
               {showcases && v.job && v.status === "completed" && (
-                <Link className="btn" to={`/marketing?tab=showcases&job=${v.job.id}&visit=${v.id}`} onClick={onClose}><Icon name="image" size={16} />Make a showcase</Link>
+                <Link className="btn" to={`/marketing?tab=showcases&job=${v.job.id}&visit=${v.id}`} onClick={onClose}><Icon name="image" size={16} />{t("Make a showcase")}</Link>
               )}
               {!office && <Link className="btn" to={`/field/visits/${v.id}`} onClick={onClose}><Icon name="clipboard" size={16} />{t("Open visit")}</Link>}
             </div>

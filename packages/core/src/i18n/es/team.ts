@@ -384,6 +384,7 @@ export default {
   "Gate": "Portón",
   "Open job": "Abrir trabajo",
   "Open visit": "Abrir visita",
+  "Make a showcase": "Hacer una muestra del trabajo",
   "Someone": "Alguien",
 
   // Timesheets (features/timesheets)
