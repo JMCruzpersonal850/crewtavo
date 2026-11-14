@@ -6,6 +6,7 @@
  *   @everyone    everyone who can see the channel (only its managers can ping with it)
  * People type and read "@Marcus Reyes"; the composer swaps names for tokens as it sends.
  */
+import { msg } from "./i18n";
 import { ROLE_LABELS, isRole, type Role } from "./roles";
 
 /** Name colors a role can have in chat. The web app maps each to a light and a dark shade. */
@@ -24,9 +25,9 @@ export const isChatColor = (value: unknown): value is ChatColor => CHAT_COLORS.s
 
 /** Reactions: words people tap, not emoji. */
 export const CHAT_REACTIONS = [
-  { key: "thumbs_up", label: "Thumbs up" },
-  { key: "on_it", label: "On it" },
-  { key: "seen", label: "Seen" },
+  { key: "thumbs_up", label: msg("Thumbs up") },
+  { key: "on_it", label: msg("On it") },
+  { key: "seen", label: msg("Seen") },
 ] as const;
 export type ChatReaction = (typeof CHAT_REACTIONS)[number]["key"];
 export const isChatReaction = (value: unknown): value is ChatReaction => CHAT_REACTIONS.some((r) => r.key === value);

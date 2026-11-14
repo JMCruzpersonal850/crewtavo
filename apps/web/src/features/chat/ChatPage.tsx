@@ -22,6 +22,7 @@ import { MembersPanel, PersonDialog } from "./Members";
 import { MessageItem, MessageText, type MessageContext } from "./MessageItem";
 import { ChannelIcon, channelLabel, dayLabel, isNewDay, startsGroup, timeLabel } from "./ui";
 import s from "./chat.module.css";
+import { t } from "@/lib/i18n";
 
 const LAST_CHANNEL = "crewtavo.chat.channel";
 const MEMBERS_OPEN = "crewtavo.chat.members";
@@ -56,7 +57,7 @@ export function ChatPage() {
   const on = chatOn(session);
   const channels = state.data?.channels ?? [];
   const channel = channels.find((c) => c.id === channelId);
-  useDocumentTitle(channel ? channelLabel(channel) : "Team chat");
+  useDocumentTitle(channel ? channelLabel(channel) : t("Team chat"));
 
   // On a computer, /chat opens the channel you had open last (or the first one).
   useEffect(() => {
@@ -85,16 +86,16 @@ export function ChatPage() {
       {channel ? (
         <Conversation key={channel.id} channel={channel} state={state.data!} around={around} membersOpen={membersOpen} onToggleMembers={toggleMembers} />
       ) : (
-        <section className={s.conversation} aria-label="Channel">
+        <section className={s.conversation} aria-label={t("Channel")}>
           {state.isPending ? (
-            <Loading label="Loading chat" className="stack" >
+            <Loading label={t("Loading chat")} className="stack" >
               <div style={{ padding: 24 }} className="stack-sm"><Skeleton width={220} height={22} /><Skeleton width="60%" height={14} /></div>
             </Loading>
           ) : channelId ? (
-            <EmptyState icon="hash" title="That channel isn't here" action={<Link className="btn" to="/chat">See your channels</Link>}>It may have been archived, or your role can't see it.</EmptyState>
+            <EmptyState icon="hash" title={t("That channel isn't here")} action={<Link className="btn" to="/chat">{t("See your channels")}</Link>}>{t("It may have been archived, or your role can't see it.")}</EmptyState>
           ) : (
-            <EmptyState icon="chat" title={channels.length ? "Pick a channel" : "No channels yet"}>
-              {channels.length ? "Choose one on the left to start talking." : "Ask an owner or admin to add one in Chat settings."}
+            <EmptyState icon="chat" title={channels.length ? t("Pick a channel") : t("No channels yet")}>
+              {channels.length ? t("Choose one on the left to start talking.") : t("Ask an owner or admin to add one in Chat settings.")}
             </EmptyState>
           )}
         </section>
@@ -109,8 +110,8 @@ function ChatOff() {
   const canTurnOn = hasRole(session, "admin") && can(session, "apps");
   return (
     <div className="card" style={{ margin: "24px auto", maxWidth: 560 }}>
-      <EmptyState icon="chat" title="Team chat is off" action={canTurnOn ? <Link className="btn btn-primary" to="/apps/team_chat">Install it from Apps</Link> : undefined}>
-        {canTurnOn ? "Channels for the whole team, each crew and the office, with photos and @mentions." : "Ask an owner or admin to install Team chat from Apps."}
+      <EmptyState icon="chat" title={t("Team chat is off")} action={canTurnOn ? <Link className="btn btn-primary" to="/apps/team_chat">{t("Install it from Apps")}</Link> : undefined}>
+        {canTurnOn ? t("Channels for the whole team, each crew and the office, with photos and @mentions.") : t("Ask an owner or admin to install Team chat from Apps.")}
       </EmptyState>
     </div>
   );
@@ -141,18 +142,18 @@ function ChannelList({ state, current }: { state: ChatState | undefined; current
     store(COLLAPSED, next);
   };
   return (
-    <aside className={s.side} aria-label="Channels">
+    <aside className={s.side} aria-label={t("Channels")}>
       <div className={s.sideHead}>
         {/* On a phone the top bar already names the business. */}
         <span className={`${s.sideTitle} hide-mobile`}>{session.company.name}</span>
-        <span className={`${s.sideTitle} mobile-only`}>Team chat</span>
+        <span className={`${s.sideTitle} mobile-only`}>{t("Team chat")}</span>
         {state?.me?.admin && (
-          <Link to="/chat/settings" className="icon-btn" aria-label="Chat settings" title="Chat settings"><Icon name="settings" size={20} /></Link>
+          <Link to="/chat/settings" className="icon-btn" aria-label={t("Chat settings")} title={t("Chat settings")}><Icon name="settings" size={20} /></Link>
         )}
       </div>
-      <nav className={s.sideList} aria-label="Channels">
+      <nav className={s.sideList} aria-label={t("Channels")}>
         {!state && (
-          <Loading label="Loading channels" className="stack-sm">
+          <Loading label={t("Loading channels")} className="stack-sm">
             {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={30} />)}
           </Loading>
         )}
@@ -175,7 +176,7 @@ function ChannelList({ state, current }: { state: ChatState | undefined; current
                   >
                     <ChannelIcon channel={c} />
                     <span className={s.channelName}>{c.name}</span>
-                    {!c.can_post && !c.archived && c.kind !== "announcement" && <Icon name="eye" size={14} label="Read only" />}
+                    {!c.can_post && !c.archived && c.kind !== "announcement" && <Icon name="eye" size={14} label={t("Read only")} />}
                     {c.mentions > 0 && c.id !== current && <span className="badge badge-red">{c.mentions}</span>}
                   </NavLink>
                 </div>
@@ -183,7 +184,7 @@ function ChannelList({ state, current }: { state: ChatState | undefined; current
             </div>
           );
         })}
-        {state && !state.me?.admin && <p className={s.sideNote}>You see the channels your role allows. Ask an owner or admin if one is missing.</p>}
+        {state && !state.me?.admin && <p className={s.sideNote}>{t("You see the channels your role allows. Ask an owner or admin if one is missing.")}</p>}
       </nav>
     </aside>
   );
@@ -271,8 +272,8 @@ function Conversation({ channel, state, around, membersOpen, onToggleMembers }: 
       .map((m) => ({ kind: "user" as const, label: m.name, token: userToken(m.id), avatar: m.avatar_color, photo: m.avatar_url, hint: m.role_label }));
     const roles = state.roles
       .filter((r) => r.key !== "owner" && (r.mentionable || trusted))
-      .map((r) => ({ kind: "role" as const, label: r.label, token: roleToken(r.key), color: r.color, hint: "Role" }));
-    const everyone = channel.can_manage ? [{ kind: "everyone" as const, label: "everyone", token: EVERYONE_TOKEN, hint: "Everyone in this channel" }] : [];
+      .map((r) => ({ kind: "role" as const, label: r.label, token: roleToken(r.key), color: r.color, hint: t("Role") }));
+    const everyone = channel.can_manage ? [{ kind: "everyone" as const, label: t("everyone"), token: EVERYONE_TOKEN, hint: t("Everyone in this channel") }] : [];
     return [...people, ...roles, ...everyone];
   }, [members.data, state.roles, me, trusted, channel.can_manage]);
 
@@ -323,19 +324,19 @@ function Conversation({ channel, state, around, membersOpen, onToggleMembers }: 
     <>
     <section className={s.conversation} aria-label={channelLabel(channel)}>
       <header className={s.convHead}>
-        <Link to="/chat" className={`icon-btn ${s.back}`} aria-label="All channels"><Icon name="arrowLeft" size={20} /></Link>
+        <Link to="/chat" className={`icon-btn ${s.back}`} aria-label={t("All channels")}><Icon name="arrowLeft" size={20} /></Link>
         <div className={s.convTitle}>
           <ChannelIcon channel={channel} size={20} />
           <h1>{channel.name}</h1>
         </div>
         {channel.can_manage ? (
-          <button type="button" className={s.convTopic} onClick={() => setTopicOpen(true)} title="Change the topic">{channel.topic || "Add a topic"}</button>
+          <button type="button" className={s.convTopic} onClick={() => setTopicOpen(true)} title={t("Change the topic")}>{channel.topic || t("Add a topic")}</button>
         ) : (
           channel.topic && <p className={s.convTopic}>{channel.topic}</p>
         )}
         <div className={s.convTools}>
-          <button type="button" className="icon-btn" aria-label="Pinned messages" title="Pinned messages" onClick={() => setPinsOpen(true)}><Icon name="pushpin" size={20} /></button>
-          <button type="button" className={`icon-btn${membersOpen ? ` ${s.toolOn}` : ""}`} aria-label={membersOpen ? "Hide the member list" : `Members${membersCount ? ` (${membersCount})` : ""}`} aria-pressed={membersOpen} title="Members" onClick={onToggleMembers}>
+          <button type="button" className="icon-btn" aria-label={t("Pinned messages")} title={t("Pinned messages")} onClick={() => setPinsOpen(true)}><Icon name="pushpin" size={20} /></button>
+          <button type="button" className={`icon-btn${membersOpen ? ` ${s.toolOn}` : ""}`} aria-label={membersOpen ? t("Hide the member list") : membersCount ? t("Members ({count})", { count: membersCount }) : t("Members")} aria-pressed={membersOpen} title={t("Members")} onClick={onToggleMembers}>
             <Icon name="users" size={20} />
           </button>
         </div>
@@ -344,10 +345,10 @@ function Conversation({ channel, state, around, membersOpen, onToggleMembers }: 
       <div className={s.scroller} ref={scroller}>
         <div className={s.messages}>
           <div ref={top} />
-          {messages.isFetchingNextPage && <span className="muted small" style={{ alignSelf: "center", margin: 8 }}>Loading older messages…</span>}
+          {messages.isFetchingNextPage && <span className="muted small" style={{ alignSelf: "center", margin: 8 }}>{t("Loading older messages…")}</span>}
           {messages.error && <div style={{ padding: 16 }}><ErrorState compact error={messages.error} onRetry={() => messages.refetch()} /></div>}
           {messages.isPending && (
-            <Loading label="Loading messages" className="stack" >
+            <Loading label={t("Loading messages")} className="stack" >
               <div style={{ padding: "16px" }} className="stack">
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="row" style={{ gap: 14, alignItems: "flex-start" }}>
@@ -361,8 +362,8 @@ function Conversation({ channel, state, around, membersOpen, onToggleMembers }: 
           {atStart && !around && (
             <div className={s.welcome}>
               <span className={s.welcomeIcon}><ChannelIcon channel={channel} size={30} /></span>
-              <h2>Welcome to {channelLabel(channel)}</h2>
-              <p>This is the start of {channelLabel(channel)}.{channel.topic ? ` ${channel.topic}` : ""}</p>
+              <h2>{t("Welcome to {channel}", { channel: channelLabel(channel) })}</h2>
+              <p>{t("This is the start of {channel}.", { channel: channelLabel(channel) })}{channel.topic ? ` ${channel.topic}` : ""}</p>
             </div>
           )}
           {all.map((m, i) => {
@@ -372,13 +373,13 @@ function Conversation({ channel, state, around, membersOpen, onToggleMembers }: 
             return (
               <div key={m.id} style={{ display: "contents" }}>
                 {day && <div className={s.day} role="separator">{dayLabel(m.created_at)}</div>}
-                {fresh && <div className={s.newLine} role="separator" aria-label="New messages"><span>New</span></div>}
+                {fresh && <div className={s.newLine} role="separator" aria-label={t("New messages")}><span>{t("New")}</span></div>}
                 <MessageItem message={m} head={day || fresh || startsGroup(prev, m) || Boolean(m.reply)} flash={flash === m.id} ctx={ctx} />
               </div>
             );
           })}
           {around && (
-            <Button className={s.jumpLatest} size="sm" variant="dark" icon="arrowRight" onClick={() => navigate(`/chat/${channel.id}`, { replace: true })}>Jump to the latest</Button>
+            <Button className={s.jumpLatest} size="sm" variant="dark" icon="arrowRight" onClick={() => navigate(`/chat/${channel.id}`, { replace: true })}>{t("Jump to the latest")}</Button>
           )}
         </div>
       </div>
@@ -409,15 +410,15 @@ function Conversation({ channel, state, around, membersOpen, onToggleMembers }: 
 function PinsDialog({ open, channel, ctx, onClose }: { open: boolean; channel: ChatChannel; ctx: MessageContext; onClose: () => void }) {
   const pins = usePins(channel.id, open);
   return (
-    <Dialog open={open} onClose={onClose} title="Pinned messages" description={channel.can_manage ? "Pin a message from its menu (···) to keep it here." : undefined}>
+    <Dialog open={open} onClose={onClose} title={t("Pinned messages")} description={channel.can_manage ? t("Pin a message from its menu (···) to keep it here.") : undefined}>
       <div className="dialog-body">
-        {pins.isPending && <span className="muted">Loading…</span>}
-        {pins.data?.length === 0 && <EmptyState compact icon="pushpin" title="Nothing pinned yet">Important messages, like gate codes or a change of plan, can be pinned to the channel.</EmptyState>}
+        {pins.isPending && <span className="muted">{t("Loading…")}</span>}
+        {pins.data?.length === 0 && <EmptyState compact icon="pushpin" title={t("Nothing pinned yet")}>{t("Important messages, like gate codes or a change of plan, can be pinned to the channel.")}</EmptyState>}
         <div className={s.pinList}>
           {pins.data?.map((m) => (
             <button key={m.id} type="button" className={s.pinItem} onClick={() => { ctx.onJumpTo(m.id); onClose(); }}>
               <span className="small"><strong>{m.author?.name ?? "Crewtavo"}</strong> <span className="muted">{dayLabel(m.created_at)}, {timeLabel(m.created_at)}</span></span>
-              <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body ? <MessageText body={m.body} ctx={ctx} /> : m.attachments.length ? "Photo" : "Job"}</span>
+              <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body ? <MessageText body={m.body} ctx={ctx} /> : m.attachments.length ? t("Photo") : t("Job")}</span>
             </button>
           ))}
         </div>
@@ -449,13 +450,13 @@ function TopicDialog({ open, channel, onClose }: { open: boolean; channel: ChatC
     }
   };
   return (
-    <Dialog open={open} onClose={onClose} title={`Topic for ${channelLabel(channel)}`} size="sm">
+    <Dialog open={open} onClose={onClose} title={t("Topic for {channel}", { channel: channelLabel(channel) })} size="sm">
       <form className="dialog-body stack-sm" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-        <textarea className="textarea" value={topic} maxLength={300} rows={3} onChange={(e) => setTopic(e.target.value)} aria-label="Topic" placeholder="What this channel is for" />
+        <textarea className="textarea" value={topic} maxLength={300} rows={3} onChange={(e) => setTopic(e.target.value)} aria-label={t("Topic")} placeholder={t("What this channel is for")} />
         {error && <span className="field-error">{error}</span>}
         <div className="row" style={{ justifyContent: "flex-end" }}>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={saving}>Save</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" loading={saving}>{t("Save")}</Button>
         </div>
       </form>
     </Dialog>

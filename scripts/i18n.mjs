@@ -31,6 +31,9 @@ export const COVERED = [
   "apps/web/src/features/auth/LoginPage.tsx",
   "apps/web/src/features/auth/textCode.ts",
   "apps/web/src/features/settings/Language.tsx",
+  // Team chat, and reading guides.
+  ...["ChatPage.tsx", "MessageItem.tsx", "Composer.tsx", "Members.tsx", "ui.tsx", "data.ts"].map((f) => `apps/web/src/features/chat/${f}`),
+  ...["KnowledgeBasePage.tsx", "SopPage.tsx", "GuideContents.tsx", "QuizDialog.tsx", "GuideFeedback.tsx", "PictureViewer.tsx", "GuideCover.tsx", "kbData.ts", "finder.ts", "quiz.ts"].map((f) => `apps/web/src/features/kb/${f}`),
   // Their own profile and notifications, and timesheets.
   ...["NotificationSettings.tsx", "ProfileSettings.tsx", "SpareKeysCard.tsx", "CalendarFeedCard.tsx", "ProfilePhoto.tsx"].map((f) => `apps/web/src/features/settings/${f}`),
   ...["TimesheetsPage.tsx", "clockPlace.ts", "weekData.ts"].map((f) => `apps/web/src/features/timesheets/${f}`),

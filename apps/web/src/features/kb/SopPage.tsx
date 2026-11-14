@@ -31,6 +31,7 @@ import { PictureViewer } from "./PictureViewer";
 import { QuizDialog, type QuizQuestion } from "./QuizDialog";
 import { VersionCompare } from "./VersionCompare";
 import { guideQuery, mustRead, reviewDueAt, ROLE_LABELS, useIsEditor, useSopIndex, useTraining } from "./kbData";
+import { t } from "@/lib/i18n";
 
 interface TeamMember { user_id: string; role: string; role_id: string | null; active: boolean; profile: { full_name: string; color: string | null; avatar_url?: string | null } | null }
 
@@ -77,7 +78,7 @@ export function SopPage() {
     queryFn: async () => (unwrap(await supabase().rpc("guide_quiz", { p_page: pageId })) as unknown as QuizQuestion[] | null) ?? null,
   });
   const acknowledge = useMutation({
-    meta: { success: "Marked as read" },
+    meta: { success: t("Marked as read") },
     mutationFn: async () => unwrap(await supabase().rpc("acknowledge_guide", { p_page: pageId })),
     onSettled: refresh,
   });
@@ -85,13 +86,13 @@ export function SopPage() {
     mutationFn: async () => unwrap(await supabase().from("sop_pages").delete().eq("id", pageId)),
     onSuccess: () => {
       // Its cover photo goes to the Trash by itself (the database moves it).
-      toast.success("Guide deleted", page.data?.cover_path ? { description: `Its cover photo is in the Trash for ${TRASH_DAYS} days.` } : undefined);
+      toast.success(t("Guide deleted"), page.data?.cover_path ? { description: t("Its cover photo is in the Trash for {days} days.", { days: TRASH_DAYS }) } : undefined);
       refresh();
       navigate("/kb", { replace: true });
     },
   });
   const review = useMutation({
-    meta: { success: "Marked as reviewed" },
+    meta: { success: t("Marked as reviewed") },
     mutationFn: async () => unwrap(await supabase().from("sop_pages").update({ reviewed_at: new Date().toISOString() }).eq("id", pageId)),
     onSettled: refresh,
   });
@@ -101,7 +102,7 @@ export function SopPage() {
     onSettled: refresh,
   });
   const publish = useMutation({
-    meta: { success: "Guide published" },
+    meta: { success: t("Guide published") },
     mutationFn: async () => unwrap(await supabase().from("sop_pages").update({ status: "published" }).eq("id", pageId)),
     onSettled: refresh,
   });
@@ -121,7 +122,7 @@ export function SopPage() {
   }, [hash, body]);
 
   if (page.isPending) return <DetailSkeleton />;
-  if (page.error || !page.data) return <PageError error={page.error ?? new ApiError("This guide doesn't exist, or it was deleted.", 404)} onRetry={page.error ? () => page.refetch() : undefined} back={<BackLink to="/kb">Knowledge base</BackLink>} />;
+  if (page.error || !page.data) return <PageError error={page.error ?? new ApiError("This guide doesn't exist, or it was deleted.", 404)} onRetry={page.error ? () => page.refetch() : undefined} back={<BackLink to="/kb">{t("Knowledge base")}</BackLink>} />;
   const sop = page.data;
   const name = (id: string | null) => team.data?.find((m) => m.user_id === id)?.profile?.full_name ?? "Team member";
   const readers = reads.data ?? [];
@@ -175,31 +176,31 @@ export function SopPage() {
 
   return (
     <>
-      <BackLink to={sop.category ? `/kb?category=${sop.category.id}` : "/kb"}>{sop.category?.name ?? "Knowledge base"}</BackLink>
+      <BackLink to={sop.category ? `/kb?category=${sop.category.id}` : "/kb"}>{sop.category?.name ?? t("Knowledge base")}</BackLink>
       <PageHeader
         title={sop.title}
         actions={
           <>
-            {editor && reviewDue && <Button icon="check" loading={review.isPending} onClick={() => review.mutate()}>Mark reviewed</Button>}
+            {editor && reviewDue && <Button icon="check" loading={review.isPending} onClick={() => review.mutate()}>{t("Mark reviewed")}</Button>}
             {askToRead && (acknowledged ? (
-              <span className="pill" data-tone="success" style={{ height: "var(--control)", padding: "0 14px" }}><Icon name="check" size={14} strokeWidth={2} />You've read this</span>
+              <span className="pill" data-tone="success" style={{ height: "var(--control)", padding: "0 14px" }}><Icon name="check" size={14} strokeWidth={2} />{t("You've read this")}</span>
             ) : (
-              <Button variant="primary" icon="check" loading={acknowledge.isPending} disabled={reads.isPending || quiz.isPending} onClick={confirmRead}>I've read this</Button>
+              <Button variant="primary" icon="check" loading={acknowledge.isPending} disabled={reads.isPending || quiz.isPending} onClick={confirmRead}>{t("I've read this")}</Button>
             ))}
-            {editor && <Link className="btn" to={`/kb/${sop.id}/edit`}><Icon name="edit" size={16} />Edit</Link>}
+            {editor && <Link className="btn" to={`/kb/${sop.id}/edit`}><Icon name="edit" size={16} />{t("Edit")}</Link>}
             <Menu
-              label="More actions"
+              label={t("More actions")}
               items={[
-                { label: "Print", icon: "printer", onSelect: () => window.print() },
-                { label: "Revision history", icon: "history", onSelect: () => setHistory(true), hidden: !editor },
-                { label: sop.pinned_at ? "Unpin" : "Pin to the top", icon: sop.pinned_at ? "unpin" : "pushpin", onSelect: () => pin.mutate(!sop.pinned_at), hidden: !editor },
-                { label: "Make a copy", icon: "copy", onSelect: () => navigate(`/kb/new?copy=${sop.id}`), hidden: !editor },
-                { label: "Publish", icon: "send", onSelect: () => publish.mutate(), hidden: !editor || sop.status !== "draft" },
-                { label: "Mark reviewed", icon: "check", onSelect: () => review.mutate(), hidden: !editor || !due || reviewDue },
+                { label: t("Print"), icon: "printer", onSelect: () => window.print() },
+                { label: t("Revision history"), icon: "history", onSelect: () => setHistory(true), hidden: !editor },
+                { label: sop.pinned_at ? t("Unpin") : t("Pin to the top"), icon: sop.pinned_at ? "unpin" : "pushpin", onSelect: () => pin.mutate(!sop.pinned_at), hidden: !editor },
+                { label: t("Make a copy"), icon: "copy", onSelect: () => navigate(`/kb/new?copy=${sop.id}`), hidden: !editor },
+                { label: t("Publish"), icon: "send", onSelect: () => publish.mutate(), hidden: !editor || sop.status !== "draft" },
+                { label: t("Mark reviewed"), icon: "check", onSelect: () => review.mutate(), hidden: !editor || !due || reviewDue },
                 { separator: true, hidden: !editor },
                 {
-                  label: "Delete guide", icon: "trash", danger: true, hidden: !editor,
-                  onSelect: async () => { if (await confirm({ title: "Delete this guide?", body: "It's removed for everyone, along with its revision history and read receipts.", confirmLabel: "Delete", danger: true })) remove.mutate(); },
+                  label: t("Delete guide"), icon: "trash", danger: true, hidden: !editor,
+                  onSelect: async () => { if (await confirm({ title: t("Delete this guide?"), body: t("It's removed for everyone, along with its revision history and read receipts."), confirmLabel: t("Delete"), danger: true })) remove.mutate(); },
                 },
               ]}
             />
@@ -207,20 +208,20 @@ export function SopPage() {
         }
       />
       <div className="page-meta">
-        {sop.status === "draft" && <span className="pill" data-tone="warning">Draft · only the office can see this</span>}
-        {editor && sop.pinned_at && <span className="pill"><Icon name="pushpin" size={12} />Pinned</span>}
-        {jobOf.length > 0 && <span className="pill" data-tone="info">Job description for {jobOf.join(", ")}</span>}
-        {trainingFor.length > 0 && <span className="pill" data-tone="info">Training for {trainingFor.join(", ")}</span>}
-        {sop.required && <span className="pill" data-tone="warning">Required reading{forWhom.length ? ` for ${forWhom.join(", ")}` : ""}</span>}
-        {editor && reviewDue && <span className="pill" data-tone="warning">Review due{sop.owner_id ? ` · ${name(sop.owner_id)}` : ""}</span>}
+        {sop.status === "draft" && <span className="pill" data-tone="warning">{t("Draft · only the office can see this")}</span>}
+        {editor && sop.pinned_at && <span className="pill"><Icon name="pushpin" size={12} />{t("Pinned")}</span>}
+        {jobOf.length > 0 && <span className="pill" data-tone="info">{t("Job description for {roles}", { roles: jobOf.join(", ") })}</span>}
+        {trainingFor.length > 0 && <span className="pill" data-tone="info">{t("Training for {roles}", { roles: trainingFor.join(", ") })}</span>}
+        {sop.required && <span className="pill" data-tone="warning">{forWhom.length ? t("Required reading for {roles}", { roles: forWhom.join(", ") }) : t("Required reading")}</span>}
+        {editor && reviewDue && <span className="pill" data-tone="warning">{t("Review due")}{sop.owner_id ? ` · ${name(sop.owner_id)}` : ""}</span>}
         <span className="muted small">
-          Revision {sop.revision} · Updated {timeAgo(sop.revised_at)}{sop.updated_by && team.data ? ` by ${name(sop.updated_by)}` : ""}
-          {editor && due && !reviewDue && ` · Next review ${formatDate(due.toISOString())}${sop.owner_id ? ` by ${name(sop.owner_id)}` : ""}`}
-          {editor && quiz.data?.length ? ` · Quiz: ${quiz.data.length} ${quiz.data.length === 1 ? "question" : "questions"}` : ""}
+          {t("Revision {number}", { number: sop.revision })} · {sop.updated_by && team.data ? t("Updated {when} by {name}", { when: timeAgo(sop.revised_at), name: name(sop.updated_by) }) : t("Updated {when}", { when: timeAgo(sop.revised_at) })}
+          {editor && due && !reviewDue && ` · ${sop.owner_id ? t("Next review {date} by {name}", { date: formatDate(due.toISOString()), name: name(sop.owner_id) }) : t("Next review {date}", { date: formatDate(due.toISOString()) })}`}
+          {editor && quiz.data?.length ? ` · ${t.plural(quiz.data.length, { one: "Quiz: {count} question", other: "Quiz: {count} questions" })}` : ""}
         </span>
-        {sop.tags.map((t) => <Link key={t} to={`/kb?q=${encodeURIComponent(t)}`} className="tag no-print" title="Guides tagged with this">{t}</Link>)}
+        {sop.tags.map((tag) => <Link key={tag} to={`/kb?q=${encodeURIComponent(tag)}`} className="tag no-print" title={t("Guides tagged with this")}>{tag}</Link>)}
         {linkedFrom.data && linkedFrom.data.length > 0 && (
-          <span className="muted small no-print">Linked from {linkedFrom.data.map((g, i) => <Fragment key={g.id}>{i > 0 && ", "}<Link to={`/kb/${g.id}`}>{g.title}</Link></Fragment>)}</span>
+          <span className="muted small no-print">{t("Linked from")} {linkedFrom.data.map((g, i) => <Fragment key={g.id}>{i > 0 && ", "}<Link to={`/kb/${g.id}`}>{g.title}</Link></Fragment>)}</span>
         )}
       </div>
       <div className="sop-reader">
@@ -229,24 +230,24 @@ export function SopPage() {
             {sop.cover_path && <GuideCover path={sop.cover_path} className="sop-cover no-print" />}
             {sections.length > 0 && (
               <details ref={inlineContents} className="card sop-toc-inline no-print">
-                <summary>On this page<span className="muted"> · {sections.length} sections</span></summary>
+                <summary>{t("On this page")}<span className="muted"> · {t.plural(sections.length, { one: "{count} section", other: "{count} sections" })}</span></summary>
                 <GuideContents sections={sections} current={current} onPick={() => inlineContents.current?.removeAttribute("open")} />
               </details>
             )}
             <article className="card prose sop-body" onClick={onArticleClick} onKeyDown={onArticleKeyDown}>
-              {body.empty ? <p className="muted">This guide is empty.{editor && <> <Link to={`/kb/${sop.id}/edit`}>Add content</Link></>}</p> : <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />}
+              {body.empty ? <p className="muted">{t("This guide is empty.")}{editor && <> <Link to={`/kb/${sop.id}/edit`}>{t("Add content")}</Link></>}</p> : <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />}
             </article>
             {askToRead && !body.empty && (
-              <section className="card card-pad guide-done no-print" aria-label="Confirm you've read it">
+              <section className="card card-pad guide-done no-print" aria-label={t("Confirm you've read it")}>
                 {acknowledged ? (
-                  <span className="row" style={{ gap: 8, color: "var(--green-dark)" }}><Icon name="check" size={16} strokeWidth={2} /><strong>You've read this revision</strong></span>
+                  <span className="row" style={{ gap: 8, color: "var(--green-dark)" }}><Icon name="check" size={16} strokeWidth={2} /><strong>{t("You've read this revision")}</strong></span>
                 ) : (
                   <>
                     <span className="stack-sm" style={{ gap: 2 }}>
-                      <strong>Done reading?</strong>
-                      <span className="muted small">{quiz.data?.length ? `Answer ${quiz.data.length === 1 ? "a question" : `${quiz.data.length} questions`} to confirm you've read it.` : "Confirm you've read it, so the office knows."}</span>
+                      <strong>{t("Done reading?")}</strong>
+                      <span className="muted small">{quiz.data?.length ? t.plural(quiz.data.length, { one: "Answer a question to confirm you've read it.", other: "Answer {count} questions to confirm you've read it." }) : t("Confirm you've read it, so the office knows.")}</span>
                     </span>
-                    <Button variant="primary" icon="check" loading={acknowledge.isPending} disabled={reads.isPending || quiz.isPending} onClick={confirmRead}>I've read this</Button>
+                    <Button variant="primary" icon="check" loading={acknowledge.isPending} disabled={reads.isPending || quiz.isPending} onClick={confirmRead}>{t("I've read this")}</Button>
                   </>
                 )}
               </section>
@@ -257,8 +258,8 @@ export function SopPage() {
             <aside className="sop-aside no-print">
               {showTraining && (
                 <div className="card card-pad stack-sm">
-                  <div className="row-between"><strong className="small">Training progress</strong><span className="muted small">{trainingIds.length} {trainingIds.length === 1 ? "guide" : "guides"}</span></div>
-                  {!team.data || trainingReads.isPending ? <Skeleton height={28} /> : trainees.length === 0 ? <p className="muted small" style={{ margin: 0 }}>No one has {jobOf.length === 1 ? "this role" : "these roles"} yet.</p> : (
+                  <div className="row-between"><strong className="small">{t("Training progress")}</strong><span className="muted small">{t.plural(trainingIds.length, { one: "{count} guide", other: "{count} guides" })}</span></div>
+                  {!team.data || trainingReads.isPending ? <Skeleton height={28} /> : trainees.length === 0 ? <p className="muted small" style={{ margin: 0 }}>{jobOf.length === 1 ? t("No one has this role yet.") : t("No one has these roles yet.")}</p> : (
                     <div className="stack-sm" style={{ gap: 10 }}>
                       {trainees.map((m) => {
                         const done = trainingDone(m.user_id);
@@ -267,7 +268,7 @@ export function SopPage() {
                             <div className="row" style={{ gap: 8 }}>
                               <span className="avatar" style={{ width: 26, height: 26, fontSize: 11 }}><Face name={name(m.user_id)} photo={m.profile?.avatar_url} /></span>
                               <span className="grow small strong">{name(m.user_id)}</span>
-                              <span className="muted small tabular">{done} of {trainingIds.length}</span>
+                              <span className="muted small tabular">{t("{done} of {count}", { done, count: trainingIds.length })}</span>
                             </div>
                             <div className="progress"><span style={{ width: `${(done / trainingIds.length) * 100}%` }} /></div>
                           </div>
@@ -279,9 +280,9 @@ export function SopPage() {
               )}
               {showReads && (
                 <div className="card card-pad stack-sm">
-                  <div className="row-between"><strong className="small">Read this revision</strong><span className="muted small">{readers.length}{team.data ? ` of ${audience.length}` : ""}</span></div>
+                  <div className="row-between"><strong className="small">{t("Read this revision")}</strong><span className="muted small">{team.data ? t("{done} of {count}", { done: readers.length, count: audience.length }) : readers.length}</span></div>
                   {team.data && audience.length > 0 && <div className="progress"><span style={{ width: `${Math.min(100, (readers.length / audience.length) * 100)}%` }} /></div>}
-                  {reads.isPending ? <Skeleton height={28} /> : readers.length === 0 ? <p className="muted small" style={{ margin: 0 }}>No one has confirmed this revision yet.</p> : (
+                  {reads.isPending ? <Skeleton height={28} /> : readers.length === 0 ? <p className="muted small" style={{ margin: 0 }}>{t("No one has confirmed this revision yet.")}</p> : (
                     <div className="stack-sm" style={{ gap: 8 }}>
                       {readers.map((r) => (
                         <div key={r.user_id} className="row" style={{ gap: 8 }}>
@@ -294,15 +295,15 @@ export function SopPage() {
                   )}
                   {editor && outstanding.length > 0 && (
                     <div className="stack-sm" style={{ gap: 6, marginTop: 6 }}>
-                      <span className="muted small strong">Still to read</span>
-                      <div className="row wrap" style={{ gap: 6 }}>{outstanding.map((m) => <span key={m.user_id} className="chip">{m.profile?.full_name ?? "Team member"}</span>)}</div>
+                      <span className="muted small strong">{t("Still to read")}</span>
+                      <div className="row wrap" style={{ gap: 6 }}>{outstanding.map((m) => <span key={m.user_id} className="chip">{m.profile?.full_name ?? t("Team member")}</span>)}</div>
                     </div>
                   )}
                 </div>
               )}
               {sections.length > 0 && (
-                <nav className="sop-toc" aria-label="On this page">
-                  <strong className="small">On this page</strong>
+                <nav className="sop-toc" aria-label={t("On this page")}>
+                  <strong className="small">{t("On this page")}</strong>
                   <GuideContents sections={sections} current={current} />
                 </nav>
               )}
@@ -354,21 +355,21 @@ function HistoryDialog({ pageId, current, names, onClose }: { pageId: string; cu
   const readHtml = useGuidePictures(useMemo(() => sanitizeHtml(shown?.body_html ?? ""), [shown?.body_html]));
   // Older on the left, newer on the right, whichever was picked first.
   const [older, newer] = shown && base ? (base.revision < shown.revision ? [base, shown] : [shown, base]) : [null, null];
-  const label = (r: { revision: number; created_at: string }) => `Revision ${r.revision}${r.revision === current ? " (current)" : ""} · ${formatDate(r.created_at)}`;
+  const label = (r: { revision: number; created_at: string }) => `${r.revision === current ? t("Revision {number} (current)", { number: r.revision }) : t("Revision {number}", { number: r.revision })} · ${formatDate(r.created_at)}`;
   const comparing = Boolean(shown && mode === "changes" && older && newer);
 
   return (
-    <Dialog open onClose={onClose} title={shown ? `Revision ${shown.revision}` : "Revision history"} description={shown ? `${shown.title} · ${formatDateTime(shown.created_at)} by ${names(shown.edited_by)}` : "Every saved change is kept. Open one to see what changed, or to restore it."} size={comparing ? "xl" : "lg"}>
+    <Dialog open onClose={onClose} title={shown ? t("Revision {number}", { number: shown.revision }) : t("Revision history")} description={shown ? `${shown.title} · ${t("{when} by {name}", { when: formatDateTime(shown.created_at), name: names(shown.edited_by) })}` : t("Every saved change is kept. Open one to see what changed, or to restore it.")} size={comparing ? "xl" : "lg"}>
       {shown ? (
         <div className="stack">
           <div className="row-between wrap" style={{ gap: 12 }}>
-            <div className="segmented" role="group" aria-label="Show">
-              <button type="button" aria-pressed={mode === "changes"} disabled={all.length < 2} onClick={() => setMode("changes")}>Changes</button>
-              <button type="button" aria-pressed={mode === "read"} onClick={() => setMode("read")}>Read it</button>
+            <div className="segmented" role="group" aria-label={t("Show")}>
+              <button type="button" aria-pressed={mode === "changes"} disabled={all.length < 2} onClick={() => setMode("changes")}>{t("Changes")}</button>
+              <button type="button" aria-pressed={mode === "read"} onClick={() => setMode("read")}>{t("Read it")}</button>
             </div>
             {mode === "changes" && all.length > 1 && (
               <label className="row small" style={{ gap: 8 }}>
-                <span className="muted" style={{ whiteSpace: "nowrap" }}>Compared with</span>
+                <span className="muted" style={{ whiteSpace: "nowrap" }}>{t("Compared with")}</span>
                 <select className="select input-sm" value={against ?? ""} onChange={(e) => setAgainst(Number(e.target.value))}>
                   {all.filter((r) => r.revision !== shown.revision).map((r) => <option key={r.revision} value={r.revision}>{label(r)}</option>)}
                 </select>
@@ -383,9 +384,9 @@ function HistoryDialog({ pageId, current, names, onClose }: { pageId: string; cu
             <div className="card card-pad prose" style={{ maxHeight: "55vh", overflowY: "auto", boxShadow: "none" }} dangerouslySetInnerHTML={{ __html: readHtml || "<p><em>Empty</em></p>" }} />
           )}
           <div className="form-actions">
-            <Button variant="ghost" icon="arrowLeft" onClick={() => setViewing(null)}>All revisions</Button>
+            <Button variant="ghost" icon="arrowLeft" onClick={() => setViewing(null)}>{t("All revisions")}</Button>
             <span className="spacer" />
-            {shown.revision !== current && <Button variant="primary" icon="undo" loading={restore.isPending} onClick={() => restore.mutate(shown.revision)}>Restore revision {shown.revision}</Button>}
+            {shown.revision !== current && <Button variant="primary" icon="undo" loading={restore.isPending} onClick={() => restore.mutate(shown.revision)}>{t("Restore revision {number}", { number: shown.revision })}</Button>}
           </div>
         </div>
       ) : (
@@ -399,7 +400,7 @@ function HistoryDialog({ pageId, current, names, onClose }: { pageId: string; cu
                 <strong className="ellipsis">{r.title}</strong>
                 <span className="muted small">{formatDateTime(r.created_at)} · {names(r.edited_by)}</span>
               </span>
-              {r.revision === current && <span className="pill" data-tone="success">Current</span>}
+              {r.revision === current && <span className="pill" data-tone="success">{t("Current")}</span>}
               <Icon name="chevronRight" size={16} />
             </button>
           ))}

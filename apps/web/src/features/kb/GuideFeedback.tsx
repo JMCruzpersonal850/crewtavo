@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { supabase, unwrap } from "@/lib/api";
 import { formatDateTime, timeAgo } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { t } from "@/lib/i18n";
 
 interface Person { name: string; photo?: string | null }
 
@@ -35,7 +36,7 @@ export function GuideFeedback({ page, editor, person }: { page: { id: string; re
     onSettled: refresh,
   });
   const suggest = useMutation({
-    meta: { inline: true, success: "Sent to the office" },
+    meta: { inline: true, success: t("Sent to the office") },
     mutationFn: async (message: string) => unwrap(await supabase().rpc("guide_feedback", { p_page: page.id, p_message: message })),
     onSuccess: () => {
       setWriting(false);
@@ -53,27 +54,27 @@ export function GuideFeedback({ page, editor, person }: { page: { id: string; re
     <>
       <section className="card card-pad guide-feedback no-print" aria-labelledby="guide-feedback-title">
         <div className="guide-feedback-ask">
-          <strong id="guide-feedback-title">{suggest.isSuccess ? "Thanks. The office will take a look." : voted === null ? "Was this guide helpful?" : voted ? "Thanks. Glad it helped." : "Thanks. What would make it better?"}</strong>
+          <strong id="guide-feedback-title">{suggest.isSuccess ? t("Thanks. The office will take a look.") : voted === null ? t("Was this guide helpful?") : voted ? t("Thanks. Glad it helped.") : t("Thanks. What would make it better?")}</strong>
           <div className="row" style={{ gap: 8 }}>
-            <Button size="sm" aria-pressed={voted === true} disabled={mine.isPending} onClick={() => vote.mutate(true)}><Icon name="thumbsUp" size={16} />Yes</Button>
-            <Button size="sm" aria-pressed={voted === false} disabled={mine.isPending} onClick={() => vote.mutate(false)}><span className="icon-flip"><Icon name="thumbsUp" size={16} /></span>No</Button>
+            <Button size="sm" aria-pressed={voted === true} disabled={mine.isPending} onClick={() => vote.mutate(true)}><Icon name="thumbsUp" size={16} />{t("Yes")}</Button>
+            <Button size="sm" aria-pressed={voted === false} disabled={mine.isPending} onClick={() => vote.mutate(false)}><span className="icon-flip"><Icon name="thumbsUp" size={16} /></span>{t("No")}</Button>
           </div>
         </div>
         {writing ? (
           <form className="stack-sm" onSubmit={send}>
-            <Field label="What's wrong or missing?" hint="The office sees this with your name, and the guide it's about.">
-              <textarea className="textarea" rows={3} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. Step 3 says 20 gallons, but we use 30 now." autoFocus />
+            <Field label={t("What's wrong or missing?")} hint={t("The office sees this with your name, and the guide it's about.")}>
+              <textarea className="textarea" rows={3} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} placeholder={t("e.g. Step 3 says 20 gallons, but we use 30 now.")} autoFocus />
             </Field>
             <FormError error={suggest.error ?? vote.error} />
             <div className="row" style={{ gap: 8 }}>
-              <Button type="submit" size="sm" variant="primary" loading={suggest.isPending} disabled={!text.trim()}>Send to the office</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setWriting(false); suggest.reset(); }}>Cancel</Button>
+              <Button type="submit" size="sm" variant="primary" loading={suggest.isPending} disabled={!text.trim()}>{t("Send to the office")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setWriting(false); suggest.reset(); }}>{t("Cancel")}</Button>
             </div>
           </form>
         ) : (
           <>
             <FormError error={vote.error} />
-            <button type="button" className="link-btn small" style={{ justifySelf: "start" }} onClick={() => setWriting(true)}>Suggest a change</button>
+            <button type="button" className="link-btn small" style={{ justifySelf: "start" }} onClick={() => setWriting(true)}>{t("Suggest a change")}</button>
           </>
         )}
       </section>
@@ -91,7 +92,7 @@ function OfficeFeedback({ page, person }: { page: { id: string; revision: number
     queryFn: async () => unwrap(await supabase().from("sop_feedback").select("id, revision, user_id, helpful, message, created_at, resolved_at").eq("page_id", page.id).order("created_at", { ascending: false }).limit(300)),
   });
   const done = useMutation({
-    meta: { inline: true, success: "Marked done" },
+    meta: { inline: true, success: t("Marked done") },
     mutationFn: async (id: string) => unwrap(await supabase().from("sop_feedback").update({ resolved_at: new Date().toISOString(), resolved_by: userId }).eq("id", id)),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["kb", company.id] }),
   });
@@ -105,12 +106,12 @@ function OfficeFeedback({ page, person }: { page: { id: string; revision: number
   return (
     <section className="card no-print" aria-labelledby="office-feedback-title">
       <div className="card-head row-between">
-        <strong id="office-feedback-title">Feedback</strong>
-        <span className="muted small">{votes.length ? `${helpful} of ${votes.length} found this revision helpful` : "No votes on this revision yet"}</span>
+        <strong id="office-feedback-title">{t("Feedback")}</strong>
+        <span className="muted small">{votes.length ? t("{done} of {count} found this revision helpful", { done: helpful, count: votes.length }) : t("No votes on this revision yet")}</span>
       </div>
       <FormError error={feedback.error ?? done.error} />
       {open.length === 0 ? (
-        <p className="muted small card-pad" style={{ margin: 0 }}>No suggestions to look at{handled ? ` (${handled} done)` : ""}.</p>
+        <p className="muted small card-pad" style={{ margin: 0 }}>{handled ? t("No suggestions to look at ({count} done).", { count: handled }) : t("No suggestions to look at.")}</p>
       ) : (
         open.map((f) => {
           const who = person(f.user_id);
@@ -120,11 +121,11 @@ function OfficeFeedback({ page, person }: { page: { id: string; revision: number
               <span className="grow stack-sm" style={{ gap: 2, minWidth: 0 }}>
                 <span className="small">
                   <strong>{who.name}</strong>
-                  <span className="muted" title={formatDateTime(f.created_at)}> · {timeAgo(f.created_at)}{f.revision !== page.revision ? ` · about revision ${f.revision}` : ""}</span>
+                  <span className="muted" title={formatDateTime(f.created_at)}> · {timeAgo(f.created_at)}{f.revision !== page.revision ? ` · ${t("about revision {number}", { number: f.revision })}` : ""}</span>
                 </span>
                 <span className="pre-wrap">{f.message}</span>
               </span>
-              <Button size="sm" icon="check" loading={done.isPending && done.variables === f.id} onClick={() => done.mutate(f.id)}>Done</Button>
+              <Button size="sm" icon="check" loading={done.isPending && done.variables === f.id} onClick={() => done.mutate(f.id)}>{t("Done")}</Button>
             </div>
           );
         })

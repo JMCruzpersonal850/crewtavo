@@ -75,6 +75,9 @@ export function followProfile(profileLocale: string | null | undefined) {
   if (effective !== wanted) window.location.reload();
 }
 
+/** For dates shown in the browser's own way: its language in English (as before), es-US in Spanish. */
+export const browserOrSpanish = () => (getLocale() === "en" ? undefined : "es-US");
+
 /** Whether the phone or browser is set to Spanish (for offering it, never for switching unasked). */
 export const phoneSpeaksSpanish = () => {
   try {

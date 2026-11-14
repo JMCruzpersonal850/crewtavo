@@ -14,6 +14,7 @@ import { useSession } from "@/lib/session";
 import { useLive, type ChatMember } from "./data";
 import { Avatar, roleColor } from "./ui";
 import s from "./chat.module.css";
+import { t } from "@/lib/i18n";
 
 // The team's levels, top down (a sub is never in chat).
 const LEVEL_ORDER: readonly string[] = STAFF;
@@ -36,12 +37,12 @@ export function groupMembers(members: ChatMember[], online: Set<string>) {
 export function MembersPanel({ members, onPerson, onClose }: { members: ChatMember[] | undefined; onPerson: (id: string) => void; onClose: () => void }) {
   const live = useLive();
   return (
-    <aside className={s.members} aria-label="Members">
+    <aside className={s.members} aria-label={t("Members")}>
       <div className="row" style={{ justifyContent: "space-between", padding: "10px 8px 0" }}>
-        <strong style={{ fontSize: 13 }}>{members ? `${members.length} ${members.length === 1 ? "member" : "members"}` : "Members"}</strong>
-        <button type="button" className="icon-btn" aria-label="Close the member list" onClick={onClose}><Icon name="x" size={16} /></button>
+        <strong style={{ fontSize: 13 }}>{members ? `${members.length} ${members.length === 1 ? "member" : "members"}` : t("Members")}</strong>
+        <button type="button" className="icon-btn" aria-label={t("Close the member list")} onClick={onClose}><Icon name="x" size={16} /></button>
       </div>
-      {!members && <p className="muted small" style={{ padding: "8px" }}>Loading…</p>}
+      {!members && <p className="muted small" style={{ padding: "8px" }}>{t("Loading…")}</p>}
       {members &&
         groupMembers(members, live.online).map((g) => (
           <div key={g.title}>
@@ -56,7 +57,7 @@ export function MembersPanel({ members, onPerson, onClose }: { members: ChatMemb
                   </span>
                   <span className="grow">
                     <span className={s.memberName} style={{ color: on ? roleColor(m.color) : "var(--text-3)" }}>{m.name}</span>
-                    <span className={s.memberRole}>{on ? m.role_label : `${m.role_label} · offline`}</span>
+                    <span className={s.memberRole}>{on ? m.role_label : t("{role} · offline", { role: m.role_label })}</span>
                   </span>
                 </button>
               );
@@ -98,21 +99,21 @@ export function PersonDialog({ person, onClose, onMention }: { person: ChatMembe
             <Avatar name={person.name} color={person.avatar_color} photo={person.avatar_url} size={64} className={s.profileAvatar} />
             <div className="stack-sm" style={{ gap: 4 }}>
               <span className={s.roleChip}><span className={s.roleDot} style={{ background: roleColor(person.color) }} />{person.role_label}</span>
-              <span className="muted small">{person.id === userId ? "You" : on ? "Online now" : "Offline"}</span>
+              <span className="muted small">{person.id === userId ? t("You") : on ? t("Online now") : t("Offline")}</span>
             </div>
           </div>
           {details.data && details.data.crews.length > 0 && (
             <div className="stack-sm" style={{ gap: 4 }}>
-              <strong className="small" style={{ textTransform: "uppercase", letterSpacing: "var(--tracking-caps)", color: "var(--text-3)" }}>Crews</strong>
+              <strong className="small" style={{ textTransform: "uppercase", letterSpacing: "var(--tracking-caps)", color: "var(--text-3)" }}>{t("Crews")}</strong>
               <span>{details.data.crews.join(", ")}</span>
             </div>
           )}
           <div className="row wrap" style={{ gap: 8 }}>
             {onMention && person.id !== userId && (
-              <Button variant="primary" icon="mention" onClick={() => { onMention(person); onClose(); }}>Mention</Button>
+              <Button variant="primary" icon="mention" onClick={() => { onMention(person); onClose(); }}>{t("Mention")}</Button>
             )}
             {details.data?.phone && (
-              <a className="btn" href={`tel:${details.data.phone}`}><Icon name="phone" size={16} />Call</a>
+              <a className="btn" href={`tel:${details.data.phone}`}><Icon name="phone" size={16} />{t("Call")}</a>
             )}
           </div>
         </div>

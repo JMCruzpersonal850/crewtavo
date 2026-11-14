@@ -20,6 +20,7 @@ import { guideFinder } from "./finder";
 import { GuideCover } from "./GuideCover";
 import { NewGuideButton } from "./NewGuide";
 import { reviewDueAt, useCategories, useIsEditor, useSopIndex, useTraining, type SopIndexRow } from "./kbData";
+import { t } from "@/lib/i18n";
 
 interface Answer { answer: string; sources: Array<{ id: string; title: string }> }
 
@@ -121,14 +122,14 @@ export function KnowledgeBasePage() {
   return (
     <>
       <PageHeader
-        title="Knowledge base"
+        title={t("Knowledge base")}
         actions={
           editor && (
             <>
-              <Link className="btn btn-ghost" to="/kb/insights" aria-label={attention ? `Insights, ${attention} to look at` : "Insights"}>
-                <Icon name="metrics" size={16} />Insights{attention > 0 && <span className="badge badge-red">{attention}</span>}
+              <Link className="btn btn-ghost" to="/kb/insights" aria-label={attention ? t("Insights, {count} to look at", { count: attention }) : t("Insights")}>
+                <Icon name="metrics" size={16} />{t("Insights")}{attention > 0 && <span className="badge badge-red">{attention}</span>}
               </Link>
-              <Button variant="ghost" icon="layers" onClick={() => setManaging(true)}>Categories</Button>
+              <Button variant="ghost" icon="layers" onClick={() => setManaging(true)}>{t("Categories")}</Button>
               <NewGuideButton category={category && category.id !== "none" ? category.id : null} />
             </>
           )
@@ -138,22 +139,22 @@ export function KnowledgeBasePage() {
       <form onSubmit={onSearch} className="kb-search" role="search">
         <div className="input-group grow">
           <span className="addon"><Icon name="search" size={16} /></span>
-          <input className="input input-lg" type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={aiEnabled ? "Search or ask a question" : "Search"} aria-label="Search guides" maxLength={200} />
+          <input className="input input-lg" type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={aiEnabled ? t("Search or ask a question") : t("Search")} aria-label={t("Search guides")} maxLength={200} />
         </div>
-        <Button type="submit" size="lg">Search</Button>
+        <Button type="submit" size="lg">{t("Search")}</Button>
         {aiEnabled && (
-          <Button type="button" size="lg" icon="sparkle" loading={ask.isPending} disabled={draft.trim().length < 4} onClick={() => ask.mutate(draft.trim())}>Ask</Button>
+          <Button type="button" size="lg" icon="sparkle" loading={ask.isPending} disabled={draft.trim().length < 4} onClick={() => ask.mutate(draft.trim())}>{t("Ask")}</Button>
         )}
       </form>
 
       {(ask.isPending || ask.data || ask.error) && (
-        <section className="card card-pad stack-sm kb-answer" aria-live="polite" aria-label="Answer from your guides">
-          <div className="row" style={{ gap: 8 }}><span className="kb-answer-icon"><Icon name="sparkle" size={14} /></span><strong>Answer from your guides</strong></div>
-          {ask.isPending && <Loading label="Thinking"><div className="stack-sm"><Skeleton width="92%" /><Skeleton width="85%" /><Skeleton width="60%" /></div></Loading>}
+        <section className="card card-pad stack-sm kb-answer" aria-live="polite" aria-label={t("Answer from your guides")}>
+          <div className="row" style={{ gap: 8 }}><span className="kb-answer-icon"><Icon name="sparkle" size={14} /></span><strong>{t("Answer from your guides")}</strong></div>
+          {ask.isPending && <Loading label={t("Thinking")}><div className="stack-sm"><Skeleton width="92%" /><Skeleton width="85%" /><Skeleton width="60%" /></div></Loading>}
           {ask.data && <div className="pre-wrap" style={{ lineHeight: 1.6 }}>{ask.data.answer}</div>}
           {ask.data && ask.data.sources.length > 0 && (
             <div className="row wrap" style={{ gap: 6 }}>
-              <span className="muted small">Sources</span>
+              <span className="muted small">{t("Sources")}</span>
               {ask.data.sources.map((s, i) => <Link key={s.id} to={`/kb/${s.id}`} className="chip">[{i + 1}] {s.title}</Link>)}
             </div>
           )}
@@ -162,26 +163,26 @@ export function KnowledgeBasePage() {
       )}
 
       {toRead.length > 0 && !searching && !category && (
-        <section className="sop-required" aria-label="Required reading">
+        <section className="sop-required" aria-label={t("Required reading")}>
           <Icon name="alert" size={20} />
           <div className="grow stack-sm" style={{ gap: 4 }}>
-            <strong>You have {toRead.length} required {toRead.length === 1 ? "guide" : "guides"} to read</strong>
+            <strong>{t.plural(toRead.length, { one: "You have {count} required guide to read", other: "You have {count} required guides to read" })}</strong>
             <div className="row wrap" style={{ gap: 6 }}>
               {toRead.slice(0, 6).map((p) => <Link key={p.id} to={`/kb/${p.id}`} className="chip" style={{ background: "var(--surface)" }}>{p.title}</Link>)}
-              {toRead.length > 6 && <span className="small">and {toRead.length - 6} more</span>}
+              {toRead.length > 6 && <span className="small">{t("and {count} more", { count: toRead.length - 6 })}</span>}
             </div>
           </div>
         </section>
       )}
 
       {jobGuide && !searching && !category && (
-        <Link to={`/kb/${jobGuide.id}`} className="card card-pad row kb-job" aria-label={`Your job: ${session.roleName}. ${jobGuide.title}`}>
+        <Link to={`/kb/${jobGuide.id}`} className="card card-pad row kb-job" aria-label={t("Your job: {role}. {guide}", { role: session.roleName, guide: jobGuide.title })}>
           <Icon name="book" size={20} />
           <span className="grow stack-sm" style={{ gap: 4 }}>
-            <strong>Your job: {session.roleName}</strong>
+            <strong>{t("Your job: {role}", { role: session.roleName })}</strong>
             <span className="muted small">
-              {jobGuide.title === session.roleName ? "Your job description" : jobGuide.title}
-              {myTraining.length > 1 && ` · ${trainingRead} of ${myTraining.length} training guides read`}
+              {jobGuide.title === session.roleName ? t("Your job description") : jobGuide.title}
+              {myTraining.length > 1 && ` · ${t("{read} of {count} training guides read", { read: trainingRead, count: myTraining.length })}`}
             </span>
             {myTraining.length > 1 && <span className="progress" style={{ maxWidth: 280 }}><span style={{ width: `${(trainingRead / myTraining.length) * 100}%` }} /></span>}
           </span>
@@ -192,8 +193,8 @@ export function KnowledgeBasePage() {
       {searching ? (
         <section className="stack-sm" aria-labelledby="kb-results">
           <div className="row-between">
-            <h2 id="kb-results" className="section-title">Results for “{term}”</h2>
-            <Button size="sm" variant="ghost" icon="x" onClick={() => { setDraft(""); ask.reset(); set({ q: null }); }}>Clear</Button>
+            <h2 id="kb-results" className="section-title">{t("Results for “{term}”", { term })}</h2>
+            <Button size="sm" variant="ghost" icon="x" onClick={() => { setDraft(""); ask.reset(); set({ q: null }); }}>{t("Clear")}</Button>
           </div>
           <div className="card" aria-busy={fullTextPending}>
             {hits.length === 0 && (index.isPending || fullTextPending) && <PageRowsSkeleton />}
@@ -201,15 +202,15 @@ export function KnowledgeBasePage() {
             {nothingFound && (
               <div className="card-pad">
                 {editor
-                  ? <EmptyState inline title={`No guide matches “${term}”`} action={<Link className="btn" to={`/kb/new?${new URLSearchParams({ title: term })}`}>Write one</Link>} />
-                  : <EmptyState inline title={`No guide matches “${term}”`}>The office sees what people search for, so they know which guides to write.</EmptyState>}
+                  ? <EmptyState inline title={t("No guide matches “{term}”", { term })} action={<Link className="btn" to={`/kb/new?${new URLSearchParams({ title: term })}`}>{t("Write one")}</Link>} />
+                  : <EmptyState inline title={t("No guide matches “{term}”", { term })}>{t("The office sees what people search for, so they know which guides to write.")}</EmptyState>}
               </div>
             )}
             {hits.map((hit) => (
               <Link key={hit.id} to={`/kb/${hit.id}`} className="card-row" style={{ alignItems: "flex-start" }}>
                 {hit.cover ? <GuideCover path={hit.cover} className="guide-thumb" /> : <span className="kb-doc"><Icon name="file" size={16} /></span>}
                 <span className="grow stack-sm" style={{ gap: 3, minWidth: 0 }}>
-                  <span className="row wrap" style={{ gap: 8 }}><strong>{hit.title}</strong>{hit.required && <span className="pill" data-tone={hit.acknowledged ? "success" : "warning"}>{hit.acknowledged ? "Read" : "Required"}</span>}</span>
+                  <span className="row wrap" style={{ gap: 8 }}><strong>{hit.title}</strong>{hit.required && <span className="pill" data-tone={hit.acknowledged ? "success" : "warning"}>{hit.acknowledged ? t("Read") : t("Required")}</span>}</span>
                   <span className="muted small">{[hit.category, hit.snippet].filter(Boolean).join(" · ")}</span>
                 </span>
               </Link>
@@ -218,7 +219,7 @@ export function KnowledgeBasePage() {
         </section>
       ) : category ? (
         <section className="stack-sm" aria-labelledby="kb-category">
-          <button type="button" className="back-link" style={{ border: 0, background: "none", padding: 0, marginBottom: 0 }} onClick={() => set({ category: null })}><Icon name="arrowLeft" size={14} />All categories</button>
+          <button type="button" className="back-link" style={{ border: 0, background: "none", padding: 0, marginBottom: 0 }} onClick={() => set({ category: null })}><Icon name="arrowLeft" size={14} />{t("All categories")}</button>
           <h2 id="kb-category" className="section-title">{category.name}</h2>
           <GuideCards pages={pages.filter((p) => p.category_id === (category.id === "none" ? null : category.id))} loading={index.isPending} error={index.error} retry={() => index.refetch()} isRead={index.data?.isRead} empty={editor ? <NewGuideButton category={category.id !== "none" ? category.id : null} label="Write a guide" primary={false} /> : undefined} />
         </section>
@@ -226,18 +227,18 @@ export function KnowledgeBasePage() {
         <>
           {pinned.length > 0 && (
             <section className="stack-sm" aria-labelledby="kb-pinned">
-              <h2 id="kb-pinned" className="section-title">Pinned</h2>
+              <h2 id="kb-pinned" className="section-title">{t("Pinned")}</h2>
               <GuideCards pages={pinned} loading={false} isRead={index.data?.isRead} showCategory={categories.data} />
             </section>
           )}
           <section className="stack-sm" aria-labelledby="kb-cats">
-            <h2 id="kb-cats" className="section-title">Categories</h2>
+            <h2 id="kb-cats" className="section-title">{t("Categories")}</h2>
             {categories.error ? (
               <div className="card"><ErrorState compact error={categories.error} onRetry={() => categories.refetch()} /></div>
             ) : categories.isPending ? (
-              <CoverCardsSkeleton label="Loading categories" count={4} />
+              <CoverCardsSkeleton label={t("Loading categories")} count={4} />
             ) : categories.data.length === 0 && uncategorized === 0 ? (
-              <div className="card"><EmptyState icon="book" title="Your knowledge base is empty" action={editor && <NewGuideButton label="Write a guide" primary={false} />} /></div>
+              <div className="card"><EmptyState icon="book" title={t("Your knowledge base is empty")} action={editor && <NewGuideButton label={t("Write a guide")} primary={false} />} /></div>
             ) : (
               <div className="guide-cards">
                 {categories.data.map((c) => (
@@ -253,8 +254,8 @@ export function KnowledgeBasePage() {
                   <button type="button" className="card guide-card" onClick={() => set({ category: "none" })}>
                     <GuideCover path={null} />
                     <span className="guide-card-body">
-                      <strong className="guide-card-title">Uncategorized</strong>
-                      <span className="muted small">{uncategorized} {uncategorized === 1 ? "guide" : "guides"}</span>
+                      <strong className="guide-card-title">{t("Uncategorized")}</strong>
+                      <span className="muted small">{t.plural(uncategorized, { one: "{count} guide", other: "{count} guides" })}</span>
                     </span>
                   </button>
                 )}
@@ -263,7 +264,7 @@ export function KnowledgeBasePage() {
           </section>
           {pages.length > 0 && (
             <section className="stack-sm" aria-labelledby="kb-recent">
-              <h2 id="kb-recent" className="section-title">Recently updated</h2>
+              <h2 id="kb-recent" className="section-title">{t("Recently updated")}</h2>
               <GuideCards pages={[...pages].sort((a, b) => b.revised_at.localeCompare(a.revised_at)).slice(0, 6)} loading={false} isRead={index.data?.isRead} showCategory={categories.data} />
             </section>
           )}
@@ -275,7 +276,7 @@ export function KnowledgeBasePage() {
 }
 
 function PageRowsSkeleton() {
-  return <Loading label="Loading">{[0, 1, 2].map((i) => <div key={i} className="card-row"><Skeleton width={32} height={32} radius={8} /><span className="grow stack-sm"><Skeleton width="40%" /><Skeleton width="70%" height={10} /></span></div>)}</Loading>;
+  return <Loading label={t("Loading")}>{[0, 1, 2].map((i) => <div key={i} className="card-row"><Skeleton width={32} height={32} radius={8} /><span className="grow stack-sm"><Skeleton width="40%" /><Skeleton width="70%" height={10} /></span></div>)}</Loading>;
 }
 
 function CoverCardsSkeleton({ label, count }: { label: string; count: number }) {
@@ -289,8 +290,8 @@ function CoverCardsSkeleton({ label, count }: { label: string; count: number }) 
 /** Guides as cards: the cover photo (or a book) over the title. */
 function GuideCards({ pages, loading, error, retry, isRead, empty, showCategory }: { pages: SopIndexRow[]; loading: boolean; error?: unknown; retry?: () => void; isRead?: (p: SopIndexRow) => boolean; empty?: React.ReactNode; showCategory?: Array<{ id: string; name: string }> }) {
   if (error) return <div className="card"><ErrorState compact error={error} onRetry={retry} /></div>;
-  if (loading) return <CoverCardsSkeleton label="Loading guides" count={3} />;
-  if (!pages.length) return <div className="card"><EmptyState inline title="No guides here yet" action={empty} /></div>;
+  if (loading) return <CoverCardsSkeleton label={t("Loading guides")} count={3} />;
+  if (!pages.length) return <div className="card"><EmptyState inline title={t("No guides here yet")} action={empty} /></div>;
   return (
     <div className="guide-cards">
       {pages.map((p) => {
@@ -300,11 +301,11 @@ function GuideCards({ pages, loading, error, retry, isRead, empty, showCategory 
             <GuideCover path={p.cover_path} />
             <span className="guide-card-body">
               <strong className="guide-card-title">{p.title}</strong>
-              <span className="muted small">{showCategory && <>{showCategory.find((c) => c.id === p.category_id)?.name ?? "Uncategorized"} · </>}Updated {timeAgo(p.revised_at)}{p.revision > 1 && ` · Revision ${p.revision}`}</span>
+              <span className="muted small">{showCategory && <>{showCategory.find((c) => c.id === p.category_id)?.name ?? t("Uncategorized")} · </>}{t("Updated {when}", { when: timeAgo(p.revised_at) })}{p.revision > 1 && ` · ${t("Revision {number}", { number: p.revision })}`}</span>
               {(p.status === "draft" || (p.required && p.status === "published")) && (
                 <span className="row wrap" style={{ gap: 6, marginTop: 4 }}>
-                  {p.status === "draft" && <span className="pill">Draft</span>}
-                  {p.required && p.status === "published" && <span className="pill" data-tone={read ? "success" : "warning"}>{read ? <><Icon name="check" size={12} strokeWidth={2} />Read</> : "Required"}</span>}
+                  {p.status === "draft" && <span className="pill">{t("Draft")}</span>}
+                  {p.required && p.status === "published" && <span className="pill" data-tone={read ? "success" : "warning"}>{read ? <><Icon name="check" size={12} strokeWidth={2} />{t("Read")}</> : t("Required")}</span>}
                 </span>
               )}
             </span>

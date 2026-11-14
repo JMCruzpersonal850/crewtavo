@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { Section } from "@/lib/html";
 import { toast } from "@/lib/toast";
+import { t } from "@/lib/i18n";
 
 /** Scrolls to a section and puts it in the address (keeping React Router's history state), optionally copying the link. */
 export function goToSection(id: string, copy = false) {
@@ -9,7 +10,7 @@ export function goToSection(id: string, copy = false) {
   if (!target) return;
   target.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   history.replaceState(history.state, "", `#${id}`);
-  if (copy) navigator.clipboard?.writeText(location.href).then(() => toast.success("Link to this section copied"), () => {});
+  if (copy) navigator.clipboard?.writeText(location.href).then(() => toast.success(t("Link to this section copied")), () => {});
 }
 
 /** The section at the top of the screen: the last heading scrolled up to just under the top bar (the last one at the very bottom). */
