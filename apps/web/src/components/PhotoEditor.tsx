@@ -46,7 +46,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { announceTopLayer } from "@/lib/motion";
 import { errorMessage } from "@/lib/errors";
 import { choose, confirm } from "./ui/Confirm";
-import { Button } from "./ui/Button";
+import { Button, Spinner } from "./ui/Button";
 import { Icon, type IconName } from "./ui/Icon";
 import { t } from "@/lib/i18n";
 
@@ -344,12 +344,14 @@ export function PhotoEditor({
 
       <div className="photo-editor-stage" ref={stage}>
         {failed ? (
-          <div className="stack-sm" style={{ textAlign: "center", padding: 16 }}>
+          // Read out as it appears: the photo didn't open, and what can still be done.
+          <div className="stack-sm" role="alert" style={{ textAlign: "center", padding: 16 }}>
             <span>{failed}</span>
             {keepsBlank && <span className="small">{t("You can still add it as it is.")}</span>}
           </div>
         ) : !picture ? (
-          <span className="spinner" style={{ width: 28, height: 28 }} aria-label={t("Opening the photo")} />
+          // A status, so its label is read (a bare span's isn't).
+          <Spinner size={28} label={t("Opening the photo")} />
         ) : (
           <canvas
             ref={canvas}

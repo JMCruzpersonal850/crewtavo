@@ -126,7 +126,8 @@ a.tag:hover { border-color: var(--border-strong); color: var(--ink); }
   width: 100%; min-width: 0; height: var(--control); padding: 0 10px; border: 1px solid var(--button-border); border-radius: var(--radius-control);
   background: var(--surface); font-weight: 400; transition: border-color var(--dur-fast), box-shadow var(--dur-fast); box-shadow: var(--shadow-xs);
 }
-.input::placeholder, .textarea::placeholder { color: var(--text-4); }
+/* An example in an empty field is read like any other words: --text-3 is 5.2:1 on a field in the light theme (--text-4 was 3.0:1). */
+.input::placeholder, .textarea::placeholder { color: var(--text-3); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--border-strong); }
 .select { appearance: none; -webkit-appearance: none; padding-right: 30px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235f6f76' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center; }
 :root.dark .select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b5b3ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
@@ -645,6 +646,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .photo-editor::backdrop { background: #151515; }
 .photo-editor-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: #202020; }
 .photo-editor-bar .input { background: #fff; color: #111; }
+/* Its field is white whatever the theme, so its example isn't the theme's colour. */
+.photo-editor-bar .input::placeholder { color: #5f6f76; }
 /* The photo always fits whole inside the stage, upright or on its side: the canvas is placed against the stage's own box
    (its size comes from the column, never from the photo), 8px in from each edge, and the editor sets its size in pixels
    (core fitInside). The max sizes say the same without the script, so nothing rests on a row sized by its content. */
