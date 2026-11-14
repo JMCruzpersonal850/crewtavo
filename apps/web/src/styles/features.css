@@ -750,6 +750,12 @@ html.dark .app-shot-light, html:not(.dark) .app-shot-dark { display: none; }
 .measure-map-skeleton > span:last-child { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .measure-map .maplibregl-ctrl-group { border-radius: var(--radius-control); box-shadow: var(--shadow-sm); }
 .measure-map .maplibregl-ctrl-group button { width: var(--control); height: var(--control); }
+/* Google's attribution while its tiles show (googleAttribution.ts): its logo at its own size in
+   the bottom left corner, clear of everything else, and its credit for what's on screen in the
+   bottom right, in full and always in view. Neither takes taps from the map. */
+.measure-map .maplibregl-ctrl.measure-google-logo { margin: 10px; line-height: 0; pointer-events: none; user-select: none; }
+.measure-map .measure-google-logo img { display: block; width: 105px; height: 22px; max-width: none; }
+.measure-map .maplibregl-ctrl.measure-google-credit { max-width: min(70vw, 460px); margin: 0; padding: 1px 6px; background: rgb(255 255 255 / 0.78); color: #1f1f1f; font: 11px/1.45 system-ui, sans-serif; text-align: right; overflow-wrap: anywhere; pointer-events: none; }
 
 /* Tools down the left edge of the map, big enough for a thumb. */
 .measure-rail { position: absolute; top: 12px; left: 12px; z-index: 3; display: grid; gap: 4px; padding: 5px; border-radius: var(--radius-card); background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow-md); backdrop-filter: blur(6px); }

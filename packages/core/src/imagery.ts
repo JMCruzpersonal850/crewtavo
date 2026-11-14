@@ -87,6 +87,21 @@ export const googleSatelliteTiles = (key: string, session: string) =>
   `https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${encodeURIComponent(session)}&key=${encodeURIComponent(key)}`;
 export const GOOGLE_SESSION_URL = (key: string) => `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`;
 
+/** What's on screen, as Google's viewport request takes it: its tiles' zoom and the edges in degrees. */
+export interface GoogleViewport {
+  zoom: number;
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+/**
+ * Google's viewport information for what's on screen (Map Tiles API), with the session its tiles
+ * use: the answer's `copyright` is the data credit Google asks to be shown with those tiles.
+ */
+export const googleViewportUrl = (key: string, session: string, view: GoogleViewport) =>
+  `https://tile.googleapis.com/tile/v1/viewport?session=${encodeURIComponent(session)}&key=${encodeURIComponent(key)}&zoom=${view.zoom}&north=${view.north}&south=${view.south}&east=${view.east}&west=${view.west}`;
+
 /** Map keys a company keeps in its settings (companies.settings.maps). Both are browser keys. */
 export interface MapKeys {
   esri_key?: string | null;
