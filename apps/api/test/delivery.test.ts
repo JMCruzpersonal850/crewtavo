@@ -373,3 +373,41 @@ describe("a warning that email or texts aren't going out", () => {
     expect(sent.rpcs("note_sending").map((n) => [n.p_company, n.p_channel, n.p_ok])).toEqual([[CO, "email", false], [CO, "sms", false]]);
   });
 });
+
+describe("someone who uses Crewtavo in Spanish (profiles.locale)", () => {
+  const inSpanish = (notifications: Row[]) => {
+    const w = world(notifications);
+    w.tables.profiles![0]!.locale = "es";
+    return w;
+  };
+
+  it("gets the email, the text and the push in Spanish", async () => {
+    const w = inSpanish([notice()]);
+    const sent = serve(w);
+    expect(await deliverNotifications(env)).toMatchObject({ email: 1, sms: 1, push: 1 });
+    const [email] = sent.emails();
+    expect(email!.subject).toBe("Te pusieron en Smith mowing: jue, 12 de nov, 7:00 a.m.");
+    expect(email!.text).toContain("Te llegan por tu configuración de notificaciones. Cámbiala en Crewtavo en Configuración → Perfil: https://ops.example.com/settings?tab=profile");
+    expect(sent.texts()[0]!.Body).toBe("November Lawn: Te pusieron en Smith mowing: jue, 12 de nov, 7:00 a.m. https://ops.example.com/field/visits/v1");
+    expect(sendPush.mock.calls[0]![2]).toMatchObject({ title: "Te pusieron en Smith mowing: jue, 12 de nov, 7:00 a.m.", body: "November Lawn" });
+  });
+
+  it("gets several at once under a Spanish heading", async () => {
+    const w = inSpanish([notice(), notice({ title: "Hedges on Fri Nov 13, 9:30 AM was cancelled", link: "/field" })]);
+    const sent = serve(w);
+    await deliverNotifications(env);
+    const [email] = sent.emails();
+    expect(email!.subject).toBe("2 novedades de November Lawn");
+    expect(email!.text).toContain("2 novedades de November Lawn:");
+    expect(email!.text).toContain("Se canceló Hedges del vie, 13 de nov, 9:30 a.m.");
+    expect(sent.texts()[0]!.Body).toContain(" (+1 más) ");
+  });
+
+  it("leaves everyone else's in English, word for word", async () => {
+    const sent = serve(world([notice()]));
+    await deliverNotifications(env);
+    expect(sent.emails()[0]!.subject).toBe("You're on Smith mowing: Thu Nov 12, 7:00 AM");
+    expect(sent.emails()[0]!.text).toContain("You get these because of your notification settings. Change them in Crewtavo under Settings → Profile: https://ops.example.com/settings?tab=profile");
+    expect(sent.texts()[0]!.Body).toBe("November Lawn: You're on Smith mowing: Thu Nov 12, 7:00 AM https://ops.example.com/field/visits/v1");
+  });
+});

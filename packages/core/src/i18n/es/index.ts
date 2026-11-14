@@ -8,7 +8,7 @@ import { addPatterns } from "../patterns";
 import common from "./common";
 import { ERRORS } from "./errors";
 import field from "./field";
-import { NOTICES } from "./notices";
+import { NOTICE_WORDS, NOTICES } from "./notices";
 import server from "./server";
 import team from "./team";
 
@@ -22,5 +22,5 @@ export function installSpanish() {
   if (installed) return;
   installed = true;
   for (const lines of Object.values(parts)) addCatalog("es", lines);
-  addPatterns("es", { notices: NOTICES, errors: ERRORS });
+  addPatterns("es", { notices: NOTICES, errors: ERRORS, words: NOTICE_WORDS });
 }

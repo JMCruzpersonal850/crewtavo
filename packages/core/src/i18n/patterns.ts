@@ -12,7 +12,10 @@
  * What a capture's name says about it:
  *   when…, was…, date…, time…  a date or time as the database writes it in English ("Thu Oct 15,
  *                              9:00 AM", "Oct 15, 2026", "6:00 PM Thu"), rewritten in Spanish
- *   word…                      a word from the catalog (a document's name, a role), translated
+ *   word…                      a word from the table's own word list (a document's name, "hours"),
+ *                              translated
+ *   line…                      an offer's line ("Smith roof, Tue Nov 3 to Thu Nov 5, 24 squares,
+ *                              $2,040"): its dates, squares and days in Spanish, the rest as it is
  *   anything else              left as it is (a visit's title, a person's name, an amount)
  */
 import { translator, type Locale } from "./index";
@@ -24,7 +27,7 @@ interface Compiled {
   translation: string;
 }
 
-const tables: Partial<Record<Locale, { notices: Compiled[]; errors: Compiled[] }>> = {};
+const tables: Partial<Record<Locale, { notices: Compiled[]; errors: Compiled[]; words: Record<string, string> }>> = {};
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -38,9 +41,13 @@ export function compilePattern(english: string): RegExp {
 const compile = (table: PatternTable): Compiled[] => table.map(([english, translation]) => ({ re: compilePattern(english), translation }));
 
 /** Adds a language's tables: the API at start-up, the web app with its catalog. */
-export function addPatterns(locale: Locale, patterns: { notices?: PatternTable; errors?: PatternTable }) {
-  const now = tables[locale] ?? { notices: [], errors: [] };
-  tables[locale] = { notices: [...now.notices, ...compile(patterns.notices ?? [])], errors: [...now.errors, ...compile(patterns.errors ?? [])] };
+export function addPatterns(locale: Locale, patterns: { notices?: PatternTable; errors?: PatternTable; words?: Record<string, string> }) {
+  const now = tables[locale] ?? { notices: [], errors: [], words: {} };
+  tables[locale] = {
+    notices: [...now.notices, ...compile(patterns.notices ?? [])],
+    errors: [...now.errors, ...compile(patterns.errors ?? [])],
+    words: { ...now.words, ...patterns.words },
+  };
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -76,20 +83,42 @@ export function spanishDate(text: string): string | null {
   return null;
 }
 
+/** "Smith roof, Tue Nov 3 to Thu Nov 5, 24 squares, $2,040" with its dates, squares and days in Spanish. */
+export function spanishLine(text: string): string {
+  const day = new RegExp(`${DY} ${MON} (?<d>\\d{1,2})`, "g");
+  return text
+    .replace(day, (...m) => {
+      const g = m.at(-1) as Record<string, string>;
+      return `${ES_WEEKDAYS[WEEKDAYS.indexOf(g.dy!)]} ${Number(g.d)} de ${ES_MONTHS[MONTHS.indexOf(g.mon!)]}`;
+    })
+    .replace(/(de \w+) to (\p{L}{3} )/gu, "$1 a $2")
+    .replace(/\b(\d[\d,.]*) squares?\b/g, (_, n: string) => `${n} ${n === "1" ? "cuadro" : "cuadros"}`)
+    .replace(/\b(\d[\d,.]*) days?\b/g, (_, n: string) => `${n} ${n === "1" ? "día" : "días"}`);
+}
+
 function apply(locale: Locale, text: string, compiled: Compiled[]): string | null {
-  const t = translator(locale);
+  const words = tables[locale]?.words ?? {};
   for (const { re, translation } of compiled) {
-    const groups = text.match(re)?.groups;
-    if (!groups) continue;
-    return translation.replace(/\{(\w+)\}/g, (whole, name: string) => {
-      const value = groups[name];
-      if (value === undefined) return whole;
-      if (/^(when|was|date|time)/.test(name)) return (locale === "es" && spanishDate(value)) || value;
-      if (/^word/.test(name)) return t(value);
-      return value;
-    });
+    const found = text.match(re);
+    if (!found) continue;
+    // A line with no {captures} has no groups at all.
+    const groups = found.groups ?? {};
+    // "9:00 a.m." ending a sentence takes no second period.
+    return fillCaptures(translation, groups, locale, words).replace(/([ap]\.m\.)\./g, "$1");
   }
   return null;
+}
+
+/** The translation with each {capture} in, rewritten as its name says (see the top of this file). */
+function fillCaptures(translation: string, groups: Record<string, string>, locale: Locale, words: Record<string, string>): string {
+  return translation.replace(/\{(\w+)\}/g, (whole, name: string) => {
+    const value = groups[name];
+    if (value === undefined) return whole;
+    if (/^(when|was|date|time)/.test(name)) return (locale === "es" && spanishDate(value)) || value;
+    if (/^word/.test(name)) return words[value] ?? value;
+    if (/^line/.test(name)) return locale === "es" ? spanishLine(value) : value;
+    return value;
+  });
 }
 
 /**

@@ -143,6 +143,60 @@ describe("text written in English, read by its shape", () => {
   });
 });
 
+describe("notifications to the team, in Spanish", () => {
+  installSpanish();
+  const es = (title: string, body: string | null = null) => translateNotice("es", { title, body });
+
+  it("reads the schedule changes the database writes, one line at a time", () => {
+    expect(es("You're on Smith mowing: Thu Nov 12, 7:00 AM").title).toBe("Te pusieron en Smith mowing: jue, 12 de nov, 7:00 a.m.");
+    expect(es("You're off Smith mowing (Thu Nov 12)").title).toBe("Te quitaron de Smith mowing (jue, 12 de nov)");
+    expect(es("Hedges on Fri Nov 13, 9:30 AM was cancelled").title).toBe("Se canceló Hedges del vie, 13 de nov, 9:30 a.m.");
+    expect(es("Hedges moved to Mon Nov 16 (was Fri Nov 13)").title).toBe("Hedges se movió al lun, 16 de nov (era el vie, 13 de nov)");
+    expect(es("Hedges now starts Fri Nov 13, 10:00 AM").title).toBe("Hedges ahora empieza el vie, 13 de nov, 10:00 a.m.");
+    expect(es("3 changes to your schedule", "You're on A: Thu Nov 12\nB on Fri Nov 13 was cancelled\nSomething new").body).toBe(
+      "Te pusieron en A: jue, 12 de nov\nSe canceló B del vie, 13 de nov\nSomething new",
+    );
+  });
+
+  it("reads the clock's reminders and the stop it made", () => {
+    expect(es("Your clock was stopped for you", "It started at 7:05 AM and was still running, so it was stopped at 6:00 PM Thu. Fix the end time on Timesheets if that's wrong.")).toEqual({
+      title: "Tu reloj se paró solo",
+      body: "Empezó a las 7:05 a.m. y seguía corriendo, así que se paró a las 6:00 p.m. del jueves. Corrige la hora de salida en Hojas de horas si no está bien.",
+    });
+    expect(es("Rosa Ruiz's clock is still running", "Started at 6:00 AM, 11 hours ago. Stop it if the day is done.")).toEqual({
+      title: "El reloj de Rosa Ruiz sigue corriendo",
+      body: "Empezó a las 6:00 a.m., hace 11 horas. Páralo si ya terminó el día.",
+    });
+  });
+
+  it("reads chat mentions, a sub's offers and pay, and their paperwork", () => {
+    expect(es("Ana Ortiz mentioned you in #crew", "Sent a photo")).toEqual({ title: "Ana Ortiz te mencionó en #crew", body: "Envió una foto" });
+    expect(es("Smith roof, Tue Nov 3 to Thu Nov 5, 24 squares, $2,040. Answer by Mon Nov 2, 5:00 PM. Open Crewtavo to accept or decline.", "New job offer.")).toEqual({
+      title: "Smith roof, mar 3 de nov a jue 5 de nov, 24 cuadros, $2,040. Responde antes del lun, 2 de nov, 5:00 p.m. Abre Crewtavo para aceptar o rechazar.",
+      body: "Nueva oferta de trabajo.",
+    });
+    expect(es("Paid $1,200 on Nov 10", "Smith roof, by check.")).toEqual({ title: "Pagado $1,200 el 10 de nov", body: "Smith roof, con cheque." });
+    expect(es("Your liability insurance ends in 12 days", "It ends Nov 25, 2026. Send us the new one under My paperwork.")).toEqual({
+      title: "Tu seguro de responsabilidad civil vence en 12 días",
+      body: "Vence el 25 de nov de 2026. Envíanos el nuevo en Mis documentos.",
+    });
+  });
+
+  it("reads a machine coming due, and a client asking to move a visit", () => {
+    expect(es("Oil change is coming due on Truck 2", "Due Nov 20 or at 5,000 miles (now 4,820)")).toEqual({
+      title: "Oil change ya casi toca en Truck 2",
+      body: "Toca el 20 de nov o al llegar a 5,000 millas (ahora 4,820)",
+    });
+    expect(es("Ann Lee asked to move Hedges", "Booked Fri Nov 13, 9:30 AM. Asked for Mon Nov 16.").body).toBe("Programada el vie, 13 de nov, 9:30 a.m. Pidió el lun, 16 de nov.");
+  });
+
+  it("reads the errors a crew member can meet", () => {
+    expect(translateError("es", "You can change a visit's status and notes. Ask the office about anything else.")).toBe("Puedes cambiar el estado y las notas de una visita. Pregúntale a la oficina por lo demás.");
+    expect(translateError("es", "Your workers' comp certificate on file has run out.")).toBe("Tu certificado de compensación laboral que tenemos venció.");
+    expect(translateError("es", "The lines and tax come to $86.40, not the $90.00 total. Check them.")).toBe("Las líneas y el impuesto suman $86.40, no el total de $90.00. Revísalos.");
+  });
+});
+
 describe("the Spanish catalog", () => {
   it("has a line for every text the code translates, and nothing left over", () => {
     expect(catalogProblems()).toEqual([]);
