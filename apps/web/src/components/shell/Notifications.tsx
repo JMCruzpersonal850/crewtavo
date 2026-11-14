@@ -87,7 +87,7 @@ export function NotificationsButton() {
     const fresh = rows.filter((n) => !seen.current!.has(n.id));
     fresh.forEach((n) => seen.current!.add(n.id));
     for (const n of fresh.filter((n) => !n.read_at).slice(0, 3).map(inMyLanguage)) {
-      toast.info(n.title, { description: n.body ?? undefined, action: n.link ? { label: t("View"), onClick: () => navigate(n.link!) } : undefined });
+      toast.info(n.title, { description: n.body && n.body !== n.title ? n.body : undefined, action: n.link ? { label: t("View"), onClick: () => navigate(n.link!) } : undefined });
     }
   }, [notifications.data, navigate]);
 
@@ -175,7 +175,8 @@ export function NotificationsButton() {
                   <span className="n-icon"><Icon name={ICONS[n.kind] ?? "bell"} size={16} /></span>
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <div className="n-title">{n.title}</div>
-                    {n.body && <div className="n-body">{n.body}</div>}
+                    {/* A one-line schedule notice is written as both its title and its body: said once. */}
+                    {n.body && n.body !== n.title && <div className="n-body">{n.body}</div>}
                     <div className="n-time">{timeAgo(n.created_at)}</div>
                   </span>
                 </button>
