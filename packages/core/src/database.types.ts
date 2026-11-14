@@ -2180,14 +2180,14 @@ isOneToOne: false
                   ]
                 },"properties": {
                   Row: {
-                    "city": string | null,"client_id": string,"company_id": string,"country": string,"created_at": string,"custom_fields": NonNullable<Json>,"id": string,"label": string | null,"lat": number | null,"line1": string,"line2": string | null,"lng": number | null,"lot_size_sqft": number | null,"notes": string | null,"postal_code": string | null,"region": string | null,"tags": (string)[],"updated_at": string
+                    "city": string | null,"client_id": string,"company_id": string,"country": string,"created_at": string,"custom_fields": NonNullable<Json>,"id": string,"label": string | null,"lat": number | null,"line1": string,"line2": string | null,"lng": number | null,"located_by": string | null,"lot_size_sqft": number | null,"notes": string | null,"postal_code": string | null,"region": string | null,"tags": (string)[],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "city"?: string | null,"client_id": string,"company_id": string,"country"?: string,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"id"?: string,"label"?: string | null,"lat"?: number | null,"line1": string,"line2"?: string | null,"lng"?: number | null,"lot_size_sqft"?: number | null,"notes"?: string | null,"postal_code"?: string | null,"region"?: string | null,"tags"?: (string)[],"updated_at"?: string
+                    "city"?: string | null,"client_id": string,"company_id": string,"country"?: string,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"id"?: string,"label"?: string | null,"lat"?: number | null,"line1": string,"line2"?: string | null,"lng"?: number | null,"located_by"?: string | null,"lot_size_sqft"?: number | null,"notes"?: string | null,"postal_code"?: string | null,"region"?: string | null,"tags"?: (string)[],"updated_at"?: string
                   }
                   Update: {
-                    "city"?: string | null,"client_id"?: string,"company_id"?: string,"country"?: string,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"id"?: string,"label"?: string | null,"lat"?: number | null,"line1"?: string,"line2"?: string | null,"lng"?: number | null,"lot_size_sqft"?: number | null,"notes"?: string | null,"postal_code"?: string | null,"region"?: string | null,"tags"?: (string)[],"updated_at"?: string
+                    "city"?: string | null,"client_id"?: string,"company_id"?: string,"country"?: string,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"id"?: string,"label"?: string | null,"lat"?: number | null,"line1"?: string,"line2"?: string | null,"lng"?: number | null,"located_by"?: string | null,"lot_size_sqft"?: number | null,"notes"?: string | null,"postal_code"?: string | null,"region"?: string | null,"tags"?: (string)[],"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -2610,14 +2610,14 @@ isOneToOne: false
                   ]
                 },"review_comparisons": {
                   Row: {
-                    "checked_at": string | null,"checked_by_hand_at": string | null,"company_id": string,"enabled": boolean,"enabled_by": string | null,"last_error": string | null,"lat": number | null,"lng": number | null,"located_at": string | null,"tried_at": string | null,"updated_at": string
+                    "company_id": string,"enabled": boolean,"enabled_by": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id": string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"located_at"?: string | null,"tried_at"?: string | null,"updated_at"?: string
+                    "company_id": string,"enabled"?: boolean,"enabled_by"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id"?: string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"located_at"?: string | null,"tried_at"?: string | null,"updated_at"?: string
+                    "company_id"?: string,"enabled"?: boolean,"enabled_by"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -2656,14 +2656,14 @@ isOneToOne: false
                   ]
                 },"review_places": {
                   Row: {
-                    "address": string | null,"checked_at": string | null,"company_id": string,"created_at": string,"id": string,"is_own": boolean,"maps_url": string | null,"name": string,"place_id": string,"previous_checked_at": string | null,"previous_total": number | null,"problem": string | null,"rating": number | null,"ratings_total": number | null
+                    "company_id": string,"created_at": string,"id": string,"is_own": boolean,"place_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address"?: string | null,"checked_at"?: string | null,"company_id": string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name": string,"place_id": string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"problem"?: string | null,"rating"?: number | null,"ratings_total"?: number | null
+                    "company_id": string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"place_id": string
                   }
                   Update: {
-                    "address"?: string | null,"checked_at"?: string | null,"company_id"?: string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name"?: string,"place_id"?: string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"problem"?: string | null,"rating"?: number | null,"ratings_total"?: number | null
+                    "company_id"?: string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"place_id"?: string
                   }
                   Relationships: [
                     {
@@ -4226,11 +4226,6 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
-"claim_review_comparisons":
-{ Args: { "p_limit"?: number }; Returns: {
-              "company_id": string
-            }[]
-                           },
 "claim_review_notices":
 { Args: { "p_claim": string,"p_company": string }; Returns: number
                            },
@@ -4311,6 +4306,11 @@ isOneToOne: false
                            },
 "dashboard":
 { Args: { "p_company": string }; Returns: Json
+                           },
+"depots_to_relocate":
+{ Args: { "p_limit"?: number }; Returns: {
+              "address": Json,"company_id": string,"depot": Json
+            }[]
                            },
 "dismiss_client_duplicate":
 { Args: { "p_client": string,"p_company": string,"p_other": string }; Returns: undefined
@@ -4407,9 +4407,6 @@ isOneToOne: false
 { Args: { "p_company": string,"p_day": string,"p_ends": string,"p_equipment": (string)[],"p_except"?: string,"p_starts": string }; Returns: {
               "ends_at": string,"equipment_id": string,"starts_at": string,"title": string,"visit_id": string
             }[]
-                           },
-"expire_review_locations":
-{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "expire_sub_offers":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -4888,9 +4885,6 @@ isOneToOne: false
 "record_referral":
 { Args: { "p_address"?: Json,"p_company": string,"p_details"?: string,"p_email"?: string,"p_name": string,"p_phone"?: string,"p_referrer": string }; Returns: Json
                            },
-"record_review_place":
-{ Args: { "p_id": string,"p_maps_url"?: string,"p_name": string,"p_rating": number,"p_total": number }; Returns: undefined
-                           },
 "record_reviews":
 { Args: { "p_claim": string,"p_company": string,"p_fetched_at"?: string,"p_location_id": string,"p_reviews": Json }; Returns: (string)[]
                            },
@@ -4935,6 +4929,9 @@ isOneToOne: false
 "release_social_post":
 { Args: { "p_claim": string,"p_post": string }; Returns: boolean
                            },
+"relocate_depot":
+{ Args: { "p_address": Json,"p_company": string,"p_depot": Json,"p_was": Json }; Returns: boolean
+                           },
 "remove_late_fee":
 { Args: { "p_invoice": string }; Returns: number
                            },
@@ -4975,11 +4972,6 @@ isOneToOne: false
                            },
 "retry_social_post":
 { Args: { "p_by": string,"p_company": string,"p_post": string }; Returns: number
-                           },
-"review_comparisons_due":
-{ Args: { "p_limit"?: number }; Returns: {
-              "company_id": string
-            }[]
                            },
 "review_stats":
 { Args: { "p_company": string }; Returns: Json
@@ -5206,6 +5198,9 @@ isOneToOne: false
                            },
 "texting_starters":
 { Args: { "p_company": string }; Returns: number
+                           },
+"tidy_reviews":
+{ Args: Record<PropertyKey, never>; Returns: Json
                            },
 "tidy_sign_in_codes":
 { Args: Record<PropertyKey, never>; Returns: number
