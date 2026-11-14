@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   rpcs: [] as Array<{ by: string; name: string; args: Record<string, unknown> }>,
   afterInsert: {} as Record<string, () => void>,
   meanwhile: null as (() => void) | null,
+  /** What quote_send_problem answers: why the quote can't be sent as it is, or null. */
+  sendProblem: null as string | null,
 }));
 vi.mock("../src/lib/supabase", () => {
   const embed = (table: string, row: Row): Row =>
@@ -73,6 +75,7 @@ vi.mock("../src/lib/supabase", () => {
       state.rpcs.push({ by, name, args });
       if (name === "accept_hub_range") return by === "admin" ? { data: acceptHubRange(args), error: null } : { data: null, error: { message: "permission denied for function accept_hub_range", code: "42501" } };
       if (name === "put_quote_package") return { data: putQuotePackage(args), error: null };
+      if (name === "quote_send_problem") return { data: state.sendProblem, error: null };
       return { data: true, error: null };
     },
     from: (table: string) => {
@@ -227,6 +230,7 @@ afterEach(() => {
   state.rpcs = [];
   state.afterInsert = {};
   state.meanwhile = null;
+  state.sendProblem = null;
 });
 
 describe("setting up roofing", () => {
@@ -731,6 +735,25 @@ describe("sending a roof estimate the usual way", () => {
     }
     return JSON.parse(String(fetcher.mock.calls.find(([url]) => String(url).includes("mailpit"))![1]!.body));
   };
+
+  it("sends nothing while the payment schedule has a day to set or one already gone, and says which", async () => {
+    roofer({ lines, status: "draft" });
+    state.sendProblem = "Payment 2 is due on Mar 1, 2026, which has already passed. Give it a new date.";
+    env.MAILPIT_URL = "http://mailpit.local";
+    try {
+      for (const channel of ["email", "link"]) {
+        const res = await send(`/quotes/${QUOTE}/send`, { channel });
+        expect(res.status, channel).toBe(400);
+        expect((await res.json()).error, channel).toBe("Payment 2 is due on Mar 1, 2026, which has already passed. Give it a new date.");
+      }
+    } finally {
+      delete env.MAILPIT_URL;
+    }
+    expect(state.rpcs.filter((r) => r.name === "quote_send_problem").map((r) => r.args)).toEqual([{ p_quote: QUOTE }, { p_quote: QUOTE }]);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("mailpit"))).toBe(false);
+    expect(rows("messages")).toEqual([]);
+    expect(quote().status).toBe("draft");
+  });
 
   it("says the range, never the exact total, while it's out as a range", async () => {
     roofer({ lines, status: "sent" });

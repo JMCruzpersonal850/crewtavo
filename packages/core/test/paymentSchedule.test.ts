@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scheduleAmounts, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleRow } from "../src/money";
+import { scheduleAmounts, scheduleDateProblem, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleRow } from "../src/money";
 
 // The database's private.schedule_amounts and private.schedule_problem do these sums
 // (supabase/tests/payment_schedule_test.sql checks the same cases there).
@@ -73,5 +73,30 @@ describe("payment schedule sums", () => {
     expect(thirds.map((r) => scheduleDueText(r, day))).toEqual(["When the quote is approved", "When the work starts", "When the work is done"]);
     expect(scheduleDueText({ due: "date", on: "2027-03-01" }, day)).toBe("On day 2027-03-01");
     expect(scheduleDueText({ due: "by_hand" }, day)).toBe("When it's invoiced");
+    // Days after approval, until approving gives it its day.
+    expect(scheduleDueText({ due: "date", after: 30 }, day)).toBe("30 days after the quote is approved");
+    expect(scheduleDueText({ due: "date", after: 1 }, day)).toBe("1 day after the quote is approved");
+    expect(scheduleDueText({ due: "date", after: 30, on: "2027-03-31" }, day)).toBe("On day 2027-03-31");
+    // A copy's or a template's, with its day to set.
+    expect(scheduleDueText({ due: "date" }, day)).toBe("On a date");
+  });
+
+  it("takes a payment due so many days after approval, a whole number from 1 to 365", () => {
+    const rest: ScheduleRow = { kind: "rest", due: "work_done" };
+    expect(scheduleProblem([{ kind: "percent", value: 50, due: "date", after: 30 }, rest], 1000)).toBeNull();
+    expect(scheduleProblem([{ kind: "percent", value: 50, due: "date", after: 365 }, rest], 1000)).toBeNull();
+    for (const after of [0, 366, 2.5, Number.NaN]) {
+      expect(scheduleProblem([{ kind: "percent", value: 50, due: "date", after }, rest], 1000)).toBe("Payment 1 needs a number of days, 1 to 365.");
+    }
+  });
+
+  it("says why a schedule can't go to the client: a day to set, or one already gone", () => {
+    const day = (iso: string) => `day ${iso}`;
+    const rest: ScheduleRow = { kind: "rest", due: "work_done" };
+    expect(scheduleDateProblem([{ kind: "percent", value: 50, due: "approval" }, { kind: "percent", value: 20, due: "date" }, rest], "2026-11-14", day)).toBe("Payment 2 needs its date.");
+    expect(scheduleDateProblem([{ kind: "percent", value: 20, due: "date", on: "2026-11-13" }, rest], "2026-11-14", day)).toBe("Payment 1 is due on day 2026-11-13, which has already passed. Give it a new date.");
+    expect(scheduleDateProblem([{ kind: "percent", value: 20, due: "date", on: "2026-11-14" }, rest], "2026-11-14", day)).toBeNull();
+    expect(scheduleDateProblem([{ kind: "percent", value: 20, due: "date", after: 30 }, rest], "2026-11-14", day)).toBeNull();
+    expect(scheduleDateProblem(thirds, "2026-11-14", day)).toBeNull();
   });
 });

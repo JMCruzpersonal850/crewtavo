@@ -85,7 +85,8 @@ select tps.check(private.schedule_problem('[{"kind": "percent", "value": 30, "du
   and private.schedule_problem('[{"kind": "rest", "due": "approval"}, {"kind": "amount", "value": 5, "due": "work_done"}]', 1000) = 'Only the last payment can be the rest.'
   and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "approval"}, {"kind": "percent", "value": 50, "due": "approval"}]', 1000) = 'Only one payment can be due when the quote is approved.'
   and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "work_done"}, {"kind": "percent", "value": 50, "due": "work_done"}]', 1000) = 'Only one payment can be due when the work is done.'
-  and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date"}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs its date.'
+  and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date"}, {"kind": "rest", "due": "work_done"}]', 1000) is null
+  and private.schedule_date_problem('[{"kind": "percent", "value": 50, "due": "date"}, {"kind": "rest", "due": "work_done"}]', null) = 'Payment 1 needs its date.'
   and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date", "on": "2026-02-30"}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs its date.'
   and private.schedule_problem('[{"kind": "percent", "value": 0, "due": "approval"}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs a percent above 0, up to 100.'
   and private.schedule_problem('[{"kind": "amount", "value": "100", "due": "approval"}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs an amount.'
@@ -132,14 +133,49 @@ select tps.check(tps.error_of(format($q$update public.quotes set recurrence_rule
     = '22023: Repeating work is billed by the visit or the month, so it has no payment schedule.',
   'repeating work has no schedule');
 
--- Copies and templates carry it.
-update public.quotes set payment_schedule = '[{"kind": "percent", "value": 20, "due": "approval"}, {"kind": "percent", "value": 30, "due": "date", "on": "2027-03-01"}, {"kind": "rest", "due": "work_done"}]' where id = :'patio';
+-- Copies and templates carry it, but never a day: each dated payment's day is to set again, while
+-- "so many days after they approve" carries as it is (20261113001640_schedule_dates.sql).
+update public.quotes set payment_schedule = '[{"kind": "percent", "value": 20, "due": "approval"}, {"kind": "percent", "value": 30, "due": "date", "on": "2027-03-01"}, {"kind": "percent", "value": 10, "due": "date", "after": 30}, {"kind": "rest", "due": "work_done"}]' where id = :'patio';
 select public.duplicate_quote(:'patio') as copy \gset
 select public.duplicate_quote(:'patio', 'Patio template') as template \gset
 select public.duplicate_quote(:'template', null, :'erin') as from_template \gset
-select tps.check((select count(*) = 3 and bool_and(payment_schedule = (select payment_schedule from public.quotes where id = :'patio')) and bool_and(deposit_amount = 240)
+select tps.check((select count(*) = 3 and bool_and(deposit_amount = 240) and bool_and(payment_schedule =
+      '[{"kind": "percent", "value": 20, "due": "approval"}, {"kind": "percent", "value": 30, "due": "date"}, {"kind": "percent", "value": 10, "due": "date", "after": 30}, {"kind": "rest", "due": "work_done"}]')
                     from public.quotes where id in (:'copy', :'template', :'from_template')),
-  'a copy, a template and a quote made from the template carry the schedule, and its deposit');
+  'a copy, a template and a quote made from the template carry the schedule and its deposit, with the dated payment''s day to set again');
+select tps.check((select payment_schedule -> 1 ->> 'on' = '2027-03-01' from public.quotes where id = :'patio'), 'the quote copied keeps its own day');
+select tps.check(public.quote_send_problem(:'copy') = 'Payment 2 needs its date.' and public.quote_send_problem(:'patio') is null,
+  'the server is told a copy can''t be sent until that day is set');
+select tps.check(tps.error_of(format($q$update public.quotes set status = 'sent', sent_at = now() where id = %L$q$, :'copy')) = '22023: Payment 2 needs its date.'
+  and tps.error_of(format($q$update public.quotes set status = 'approved', approved_at = now() where id = %L$q$, :'copy')) = '22023: Payment 2 needs its date.',
+  'and the copy can''t be marked sent or approved without it');
+-- A day already gone can't be sent; set to one still to come, it can.
+update public.quotes set payment_schedule = jsonb_set(payment_schedule, '{1,on}', to_jsonb((private.company_today(:'co') - 1)::text)) where id = :'copy';
+select tps.check(tps.error_of(format($q$update public.quotes set status = 'sent', sent_at = now() where id = %L$q$, :'copy'))
+    = format('22023: Payment 2 is due on %s, which has already passed. Give it a new date.', to_char(private.company_today(:'co') - 1, 'Mon FMDD, YYYY'))
+  and public.quote_send_problem(:'copy') = format('Payment 2 is due on %s, which has already passed. Give it a new date.', to_char(private.company_today(:'co') - 1, 'Mon FMDD, YYYY')),
+  'a quote whose dated payment''s day has passed can''t be sent, and says which');
+select tps.check(private.schedule_date_problem(jsonb_build_array(jsonb_build_object('kind', 'rest', 'due', 'date', 'on', private.company_today(:'co')::text)), private.company_today(:'co')) is null,
+  'a day that is today hasn''t passed');
+update public.quotes set payment_schedule = jsonb_set(payment_schedule, '{1,on}', to_jsonb((private.company_today(:'co') + 5)::text)), status = 'sent', sent_at = now() where id = :'copy';
+select tps.check((select status = 'sent' from public.quotes where id = :'copy'), 'with a day still to come, it''s sent');
+select tps.check(tps.error_of(format($q$update public.quotes set payment_schedule = jsonb_set(payment_schedule, '{1,on}', '"2020-01-01"') where id = %L$q$, :'copy')) like '22023: Payment 2 is due on Jan 1, 2020, which has already passed.%',
+  'and a quote that''s with the client can''t be given a day already gone');
+-- Approving gives "30 days after they approve" its day, from today where the company is.
+update public.quotes set status = 'approved', approved_at = now() where id = :'copy';
+select tps.check((select approval -> 'payment_schedule' -> 2 ->> 'on' = (private.company_today(:'co') + 30)::text and approval -> 'payment_schedule' -> 2 ->> 'after' = '30'
+                    and approval -> 'payment_schedule' -> 1 ->> 'on' = (private.company_today(:'co') + 5)::text
+                    from public.quotes where id = :'copy'),
+  'approving works out the day of a payment due 30 days after, and keeps it with the approval');
+select public.convert_quote_to_job(:'copy') as copy_job \gset
+select tps.check((select due = 'date' and due_on = private.company_today(:'co') + 30 from public.job_installments where job_id = :'copy_job' and position = 3),
+  'so the job''s payment has its date');
+select tps.check(private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date", "after": 0}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs a number of days, 1 to 365.'
+  and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date", "after": 366}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs a number of days, 1 to 365.'
+  and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date", "after": 2.5}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs a number of days, 1 to 365.'
+  and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date", "after": "30"}, {"kind": "rest", "due": "work_done"}]', 1000) = 'Payment 1 needs a number of days, 1 to 365.'
+  and private.schedule_problem('[{"kind": "percent", "value": 50, "due": "date", "after": 365}, {"kind": "rest", "due": "work_done"}]', 1000) is null,
+  'days after approval are a whole number from 1 to 365');
 commit;
 
 -- ===== Approved by the server before this one, and made a job ===================================

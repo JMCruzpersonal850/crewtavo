@@ -338,10 +338,11 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
 **And also:**
 
 - **Quotes:** a quote can carry a payment schedule: payments, each a percent of the total, an
-  amount or the rest, due when the client approves (the deposit), on a date, when the work starts,
-  when it's done (the final invoice) or when you invoice it. The payments have to come to the
-  total; the client sees them in the Client Hub and on the PDF, and approving keeps them as signed.
-  Templates and copies carry the schedule. Draft a quote, on a request, fills in a draft: with
+  amount or the rest, due when the client approves (the deposit), on a date or so many days after
+  they approve, when the work starts, when it's done or when you invoice it. The payments have to
+  come to the total; the client sees them in the Client Hub and on the PDF, and approving keeps them
+  as signed. Templates and copies carry the schedule with each dated payment's day to set again, and
+  a quote can't be sent while a payment's day is unset or already past. Draft a quote, on a request, fills in a draft: with
   Claude switched on (Settings → Company; it checks your key first), Claude reads the request and
   your price list and picks lines only from it, at your prices, with quantities when the client gave
   them (the others are 1, flagged to check); without it, the price list items whose names match the

@@ -337,6 +337,10 @@ export async function sendQuote(s: SalesScope, id: string, body: SendBody) {
   );
   if (["converted", "lost", "archived"].includes(quote.status)) throw new HttpError(400, `This quote is ${quote.status}, so it can't be sent.`);
   if (!quote.lines.length) throw new HttpError(400, "Add at least one line item before sending.");
+  // A payment schedule with a day still to set, or one already gone: the database won't mark the
+  // quote sent (20261113001640_schedule_dates.sql), so nothing goes to the client for it either.
+  const { data: problem } = await s.db.rpc("quote_send_problem", { p_quote: id });
+  if (typeof problem === "string" && problem) throw new HttpError(400, problem);
   let defaults: DeliverDefaults = {};
   const prices = optionPrices(quote);
   if (inRangeMode(quote) || prices.length >= 2) {

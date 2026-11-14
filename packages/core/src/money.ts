@@ -359,9 +359,20 @@ export interface ScheduleRow {
   /** The percent (above 0, up to 100) or the amount; null for the rest. */
   value?: Amount;
   due: ScheduleDue;
-  /** The day, for a payment due on a date (YYYY-MM-DD). */
+  /**
+   * The day, for a payment due on a date (YYYY-MM-DD). A copy or a quote from a template has none
+   * until it's set again, and a quote can't be sent without it.
+   */
   on?: string | null;
+  /**
+   * In place of a day: the payment is due this many days (1 to 365) after the quote is approved.
+   * Approving works the day out and keeps it as `on`.
+   */
+  after?: number | null;
 }
+
+/** The most days after approval a payment can be due. */
+export const SCHEDULE_AFTER_MAX = 365;
 
 /** The most payments a schedule has. */
 export const SCHEDULE_MAX = 12;
@@ -422,7 +433,9 @@ export function scheduleProblem(rows: readonly ScheduleRow[], total: Amount, cur
   for (const [i, row] of rows.entries()) {
     const which = `Payment ${i + 1}`;
     if (!SCHEDULE_DUE.includes(row.due)) return `${which} needs to say when it's due.`;
-    if (row.due === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(row.on ?? "")) return `${which} needs its date.`;
+    if (row.due === "date" && row.after != null) {
+      if (!(Number.isInteger(Number(row.after)) && Number(row.after) >= 1 && Number(row.after) <= SCHEDULE_AFTER_MAX)) return `${which} needs a number of days, 1 to ${SCHEDULE_AFTER_MAX}.`;
+    } else if (row.due === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(row.on ?? "")) return `${which} needs its date.`;
     if (row.kind === "rest" && i !== rows.length - 1) return "Only the last payment can be the rest.";
     if (row.kind === "percent" && !(Number(row.value) > 0 && Number(row.value) <= 100)) return `${which} needs a percent above 0, up to 100.`;
     if (row.kind === "amount" && !(Number(row.value) > 0 && Number(row.value) <= 100_000_000)) return `${which} needs an amount.`;
@@ -436,16 +449,35 @@ export function scheduleProblem(rows: readonly ScheduleRow[], total: Amount, cur
   return sums.left > 0 ? `The payments come to ${money(sums.left)} less than the total.` : `The payments come to ${money(-sums.left)} more than the total.`;
 }
 
+/**
+ * Why a schedule can't go to the client as it is, or null: a dated payment with no day (a copy's or
+ * a template's, to be set again), or one whose day is before `today` (YYYY-MM-DD where the company
+ * is). The database refuses to mark the quote sent with the same words
+ * (private.schedule_date_problem); `day` writes the date as "Mar 1, 2026".
+ */
+export function scheduleDateProblem(rows: readonly ScheduleRow[], today: string, day: (iso: string) => string): string | null {
+  for (const [i, row] of rows.entries()) {
+    if (row.due !== "date" || row.after != null) continue;
+    if (!row.on) return `Payment ${i + 1} needs its date.`;
+    if (row.on < today) return `Payment ${i + 1} is due on ${day(row.on)}, which has already passed. Give it a new date.`;
+  }
+  return null;
+}
+
 /** "Payment 2 of 3", as a schedule's payment is named on the job, its invoice and the office's notice. */
 export const schedulePaymentName = (position: number, count: number) => `Payment ${position} of ${count}`;
 
-/** When a payment is due, in words: "When the quote is approved", "On Mar 3, 2027" (`day` writes the date). */
-export function scheduleDueText(row: Pick<ScheduleRow, "due" | "on">, day: (iso: string) => string): string {
+/**
+ * When a payment is due, in words: "When the quote is approved", "On Mar 3, 2027" (`day` writes the
+ * date), "30 days after the quote is approved" until approving gives that one its day.
+ */
+export function scheduleDueText(row: Pick<ScheduleRow, "due" | "on" | "after">, day: (iso: string) => string): string {
   switch (row.due) {
     case "approval":
       return "When the quote is approved";
     case "date":
-      return row.on ? `On ${day(row.on)}` : "On a date";
+      if (row.on) return `On ${day(row.on)}`;
+      return row.after != null ? `${row.after} ${Number(row.after) === 1 ? "day" : "days"} after the quote is approved` : "On a date";
     case "work_starts":
       return "When the work starts";
     case "work_done":

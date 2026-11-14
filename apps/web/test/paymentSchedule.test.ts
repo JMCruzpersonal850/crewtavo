@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { quoteDocument, quoteSchedule } from "@/features/documents/build";
 import { billsOutsideSchedule, canInvoiceNow, dropPaymentsQuestion, installmentState } from "@/features/jobs/JobPaymentSchedule";
-import { shownSchedule } from "@/features/quotes/PaymentSchedule";
+import { fromDraft, shownSchedule, toDraft } from "@/features/quotes/PaymentSchedule";
 import { alertAmount, quoteForm } from "@/features/settings/QuoteSettings";
 
 const rows = [
@@ -90,6 +90,19 @@ describe("the job's payments", () => {
     expect(canInvoiceNow({ kind: "invoiced", invoice: invoice("sent") }, null)).toBe(false);
     expect(canInvoiceNow({ kind: "final", invoice: final }, final)).toBe(false);
     expect(canInvoiceNow({ kind: "voided", invoice: invoice("void") }, final)).toBe(false);
+  });
+});
+
+describe("the schedule editor's rows", () => {
+  it("asks a dated payment two ways and saves both as due on a date", () => {
+    expect(toDraft({ kind: "percent", value: 30, due: "date", on: "2027-03-01" })).toEqual({ kind: "percent", value: "30", due: "date", on: "2027-03-01", after: "" });
+    expect(toDraft({ kind: "percent", value: 30, due: "date", after: 30 })).toEqual({ kind: "percent", value: "30", due: "after", on: "", after: "30" });
+    expect(fromDraft({ kind: "percent", value: "30", due: "after", on: "2027-03-01", after: "45" })).toEqual({ kind: "percent", value: 30, due: "date", after: 45 });
+    expect(fromDraft({ kind: "percent", value: "30", due: "date", on: "2027-03-01", after: "45" })).toEqual({ kind: "percent", value: 30, due: "date", on: "2027-03-01" });
+    // A copy's dated payment comes back with no day, and stays one to set.
+    expect(fromDraft(toDraft({ kind: "amount", value: 200, due: "date" }))).toEqual({ kind: "amount", value: 200, due: "date", on: null });
+    // Days not typed yet are 0, which the checks turn away.
+    expect(fromDraft({ kind: "rest", value: "", due: "after", on: "", after: "" })).toEqual({ kind: "rest", due: "date", after: 0 });
   });
 });
 

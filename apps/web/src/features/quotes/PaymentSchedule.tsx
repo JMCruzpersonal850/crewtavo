@@ -5,45 +5,63 @@
  * database says the same: 20261113001100_payment_schedules.sql). The payment due at approval is the
  * deposit. A total that changes afterwards moves the percents; amounts that no longer fit are
  * flagged here. Once it's signed, it shows the amounts kept with the approval.
+ *
+ * A dated payment is due on a day or so many days after they approve
+ * (20261113001640_schedule_dates.sql). A copy or a quote from a template has its days to set again,
+ * and a day already gone has to be changed before the quote is sent: both are flagged here.
  */
-import { SCHEDULE_DUE, scheduleAmounts, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleDue, type ScheduleRow } from "@crewtavo/core/money";
+import { SCHEDULE_AFTER_MAX, SCHEDULE_DUE, scheduleAmounts, scheduleDateProblem, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleDue, type ScheduleRow } from "@crewtavo/core/money";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { supabase, unwrap } from "@/lib/api";
-import { formatDate, formatMoneyCents } from "@/lib/format";
+import { formatDate, formatMoneyCents, todayIn } from "@/lib/format";
+import { useSession } from "@/lib/session";
 import styles from "./QuotePage.module.css";
 
-const DUE_LABELS: Record<ScheduleDue, string> = {
+/** When a payment is due as the editor asks it: a schedule's five, with "on a date" asked two ways. */
+export type DraftDue = ScheduleDue | "after";
+const DRAFT_DUE: readonly DraftDue[] = ["approval", "after", ...SCHEDULE_DUE.filter((due) => due !== "approval")];
+const DUE_LABELS: Record<DraftDue, string> = {
   approval: "When they approve",
+  after: "Days after they approve",
   date: "On a date",
   work_starts: "When the work starts",
   work_done: "When the work is done",
   by_hand: "When we invoice it",
 };
 
-/** A row as it's typed: the amount as text, so a half-typed number isn't lost. */
-interface DraftRow {
+/** A row as it's typed: the amount and the days as text, so a half-typed number isn't lost. */
+export interface DraftRow {
   kind: ScheduleRow["kind"];
   value: string;
-  due: ScheduleDue;
+  due: DraftDue;
   on: string;
+  after: string;
 }
 
-const toDraft = (r: ScheduleRow): DraftRow => ({ kind: r.kind, value: r.value == null ? "" : String(r.value), due: r.due, on: r.on ?? "" });
-/** As it's saved: numbers, a date only when it's due on one, no value for the rest. */
-const fromDraft = (d: DraftRow): ScheduleRow => ({
+export const toDraft = (r: ScheduleRow): DraftRow => ({
+  kind: r.kind,
+  value: r.value == null ? "" : String(r.value),
+  due: r.due === "date" && r.after != null ? "after" : r.due,
+  on: r.on ?? "",
+  after: r.after == null ? "" : String(r.after),
+});
+/** As it's saved: numbers, a day or a number of days only when it's due on a date, no value for the rest. */
+export const fromDraft = (d: DraftRow): ScheduleRow => ({
   kind: d.kind,
   ...(d.kind === "rest" ? {} : { value: d.value.trim() === "" ? null : Number(d.value) }),
-  due: d.due,
+  due: d.due === "after" ? "date" : d.due,
   ...(d.due === "date" ? { on: d.on || null } : {}),
+  // Nothing typed is 0 days, which the checks turn away, rather than a date with no day.
+  ...(d.due === "after" ? { after: Number(d.after) } : {}),
 });
 /** Half when they approve, the rest when the work is done: the usual start. */
 const STARTER: DraftRow[] = [
-  { kind: "percent", value: "50", due: "approval", on: "" },
-  { kind: "rest", value: "", due: "work_done", on: "" },
+  { kind: "percent", value: "50", due: "approval", on: "", after: "" },
+  { kind: "rest", value: "", due: "work_done", on: "", after: "" },
 ];
 
 export interface ScheduleQuote {
@@ -67,6 +85,8 @@ export function shownSchedule(quote: ScheduleQuote) {
 }
 
 export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: ScheduleQuote; editable: boolean; onSaved: () => void }) {
+  const session = useSession();
+  const today = todayIn(session.company.timezone);
   const [draft, setDraft] = useState<DraftRow[] | null>(null);
   const shown = shownSchedule(quote);
   const save = useMutation({
@@ -86,7 +106,7 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
   if (draft) {
     const rows = draft.map(fromDraft);
     const sums = scheduleAmounts(rows, quote.total);
-    const problem = scheduleProblem(rows, quote.total);
+    const problem = scheduleProblem(rows, quote.total) ?? scheduleDateProblem(rows, today, (iso) => formatDate(iso));
     const set = (i: number, change: Partial<DraftRow>) => setDraft(draft.map((d, n) => (n === i ? { ...d, ...change } : d)));
     return (
       <div className="card card-pad stack-sm">
@@ -110,10 +130,14 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
                 <span className="muted small tabular">{formatMoneyCents(sums.rows[i]?.amount ?? 0)}</span>
               </div>
               <div className="row" style={{ gap: 6 }}>
-                <select className="select input-sm" aria-label={`Payment ${i + 1} due`} value={d.due} onChange={(e) => set(i, { due: e.target.value as ScheduleDue })}>
-                  {SCHEDULE_DUE.map((due) => <option key={due} value={due}>{DUE_LABELS[due]}</option>)}
+                <select className="select input-sm" aria-label={`Payment ${i + 1} due`} value={d.due} onChange={(e) => set(i, { due: e.target.value as DraftDue })}>
+                  {DRAFT_DUE.map((due) => <option key={due} value={due}>{DUE_LABELS[due]}</option>)}
                 </select>
-                {d.due === "date" && <input className="input input-sm" type="date" aria-label={`Payment ${i + 1} date`} value={d.on} onChange={(e) => set(i, { on: e.target.value })} />}
+                {d.due === "date" && <input className="input input-sm" type="date" min={today} aria-label={`Payment ${i + 1} date`} value={d.on} onChange={(e) => set(i, { on: e.target.value })} />}
+                {d.due === "after" && (
+                  <input className="input input-sm" style={{ width: 72, textAlign: "right" }} inputMode="numeric" placeholder="30" aria-label={`Payment ${i + 1} days after they approve, 1 to ${SCHEDULE_AFTER_MAX}`}
+                    value={d.after} onChange={(e) => set(i, { after: e.target.value.replace(/[^0-9]/g, "") })} />
+                )}
                 {draft.length > 1 && (
                   <Button size="sm" variant="ghost" icon="trash" aria-label={`Remove payment ${i + 1}`}
                     onClick={() => setDraft(draft.filter((_, n) => n !== i).map((r, n, all) => (n === all.length - 1 || r.kind !== "rest" ? r : { ...r, kind: "percent" })))} />
@@ -124,7 +148,7 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
         })}
         {draft.length < 12 && (
           <Button size="sm" variant="ghost" icon="plus" style={{ justifySelf: "start" }}
-            onClick={() => setDraft([...draft.map((r) => (r.kind === "rest" ? { ...r, kind: "percent" as const } : r)), { kind: "rest", value: "", due: "work_done", on: "" }])}>
+            onClick={() => setDraft([...draft.map((r) => (r.kind === "rest" ? { ...r, kind: "percent" as const } : r)), { kind: "rest", value: "", due: "work_done", on: "", after: "" }])}>
             Add a payment
           </Button>
         )}
@@ -141,6 +165,8 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
     );
   }
 
+  // A day to set again (a copy's, a template's) or one that has gone by: said here, before Send says it.
+  const dateProblem = shown.signed ? null : scheduleDateProblem(shown.rows, today, (iso) => formatDate(iso));
   return (
     <div className="card card-pad stack-sm">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -157,6 +183,11 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
           {!shown.fits && (
             <p className={styles.warn} role="status">
               <Icon name="alert" size={14} /> The total changed, so these payments {shown.left > 0 ? `leave ${formatMoneyCents(shown.left)} out` : `come to ${formatMoneyCents(-shown.left)} more than it`}. The last one takes what's left: edit the schedule to change that.
+            </p>
+          )}
+          {!shown.signed && dateProblem && (
+            <p className={styles.warn} role="status">
+              <Icon name="alert" size={14} /> {dateProblem} The quote can't be sent until then.
             </p>
           )}
           {shown.signed && <p className="muted small">As it was approved. The job invoices each payment when it's due.</p>}
