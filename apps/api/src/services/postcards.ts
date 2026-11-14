@@ -22,6 +22,7 @@
  *                 names nothing. So this server's address has to be public, as for social posts.
  */
 import { marketingOn } from "@crewtavo/core/marketing";
+import { CANT_SHARE, type CantShare } from "@crewtavo/core/social";
 import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type AddressProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
 import type { Env } from "../env";
 import { createPostcard, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
@@ -33,7 +34,7 @@ import { reportError } from "../lib/monitoring";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
 import { adminClient, type Db } from "../lib/supabase";
-import { imagesPublic } from "./social";
+import { imagesPublic, photoFacts } from "./social";
 
 const BATCH = 25;
 /** Lob takes far more than this; spaced so a big campaign never trips its limits. */
@@ -129,15 +130,34 @@ export function postcardVars(company: Pick<Company, "name" | "phone">, name: str
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * Why a company photo can't go on the front of a postcard, or null. A card is mailed to strangers'
+ * letterboxes with the client's house on it, so it follows the rules a social post and a showcase
+ * do (social_photo_facts): only a photo someone marked OK to share, and never one of a client who
+ * asked that photos of their property not be posted.
+ */
+export async function frontPhotoProblem(admin: Db, companyId: string, attachmentId: string): Promise<string | null> {
+  const [fact] = await photoFacts(admin, companyId, [attachmentId]);
+  if (!fact) return "The photo for the front isn't there anymore. Pick another.";
+  if (fact.problem === "client_opt_out") return "The photo on the front is of a client who asked that photos of their property not be posted, so it can't go on a postcard. Pick another.";
+  if (fact.problem) return `${CANT_SHARE[fact.problem as CantShare] ?? "The photo on the front can't be used."} Pick another for the front.`;
+  if (!fact.shareable) return "The photo on the front isn't marked OK to share. Mark it OK to share on its job first, or pick another.";
+  return null;
+}
+
+/**
  * The front's public copy: the company's photo (its drawn-on copy unless the original was picked) or
  * the picture uploaded to the campaign, re-encoded as a JPEG without EXIF, stored beside the
- * campaign under a name nobody can guess.
+ * campaign under a name nobody can guess. A company photo is read as the person sending (`db`,
+ * under row-level security), so only one they could open anyway is copied, and only when it may be
+ * shown (frontPhotoProblem).
  */
-async function makeFront(admin: Db, companyId: string, campaign: { id: string; front_attachment_id: string | null; front_marked: boolean; front_path: string | null }) {
+async function makeFront(admin: Db, db: Db, companyId: string, campaign: { id: string; front_attachment_id: string | null; front_marked: boolean; front_path: string | null }) {
   let path = campaign.front_path;
   if (campaign.front_attachment_id) {
-    const { data: photo } = await admin.from("attachments").select("path, marked_path").eq("company_id", companyId).eq("id", campaign.front_attachment_id).maybeSingle();
-    if (!photo) throw new HttpError(400, "The photo for the front isn't there anymore. Pick another.");
+    const { data: photo } = await db.from("attachments").select("path, marked_path").eq("company_id", companyId).eq("id", campaign.front_attachment_id).maybeSingle();
+    if (!photo) throw new HttpError(400, "The photo for the front isn't there anymore, or isn't one you can open. Pick another.");
+    const problem = await frontPhotoProblem(admin, companyId, campaign.front_attachment_id);
+    if (problem) throw new HttpError(400, problem);
     path = (campaign.front_marked && photo.marked_path) || photo.path;
   }
   if (!path) throw new HttpError(400, "Pick a picture for the front of the card.");
@@ -247,7 +267,7 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
   if (unfit.length) {
     throw new HttpError(400, `The message is too long for the back of a ${POSTCARD_SIZE_INFO[size].label} card ${forClients(unfit)}: with their name filled in, the end would be cut off. Shorten it or pick a bigger card.`);
   }
-  const front = await makeFront(admin, companyId, campaign);
+  const front = await makeFront(admin, db, companyId, campaign);
   const { data: count, error } = await admin.rpc("start_postcard_campaign", { p_campaign: id, p_mode: lob!.mode, p_image_token: front.token, p_image_path: front.path, p_max: MAX_POSTCARDS });
   if (error) {
     await admin.storage.from("files").remove([front.path]);
@@ -275,7 +295,7 @@ type Recipient = { id: number; client_id: string | null; name: string; address: 
 
 export async function processPostcards(env: Env, options: { campaignId?: string } = {}) {
   const admin = adminClient(env);
-  let query = admin.from("postcard_campaigns").select("id, company_id, name, size, message, mode, image_token").eq("status", "sending").order("started_at").limit(5);
+  let query = admin.from("postcard_campaigns").select("id, company_id, name, size, message, mode, image_token, front_attachment_id").eq("status", "sending").order("started_at").limit(5);
   if (options.campaignId) query = query.eq("id", options.campaignId);
   const { data: campaigns, error } = await query;
   if (error) throw new Error(error.message);
@@ -311,6 +331,19 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
     if (!from) {
       await stop("The company's address isn't complete anymore, and it's the cards' return address. Add it in Settings → Company and send a copy.");
       continue;
+    }
+    // A job photo on the front is checked again before each batch, as a post's photos are when it
+    // goes out: a client who has said no since Send isn't on any more cards.
+    if (campaign.front_attachment_id) {
+      const unshared = await frontPhotoProblem(admin, campaign.company_id, campaign.front_attachment_id).catch((e: unknown) => {
+        reportError(e, { feature: "postcards" });
+        return undefined;
+      });
+      if (unshared === undefined) continue;
+      if (unshared) {
+        await stop(`${unshared.replace(/ (Pick another|Mark it OK).*$/, "")} The cards not made yet weren't mailed.`);
+        continue;
+      }
     }
     const base = (env.APP_URL ?? "").replace(/\/$/, "");
     const front = frontHtml(campaign.size as PostcardSize, `${base}/api/public/postcards/${campaign.image_token}.jpg`);

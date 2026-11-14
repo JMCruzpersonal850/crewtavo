@@ -60,6 +60,8 @@ function memoryDb(tables: Record<string, Row[]>) {
       for (const r of recipients()) if (r.campaign_id === p_campaign && r.status === "pending") Object.assign(r, { status: "skipped", error: p_reason });
       return null;
     },
+    // A photo's facts as social_photo_facts gives them: `shareable`, and `problem` when it can't be shown at all.
+    social_photo_facts: ({ p_ids }) => (tables.attachments ?? []).filter((a) => p_ids.includes(a.id)).map((a) => ({ id: a.id, path: a.path, shareable: a.shareable, problem: a.problem ?? null })),
     // Send's: everyone in `clients` is in the audience, each with the same address.
     postcard_audience_summary: () => ({ count: tables.clients!.length }),
     postcard_audience: () => tables.clients!.map((c) => ({ client_id: c.id, display_name: c.name ?? c.id, address, left_out: null })),
@@ -128,7 +130,7 @@ function world(mode: "test" | "live" = "test") {
     companies: [{ id: CO, name: "Sketchy Gutters", phone: "(540) 555-0100", website: "https://sketchy.example.com", slug: "sketchy", address: { line1: "1 Main St", city: "Springfield", region: "IL", postal_code: "62701" }, settings: { marketing: { enabled: true } } }],
     integrations: [{ company_id: CO, provider: "lob", status: "connected", settings: { mode } }],
     intake_forms: [{ company_id: CO, slug: "spring", active: true }],
-    postcard_campaigns: [{ id: CAMPAIGN, company_id: CO, name: "Spring cards", size: "4x6", message: "Hi {{client.first_name}}, book at {{link}}", mode, status: "sending", image_token: "t".repeat(32), made_count: 0, stopped_reason: null as string | null }],
+    postcard_campaigns: [{ id: CAMPAIGN, company_id: CO, name: "Spring cards", size: "4x6", message: "Hi {{client.first_name}}, book at {{link}}", mode, status: "sending", image_token: "t".repeat(32), made_count: 0, stopped_reason: null as string | null, front_attachment_id: null as string | null }],
     clients: [
       { id: "ann", status: "active", marketing_opt_out: false },
       { id: "bob", status: "active", marketing_opt_out: true },
@@ -259,6 +261,25 @@ describe("making a campaign's cards", () => {
     expect(tables.postcard_recipients[0]!.error).toMatch(/too long for the back of the card/);
   });
 
+  it("stops before the next batch when the client on the front has since asked that photos of their property not be posted", async () => {
+    const tables = world("live") as ReturnType<typeof world> & { attachments: Row[] };
+    current.key = "live_0123456789abcdef0123";
+    tables.postcard_campaigns[0]!.front_attachment_id = "photo-1";
+    tables.attachments = [{ id: "photo-1", path: "co/jobs/j1/photo.jpg", shareable: true, problem: "client_opt_out" }];
+    current.db = memoryDb(tables);
+    await run();
+    expect(sent).toHaveLength(0);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "cancelled" });
+    expect(tables.postcard_campaigns[0]!.stopped_reason).toBe("The photo on the front is of a client who asked that photos of their property not be posted, so it can't go on a postcard. The cards not made yet weren't mailed.");
+    // And goes on while the photo is still OK to share.
+    const fine = world("live") as ReturnType<typeof world> & { attachments: Row[] };
+    fine.postcard_campaigns[0]!.front_attachment_id = "photo-1";
+    fine.attachments = [{ id: "photo-1", path: "co/jobs/j1/photo.jpg", shareable: true }];
+    current.db = memoryDb(fine);
+    await run();
+    expect(sent).toHaveLength(1);
+  });
+
   it("leaves the return address to Lob: it goes as the card's from address, not printed on the back as well", async () => {
     const tables = world();
     tables.postcard_recipients = tables.postcard_recipients.slice(0, 1);
@@ -371,6 +392,39 @@ describe("Send", () => {
     // Without them it goes.
     tables.clients.pop();
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending" });
+  });
+
+  const PHOTO = "00000000-0000-4000-8000-0000000000f0";
+  const withPhoto = (photo: Row) => {
+    const tables = draft() as ReturnType<typeof draft> & { attachments: Row[] };
+    Object.assign(tables.postcard_campaigns[0]!, { front_attachment_id: PHOTO, front_path: null });
+    tables.attachments = [{ id: PHOTO, company_id: CO, path: `${CO}/jobs/j1/photo.jpg`, marked_path: null, ...photo }];
+    return tables;
+  };
+
+  it("puts a job photo on the front only when it's marked OK to share", async () => {
+    const tables = withPhoto({ shareable: false });
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/isn't marked OK to share/);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
+    tables.attachments[0]!.shareable = true;
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending" });
+  });
+
+  it("never puts a photo on the front of a client who asked that photos of their property not be posted, even one marked OK before", async () => {
+    const tables = withPhoto({ shareable: true, problem: "client_opt_out" });
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/asked that photos of their property not be posted/);
+    expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
+  });
+
+  it("only copies a photo the person sending could open themselves", async () => {
+    const tables = withPhoto({ shareable: true });
+    current.db = memoryDb(tables);
+    // Their own read of attachments (under row-level security) doesn't find it.
+    const theirs = memoryDb({ ...tables, attachments: [] });
+    await expect(startPostcards(env, theirs as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/isn't one you can open/);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
   });
 
   it("mails with a live key only once the number of cards is confirmed", async () => {

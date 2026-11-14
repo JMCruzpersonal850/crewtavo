@@ -34,7 +34,7 @@ import { AudienceFields, useAudienceChoices } from "./AudienceFields";
 import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
-import { blockStyle } from "./postcardForm";
+import { blockStyle, pickablePhotos } from "./postcardForm";
 import { LobMode } from "../apps/LobPanel";
 
 interface Draft {
@@ -368,29 +368,34 @@ function UploadFront({ campaignId, onUploaded }: { campaignId: string; onUploade
 
 const PHOTO_PAGE = 48;
 
-/** The company's photos, newest first, each shown as it's shown everywhere (its drawing, when it has one). */
+/**
+ * The photos that may go on a card, newest first, each shown as it's shown everywhere (its drawing,
+ * when it has one): only photos marked OK to share, never of a client who asked that photos of
+ * their property not be posted (public.social_photos, as a social post's are picked), and of those
+ * only the ones the person looking can open themselves (their own read of attachments). The server
+ * checks the same again at Send.
+ */
 function FrontPhotoPicker({ onClose, onPick }: { onClose: () => void; onPick: (id: string) => void }) {
   const session = useSession();
   const photos = useInfiniteQuery({
     queryKey: ["postcard-photos", session.company.id],
     initialPageParam: null as null | { at: string; id: string },
-    getNextPageParam: (last: Array<{ id: string; created_at: string }>) => (last.length === PHOTO_PAGE ? { at: last.at(-1)!.created_at, id: last.at(-1)!.id } : null),
+    getNextPageParam: (last: { next: { at: string; id: string } | null }) => last.next,
     queryFn: async ({ pageParam }) => {
-      let q = supabase().from("attachments").select("id, path, marked_path, created_at").eq("company_id", session.company.id).in("content_type", ["image/jpeg", "image/png", "image/jpg"]);
-      if (pageParam) q = q.or(`created_at.lt.${pageParam.at},and(created_at.eq.${pageParam.at},id.lt.${pageParam.id})`);
-      const rows = unwrap(await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(PHOTO_PAGE));
-      return photoLinks(rows);
+      const shared = unwrap(await supabase().rpc("social_photos", { p_company: session.company.id, p_limit: PHOTO_PAGE, ...(pageParam ? { p_before_at: pageParam.at, p_before_id: pageParam.id } : {}) }));
+      const readable = shared.length ? unwrap(await supabase().from("attachments").select("id, path, marked_path, created_at").in("id", shared.map((p) => p.id))) : [];
+      return { rows: await photoLinks(pickablePhotos(shared, readable)), next: shared.length === PHOTO_PAGE ? { at: shared.at(-1)!.created_at, id: shared.at(-1)!.id } : null };
     },
   });
-  const all = photos.data?.pages.flat() ?? [];
+  const all = photos.data?.pages.flatMap((page) => page.rows) ?? [];
   return (
     <Dialog open onClose={onClose} title="Pick a photo for the front" size="lg">
       {photos.isPending ? (
         <div className="thumbs">{[0, 1, 2, 3].map((i) => <Skeleton key={i} height={110} radius={8} />)}</div>
       ) : photos.error ? (
         <ErrorState compact error={photos.error} onRetry={() => photos.refetch()} />
-      ) : !all.length ? (
-        <EmptyState icon="image" title="No photos yet">Photos taken on visits and added to jobs show up here. You can upload a picture instead.</EmptyState>
+      ) : !all.length && !photos.hasNextPage ? (
+        <EmptyState icon="image" title="No photos marked OK to share">Only photos marked OK to share on their job can go on a postcard, and never a client's who asked that photos of their property not be posted. Mark one on its job, or upload a picture instead.</EmptyState>
       ) : (
         <div className="stack">
           <div className="thumbs" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}>
@@ -402,6 +407,7 @@ function FrontPhotoPicker({ onClose, onPick }: { onClose: () => void; onPick: (i
             ))}
           </div>
           {photos.hasNextPage && <Button loading={photos.isFetchingNextPage} onClick={() => photos.fetchNextPage()}>Show more</Button>}
+          <span className="muted small">Photos marked OK to share. A client's who asked that photos of their property not be posted are never here.</span>
         </div>
       )}
     </Dialog>
