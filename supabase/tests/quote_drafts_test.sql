@@ -48,6 +48,28 @@ select tqd.check(not has_function_privilege('authenticated', 'public.set_quote_a
 
 -- What a draft keeps for the office is the office's: never read by the Client Hub, which names its columns.
 select tqd.check((select count(*) = 1 from information_schema.columns where table_schema = 'public' and table_name = 'quotes' and column_name = 'drafted'), 'quotes keep how they were drafted');
+
+-- ===== A draft made by itself leaves its request alone (20261113001650_drafts_leave_requests.sql) =====
+insert into public.clients (company_id, display_name) values (:'co', 'Remy Request') returning id as remy \gset
+insert into public.requests (company_id, client_id, title) values (:'co', :'remy', 'Pool opening') returning id as req \gset
+insert into public.requests (company_id, client_id, title, status) values (:'co', :'remy', 'Booked online', 'assessment_scheduled') returning id as booked \gset
+insert into public.requests (company_id, client_id, title, status) values (:'co', :'remy', 'Old one', 'archived') returning id as archived \gset
+insert into public.requests (company_id, client_id, title) values (:'co', :'remy', 'By hand') returning id as by_hand \gset
+insert into public.quotes (company_id, client_id, request_id, title, drafted) values (:'co', :'remy', :'req', 'Pool opening', '{"by": "price_list", "auto": true}') returning id as q_req \gset
+insert into public.quotes (company_id, client_id, request_id, title, drafted) values (:'co', :'remy', :'booked', 'Booked online', '{"by": "claude", "auto": true}') returning id as q_booked \gset
+insert into public.quotes (company_id, client_id, request_id, title, drafted) values (:'co', :'remy', :'archived', 'Old one', '{"by": "claude", "auto": true}') returning id as q_archived \gset
+insert into public.quotes (company_id, client_id, request_id, title, drafted) values (:'co', :'remy', :'by_hand', 'By hand', '{"by": "price_list"}') returning id as q_by_hand \gset
+insert into public.quote_line_items (company_id, quote_id, name, unit_price)
+select :'co', q.id, 'Opening', 250 from public.quotes q where q.id in (:'q_req', :'q_booked', :'q_archived', :'q_by_hand');
+update public.quotes set title = 'Pool opening, spring' where id = :'q_req';
+select tqd.check((select status = 'new' from public.requests where id = :'req') and (select status = 'assessment_scheduled' from public.requests where id = :'booked'),
+  'while a draft made by itself sits, and is edited, its request is as it came in: new, or booked for its assessment');
+update public.quotes set status = 'sent', sent_at = now() where id in (:'q_req', :'q_archived', :'q_by_hand');
+update public.quotes set status = 'approved', approved_at = now() where id = :'q_booked';
+select tqd.check((select status = 'quoted' from public.requests where id = :'req') and (select status = 'quoted' from public.requests where id = :'booked'),
+  'sending that quote, or approving it, marks the request Quoted');
+select tqd.check((select status = 'archived' from public.requests where id = :'archived'), 'an archived request stays archived');
+select tqd.check((select status = 'new' from public.requests where id = :'by_hand'), 'a quote a person drafted changes nothing here: the server marked its request as they pressed the button');
 rollback;
 
 \echo 'All quote draft tests passed.'

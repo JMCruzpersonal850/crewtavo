@@ -22,6 +22,7 @@ import { PropertySelect } from "../clients/ClientForm";
 import type { WebVisit } from "../marketing/website";
 import { WebVisitRows } from "../marketing/WebVisitRows";
 import { PlansCard } from "../plans/PlansCard";
+import { readyDraft } from "../quotes/DraftedCallout";
 import { VisitDialog, type VisitInput } from "../schedule/VisitDialog";
 import { askedFor, BookAskedTime } from "./AskedTime";
 import { memberName, requestSource, useTeam } from "./RequestsPage";
@@ -41,7 +42,7 @@ export function RequestPage() {
       unwrapOne(
         await supabase()
           .from("requests")
-          .select("id, number, title, details, status, source, website_form_id, assigned_to, answers, promo_code, rejected_promo_code, promo_problem, web_visit, created_at, asked_starts_at, asked_ends_at, client:clients(id, display_name, email, phone), property:properties(id, line1, city, region, postal_code, lat, lng), form:intake_forms(name, questions), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, assignees:visit_assignees(user_id)), quotes(id, number, title, status, total)")
+          .select("id, number, title, details, status, source, website_form_id, assigned_to, answers, promo_code, rejected_promo_code, promo_problem, web_visit, created_at, asked_starts_at, asked_ends_at, client:clients(id, display_name, email, phone), property:properties(id, line1, city, region, postal_code, lat, lng), form:intake_forms(name, questions), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, assignees:visit_assignees(user_id)), quotes(id, number, title, status, total, drafted)")
           .eq("id", id)
           .maybeSingle(),
         "This request",
@@ -118,6 +119,8 @@ export function RequestPage() {
   );
   const questions = ((r.form?.questions ?? []) as Array<{ key: string; label: string }>).reduce<Record<string, string>>((m, q) => ({ ...m, [q.key]: q.label }), {});
   const open = !["converted", "archived"].includes(r.status);
+  // A quote drafted by itself as this came in (Settings → Company): the request is still as it arrived, so this says it's there.
+  const drafted = readyDraft(r.quotes);
   // The request's salesperson goes out, unless someone picks another.
   const assessment = (): VisitInput => ({ request_id: r.id, property_id: r.property?.id ?? null, title: `Assessment: ${r.title}`, kind: "assessment", assignee_ids: r.assigned_to ? [r.assigned_to] : [], context: { label: `Request #${r.number} · ${r.client?.display_name ?? ""}`, to: `/requests/${r.id}` } });
 
@@ -171,6 +174,19 @@ export function RequestPage() {
             <div className="small" style={{ fontWeight: 400 }}>{r.client?.display_name ?? "The client"} picked this time online and was told it isn't confirmed yet. Book it, or schedule the assessment for another time.</div>
           </div>
           {canSell && <BookAskedTime request={r} onBooked={refresh} />}
+        </div>
+      )}
+
+      {drafted && (
+        <div className="callout callout-info">
+          <Icon name="sparkle" size={20} />
+          <div className="grow">
+            <strong>A draft quote is ready</strong>
+            <div className="small" style={{ fontWeight: 400 }}>
+              Quote #{drafted.quote.number} was drafted {drafted.by === "claude" ? "by Claude" : "from your price list"} when this request came in. Nothing has been sent, and the request is as it arrived until you send the quote.
+            </div>
+          </div>
+          <Link to={`/quotes/${drafted.quote.id}`} className="strong">Open the draft</Link>
         </div>
       )}
 

@@ -129,8 +129,8 @@ interface Call {
   body: any;
 }
 
-/** PostgREST for one request at a company with this price list; `settings` is the company's. */
-function serve(settings: Record<string, unknown>) {
+/** PostgREST for one request at a company with this price list; `settings` is the company's, `request` what's different about the request. */
+function serve(settings: Record<string, unknown>, request: Record<string, unknown> = {}) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -143,6 +143,7 @@ function serve(settings: Record<string, unknown>) {
           id: "req-1", number: 12, title: "Lawn care", details: "Front and back yard", answers, source: "web_form", client_id: "cl-1", property_id: "pr-1", assigned_to: null,
           form: { name: "Lawn care request", questions }, property: { line1: "1 Elm St", city: "Austin", region: "TX", lot_size_sqft: 8000, notes: null }, files: [{ title: "Back yard" }],
           client: { display_name: "Pat Lee" },
+          ...request,
         };
       }
       if (call.path === "companies") return { name: "Green Acres", settings };
@@ -211,6 +212,33 @@ describe("Draft a quote", () => {
     expect(result.by).toBe("price_list");
     expect(result.note).toBe("Claude couldn't draft this one (The AI is busy right now. Try again in a minute), so it was drafted from your price list.");
     expect(drafted(calls).drafted.note).toBe(result.note);
+  });
+
+  it("leaves a request that just came in exactly as it was: the draft is made, and the request isn't marked Quoted", async () => {
+    const calls = serve({ quotes: { draft_requests: true } });
+    expect(await draftArrivedRequest(env, "co-1", "req-1")).toMatchObject({ id: "q-1", by: "price_list", lines: 1 });
+    // Nothing is written to the request: still new, still bookable, an online booking's status as it was.
+    expect(calls.filter((c) => c.path === "requests" && c.method !== "GET")).toEqual([]);
+    expect(drafted(calls).drafted).toMatchObject({ by: "price_list", auto: true, request_number: 12 });
+    // Someone pressing Draft a quote is quoting it, as with Create quote.
+    const pressed = serve({});
+    await draftQuote(scope(), "req-1", "u-1");
+    expect(pressed.filter((c) => c.path === "requests" && c.method === "PATCH").map((c) => c.body)).toEqual([{ status: "quoted" }]);
+    expect(drafted(pressed).drafted).not.toHaveProperty("auto");
+  });
+
+  it("makes no quote at all for a request that just came in when nothing on the price list matches, with or without Claude", async () => {
+    const nothing = { service: ["Aeration"], feet: 3 };
+    for (const settings of [{ quotes: { draft_requests: true } }, { quote_ai: { on: true }, quotes: { draft_requests: true } }]) {
+      const calls = serve(settings, { title: "Aeration", details: null, answers: nothing, form: { name: "Yard request", questions } });
+      ai.complete.mockResolvedValueOnce(JSON.stringify({ description: "Aeration.", lines: [{ name: "Aeration", quantity: 1 }] }));
+      expect(await draftArrivedRequest(env, "co-1", "req-1")).toBeNull();
+      expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
+    }
+    // Pressed by a person, the quote is still started, and says nothing matched.
+    const calls = serve({}, { title: "Aeration", details: null, answers: nothing, form: { name: "Yard request", questions } });
+    expect(await draftQuote(scope(), "req-1", "u-1")).toMatchObject({ id: "q-1", lines: 0, note: "Nothing on your price list matched what they asked for. Add the lines yourself." });
+    expect(calls.some((c) => c.path === "quotes" && c.method === "POST")).toBe(true);
   });
 
   it("drafts a request that just came in only when the company asks, counts it against the company, and tells the office", async () => {

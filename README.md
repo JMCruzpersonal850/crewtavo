@@ -346,7 +346,9 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   Claude switched on (Settings → Company; it checks your key first), Claude reads the request and
   your price list and picks lines only from it, at your prices, with quantities when the client gave
   them (the others are 1, flagged to check); without it, the price list items whose names match the
-  client's choices. A request from a booking form or the Client Hub can get its draft by itself.
+  client's choices. A request from a booking form or the Client Hub can get its draft by itself: the request
+  stays as it came in, with a note that a draft is ready, until you send that quote, and when
+  nothing on the price list matches no quote is made.
   "Tell me about quotes over" an amount tells owners, admins and the quote's salesperson on the bell
   and their phone when one is sent, approved or sent back for changes. "Show reviews on quotes"
   (Marketing → Reviews) puts your Google rating and up to three reviews you pick (or your newest

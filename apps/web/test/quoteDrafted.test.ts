@@ -3,13 +3,25 @@
  * quantity to check (only those still on it), and why Claude didn't draft it when it was meant to.
  */
 import { describe, expect, it } from "vitest";
-import { draftedWords, readDrafted } from "@/features/quotes/DraftedCallout";
+import { draftedWords, readDrafted, readyDraft } from "@/features/quotes/DraftedCallout";
 
 describe("a drafted quote", () => {
   it("reads quotes.drafted, and anything else as not drafted", () => {
     expect(readDrafted(null)).toBeNull();
     expect(readDrafted({ by: "someone" })).toBeNull();
     expect(readDrafted({ by: "claude", request_number: 12, check: ["l1", 3], notes: "Size: Large" })).toEqual({ by: "claude", request_number: 12, check: ["l1"], lines: null, notes: "Size: Large", note: null });
+  });
+
+  it("points a request at the draft made by itself as it came in, until that quote is sent", () => {
+    const auto = { id: "q1", number: 40, status: "draft", drafted: { by: "claude", auto: true } };
+    expect(readyDraft([{ id: "q0", number: 39, status: "draft", drafted: null }, auto])).toEqual({ quote: auto, by: "claude" });
+    expect(readyDraft([{ ...auto, drafted: { by: "price_list", auto: true } }])?.by).toBe("price_list");
+    // Sent, it's a quote like any other; one a person drafted marked the request Quoted already.
+    expect(readyDraft([{ ...auto, status: "sent" }])).toBeNull();
+    expect(readyDraft([{ id: "q2", number: 41, status: "draft", drafted: { by: "claude" } }])).toBeNull();
+    expect(readyDraft([])).toBeNull();
+    expect(readDrafted({ by: "claude", auto: true })?.auto).toBe(true);
+    expect(readDrafted({ by: "claude", auto: "yes" })).not.toHaveProperty("auto");
   });
 
   it("says who drafted it and what to check", () => {

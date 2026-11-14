@@ -16,6 +16,8 @@ export interface Drafted {
   lines?: number | null;
   notes?: string | null;
   note?: string | null;
+  /** Made by itself as the request came in: the request stays as it was until this quote is sent. */
+  auto?: boolean;
 }
 
 /** quotes.drafted as stored, or null for a quote nobody drafted. */
@@ -30,7 +32,21 @@ export function readDrafted(value: unknown): Drafted | null {
     lines: typeof d.lines === "number" ? d.lines : null,
     notes: typeof d.notes === "string" ? d.notes : null,
     note: typeof d.note === "string" ? d.note : null,
+    ...(d.auto === true ? { auto: true } : {}),
   };
+}
+
+/**
+ * The draft quote a request's page points to: one made by itself as the request came in that's
+ * still a draft (the request wasn't marked Quoted for it, so nothing else on the page says it's
+ * there). Null once it's sent, and for quotes people made.
+ */
+export function readyDraft<T extends { status: string; drafted?: unknown }>(quotes: readonly T[]): { quote: T; by: Drafted["by"] } | null {
+  for (const quote of quotes) {
+    const d = quote.status === "draft" ? readDrafted(quote.drafted) : null;
+    if (d?.auto) return { quote, by: d.by };
+  }
+  return null;
 }
 
 /** What the callout says first: who drafted it, and from what. */

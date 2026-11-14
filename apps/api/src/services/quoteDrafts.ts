@@ -17,6 +17,9 @@
  * to the client), and the quote is made the way Create quote makes it (sales.ts quoteFromRequest).
  * A company with "Draft a quote when a request comes in" on (settings.quotes.draft_requests) gets
  * one by itself for each request from a booking form or the Client Hub, and the office is told.
+ * That one leaves the request exactly as it came in (still new, still bookable at the time asked
+ * for, an online booking's status untouched: nobody has quoted anything yet), and when nothing on
+ * the price list matches it makes no quote at all, rather than an empty numbered one.
  */
 import { z } from "zod";
 import type { Env } from "../env";
@@ -222,11 +225,20 @@ export interface Drafted {
 }
 
 /**
- * Make the draft. `userId` is who pressed Draft a quote, or null when it was drafted by itself (the
- * ask counts against the company alone). The scope's client writes the quote: the person's own, or
- * the server's for one drafted by itself.
+ * Make the draft for whoever pressed Draft a quote (`userId`). The scope's client, the person's own,
+ * writes the quote, and the request becomes Quoted as with Create quote. With nothing to put on it,
+ * the quote is still started, and says so.
  */
-export async function draftQuote(s: SalesScope, requestId: string, userId: string | null): Promise<Drafted> {
+export async function draftQuote(s: SalesScope, requestId: string, userId: string): Promise<Drafted> {
+  return (await makeDraft(s, requestId, userId, false))!;
+}
+
+/**
+ * The draft itself. `auto`: made by itself as the request came in, with the server's client and the
+ * ask counted against the company alone. Then the request is left as it is, and null comes back,
+ * with no quote made, when there's nothing to put on one.
+ */
+async function makeDraft(s: SalesScope, requestId: string, userId: string | null, auto: boolean): Promise<Drafted | null> {
   const request = await loadRequest(s.db, s.companyId, requestId);
   const [company, items] = await Promise.all([
     s.db.from("companies").select("name, settings").eq("id", s.companyId).maybeSingle(),
@@ -268,7 +280,8 @@ export async function draftQuote(s: SalesScope, requestId: string, userId: strin
     if (!lines.length) note = note ? `${note} ${NOTHING_MATCHED}` : NOTHING_MATCHED;
   }
 
-  const quote = await quoteFromRequest(s, requestId);
+  if (auto && !lines.length) return null;
+  const quote = await quoteFromRequest(s, requestId, { keepRequest: auto });
   if (lines.length) {
     const { data: saved, error } = await s.db
       .from("quote_line_items")
@@ -276,15 +289,16 @@ export async function draftQuote(s: SalesScope, requestId: string, userId: strin
       .select("id, sort");
     if (error) throw new HttpError(500, error.message);
     const check = (saved ?? []).filter((row) => lines[row.sort]?.check).map((row) => row.id);
-    await saveDrafted(s.db, quote.id, { by, request: request.number, check, lines: lines.length, answers, note, description });
+    await saveDrafted(s.db, quote.id, { by, auto, request: request.number, check, lines: lines.length, answers, note, description });
   } else {
-    await saveDrafted(s.db, quote.id, { by, request: request.number, check: [], lines: 0, answers, note, description });
+    await saveDrafted(s.db, quote.id, { by, auto, request: request.number, check: [], lines: 0, answers, note, description });
   }
   return { id: quote.id, number: quote.number, by, lines: lines.length, check: lines.filter((l) => l.check).length, note };
 }
 
-async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; request: number | null; check: string[]; lines: number; answers: readonly RequestAnswer[]; note: string | null; description: string | null }) {
-  const drafted = { by: d.by, at: new Date().toISOString(), request_number: d.request, check: d.check, lines: d.lines, notes: answerNotes(d.answers) || null, note: d.note };
+async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; auto: boolean; request: number | null; check: string[]; lines: number; answers: readonly RequestAnswer[]; note: string | null; description: string | null }) {
+  // `auto` marks one made by itself: its request is still as it came in, and becomes Quoted when this quote is sent.
+  const drafted = { by: d.by, at: new Date().toISOString(), request_number: d.request, check: d.check, lines: d.lines, notes: answerNotes(d.answers) || null, note: d.note, ...(d.auto ? { auto: true } : {}) };
   const { error } = await db.from("quotes").update({ drafted, ...(d.description ? { message: d.description } : {}) }).eq("id", quoteId);
   if (error) throw new HttpError(500, error.message);
 }
@@ -306,7 +320,8 @@ async function loadRequest(db: Db, companyId: string, requestId: string) {
 /**
  * A request just in from a booking form or the Client Hub, at a company with "Draft a quote when a
  * request comes in" on: its draft, made with the server's client, and the office told (the request's
- * salesperson, else the owners, admins and office). Never throws: the request is in either way.
+ * salesperson, else the owners, admins and office). The request itself isn't touched. Nothing on
+ * the price list for it: no quote, and nothing to tell. Never throws: the request is in either way.
  */
 export async function draftArrivedRequest(env: Env, companyId: string, requestId: string): Promise<Drafted | null> {
   const admin = adminClient(env);
@@ -314,7 +329,8 @@ export async function draftArrivedRequest(env: Env, companyId: string, requestId
     const { data: company } = await admin.from("companies").select("settings").eq("id", companyId).maybeSingle();
     if (!draftsNewRequests(company?.settings)) return null;
     const baseUrl = (env.APP_URL ?? "").replace(/\/$/, "");
-    const drafted = await draftQuote({ db: admin, env, companyId, baseUrl }, requestId, null);
+    const drafted = await makeDraft({ db: admin, env, companyId, baseUrl }, requestId, null, true);
+    if (!drafted) return null;
     const { data: request } = await admin.from("requests").select("number, assigned_to, client:clients(display_name)").eq("id", requestId).maybeSingle();
     const { data: people } = request?.assigned_to
       ? { data: [{ user_id: request.assigned_to }] }
@@ -322,7 +338,7 @@ export async function draftArrivedRequest(env: Env, companyId: string, requestId
     const who = (request?.client as { display_name?: string } | null)?.display_name ?? "a client";
     const body = drafted.by === "claude"
       ? `Claude drafted it from the request and your price list${drafted.check ? `. Check the quantity on ${drafted.check === 1 ? "1 line" : `${drafted.check} lines`}` : ""}. Look it over before you send it.`
-      : `It was drafted from your price list${drafted.lines ? "" : ", which had nothing matching"}. Look it over before you send it.`;
+      : "It was drafted from your price list. Look it over before you send it.";
     if (people?.length) {
       await admin.from("notifications").insert(people.map((p) => ({
         company_id: companyId, user_id: p.user_id, kind: "quote",

@@ -298,8 +298,13 @@ export async function sendChoicesOf(s: SalesScope, kind: "quote" | "invoice", id
   return { ...(await sendChoicesFor(adminClient(s.env), s.companyId, client)), max: MAX_RECIPIENTS };
 }
 
-/** Start a draft quote from a request, carrying over the client, property and any measurement. */
-export async function quoteFromRequest(s: SalesScope, requestId: string) {
+/**
+ * Start a draft quote from a request, carrying over the client, property and any measurement. The
+ * request becomes Quoted, unless `keepRequest`: a draft made by itself as the request came in
+ * (services/quoteDrafts.ts) leaves it as it is, still new and still bookable, until someone sends
+ * that quote (20261113001650_drafts_leave_requests.sql).
+ */
+export async function quoteFromRequest(s: SalesScope, requestId: string, options: { keepRequest?: boolean } = {}) {
   const request = must(await s.db.from("requests").select("id, client_id, property_id, title, details").eq("id", requestId).eq("company_id", s.companyId).maybeSingle(), "Request not found.");
   const company = must(await s.db.from("companies").select("settings").eq("id", s.companyId).maybeSingle());
   const taxRate = Number((company.settings as { default_tax_rate?: number } | null)?.default_tax_rate ?? 0);
@@ -311,7 +316,7 @@ export async function quoteFromRequest(s: SalesScope, requestId: string) {
       .single(),
   );
   await Promise.all([
-    s.db.from("requests").update({ status: "quoted" }).eq("id", requestId),
+    ...(options.keepRequest ? [] : [s.db.from("requests").update({ status: "quoted" }).eq("id", requestId)]),
     s.db.from("measurements").update({ quote_id: quote.id }).eq("request_id", requestId).is("quote_id", null),
   ]);
   return quote;
