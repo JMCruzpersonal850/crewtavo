@@ -1568,7 +1568,12 @@ button.hub-btn { width: 100%; border: 0; font: inherit; font-size: var(--fs-16);
 
 /* Google's attribution for Places content shown without a map (How you compare), as its Places API
    policies ask: the words "Google Maps" in Roboto or a sans-serif, weight 400, 12 to 16px, in its
-   grey (#5E5E5E) on a light page and white on a dark one, never wrapped. Don't restyle it. */
+   grey (#5E5E5E) on a light page and white on a dark one, never wrapped. Don't restyle it. Google's
+   content sits in a bordered box of its own (.google-box), with the attribution at the bottom of
+   the same box, so it's clear which content is Google's. */
+.google-box { border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
+.google-box > .card-row:first-child { border-top: 0; }
+.google-box > .google-notice { padding: 10px 20px 12px; border-top: 1px solid var(--row-divider); }
 .google-notice { display: grid; gap: 4px; }
 .google-attribution { font-family: Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 13px; font-style: normal; font-weight: 400; letter-spacing: normal; line-height: 1.4; color: #5e5e5e; white-space: nowrap; }
 :root.dark .google-attribution { color: #fff; }

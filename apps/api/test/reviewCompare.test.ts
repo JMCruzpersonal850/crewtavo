@@ -1,312 +1,271 @@
 /**
- * How you compare (services/reviewCompare.ts, integrations/places.ts): Google Places is asked with
- * the server's key or the company's own (as its web address), for only the fields shown; a check
- * makes one Place Details call per place and keeps the count before; a check by hand waits a day;
- * the switch turns on only once Google answers. Google and the database answer what each test gives.
+ * How you compare (services/reviewCompare.ts, routes/reviewCompare.ts): the server keeps the switch
+ * and the list of place IDs and nothing else, never asks Google about a place, and turns down a
+ * body that carries anything Google said. The database answers what each test gives.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Env } from "../src/env";
-import { checkPlacesKey, placeDetails, placesKey, textSearch } from "../src/integrations/places";
-import { addPlace, LOCATION_DAYS, refreshComparison, refreshDueComparisons, searchPlaces, setComparison, skippedWords } from "../src/services/reviewCompare";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath, URL } from "node:url";
+import { Hono } from "hono";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppEnv, Env } from "../src/env";
+import { addPlace, comparisonState, NO_KEY, setComparison } from "../src/services/reviewCompare";
+import { CRON_TASKS, TASKS } from "../src/tasks";
 
-const current = vi.hoisted(() => ({ db: null as unknown }));
+const current = vi.hoisted(() => ({ db: null as unknown, role: "office" }));
 vi.mock("../src/lib/supabase", async (original) => ({ ...(await original<typeof import("../src/lib/supabase")>()), adminClient: () => current.db }));
+// Signed in as someone in the office with the marketing area, or as an owner.
+vi.mock("../src/lib/auth", async (original) => ({
+  ...(await original<typeof import("../src/lib/auth")>()),
+  requireUser: async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
+    c.set("userId", "00000000-0000-4000-8000-0000000000a1");
+    await next();
+  },
+  requireCompany: (roles: readonly string[]) => async (c: { set: (k: string, v: unknown) => void; json: (b: unknown, s: number) => Response }, next: () => Promise<void>) => {
+    if (!roles.includes(current.role)) return c.json({ error: "You don't have access to that." }, 403);
+    c.set("companyId", CO);
+    c.set("role", current.role);
+    await next();
+  },
+}));
+const { reviewCompare } = await import("../src/routes/reviewCompare");
 
 const env: Env = { SUPABASE_URL: "https://example.supabase.co", SUPABASE_SECRET_KEY: "sb_secret_test", APP_URL: "https://crew.example.com" };
 const CO = "00000000-0000-4000-8000-0000000000c0";
-const answer = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-type Call = { url: string; headers: Record<string, string>; body: any };
-
-function google(reply: (call: Call) => Response) {
-  const calls: Call[] = [];
-  const fetcher = vi.fn(async (url: string, init: RequestInit) => {
-    const call = { url, headers: init.headers as Record<string, string>, body: init.body ? JSON.parse(String(init.body)) : null };
-    calls.push(call);
-    return reply(call);
-  });
-  return { calls, fetcher: fetcher as unknown as typeof fetch };
-}
-
-afterEach(() => vi.unstubAllGlobals());
-
-describe("the key", () => {
-  it("is the server's when it has one, else the company's own, sent as from the company's address", () => {
-    expect(placesKey({ ...env, GOOGLE_MAPS_SERVER_KEY: "server-key" }, { maps: { google_key: "own" } })).toEqual({ key: "server-key", referer: null, source: "server" });
-    expect(placesKey(env, { maps: { google_key: " own-key " } })).toEqual({ key: "own-key", referer: "https://crew.example.com/", source: "company" });
-    expect(placesKey(env, {})).toBeNull();
-  });
-
-  it("is checked with a free ids-only search, and Google's refusal says what to fix", async () => {
-    const ok = google(() => answer(200, { places: [{ id: "p1" }] }));
-    expect(await checkPlacesKey({ key: "k", referer: "https://crew.example.com/", source: "company" }, "Sketchy Gutters", ok.fetcher)).toBeNull();
-    expect(ok.calls[0]!.headers["X-Goog-FieldMask"]).toBe("places.id");
-    expect(ok.calls[0]!.headers.Referer).toBe("https://crew.example.com/");
-    const off = google(() => answer(403, { error: { status: "PERMISSION_DENIED", message: "Places API (New) has not been used in project 1 before or it is disabled." } }));
-    expect(await checkPlacesKey({ key: "k", referer: null, source: "server" }, "x", off.fetcher)).toMatch(/enable Places API \(New\)/);
-  });
-});
-
-describe("asking Google", () => {
-  const key = { key: "k", referer: null, source: "server" as const };
-  it("searches near the business for the fields the card shows, nearest first only when asked", async () => {
-    const g = google(() => answer(200, { places: [{ id: "p1", displayName: { text: "Rival Gutters" }, formattedAddress: "1 Elm St", rating: 4.4, userRatingCount: 51, googleMapsUri: "https://maps.google.com/?cid=1" }, { id: "p2" }] }));
-    const found = await textSearch(key, "gutters", { lat: 39.78, lng: -89.65 }, { nearestFirst: true }, g.fetcher);
-    expect(found).toEqual([{ place_id: "p1", name: "Rival Gutters", address: "1 Elm St", rating: 4.4, ratings_total: 51, maps_url: "https://maps.google.com/?cid=1" }]);
-    expect(g.calls[0]!.url).toBe("https://places.googleapis.com/v1/places:searchText");
-    expect(g.calls[0]!.headers["X-Goog-FieldMask"]).toBe("places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri");
-    expect(g.calls[0]!.body).toMatchObject({ textQuery: "gutters", rankPreference: "DISTANCE", locationBias: { circle: { center: { latitude: 39.78, longitude: -89.65 } } } });
-    await textSearch(key, "Rival", null, {}, g.fetcher);
-    expect(g.calls[1]!.body).not.toHaveProperty("rankPreference");
-    expect(g.calls[1]!.body).not.toHaveProperty("locationBias");
-  });
-
-  it("reads a place with only its name, rating, review count and Maps link", async () => {
-    const g = google(() => answer(200, { id: "p1", displayName: { text: "Rival" }, rating: 4.1, userRatingCount: 9 }));
-    expect(await placeDetails(key, "p1", g.fetcher)).toMatchObject({ place_id: "p1", rating: 4.1, ratings_total: 9 });
-    expect(g.calls[0]!.url).toBe("https://places.googleapis.com/v1/places/p1");
-    expect(g.calls[0]!.headers["X-Goog-FieldMask"]).toBe("id,displayName,rating,userRatingCount,googleMapsUri,businessStatus");
-    await expect(placeDetails(key, "../admin", g.fetcher)).rejects.toThrow(/isn't a Google place/);
-    expect(g.calls).toHaveLength(1);
-  });
-});
+const USER = "00000000-0000-4000-8000-0000000000a1";
 
 type Row = Record<string, any>;
+/** The tables as lists of rows, with the two rules the database keeps for review_places. */
 function memoryDb(tables: Record<string, Row[]>) {
-  const recorded: Row[] = [];
+  let ids = 0;
   const query = (table: string) => {
     const filters: Array<(r: Row) => boolean> = [];
-    let change: Row | null = null;
     let upsert: Row | null = null;
+    let remove = false;
     let single = false;
     const run = () => {
       const rows = (tables[table] ??= []);
       if (upsert) {
-        const found = rows.find((r) => r.company_id === upsert!.company_id);
-        if (found) Object.assign(found, upsert);
-        else rows.push({ ...upsert });
-        return { data: null, error: null };
+        const key = table === "review_places" ? (r: Row) => r.company_id === upsert!.company_id && r.place_id === upsert!.place_id : (r: Row) => r.company_id === upsert!.company_id;
+        const found = rows.find(key);
+        // review_places_limit: five competitors at most.
+        if (table === "review_places" && !upsert.is_own && rows.filter((r) => r.company_id === upsert!.company_id && !r.is_own && r !== found).length >= 5)
+          return { data: null, error: { code: "22023", message: "Compare with up to five competitors. Remove one first." } };
+        const row = found ? Object.assign(found, upsert) : (rows.push({ id: `row-${++ids}`, ...upsert }), rows.at(-1)!);
+        return { data: single ? { ...row } : null, error: null };
       }
       const matching = rows.filter((r) => filters.every((f) => f(r)));
-      if (change) {
-        for (const r of matching) Object.assign(r, change);
+      if (remove) {
+        tables[table] = rows.filter((r) => !matching.includes(r));
         return { data: null, error: null };
       }
       return { data: single ? (matching[0] ?? null) : matching.map((r) => ({ ...r })), error: null };
     };
     const q: any = {
       select: () => q,
-      update: (v: Row) => ((change = v), q),
       upsert: (v: Row) => ((upsert = v), q),
+      delete: () => ((remove = true), q),
       eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
+      neq: (c: string, v: unknown) => (filters.push((r) => r[c] !== v), q),
       match: (v: Row) => (filters.push((r) => Object.entries(v).every(([k, x]) => r[k] === x)), q),
       order: () => q,
       maybeSingle: () => ((single = true), q),
+      single: () => ((single = true), q),
       then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve().then(run).then(resolve, reject),
     };
     return q;
   };
-  const calls: string[] = [];
-  const db = {
-    recorded,
-    calls,
-    /** The limiter says no. */
-    limited: false,
-    from: query,
-    rpc: async (name: string, args: Row) => {
-      calls.push(name);
-      if (name === "record_review_place") recorded.push(args);
-      // Every company with the comparison on is due, and claimed.
-      if (name === "claim_review_comparisons") return { data: (tables.review_comparisons ?? []).filter((r) => r.enabled).map((r) => ({ company_id: r.company_id })), error: null };
-      return { data: name === "rate_limit_hit" ? !db.limited : null, error: null };
-    },
-  };
-  return db;
+  return { from: query, rpc: async (name: string) => Promise.reject(new Error(`No function is called anymore, but ${name} was`)) };
 }
 
-describe("a check", () => {
-  const world = (checkedAt: string | null) => ({
-    companies: [{ id: CO, name: "Sketchy Gutters", address: {}, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
-    review_comparisons: [{ company_id: CO, enabled: true, checked_at: checkedAt, lat: null, lng: null }],
-    review_places: [{ id: "a", company_id: CO, place_id: "pa" }, { id: "b", company_id: CO, place_id: "pb" }, { id: "c", company_id: CO, place_id: "pc" }],
-  });
+const world = (settings: Row = { marketing: { enabled: true }, maps: { google_key: "AIzaBrowser" } }, more: Record<string, Row[]> = {}): Record<string, Row[]> => ({
+  companies: [{ id: CO, name: "Sketchy Gutters", settings }],
+  review_comparisons: [],
+  review_places: [],
+  integrations: [],
+  ...more,
+});
 
-  it("makes one Place Details call per place and records each", async () => {
-    const tables = world(null);
-    const db = memoryDb(tables);
-    current.db = db;
-    const g = google((call) => answer(200, { id: call.url.split("/").pop(), displayName: { text: "X" }, rating: 4.5, userRatingCount: 10 }));
-    vi.stubGlobal("fetch", g.fetcher);
-    await refreshComparison(env, db as never, CO, true);
-    expect(g.calls.map((c) => c.url.split("/").pop())).toEqual(["pa", "pb", "pc"]);
-    expect(db.recorded.map((r) => r.p_id)).toEqual(["a", "b", "c"]);
-    expect(tables.review_comparisons[0]!.checked_at).toBeTruthy();
-  });
+/** Google, which this server must never call. */
+const outside = vi.fn(async () => new Response("{}", { status: 500 }));
+beforeEach(() => {
+  outside.mockClear();
+  current.role = "office";
+  vi.stubGlobal("fetch", outside);
+});
+afterEach(() => vi.unstubAllGlobals());
 
-  it("by hand, at most once a day", async () => {
-    const db = memoryDb(world(new Date(Date.now() - 3_600_000).toISOString()));
-    current.db = db;
-    const g = google(() => answer(200, {}));
-    vi.stubGlobal("fetch", g.fetcher);
-    await expect(refreshComparison(env, db as never, CO, true)).rejects.toThrow(/check again tomorrow/);
-    expect(g.calls).toHaveLength(0);
-  });
-
-  it("names a place Google no longer lists, or says is closed, skips it and still reads the rest", async () => {
-    const tables = world(null);
-    Object.assign(tables.review_places[0]!, { name: "Gone Gutters" });
-    Object.assign(tables.review_places[1]!, { name: "Shut Gutters" });
-    const db = memoryDb(tables);
-    current.db = db;
-    const g = google((call) => {
-      const id = call.url.split("/").pop();
-      if (id === "pa") return answer(404, { error: { status: "NOT_FOUND", message: "Place not found." } });
-      if (id === "pb") return answer(200, { id, displayName: { text: "Shut Gutters" }, rating: 4.1, userRatingCount: 30, businessStatus: "CLOSED_PERMANENTLY" });
-      return answer(200, { id, displayName: { text: "Open Gutters" }, rating: 4.5, userRatingCount: 10, businessStatus: "OPERATIONAL" });
+describe("what the server keeps", () => {
+  it("is the switch and each place's Google ID, and that's all it hands the card", async () => {
+    const tables = world(undefined, {
+      review_comparisons: [{ company_id: CO, enabled: true, enabled_by: USER }],
+      review_places: [{ id: "a", company_id: CO, place_id: "ChIJ-own", is_own: true }, { id: "b", company_id: CO, place_id: "ChIJ_rival", is_own: false }],
     });
-    vi.stubGlobal("fetch", g.fetcher);
-    const result = await refreshComparison(env, db as never, CO, true);
-    // The first place being gone doesn't stop the others being asked about.
-    expect(g.calls.map((c) => c.url.split("/").pop())).toEqual(["pa", "pb", "pc"]);
-    expect(db.recorded.map((r) => r.p_id)).toEqual(["c"]);
-    expect(result).toEqual({ checked: 1, problem: "Google doesn't list Gone Gutters anymore, and says Shut Gutters is permanently closed, so they were skipped. Remove them from the list to compare with someone else." });
-    expect(tables.review_comparisons[0]).toMatchObject({ last_error: result.problem });
-    expect(tables.review_comparisons[0]!.checked_at).toBeTruthy();
-    expect(tables.review_places.map((p: Row) => p.problem ?? null)).toEqual(["Google doesn't list this place anymore.", "Google says this place is permanently closed.", null]);
-    expect(skippedWords(["Gone Gutters"], [])).toBe("Google doesn't list Gone Gutters anymore, so it was skipped. Remove it from the list to compare with someone else.");
-    expect(skippedWords([], [])).toBeNull();
+    expect(await comparisonState(memoryDb(tables) as never, CO)).toEqual({
+      enabled: true,
+      places: [{ id: "a", place_id: "ChIJ-own", is_own: true }, { id: "b", place_id: "ChIJ_rival", is_own: false }],
+    });
+    expect(await comparisonState(memoryDb(world()) as never, CO)).toEqual({ enabled: false, places: [] });
   });
 
-  it("stops at once when it's the key Google refuses, and a check that failed doesn't make the next one wait a day", async () => {
-    const tables = world(null);
+  it("adds a place by its ID alone, and never asks Google about it", async () => {
+    const tables = world(undefined, { review_comparisons: [{ company_id: CO, enabled: true }] });
     const db = memoryDb(tables);
-    current.db = db;
-    const refused = google(() => answer(403, { error: { status: "PERMISSION_DENIED", message: "Places API (New) has not been used in project 1 before or it is disabled." } }));
-    vi.stubGlobal("fetch", refused.fetcher);
-    await expect(refreshComparison(env, db as never, CO, true)).rejects.toThrow(/enable Places API \(New\)/);
-    // One call, not one per place: the others would be refused the same way.
-    expect(refused.calls).toHaveLength(1);
-    expect(tables.review_comparisons[0]).toMatchObject({ checked_at: null });
-    expect((tables.review_comparisons[0] as Row).last_error).toMatch(/enable Places API/);
-    // The key's project is fixed: "Check now" works straight away.
-    const fixed = google((call) => answer(200, { id: call.url.split("/").pop(), displayName: { text: "X" }, rating: 4.5, userRatingCount: 10 }));
-    vi.stubGlobal("fetch", fixed.fetcher);
-    await expect(refreshComparison(env, db as never, CO, true)).resolves.toMatchObject({ checked: 3, problem: null });
-    expect(tables.review_comparisons[0]!.checked_at).toBeTruthy();
-    expect((tables.review_comparisons[0] as Row).last_error).toBeNull();
+    await addPlace(db as never, CO, "ChIJ_rival", false);
+    await addPlace(db as never, CO, "ChIJ-own", true);
+    expect(tables.review_places!.map(({ id: _id, ...row }) => row)).toEqual([
+      { company_id: CO, place_id: "ChIJ_rival", is_own: false },
+      { company_id: CO, place_id: "ChIJ-own", is_own: true },
+    ]);
+    expect(outside).not.toHaveBeenCalled();
   });
 
-  it("takes each company's weekly check by claiming it, and leaves a failed one to be tried tomorrow", async () => {
-    const tables = world(new Date(Date.now() - 8 * 86_400_000).toISOString());
+  it("takes only something shaped like a place ID", async () => {
+    const db = memoryDb(world(undefined, { review_comparisons: [{ company_id: CO, enabled: true }] }));
+    for (const not of ["Rival Gutters", "1 Elm St, Springfield", "https://maps.google.com/?cid=1", "../admin", ""]) await expect(addPlace(db as never, CO, not, false)).rejects.toThrow(/isn't a Google place/);
+  });
+
+  it("turns down a sixth competitor, as the database does", async () => {
+    const tables = world(undefined, {
+      review_comparisons: [{ company_id: CO, enabled: true }],
+      review_places: [1, 2, 3, 4, 5].map((n) => ({ id: `p${n}`, company_id: CO, place_id: `ChIJ${n}`, is_own: false })),
+    });
     const db = memoryDb(tables);
-    current.db = db;
-    const lastWorked = tables.review_comparisons[0]!.checked_at;
-    vi.stubGlobal("fetch", google(() => answer(503, {})).fetcher);
-    await expect(refreshDueComparisons(env, db as never)).resolves.toEqual({ companies: 1, checked: 0, failed: 1 });
-    expect(db.calls).toContain("claim_review_comparisons");
-    expect(db.calls).not.toContain("review_comparisons_due");
-    // When it last worked hasn't moved, so the card's "Check now" isn't locked out either.
-    expect(tables.review_comparisons[0]).toMatchObject({ checked_at: lastWorked });
-    expect((tables.review_comparisons[0] as Row).last_error).toMatch(/isn't answering/);
-  });
-});
-
-describe("adding a place", () => {
-  const world = () => ({
-    companies: [{ id: CO, name: "Sketchy Gutters", address: {}, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
-    review_comparisons: [{ company_id: CO, enabled: true, checked_at: null, lat: null, lng: null }],
-    review_places: Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, company_id: CO, place_id: `p${i}`, is_own: false })) as Row[],
+    await expect(addPlace(db as never, CO, "ChIJ6", false)).rejects.toThrow(/up to five competitors/);
+    // The business itself still fits, and so does marking one of the five as the business.
+    await addPlace(db as never, CO, "ChIJ-own", true);
+    expect(tables.review_places).toHaveLength(6);
   });
 
-  it("turns down a sixth competitor before Google is asked anything", async () => {
-    const db = memoryDb(world());
-    current.db = db;
-    const g = google(() => answer(200, { id: "p9", displayName: { text: "Sixth" }, rating: 4, userRatingCount: 1 }));
-    vi.stubGlobal("fetch", g.fetcher);
-    await expect(addPlace(env, db as never, CO, "p9", false)).rejects.toThrow(/up to five competitors/);
-    expect(g.calls).toHaveLength(0);
+  it("has one place of its own: picking another takes the first one's place", async () => {
+    const tables = world(undefined, { review_comparisons: [{ company_id: CO, enabled: true }], review_places: [{ id: "a", company_id: CO, place_id: "ChIJold", is_own: true }] });
+    await addPlace(memoryDb(tables) as never, CO, "ChIJnew", true);
+    expect(tables.review_places!.map((p) => [p.place_id, p.is_own])).toEqual([["ChIJnew", true]]);
   });
 
-  it("is limited to so many an hour, so a loop of adds can't run up the key's bill", async () => {
-    const tables = world();
-    tables.review_places = [];
-    const db = memoryDb(tables);
-    db.limited = true;
-    current.db = db;
-    const g = google(() => answer(200, { id: "p9", displayName: { text: "One" }, rating: 4, userRatingCount: 1 }));
-    vi.stubGlobal("fetch", g.fetcher);
-    await expect(addPlace(env, db as never, CO, "p9", false)).rejects.toThrow(/a lot of places for one hour/);
-    expect(g.calls).toHaveLength(0);
-  });
-});
-
-describe("where nearby is", () => {
-  const world = (locatedAt: string | null) => ({
-    companies: [{ id: CO, name: "Sketchy Gutters", address: { line1: "1 Main St", city: "Springfield", region: "IL", postal_code: "62701" }, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
-    review_comparisons: [{ company_id: CO, enabled: true, checked_at: null, lat: 39.78, lng: -89.65, located_at: locatedAt }] as Row[],
-    review_places: [] as Row[],
-  });
-  const days = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
-  /** Google's search answers; the address lookup finds the address somewhere else now. */
-  const web = () =>
-    google((call) =>
-      call.url.includes("geocoding.geo.census.gov")
-        ? answer(200, { result: { addressMatches: [{ matchedAddress: "1 MAIN ST, SPRINGFIELD, IL", coordinates: { x: -89.6, y: 39.8 } }] } })
-        : answer(200, { places: [] }),
-    );
-
-  it("is used for a search while it's under 30 days old", async () => {
-    const tables = world(days(29));
-    current.db = memoryDb(tables);
-    const g = web();
-    vi.stubGlobal("fetch", g.fetcher);
-    await searchPlaces(env, current.db as never, CO, "Rival");
-    expect(g.calls).toHaveLength(1);
-    expect(g.calls[0]!.body.locationBias.circle.center).toEqual({ latitude: 39.78, longitude: -89.65 });
-  });
-
-  it("isn't used once it's 30 days old: the address is looked up again, and the new point kept from today", async () => {
-    const tables = world(days(31));
-    current.db = memoryDb(tables);
-    const g = web();
-    vi.stubGlobal("fetch", g.fetcher);
-    await searchPlaces(env, current.db as never, CO, "Rival");
-    const search = g.calls.find((c) => c.url.includes("places:searchText"))!;
-    expect(search.body.locationBias.circle.center).toEqual({ latitude: 39.8, longitude: -89.6 });
-    expect(tables.review_comparisons[0]).toMatchObject({ lat: 39.8, lng: -89.6 });
-    expect(Date.now() - Date.parse(tables.review_comparisons[0]!.located_at)).toBeLessThan(60_000);
-    // One with no date at all (kept before dates were) is treated the same.
-    const undated = world(null);
-    current.db = memoryDb(undated);
-    await searchPlaces(env, current.db as never, CO, "Rival");
-    expect(undated.review_comparisons[0]!.located_at).toBeTruthy();
-    expect(LOCATION_DAYS).toBe(30);
-  });
-
-  it("is forgotten by the hourly task once it's too old", async () => {
-    const db = memoryDb(world(days(31)));
-    current.db = db;
-    vi.stubGlobal("fetch", web().fetcher);
-    await refreshDueComparisons(env, db as never);
-    expect(db.calls[0]).toBe("expire_review_locations");
+  it("adds nothing while the comparison is off", async () => {
+    await expect(addPlace(memoryDb(world()) as never, CO, "ChIJ1", false)).rejects.toThrow(/Comparing with competitors is off/);
   });
 });
 
 describe("the switch", () => {
-  const world = (checkedAt: string | null) => ({
-    companies: [{ id: CO, name: "Sketchy Gutters", address: {}, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
-    review_comparisons: [{ company_id: CO, enabled: true, checked_at: checkedAt, lat: null, lng: null }],
-    review_places: [{ id: "a", company_id: CO, place_id: "pa" }, { id: "b", company_id: CO, place_id: "pb" }, { id: "c", company_id: CO, place_id: "pc" }],
+  it("turns on without asking Google anything: the browser has checked the key", async () => {
+    const tables = world();
+    await setComparison(env, memoryDb(tables) as never, CO, USER, true);
+    expect(tables.review_comparisons).toEqual([{ id: "row-1", company_id: CO, enabled: true, enabled_by: USER }]);
+    expect(outside).not.toHaveBeenCalled();
   });
 
-  it("turns on only once Google answers the key, and says what to fix when it doesn't", async () => {
-    const tables = world(null);
-    tables.review_comparisons = [];
-    const db = memoryDb(tables);
-    current.db = db;
-    vi.stubGlobal("fetch", google(() => answer(400, { error: { status: "INVALID_ARGUMENT", message: "API key not valid. Please pass a valid API key." } })).fetcher);
-    await expect(setComparison(env, db as never, CO, "u1", true)).rejects.toThrow(/didn't accept the key/);
-    expect(tables.review_comparisons).toHaveLength(0);
-    (tables.companies[0] as { settings: unknown }).settings = { marketing: { enabled: true } };
-    await expect(setComparison(env, db as never, CO, "u1", true)).rejects.toThrow(/Add a Google key in Settings → Maps/);
+  it("is refused with no Google key a browser could use, saying where to add one", async () => {
+    const tables = world({ marketing: { enabled: true } });
+    await expect(setComparison(env, memoryDb(tables) as never, CO, USER, true)).rejects.toThrow(NO_KEY);
+    expect(NO_KEY).toContain("Settings → Maps");
+    expect(tables.review_comparisons).toEqual([]);
+    // This Crewtavo's own browser key will do. Its server key won't: that one never leaves the server.
+    await expect(setComparison({ ...env, GOOGLE_MAPS_SERVER_KEY: "server-only" }, memoryDb(tables) as never, CO, USER, true)).rejects.toThrow(NO_KEY);
+    await setComparison({ ...env, GOOGLE_MAPS_BROWSER_KEY: "AIzaInstance" }, memoryDb(tables) as never, CO, USER, true);
+    expect(tables.review_comparisons![0]).toMatchObject({ enabled: true });
+  });
+
+  it("needs Marketing installed", async () => {
+    await expect(setComparison(env, memoryDb(world({ maps: { google_key: "AIzaBrowser" } })) as never, CO, USER, true)).rejects.toThrow(/Install Crewtavo - Marketing/);
+  });
+
+  it("adds the business's own place ID from Google Business Profile, without looking it up", async () => {
+    const tables = world(undefined, { integrations: [{ company_id: CO, provider: "google_business", status: "connected", settings: { place_id: "ChIJ-own" } }] });
+    await setComparison(env, memoryDb(tables) as never, CO, USER, true);
+    expect(tables.review_places!.map(({ id: _id, ...row }) => row)).toEqual([{ company_id: CO, place_id: "ChIJ-own", is_own: true }]);
+    expect(outside).not.toHaveBeenCalled();
+    // Not when it's disconnected, or when what it holds isn't a place ID.
+    for (const integration of [{ status: "disconnected", settings: { place_id: "ChIJ-own" } }, { status: "connected", settings: { place_id: "Sketchy Gutters, 1 Elm St" } }]) {
+      const other = world(undefined, { integrations: [{ company_id: CO, provider: "google_business", ...integration }] });
+      await setComparison(env, memoryDb(other) as never, CO, USER, true);
+      expect(other.review_places).toEqual([]);
+    }
+  });
+
+  it("turns off, keeping the places picked", async () => {
+    const tables = world(undefined, { review_comparisons: [{ company_id: CO, enabled: true }], review_places: [{ id: "a", company_id: CO, place_id: "ChIJ1", is_own: false }] });
+    await setComparison(env, memoryDb(tables) as never, CO, USER, false);
+    expect(tables.review_comparisons![0]).toMatchObject({ enabled: false });
+    expect(tables.review_places).toHaveLength(1);
+  });
+});
+
+describe("what the server is sent", () => {
+  const app = new Hono<AppEnv>().route("/api", reviewCompare);
+  const send = (method: string, path: string, body?: unknown) =>
+    app.request(`/api${path}`, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, env);
+  const on = () => world(undefined, { review_comparisons: [{ company_id: CO, enabled: true }] });
+
+  it("is a place's ID and whether it's the business itself, and answers with IDs only", async () => {
+    const tables = on();
+    current.db = memoryDb(tables);
+    const res = await send("POST", "/reviews/compare/places", { place_id: "ChIJ_rival", own: false });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ enabled: true, places: [{ id: "row-1", place_id: "ChIJ_rival", is_own: false }] });
+    expect(outside).not.toHaveBeenCalled();
+  });
+
+  it("refuses anything Google said that comes along with it", async () => {
+    const tables = on();
+    current.db = memoryDb(tables);
+    for (const extra of [{ name: "Rival Gutters" }, { address: "1 Elm St" }, { rating: 4.7 }, { ratings_total: 51 }, { maps_url: "https://maps.google.com/?cid=1" }, { lat: 39.78, lng: -89.65 }]) {
+      const res = await send("POST", "/reviews/compare/places", { place_id: "ChIJ_rival", own: false, ...extra });
+      expect(res.status, JSON.stringify(extra)).toBe(400);
+    }
+    expect((await send("POST", "/reviews/compare/places", { place_id: "Rival Gutters" })).status).toBe(400);
+    expect(tables.review_places).toEqual([]);
+    current.role = "owner";
+    expect((await send("PUT", "/reviews/compare/enabled", { enabled: false, last_error: "Google doesn't list Rival Gutters anymore" })).status).toBe(400);
+    expect(tables.review_comparisons![0]).toMatchObject({ enabled: true });
+  });
+
+  it("has no route left that asks Google: no search, no suggestions, no check", async () => {
+    current.db = memoryDb(on());
+    expect((await send("GET", "/reviews/compare/search?q=rival")).status).toBe(404);
+    expect((await send("GET", "/reviews/compare/suggest")).status).toBe(404);
+    expect((await send("POST", "/reviews/compare/refresh")).status).toBe(404);
+    expect(outside).not.toHaveBeenCalled();
+  });
+
+  it("lets the office with the marketing area pick places, and only an owner or admin flip the switch", async () => {
+    current.db = memoryDb(on());
+    expect((await send("PUT", "/reviews/compare/enabled", { enabled: false })).status).toBe(403);
+    expect(await (await send("GET", "/reviews/compare")).json()).toMatchObject({ enabled: true, can_switch: false });
+    current.role = "owner";
+    expect(await (await send("PUT", "/reviews/compare/enabled", { enabled: false })).json()).toMatchObject({ enabled: false, can_switch: true });
+  });
+
+  it("removes a place by Crewtavo's own id for it", async () => {
+    const tables = world(undefined, { review_comparisons: [{ company_id: CO, enabled: true }], review_places: [{ id: "00000000-0000-4000-8000-00000000000b", company_id: CO, place_id: "ChIJ1", is_own: false }] });
+    current.db = memoryDb(tables);
+    expect((await send("DELETE", "/reviews/compare/places/not-an-id")).status).toBe(404);
+    expect(await (await send("DELETE", "/reviews/compare/places/00000000-0000-4000-8000-00000000000b")).json()).toEqual({ enabled: true, places: [] });
+  });
+});
+
+describe("the server and Google Places", () => {
+  const src = fileURLToPath(new URL("../src", import.meta.url));
+  const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith(".ts") ? [join(dir, e.name)] : []));
+
+  it("has no Places client: nothing on the server names Google's Places address", () => {
+    expect(existsSync(join(src, "integrations/places.ts"))).toBe(false);
+    const naming = files(src).filter((f) => readFileSync(f, "utf8").includes("places.googleapis.com"));
+    expect(naming).toEqual([]);
+  });
+
+  it("sends no request in a website's name: the comparison's code sets no Referer and makes no request at all", () => {
+    for (const file of ["services/reviewCompare.ts", "routes/reviewCompare.ts"]) {
+      const code = readFileSync(join(src, file), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+      expect(code, file).not.toMatch(/referer/i);
+      expect(code, file).not.toMatch(/\bfetch\s*\(/);
+      expect(code, file).not.toContain("GOOGLE_MAPS_SERVER_KEY");
+    }
+  });
+
+  it("has no weekly task left", () => {
+    expect(TASKS).not.toContain("review_compare");
+    expect(Object.values(CRON_TASKS).flat()).not.toContain("review_compare");
   });
 });

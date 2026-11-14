@@ -315,7 +315,7 @@ insert into public.showcase_photos (company_id, showcase_id, attachment_id, role
 -- A copy of a showcase photo that's no longer shown, waiting for the server to delete it (20261113001580_showcases_come_down.sql).
 insert into public.stale_public_files (company_id, path) values (:'co', :'co' || '/showcases/' || :'showcase' || '/old.jpg');
 insert into public.review_comparisons (company_id, enabled) values (:'co', true);
-insert into public.review_places (company_id, place_id, name, is_own) values (:'co', 'place-1070', 'Oscar Roofing', true);
+insert into public.review_places (company_id, place_id, is_own) values (:'co', 'place-1070', true);
 insert into public.roof_packages (company_id, name) values (:'co', 'Good') returning id as roof_package \gset
 insert into public.roof_package_items (company_id, package_id, service_id, kind) values (:'co', :'roof_package', :'shingles_service', 'included');
 insert into public.service_materials (company_id, service_id, item_number, name, uom, per_unit) values (:'co', :'shingles_service', 'ABC-1', 'Shingle bundle', 'BD', 3);

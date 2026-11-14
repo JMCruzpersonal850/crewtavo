@@ -437,9 +437,11 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   booking form. It never shows the client's name or address (the town only if chosen), asks before
   showing photos nobody marked OK to share, and can't show a client's who asked that their property
   not be posted. Copy its link, post it to Facebook or Instagram, or unpublish it. Marketing →
-  Reviews shows how the business compares with up to five nearby competitors on Google (rating,
-  number of reviews and how it changed), found by name or suggested from the nearest of its trade,
-  checked weekly; it's off until an owner or admin turns it on with a Google key that has Places.
+  Reviews shows how the business compares with up to five nearby competitors on Google (rating
+  and number of reviews), found by name or suggested from its trade and town. The figures are
+  read from Google in the browser when someone presses Compare now and shown as they are at that
+  moment; Crewtavo keeps only each place's Google ID, as Google's terms require, so there's no
+  history of them. It's off until an owner or admin turns it on with a Google key that has Places.
 - **Claude and ChatGPT:** a built-in connector that can look things up or run the business:
   import customers and recurring services (with a preview first, and no duplicates on a second
   run), manage the schedule, quotes, invoices and payments, read the money figures, invite people
