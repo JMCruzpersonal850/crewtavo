@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  ADDRESS_ZONE_IN,
+  addressBlock,
   artboard,
+  backFit,
   backHtml,
+  backLayout,
+  POSTCARD_SIZES,
   frontHtml,
   leftOutLine,
   mailable,
@@ -51,11 +54,35 @@ describe("what's printed", () => {
     );
   });
 
-  it("keeps the message to what fits the size", () => {
+  it("refuses a message whose end would be cut off, by how it lays out rather than by its length", () => {
     expect(messageProblem("Hi", "4x6")).toMatch(/Write the message/);
-    expect(messageProblem("x".repeat(400), "4x6")).toBeNull();
-    expect(messageProblem("x".repeat(600), "4x6")).toMatch(/fits about 500 characters/);
-    expect(messageProblem("x".repeat(600), "6x9")).toBeNull();
+    expect(messageProblem(prose(400), "4x6")).toBeNull();
+    expect(messageProblem(prose(1400), "4x6")).toMatch(/lines too long for the back of a 4 × 6 in card/);
+    expect(messageProblem(prose(1400), "6x9")).toBeNull();
+    // The same number of characters as short lines takes far more room: 40 lines don't fit a 4x6.
+    const list = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}`).join("\n");
+    expect(list.length).toBeLessThan(400);
+    expect(backFit("4x6", list)).toMatchObject({ fits: false, lines: 40 });
+    expect(backFit("4x6", "Hi Ann,\n\nSee you soon.")).toEqual({ fits: true, lines: 2, over: 0 });
+  });
+
+  it("measures each client's own card: a long name can push a full message over", () => {
+    const template = `Hi {{client.name}},\n\n${prose(1450)}`;
+    const vars = (name: string) => ({ client: { first_name: name.split(" ")[0]!, name }, company: { name: "Sketchy Gutters", phone: "" }, link: "" });
+    expect(backFit("6x9", postcardMessage(template, vars("Ann Oak"))).fits).toBe(true);
+    // A link or a name longer than a line breaks where the line ends, and takes the lines it takes.
+    expect(backFit("6x9", postcardMessage(template, vars("Maximiliana-Alexandrina ".repeat(12).trim()))).fits).toBe(false);
+    expect(backFit("4x6", "x".repeat(300)).lines).toBeGreaterThan(3);
+  });
+
+  it("says about how many characters fit each size, and ordinary sentences that long do fit", () => {
+    for (const size of POSTCARD_SIZES) {
+      const about = POSTCARD_SIZE_INFO[size].maxMessage;
+      expect(backFit(size, prose(about)).fits).toBe(true);
+      // In three paragraphs, as a card is usually written.
+      const third = Math.floor(about / 3);
+      expect(backFit(size, [prose(third), prose(third), prose(third)].join("\n\n")).fits).toBe(true);
+    }
   });
 
   it("draws each side at the size with its bleed, and the front's picture to the edges", () => {
@@ -67,14 +94,93 @@ describe("what's printed", () => {
     expect(front).toContain("&quot;1&quot;");
   });
 
-  it("escapes what's written, keeps paragraphs, and keeps the message out of the address and postage", () => {
-    const html = backHtml({ size: "4x6", message: "Hi <b>Ann</b> & co,\n\nLine one\nline two", returnAddress: { name: "Sketchy & Sons", line: "1 Main St, Springfield, IL, 62701" } });
+  it("escapes what's written and keeps paragraphs", () => {
+    const html = backHtml({ size: "4x6", message: "Hi <b>Ann</b> & co,\n\nLine one\nline two" });
     expect(html).toContain("<p>Hi &lt;b&gt;Ann&lt;/b&gt; &amp; co,</p><p>Line one<br>line two</p>");
-    expect(html).toContain("<strong>Sketchy &amp; Sons</strong>1 Main St, Springfield, IL, 62701");
     expect(html).not.toContain("<script");
-    const column = POSTCARD_SIZE_INFO["4x6"].width - ADDRESS_ZONE_IN.width - 0.5;
-    expect(html).toContain(".message{position:absolute;left:0.375in;top:0.925in;width:1.9in");
-    // The column and its inset end before the right side Lob keeps clear.
-    expect(0.375 + column).toBeLessThanOrEqual(artboard("4x6").width - ADDRESS_ZONE_IN.width);
   });
 });
+
+/**
+ * Lob's own numbers for the back of each size, from its design-spec page and the template for each
+ * size (help.lob.com/print-and-mail/designing-mail-creatives/mail-piece-design-specs/postcards,
+ * templates dated 4.3.26): the artwork with its bleed, the ink-free area where Lob prints the
+ * addresses and postage, 0.275 in from the artwork's right edge and 0.25 in from its bottom, and
+ * the safe zone text should stay inside (an eighth of an inch inside the cut, so a quarter inside
+ * the artwork). Written out here, not read from the code, so the layout is held to Lob's sheet.
+ */
+const LOB_BACK = {
+  "4x6": { art: { width: 6.25, height: 4.25 }, block: { width: 3.2835, height: 2.375 } },
+  "6x9": { art: { width: 9.25, height: 6.25 }, block: { width: 4, height: 2.375 } },
+  "6x11": { art: { width: 11.25, height: 6.25 }, block: { width: 4, height: 2.375 } },
+} as const;
+const LOB_BLOCK_RIGHT = 0.275;
+const LOB_BLOCK_BOTTOM = 0.25;
+const LOB_SAFE = 0.25;
+
+/** A CSS rule's lengths in inches, from the page backHtml makes. */
+function rule(html: string, selector: string): Record<string, number> {
+  const body = new RegExp(`${selector.replace(".", "\\.")}\\{([^}]*)\\}`).exec(html)?.[1] ?? "";
+  return Object.fromEntries([...body.matchAll(/([a-z-]+):(-?[\d.]+)in/g)].map((m) => [m[1]!, Number(m[2])]));
+}
+
+describe("the back, against Lob's address block", () => {
+  for (const size of POSTCARD_SIZES) {
+    it(`keeps every line of the message out of Lob's block on a ${size}`, () => {
+      const lob = LOB_BACK[size];
+      const blockLeft = lob.art.width - LOB_BLOCK_RIGHT - lob.block.width;
+      const blockTop = lob.art.height - LOB_BLOCK_BOTTOM - lob.block.height;
+      const html = backHtml({ size, message: prose(900) });
+      expect(html).toContain(`width:${lob.art.width}in;height:${lob.art.height}in`);
+      const box = rule(html, ".message");
+      const above = rule(html, ".above");
+      const cut = rule(html, ".block");
+      // Inside Lob's safe zone on every side.
+      expect(box.left).toBeGreaterThanOrEqual(LOB_SAFE);
+      expect(box.top).toBeGreaterThanOrEqual(LOB_SAFE);
+      expect(box.left! + box.width!).toBeLessThanOrEqual(lob.art.width - LOB_SAFE + 1e-9);
+      expect(box.top! + box.height!).toBeLessThanOrEqual(lob.art.height - LOB_SAFE + 1e-9);
+      // Lines beside the block end to its left, with a gap; lines the full width end above it, with a gap.
+      expect(box.left! + box.width! - cut.width!).toBeLessThanOrEqual(blockLeft - 0.1);
+      expect(box.top! + above.height!).toBeLessThanOrEqual(blockTop - 0.1);
+      // The cut-out starts where the full-width lines stop and runs to the bottom of the box.
+      expect(above.height! + cut.height!).toBeGreaterThanOrEqual(box.height! - 1e-9);
+      expect(html).toContain(".above{float:right;width:0;");
+      // And the layout the fit is measured with is the one that's printed.
+      const layout = backLayout(size);
+      expect(layout).toMatchObject({ left: box.left, top: box.top, width: box.width, height: box.height, cutWidth: cut.width, aboveBlock: above.height });
+      const block = addressBlock(size);
+      expect([block.width, block.height]).toEqual([lob.block.width, lob.block.height]);
+      expect(block.left).toBeCloseTo(blockLeft, 6);
+      expect(block.top).toBeCloseTo(blockTop, 6);
+    });
+
+    it(`fits no more lines on a ${size} than Lob's sheet has room for`, () => {
+      const lob = LOB_BACK[size];
+      const fontIn = POSTCARD_SIZE_INFO[size].fontPt / 72;
+      const lineIn = fontIn * 1.35;
+      // The most lines that could stand inside the safe zone at this type size, whatever their width.
+      const most = Math.floor((lob.art.height - 2 * LOB_SAFE) / lineIn);
+      const full = backFit(size, Array.from({ length: most + 1 }, () => "x").join("\n"));
+      expect(full.fits).toBe(false);
+      // Beside the block a line holds only what its narrow width does: a line of W's as wide as the
+      // room left of Lob's block can't fit there, so it wraps.
+      const besideIn = lob.art.width - LOB_BLOCK_RIGHT - lob.block.width - LOB_SAFE;
+      const wide = "W".repeat(Math.ceil(besideIn / (0.944 * fontIn)) + 1);
+      const linesAbove = Math.floor((lob.art.height - LOB_BLOCK_BOTTOM - lob.block.height - LOB_SAFE) / lineIn);
+      const message = [...Array.from({ length: linesAbove }, () => "x"), wide].join("\n");
+      expect(backFit(size, message).lines).toBeGreaterThan(linesAbove + 1);
+    });
+  }
+
+  it("leaves the return address to Lob, which prints it in its block", () => {
+    const html = backHtml({ size: "6x9", message: "Hi Ann, see you in the spring." });
+    expect(html).not.toContain("class=\"from\"");
+  });
+});
+
+/** Ordinary sentences, `length` characters of them. */
+function prose(length: number): string {
+  const sentences = "Spring is nearly here and the crew is booking up fast. We would love to get your lawn, beds and gutters ready before the first warm weekend. Book this month and we will take ten percent off your first visit. Call us or book online any time, and thank you for being a client. ";
+  return sentences.repeat(Math.ceil(length / sentences.length)).slice(0, length).trim();
+}

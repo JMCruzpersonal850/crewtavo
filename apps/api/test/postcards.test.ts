@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { processPostcards, sendProblem, startPostcards } from "../src/services/postcards";
+import { backFit } from "@crewtavo/core/postcards";
 
 const current = vi.hoisted(() => ({ db: null as unknown, key: "test_0123456789abcdef0123" as string | null }));
 // The front's picture: any bytes stand in for the stored file and its copy without EXIF.
@@ -61,6 +62,7 @@ function memoryDb(tables: Record<string, Row[]>) {
     },
     // Send's: everyone in `clients` is in the audience, each with the same address.
     postcard_audience_summary: () => ({ count: tables.clients!.length }),
+    postcard_audience: () => tables.clients!.map((c) => ({ client_id: c.id, display_name: c.name ?? c.id, address, left_out: null })),
     start_postcard_campaign: ({ p_campaign, p_mode, p_image_token }) => {
       const campaign = tables.postcard_campaigns!.find((c) => c.id === p_campaign && c.status === "draft");
       if (!campaign) throw new Error("already sent");
@@ -109,9 +111,13 @@ function memoryDb(tables: Record<string, Row[]>) {
     calls,
     storage: { from: () => ({ upload: async () => ({ error: null }), remove: async () => ({ error: null }) }) },
     from: (table: string) => query(table),
-    rpc: async (fn: string, args: Row) => {
+    // A promise that also takes the filters a paged read adds (.is, .range), which change nothing here.
+    rpc: (fn: string, args: Row) => {
       calls.push(fn);
-      return { data: rpcs[fn]!(args), error: null };
+      const answer: any = Promise.resolve().then(() => ({ data: rpcs[fn]!(args), error: null }));
+      answer.is = () => answer;
+      answer.range = () => answer;
+      return answer;
     },
   };
 }
@@ -136,7 +142,16 @@ function world(mode: "test" | "live" = "test") {
   };
 }
 
-const lobAnswer = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+/** A message that just fits a 4x6 for someone with a short name: one more sentence wouldn't. */
+const FULL_4X6 = (() => {
+  const sentence = "We are booking spring visits now. ";
+  const message = (n: number) => `Dear {{client.name}},\n\n${sentence.repeat(n).trim()}`;
+  let n = 1;
+  while (backFit("4x6", message(n + 1).replace("{{client.name}}", "Ann Oak")).fits) n++;
+  return message(n);
+})();
+
+const lobAnswer = (status: number, body: unknown) =>new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 let sent: Array<{ key: string; auth: string; body: Row }>;
 let answers: Array<() => Response>;
 
@@ -230,6 +245,28 @@ describe("making a campaign's cards", () => {
     expect(tables.postcard_recipients.every((r) => r.status === "skipped")).toBe(true);
   });
 
+  it("doesn't make a card whose words no longer fit (the client was renamed since Send), and says why", async () => {
+    const tables = world();
+    tables.postcard_campaigns[0]!.message = FULL_4X6;
+    tables.postcard_recipients = tables.postcard_recipients.slice(0, 1);
+    tables.postcard_recipients[0]!.name = "The Honourable Bartholomew Featherstonehaugh-Cholmondeley and Family of Springfield Heights Estates";
+    current.db = memoryDb(tables);
+    const counts = await run();
+    expect(counts).toMatchObject({ made: 0, failed: 1 });
+    expect(sent).toHaveLength(0);
+    expect(tables.postcard_recipients[0]).toMatchObject({ status: "failed", attempts: 0 });
+    expect(tables.postcard_recipients[0]!.error).toMatch(/too long for the back of the card/);
+  });
+
+  it("leaves the return address to Lob: it goes as the card's from address, not printed on the back as well", async () => {
+    const tables = world();
+    tables.postcard_recipients = tables.postcard_recipients.slice(0, 1);
+    current.db = memoryDb(tables);
+    await run();
+    expect(sent[0]!.body.from).toMatchObject({ name: "Sketchy Gutters", address_line1: "1 Main St" });
+    expect(sent[0]!.body.back).not.toContain("1 Main St");
+  });
+
   it("goes by the key that's really on file, not by what Apps says it is: a test campaign mails nothing with a live key labelled test", async () => {
     const tables = world("test");
     // The label still says test (a save that half-failed), the key is live.
@@ -303,6 +340,22 @@ describe("Send", () => {
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
   });
 
+  it("refuses, naming the client, when the message fits the one previewed but not someone with a longer name", async () => {
+    const tables = draft();
+    // Fits a 4x6 with a short name; the last client's name is longer than a line.
+    tables.postcard_campaigns[0]!.message = FULL_4X6;
+    (tables.clients as Row[])[0]!.name = "Ann Oak";
+    (tables.clients as Row[])[1]!.name = "Bob Ash";
+    (tables.clients as Row[])[2]!.name = "The Honourable Bartholomew Featherstonehaugh-Cholmondeley and Family of Springfield Heights Estates";
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/too long for the back of a 4 × 6 in card for The Honourable Bartholomew .*: with their name filled in/);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
+    expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
+    // Without them it goes.
+    tables.clients.pop();
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending" });
+  });
+
   it("mails with a live key only once the number of cards is confirmed", async () => {
     const tables = draft();
     tables.integrations[0]!.settings = { mode: "live" };
@@ -323,6 +376,6 @@ describe("what Send needs first", () => {
     expect(sendProblem({ ...ready, publicAddress: false })).toMatch(/isn't public/);
     expect(sendProblem({ ...ready, returnAddress: false })).toMatch(/return address/);
     expect(sendProblem({ ...ready, front: false })).toMatch(/picture for the front/);
-    expect(sendProblem({ ...ready, message: "x".repeat(800) })).toMatch(/fits about 500/);
+    expect(sendProblem({ ...ready, message: "word ".repeat(400) })).toMatch(/lines too long for the back of a 4 × 6 in card/);
   });
 });

@@ -8,7 +8,7 @@
  * After sending: what was made, what failed and why, and what the clients mailed have paid since.
  */
 import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
-import { backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
+import { backFit, backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
 import { greetingName } from "@crewtavo/core/automations";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from "react";
@@ -34,6 +34,7 @@ import { AudienceFields, useAudienceChoices } from "./AudienceFields";
 import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
+import { blockStyle } from "./postcardForm";
 import { LobMode } from "../apps/LobPanel";
 
 interface Draft {
@@ -192,6 +193,7 @@ function PostcardScreen() {
     link: s?.link ?? "",
   };
   const message = postcardMessage(shown.message, vars);
+  const fit = backFit(shown.size, message);
   const problems = [
     !s?.lob && "Lob isn't connected.",
     s?.lob?.problem,
@@ -279,16 +281,16 @@ function PostcardScreen() {
                 )}
                 <span className="hint">The picture fills the front, past the edges, so keep what matters away from them.</span>
               </div>
-              <MessageField value={draft.message} onChange={(m) => set({ message: m })} tokens={[...POSTCARD_TOKENS]} hint={`The back of the card. About ${POSTCARD_SIZE_INFO[draft.size].maxMessage} characters fit; your return address goes above it. Booking link is your booking form's address.`} />
-              <span className={`small${message.length > POSTCARD_SIZE_INFO[draft.size].maxMessage ? "" : " muted"}`} style={message.length > POSTCARD_SIZE_INFO[draft.size].maxMessage ? { color: "var(--danger)", fontWeight: 600 } : undefined}>
-                {message.length.toLocaleString("en-US")} of about {POSTCARD_SIZE_INFO[draft.size].maxMessage} characters
+              <MessageField value={draft.message} onChange={(m) => set({ message: m })} tokens={[...POSTCARD_TOKENS]} hint={`The back of the card. About ${POSTCARD_SIZE_INFO[draft.size].maxMessage.toLocaleString("en-US")} characters fit, fewer with many short lines. Lob prints your return address beside the client's. Booking link is your booking form's address.`} />
+              <span className={`small${fit.fits ? " muted" : ""}`} style={fit.fits ? undefined : { color: "var(--danger)", fontWeight: 600 }}>
+                {message.length.toLocaleString("en-US")} characters, {fit.fits ? "which fits" : `about ${fit.over} ${fit.over === 1 ? "line" : "lines"} too long for this size`}. Every client's card is checked with their own name when you send.
               </span>
               <FormError error={save.error} />
             </div>
           ) : (
             <PostcardRecipients id={c.id} mode={c.mode as "test" | "live"} live={c.status === "sending"} />
           )}
-          <PostcardPreview size={shown.size} frontUrl={front.data?.url ?? null} back={backHtml({ size: shown.size, message, returnAddress: { name: session.company.name, line: s?.return_address ?? "" } })} />
+          <PostcardPreview size={shown.size} frontUrl={front.data?.url ?? null} back={backHtml({ size: shown.size, message })} />
         </div>
 
         <aside className="narrow stack">
@@ -417,8 +419,8 @@ export function PostcardPreview({ size, frontUrl, back }: { size: PostcardSize; 
           <div className="muted small" style={{ display: "grid", placeItems: "center", height: "100%" }}>Pick a picture for the front</div>
         )}
         {zone && (
-          <div className="muted small" style={{ position: "absolute", right: "0.25in", bottom: "0.25in", width: "3.3in", height: "2.3in", border: "1px dashed var(--border)", borderRadius: 4, display: "grid", placeItems: "center", textAlign: "center", padding: 8, background: "rgba(255,255,255,.6)" }}>
-            Lob prints the client's address, barcode and postage here
+          <div className="muted small" style={{ position: "absolute", ...blockStyle(size), border: "1px dashed var(--border)", display: "grid", placeItems: "center", textAlign: "center", padding: 8, background: "rgba(255,255,255,.6)", boxSizing: "border-box" }}>
+            Lob prints your return address, the client's address, the barcode and postage here
           </div>
         )}
       </div>

@@ -21,14 +21,13 @@
  *                 (a phone photo's location would say where the client lives), at an address that
  *                 names nothing. So this server's address has to be public, as for social posts.
  */
-import { renderTemplate } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
-import { backHtml, frontHtml, mailable, messageProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
+import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
 import type { Env } from "../env";
 import { createPostcard, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
 import { loadSecret } from "../integrations/tokens";
 import { randomId } from "../lib/crypto";
-import { companyAddress, firstName } from "../lib/email";
+import { firstName } from "../lib/email";
 import { dbError, HttpError, must } from "../lib/http";
 import { reportError } from "../lib/monitoring";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
@@ -104,6 +103,9 @@ export async function bookingLink(env: Env, admin: Db, companyId: string, compan
   return company.website ?? "";
 }
 
+/** The client the page previews a card for when the audience is empty, and whose card Send measures first. */
+export const SAMPLE_NAME = "Jordan Rivera";
+
 /** A card's merge fields, for one client. */
 export function postcardVars(company: Pick<Company, "name" | "phone">, name: string | null, link: string) {
   return { client: { first_name: firstName(name), name: name ?? "" }, company: { name: company.name, phone: company.phone ?? "" }, link };
@@ -156,6 +158,38 @@ export function sendProblem(input: { marketing: boolean; lob: boolean; publicAdd
   return messageProblem(input.message, input.size);
 }
 
+type AudienceRow = { client_id: string; display_name: string; address: unknown };
+/** What the database sends at once at most (PostgREST's max rows). */
+const AUDIENCE_PAGE = 1000;
+
+/** Everyone a draft's card would go to now, read a page at a time (a campaign can pass 1,000). */
+export async function audienceNow(db: Db, companyId: string, audience: unknown): Promise<AudienceRow[]> {
+  const rows: AudienceRow[] = [];
+  for (let from = 0; from <= MAX_POSTCARDS; from += AUDIENCE_PAGE) {
+    const { data, error } = await db.rpc("postcard_audience", { p_company: companyId, p_audience: audience as never }).is("left_out", null).range(from, from + AUDIENCE_PAGE - 1);
+    if (error) throw dbError(error);
+    rows.push(...((data ?? []) as AudienceRow[]));
+    if ((data?.length ?? 0) < AUDIENCE_PAGE) break;
+  }
+  return rows;
+}
+
+/**
+ * The clients whose card wouldn't fit its words: the message is measured as each of them would get
+ * it, their own name filled in, not as the one previewed. A card that doesn't fit is cut off at the
+ * bottom when it's printed, so Send refuses and names them instead.
+ */
+export function unfitRecipients(size: PostcardSize, template: string, company: Pick<Company, "name" | "phone">, link: string, names: readonly string[]): string[] {
+  const seen = new Map<string, boolean>();
+  for (const name of names) {
+    if (!seen.has(name)) seen.set(name, !backFit(size, postcardMessage(template, postcardVars(company, name, link))).fits);
+  }
+  return [...seen].filter(([, unfit]) => unfit).map(([name]) => name);
+}
+
+/** "for Ann Oak", "for Ann Oak and 2 other clients". */
+const forClients = (names: readonly string[]) => `for ${names[0]}${names.length > 1 ? ` and ${(names.length - 1).toLocaleString("en-US")} other ${names.length === 2 ? "client" : "clients"}` : ""}`;
+
 /**
  * Send: checks everything first, makes the front's public copy, then the database takes the audience
  * as it is now. A live key's campaign goes only with `confirm` naming how many cards it mails, the
@@ -172,14 +206,17 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
   if (campaign.status !== "draft") throw new HttpError(409, "This campaign has already been sent.");
   const company = must(await admin.from("companies").select("name, phone, website, address, slug, settings").eq("id", companyId).maybeSingle()) as Company;
   const lob = await companyLob(env, admin, companyId);
+  const size = campaign.size as PostcardSize;
+  const link = await bookingLink(env, admin, companyId, company);
   const problem = sendProblem({
     marketing: marketingOn(company.settings as Record<string, unknown> | null),
     lob: Boolean(lob),
     publicAddress: imagesPublic(env),
     returnAddress: Boolean(returnAddress(company)),
     front: Boolean(campaign.front_attachment_id || campaign.front_path),
-    message: campaign.message,
-    size: campaign.size as PostcardSize,
+    // As the page previews it; each client's own card is measured below.
+    message: postcardMessage(campaign.message, postcardVars(company, SAMPLE_NAME, link)),
+    size,
   });
   if (problem) throw new HttpError(problem === LOB_NOT_CONNECTED || problem === MARKETING_OFF ? 409 : 400, problem);
   const mislabelled = keyLabelProblem(lob!);
@@ -192,6 +229,10 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
   if (summary.count > MAX_POSTCARDS) throw new HttpError(400, `Postcard campaigns are limited to ${MAX_POSTCARDS.toLocaleString("en-US")} cards. Narrow the audience.`);
   if (lob!.mode === "live" && confirm !== summary.count) {
     throw new HttpError(409, `This mails ${summary.count.toLocaleString("en-US")} ${summary.count === 1 ? "postcard" : "postcards"} and Lob charges for each. Confirm that number to send.`);
+  }
+  const unfit = unfitRecipients(size, campaign.message, company, link, (await audienceNow(db, companyId, campaign.audience)).map((r) => r.display_name));
+  if (unfit.length) {
+    throw new HttpError(400, `The message is too long for the back of a ${POSTCARD_SIZE_INFO[size].label} card ${forClients(unfit)}: with their name filled in, the end would be cut off. Shorten it or pick a bigger card.`);
   }
   const front = await makeFront(admin, companyId, campaign);
   const { data: count, error } = await admin.rpc("start_postcard_campaign", { p_campaign: id, p_mode: lob!.mode, p_image_token: front.token, p_image_path: front.path, p_max: MAX_POSTCARDS });
@@ -292,6 +333,15 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
           next = index + 1;
           continue;
         }
+        // Send measured every card; a name, the phone number or the booking link may have changed
+        // since. A card whose words no longer fit isn't printed with its end cut off.
+        const message = postcardMessage(campaign.message, postcardVars(company as Company, r.name, link));
+        if (!backFit(campaign.size as PostcardSize, message).fits) {
+          await admin.rpc("finish_postcard_recipient", { p_id: r.id, p_token: token, p_status: "failed", p_error: "The message is too long for the back of the card with this client's name filled in, so their card wasn't made." });
+          counts.failed++;
+          next = index + 1;
+          continue;
+        }
         const { data: held, error: renewError } = await admin.rpc("renew_postcard_recipient", { p_id: r.id, p_token: token });
         if (renewError) break;
         if (!held) {
@@ -299,14 +349,13 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
           continue;
         }
         next = index + 1;
-        const message = renderTemplate(campaign.message, postcardVars(company as Company, r.name, link));
         try {
           const made = await createPostcard(lob.key, {
             to: lobAddress(r.name, to),
             from: lobAddress(company.name, from),
             size: campaign.size as PostcardSize,
             front,
-            back: backHtml({ size: campaign.size as PostcardSize, message, returnAddress: { name: company.name, line: companyAddress(company.address as Record<string, string>) } }),
+            back: backHtml({ size: campaign.size as PostcardSize, message }),
             description: campaign.name,
             metadata: { crewtavo_campaign: campaign.id, crewtavo_recipient: String(r.id) },
             idempotencyKey: r.idempotency_key,
