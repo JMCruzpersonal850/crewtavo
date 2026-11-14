@@ -172,6 +172,16 @@ insert into public.memberships (company_id, user_id, role, subcontractor_id) val
   (:'co', 'd1070000-0000-0000-0000-000000000009', 'subcontractor', 'd1070000-0000-0000-0000-0000000000c3');
 update public.subcontractors set active = false where id = 'd1070000-0000-0000-0000-0000000000c3';
 
+-- Snow (20261113000100_snow_app.sql): a snow customer with Al listed on it, its storm in the log, the
+-- storm's visit, and the owner asked whether they can go out. None of it is a sub's to read: what
+-- Al is told and asked comes as notifications and his own question, and he has none here.
+insert into public.snow_sites (company_id, job_id, trigger_in) values (:'co', :'j1', 2);
+insert into public.snow_site_people (company_id, job_id, user_id) values (:'co', :'j1', 'd1070000-0000-0000-0000-000000000005');
+insert into public.snow_events (company_id, job_id, snow_date, forecast_in) values (:'co', :'j1', private.company_today(:'co'), 3);
+insert into public.snow_visits (company_id, visit_id, job_id, snow_date)
+  select :'co', v.id, :'j1', private.company_today(:'co') from public.visits v where v.job_id = :'j1' order by v.created_at limit 1;
+insert into public.snow_availability (company_id, snow_date, user_id) values (:'co', private.company_today(:'co'), 'd1070000-0000-0000-0000-000000000001');
+
 -- The office puts Al on today's roof visit and the look at the leak, Bo on the gutters, and Cal on
 -- the roof too; Cy is on the roof visit and the clean-up.
 begin;
@@ -593,9 +603,16 @@ select t1070.check(array(
   'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)', 'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',
-  'sign_quote(uuid, jsonb, uuid, numeric)', 'social_photos(uuid, timestamp with time zone, uuid, integer, uuid)',
+  -- Where forecasts come from: the same people as the weather rules, never a sub.
+  'set_weather_source(uuid, text)',
+  'sign_quote(uuid, jsonb, uuid, numeric)',
+  -- Whether I can go out for snow on a day I was asked about: anyone asked, a sub too, and only their own answer.
+  'snow_answer(uuid, date, boolean)',
+  -- Scheduling the snow jobs that reach their trigger: the owner and the office with the schedule area only, never a sub.
+  'snow_schedule(uuid, date, jsonb)',
+  'social_photos(uuid, timestamp with time zone, uuid, integer, uuid)',
   'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
-  -- Installs Paving or Roofing: owners and admins who connect apps only, never a sub.
+  -- Installs Paving, Roofing or Snow: owners and admins who connect apps only, never a sub.
   'trade_app_set_enabled(uuid, text, boolean)',
   'trash_delete_forever(uuid, jsonb)', 'visit_autopay(uuid)', 'visit_contact(uuid)', 'web_analytics_save(uuid, jsonb)', 'web_stats(uuid, date, date)',
   'website_forms_set_enabled(uuid, boolean)', 'withdraw_sub_offer(uuid)']::text[],

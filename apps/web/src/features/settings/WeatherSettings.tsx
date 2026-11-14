@@ -3,11 +3,13 @@
  * the next few days' visits against them and warns on the schedule, Home and the crew's visit; it
  * never moves a visit. Kept in companies.settings.weather_rules (the trade preset's at sign-up, shape
  * in packages/core/src/weather.ts) and saved all at once with set_weather_rules, which the office with
- * Settings may use too, as with the price list and checklists.
+ * Settings may use too, as with the price list and checklists. Above them, where every forecast
+ * comes from, for these warnings and for Snow alike (settings.weather_source, set_weather_source).
  */
-import { namedWeatherRules, weatherRuleSummary, type WeatherRule } from "@crewtavo/core/weather";
+import { namedWeatherRules, WEATHER_SOURCE_LABELS, weatherRuleSummary, weatherSourceOf, type WeatherRule, type WeatherSource } from "@crewtavo/core/weather";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -70,6 +72,7 @@ export function WeatherSettings() {
           The work that needs good weather, and how good. Visits in the next few days for jobs with that work get a weather warning on the schedule, on Home and on the crew's visit. Nothing is moved by itself.
         </p>
       </div>
+      <ForecastSource />
       <div className="row-between">
         <span className="muted small">{list.length === 1 ? "1 rule" : `${list.length} rules`}</span>
         <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>Add a rule</Button>
@@ -159,5 +162,65 @@ function RuleDialog({ rule, services, onClose, onSave }: { rule: WeatherRule | n
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/** What each forecast source is, under its name. */
+const SOURCES: Array<{ source: WeatherSource; about: string }> = [
+  { source: "nws", about: "Free for any use, from the government's own forecasters. United States only: a property anywhere else gets Open-Meteo's forecast." },
+  { source: "open_meteo", about: "Free and worldwide, for every property. Open-Meteo's terms keep its free service to non-commercial use." },
+  { source: "open_meteo_commercial", about: "The same forecasts from Open-Meteo's paid service, with your own key, for business use." },
+];
+
+/**
+ * Where forecasts come from: one choice for weather warnings and Snow, the National Weather Service
+ * unless the business picks another. Open-Meteo's paid service is
+ * on the list only once the business has added the Open-Meteo app (its key, on the Apps page);
+ * until then the list points there.
+ */
+function ForecastSource() {
+  const { company } = useSession();
+  const queryClient = useQueryClient();
+  const key = ["company", company.id, "weather-source"];
+  const chosen = useQuery({
+    queryKey: key,
+    queryFn: async () => {
+      const [row, app] = await Promise.all([
+        supabase().from("companies").select("settings").eq("id", company.id).single(),
+        supabase().from("integrations").select("status").eq("company_id", company.id).eq("provider", "open_meteo").maybeSingle(),
+      ]);
+      return { source: weatherSourceOf(unwrap(row).settings), paid: app.data?.status === "connected" };
+    },
+  });
+  const pick = useMutation({
+    meta: { success: (source: WeatherSource) => `Forecasts now come from ${WEATHER_SOURCE_LABELS[source]}` },
+    mutationFn: async (source: WeatherSource) => unwrap(await supabase().rpc("set_weather_source", { p_company: company.id, p_source: source })) as WeatherSource,
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["company", company.id] });
+      queryClient.invalidateQueries({ queryKey: ["snow", company.id] });
+    },
+  });
+  const current = pick.isPending ? pick.variables : chosen.data?.source;
+  const paid = Boolean(chosen.data?.paid);
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Forecast source</h2></div>
+      <div role="radiogroup" aria-label="Forecast source">
+        {SOURCES.filter(({ source }) => source !== "open_meteo_commercial" || paid || current === source).map(({ source, about }) => (
+          <label key={source} className="card-row" style={{ alignItems: "flex-start", cursor: "pointer" }}>
+            <input type="radio" name="weather-source" style={{ marginTop: 3 }} checked={current === source} disabled={chosen.isPending || pick.isPending} onChange={() => pick.mutate(source)} />
+            <span className="grow">
+              <strong>{WEATHER_SOURCE_LABELS[source]}</strong>
+              <span className="muted small" style={{ display: "block" }}>{about}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <FormError error={pick.error ?? chosen.error} />
+      <p className="muted small" style={{ margin: 0, padding: "10px 20px 14px" }}>
+        Used for the weather warnings on visits and for Snow. Official winter storm alerts on the Snow page always come from the National Weather Service.
+        {chosen.data && !paid && <> A business that wants Open-Meteo's forecasts needs its paid service, which becomes a choice here once you add the <Link to="/apps/open_meteo">Open-Meteo (commercial) app</Link>.</>}
+      </p>
+    </div>
   );
 }

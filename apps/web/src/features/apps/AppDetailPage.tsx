@@ -153,7 +153,7 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
   const careersSwitch = useWebsiteFormsSwitch("careers");
   const driveSwitch = useDriveSwitch();
   const marketingSwitch = useMarketingSwitch();
-  const tradeSwitch = useTradeAppSwitch(app.id === "roofing" ? "roofing" : "paving");
+  const tradeSwitch = useTradeAppSwitch(app.id === "roofing" || app.id === "snow" ? app.id : "paving");
   // Built-in apps turn on and off in the company's settings.
   const builtinSwitch =
     app.id === "website_analytics" ? analyticsSwitch
@@ -161,7 +161,7 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
     : app.id === "careers" ? careersSwitch
     : app.id === "drive" ? driveSwitch
     : app.id === "marketing" ? marketingSwitch
-    : app.id === "paving" || app.id === "roofing" ? tradeSwitch
+    : app.id === "paving" || app.id === "roofing" || app.id === "snow" ? tradeSwitch
     : chatSwitch;
 
   // Uninstall takes this app's own assistants and calendars with it.

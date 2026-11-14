@@ -58,8 +58,8 @@ describe("weather holds", () => {
   const days = [0, 1, 2, 3].map((i) => addDays(today, i));
   // Tomorrow is cold and wet.
   const forecast = { daily: { time: days, temperature_2m_min: [55, 35, 55, 55], temperature_2m_max: [70, 50, 70, 70], precipitation_probability_max: [10, 90, 10, 10] } };
-  // What the Lawn & Exterior preset saves in settings.weather_rules at signup.
-  const company = { weather_rules: [{ applies_to: "Weekly mow", max_rain_pct: 70 }, { applies_to: "House power wash", min_temp_f: 40 }] };
+  // What the Lawn & Exterior preset saves in settings.weather_rules at signup, for a business that picked Open-Meteo.
+  const company = { weather_source: "open_meteo", weather_rules: [{ applies_to: "Weekly mow", max_rain_pct: 70 }, { applies_to: "House power wash", min_temp_f: 40 }] };
   const visit = (id: string, job: unknown) => ({ id, scheduled_on: tomorrow, hold_reason: null, job, company, property: { lat: 37.13, lng: -80.41 } });
 
   it("uses the company's rules for the services on a job that has none of its own", async () => {
@@ -81,12 +81,12 @@ describe("weather holds", () => {
   });
 
   it("finds a rule's price list item by its id first, so renaming the item keeps the rule", async () => {
-    const byId = { weather_rules: [{ service_id: "svc-mow", applies_to: "Weekly mow", max_rain_pct: 70 }, { service_id: "svc-wash", applies_to: "House power wash", min_temp_f: 40 }] };
+    const byId = { weather_source: "open_meteo", weather_rules: [{ service_id: "svc-mow", applies_to: "Weekly mow", max_rain_pct: 70 }, { service_id: "svc-wash", applies_to: "House power wash", min_temp_f: 40 }] };
     const visits = [
       // Weekly mow is called Lawn mowing now; the rule follows it, by its new name.
       { ...visit("mow", { weather_rules: [], lines: [{ name: "Mowing", service_id: "svc-mow", service: { name: "Lawn mowing" } }] }), company: byId },
       // A line of the rule's old name, from another item, isn't that item.
-      { ...visit("other", { weather_rules: [], lines: [{ name: "House power wash", service_id: "svc-other", service: { name: "House power wash" } }] }), company: { weather_rules: [{ service_id: "svc-wash", min_temp_f: 40 }] } },
+      { ...visit("other", { weather_rules: [], lines: [{ name: "House power wash", service_id: "svc-other", service: { name: "House power wash" } }] }), company: { weather_source: "open_meteo", weather_rules: [{ service_id: "svc-wash", min_temp_f: 40 }] } },
     ];
     const calls = serve((call) => (call.url.host === "api.open-meteo.com" ? forecast : call.method === "GET" && call.path === "visits" ? visits : []));
     expect(await runTask("weather", env)).toEqual({ checked: 2, flagged: 1, unknown: 0 });
@@ -106,6 +106,166 @@ describe("weather holds", () => {
       ["id.asc", "0", "1000"],
       ["id.asc", "1000", "1000"],
     ]);
+  });
+});
+
+describe("snow by tomorrow", () => {
+  const tomorrow = "2026-01-16";
+  const days = ["2026-01-15", tomorrow, "2026-01-17"];
+  // Snow at noon today, which is today's, then a storm overnight: some at 9pm and the rest at 2am.
+  const storm = (noon: number, evening: number, morning: number) => ({
+    daily: { time: days, temperature_2m_min: [20, 20, 20], temperature_2m_max: [30, 30, 30], precipitation_probability_max: [0, 90, 0] },
+    hourly: { time: ["2026-01-15T12:00", "2026-01-15T21:00", "2026-01-16T02:00"], snowfall: [noon, evening, morning], temperature_2m: [28, 27, 25], weather_code: [3, 73, 73] },
+  });
+  // Rain at 7pm at 38°, then 26° by 2am: nothing to plow, plenty to salt.
+  const thaw = { daily: storm(0, 0, 0).daily, hourly: { time: ["2026-01-15T19:00", "2026-01-16T02:00"], snowfall: [0, 0], temperature_2m: [38, 26], weather_code: [61, 3] } };
+  const site = (id: string, name: string, lat: number | null, over: Record<string, unknown> = {}) => ({
+    job_id: id, trigger_in: 3, salt_trigger_in: null, repeat_in: null, clear_by: null, priority: 2, alerted_on: null, alerted_pushes: null, ice_alerted_on: null,
+    job: { title: "Plowing", status: "active", paused_at: null, client: { display_name: name }, property: { line1: "1 Maple Way", lat, lng: lat == null ? null : -111.64 } },
+    ...over,
+  });
+  // The plaza gets 2.1 inches before midnight and 2.1 after: 4.2 for the storm, over its trigger of 3
+  // (though neither date's own snow is) and, pushing again every inch, two pushes. Everyone else gets
+  // 1, after 5 at noon today that isn't tomorrow's: nothing for the church, a salt run for the bank,
+  // which salts from half an inch. The dentist's property isn't on the map.
+  const sites = [
+    site("plaza", "Maple Plaza", 40.59, { repeat_in: 1, clear_by: "07:00:00", priority: 1 }),
+    site("church", "First Church", 44.27),
+    site("bank", "First Bank", 44.27, { salt_trigger_in: 0.5 }),
+    site("dentist", "Birch Dental", null),
+  ];
+  const forecastFor = (call: Call) => call.url.searchParams.get("latitude")!.split(",").map((lat) => (lat === "40.5900" ? storm(0, 2.1, 2.1) : storm(5, 0.5, 0.5)));
+  const marked = (call: Call) => call.url.searchParams.get("job_id")!.replace(/^in\.\(|\)$/g, "").split(",").map((job_id) => ({ job_id }));
+  /** The database and the forecast for one business with Snow installed, in New York, that picked Open-Meteo. */
+  const snowDay = (over: (call: Call) => Response | unknown = () => undefined) =>
+    serve((call) => {
+      const mine = over(call);
+      if (mine !== undefined) return mine;
+      if (call.url.host === "api.open-meteo.com") return forecastFor(call);
+      if (call.path === "companies") return [{ id: "co", timezone: "America/New_York", weather_source: "open_meteo" }];
+      if (call.path === "snow_sites" && call.method === "GET") return sites;
+      if (call.path === "snow_sites" && call.method === "PATCH") return marked(call);
+      if (call.path === "rpc/snow_recipients") {
+        return [{ job_id: "plaza", user_id: "lena", office: false }, { job_id: "plaza", user_id: "otto", office: true }, { job_id: "bank", user_id: "sam", office: false }, { job_id: "bank", user_id: "otto", office: true }]
+          .filter((r) => (call.body.p_jobs as string[]).includes(r.job_id));
+      }
+      // Sam is a sub; Lena works for the business.
+      if (call.path === "memberships") return [{ user_id: "sam" }].filter((m) => call.url.searchParams.get("user_id")!.includes(m.user_id));
+      return [];
+    });
+  // The clock, set for each test: 17:00 UTC is noon in New York.
+  const at = (time: string) => vi.useFakeTimers({ toFake: ["Date"], now: new Date(time) });
+  const told = (calls: Call[]) => calls.filter((c) => c.path === "notifications").flatMap((c) => c.body as Array<{ user_id: string; title: string; body: string; link: string }>);
+  afterEach(() => vi.useRealTimers());
+
+  it("is checked every hour (snowWatch), as the forecast changes", () => {
+    expect(TASKS).toContain("snow");
+    expect(CRON_TASKS["40 * * * *"]).toEqual(["snow"]);
+    expect([0, 9, 23].every((h) => cronMatches("40 * * * *", new Date(Date.UTC(2026, 0, 15, h, 40))))).toBe(true);
+  });
+
+  it("tells a customer's people and the schedulers what the snow from 6pm today through tomorrow calls for: the plow, so many times, or salt", async () => {
+    at("2026-01-15T17:00:00Z");
+    const calls = snowDay();
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 2, iced: 0, logged: 0, unknown: 0 });
+    // Businesses with Snow, and their snow customers whose jobs are active and not paused.
+    expect(calls.find((c) => c.path === "companies")!.url.searchParams.get("settings->snow_app->>enabled")).toBe("eq.true");
+    const read = calls.find((c) => c.path === "snow_sites" && c.method === "GET")!.url.searchParams;
+    expect([read.get("company_id"), read.get("job.status"), read.get("job.paused_at")]).toEqual(["eq.co", "eq.active", "is.null"]);
+    // One request for both places, snowfall in inches; the property that isn't on the map isn't asked about.
+    const forecasts = calls.filter((c) => c.url.host === "api.open-meteo.com");
+    expect(forecasts.map((c) => [c.url.searchParams.get("latitude"), c.url.searchParams.get("precipitation_unit")])).toEqual([["40.5900,44.2700", "inch"]]);
+    expect(forecasts[0]!.url.searchParams.get("hourly")).toContain("snowfall");
+    // Marked first, each with how many pushes its people are told, and only where that's news.
+    expect(calls.filter((c) => c.path === "snow_sites" && c.method === "PATCH").map((c) => [c.body, c.url.searchParams.get("job_id"), c.url.searchParams.get("or")])).toEqual([
+      [{ alerted_on: tomorrow, alerted_pushes: 2 }, "in.(plaza)", `(alerted_on.is.null,alerted_on.neq.${tomorrow},alerted_pushes.lt.2)`],
+      [{ alerted_on: tomorrow, alerted_pushes: 0 }, "in.(bank)", `(alerted_on.is.null,alerted_on.neq.${tomorrow},alerted_pushes.lt.0)`],
+    ]);
+    const plaza = "Maple Plaza – 1 Maple Way: 4.2 in from 6pm tonight through tomorrow, trigger 3 in, 2 pushes, clear by 7 AM";
+    const bank = "First Bank – 1 Maple Way: 1 in from 6pm tonight through tomorrow, salt only (it plows at 3 in)";
+    const ask = "Can you go out? Say yes or no on My day.";
+    expect(told(calls)).toEqual([
+      // Lena works for the business, so she's told. Sam is a sub, so he's asked.
+      { company_id: "co", user_id: "lena", kind: "snow", title: "Snow by tomorrow at Maple Plaza – 1 Maple Way: 4.2 in forecast", body: plaza, link: "/field" },
+      { company_id: "co", user_id: "sam", kind: "snow", title: "Salt run by tomorrow at First Bank – 1 Maple Way: 1 in forecast", body: `${bank}\n${ask}`, link: "/field" },
+      // The schedulers hear about both, the first priority first, and aren't asked.
+      { company_id: "co", user_id: "otto", kind: "snow", title: "Snow by tomorrow: 2 properties to service", body: `${plaza}\n${bank}`, link: "/snow" },
+    ]);
+    // The storm goes in the log, and the subs who'd go out are asked whether they can.
+    expect(calls.find((c) => c.path === "snow_events" && c.method === "POST")!.body).toEqual([
+      { company_id: "co", job_id: "plaza", snow_date: tomorrow, kind: "plow", forecast_in: 4.2, pushes: 2 },
+      { company_id: "co", job_id: "bank", snow_date: tomorrow, kind: "salt", forecast_in: 1, pushes: 1 },
+    ]);
+    const subs = calls.find((c) => c.path === "memberships")!.url.searchParams;
+    expect([subs.get("company_id"), subs.get("role"), subs.get("user_id")]).toEqual(["eq.co", "eq.subcontractor", "in.(lena,sam)"]);
+    expect(calls.find((c) => c.path === "snow_availability")!.body).toEqual([{ company_id: "co", snow_date: tomorrow, user_id: "sam" }]);
+  });
+
+  it("tells them again when the forecast grows into more pushes, and not when it doesn't, or when another server marked it first", async () => {
+    at("2026-01-15T17:00:00Z");
+    const toldAbout = (pushes: number) => [{ ...sites[0]!, alerted_on: tomorrow, alerted_pushes: pushes }];
+    let calls = snowDay((call) => (call.path === "snow_sites" && call.method === "GET" ? toldAbout(2) : undefined));
+    expect(await runTask("snow", env)).toMatchObject({ alerted: 0 });
+    expect(calls.some((c) => c.method !== "GET")).toBe(false);
+    calls = snowDay((call) => (call.path === "snow_sites" && call.method === "GET" ? toldAbout(1) : undefined));
+    expect(await runTask("snow", env)).toMatchObject({ alerted: 1 });
+    expect(told(calls).map((n) => n.user_id)).toEqual(["lena", "otto"]);
+    calls = snowDay((call) => (call.path === "snow_sites" && call.method === "PATCH" ? [] : undefined));
+    expect(await runTask("snow", env)).toMatchObject({ alerted: 0 });
+    expect(calls.some((c) => c.path === "notifications" || c.path === "rpc/snow_recipients")).toBe(false);
+  });
+
+  it("warns a salting customer's people of a refreeze, once, and nobody else", async () => {
+    at("2026-01-15T17:00:00Z");
+    const calls = snowDay((call) => (call.url.host === "api.open-meteo.com" ? call.url.searchParams.get("latitude")!.split(",").map(() => thaw) : undefined));
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, iced: 1, logged: 0, unknown: 0 });
+    const mark = calls.find((c) => c.path === "snow_sites" && c.method === "PATCH")!;
+    expect([mark.body, mark.url.searchParams.get("job_id"), mark.url.searchParams.get("or")]).toEqual([{ ice_alerted_on: tomorrow }, "in.(bank)", `(ice_alerted_on.is.null,ice_alerted_on.neq.${tomorrow})`]);
+    expect(told(calls).map((n) => [n.user_id, n.title, n.body])).toEqual([
+      ["sam", "Refreeze by tomorrow at First Bank – 1 Maple Way", "First Bank – 1 Maple Way: wet, then 26° by 2 AM tomorrow: it will refreeze"],
+      ["otto", "Refreeze by tomorrow at First Bank – 1 Maple Way", "First Bank – 1 Maple Way: wet, then 26° by 2 AM tomorrow: it will refreeze"],
+    ]);
+  });
+
+  it("tells nobody outside 10am to 10pm the business's time, but still writes what fell yesterday into the log", async () => {
+    for (const time of ["2026-01-15T14:59:00Z", "2026-01-16T03:00:00Z"]) {
+      at(time);
+      const calls = snowDay();
+      expect(await runTask("snow", env)).toEqual({ companies: 0, alerted: 0, iced: 0, logged: 0, unknown: 0 });
+      expect(calls.map((c) => c.path)).toEqual(["companies", "snow_events"]);
+    }
+    at("2026-01-15T14:00:00Z");
+    // Yesterday's storm at the plaza has no amount yet: the forecast's own look back fills it in.
+    const calls = snowDay((call) =>
+      call.path === "snow_events" && call.method === "GET" ? [{ job_id: "plaza", job: { property: { lat: 40.59, lng: -111.64 } } }]
+        : call.url.host === "api.open-meteo.com" ? [{ hourly: { time: ["2026-01-13T20:00", "2026-01-14T03:00", "2026-01-15T05:00"], snowfall: [1.5, 2.25, 9] } }]
+          : undefined,
+    );
+    expect(await runTask("snow", env)).toMatchObject({ logged: 1 });
+    const asked = calls.find((c) => c.path === "snow_events" && c.method === "GET")!.url.searchParams;
+    expect([asked.get("snow_date"), asked.get("actual_in"), calls.find((c) => c.url.host === "api.open-meteo.com")!.url.searchParams.get("past_days")]).toEqual(["eq.2026-01-14", "is.null", "2"]);
+    const saved = calls.find((c) => c.path === "snow_events" && c.method === "PATCH")!;
+    // 1.5 from 8pm the evening before, plus 2.25 on the day; never over a figure someone wrote.
+    expect([saved.body, saved.url.searchParams.get("job_id"), saved.url.searchParams.get("actual_in")]).toEqual([{ actual_in: 3.75 }, "eq.plaza", "is.null"]);
+  });
+
+  it("goes by the business's own forecast source, and doesn't take a forecast it couldn't get for a clear day", async () => {
+    at("2026-01-15T17:00:00Z");
+    // A business that never chose goes by the National Weather Service, which has nothing for these places here: Open-Meteo answers for them.
+    let calls = snowDay((call) => (call.path === "companies" ? [{ id: "co", timezone: "America/New_York", weather_source: null }] : call.url.host === "api.weather.gov" ? new Response("not found", { status: 404 }) : undefined));
+    expect(await runTask("snow", env)).toMatchObject({ alerted: 2 });
+    expect([...new Set(calls.filter((c) => c.url.host !== "example.supabase.co").map((c) => c.url.host))]).toEqual(["api.weather.gov", "api.open-meteo.com"]);
+    calls = snowDay((call) => (call.url.host === "api.open-meteo.com" ? new Response("busy", { status: 429 }) : undefined));
+    expect(await runTask("snow", env)).toEqual({ companies: 1, alerted: 0, iced: 0, logged: 0, unknown: 3 });
+    expect(calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("unmarks the customers when nobody could be told, so the next hour tries again", async () => {
+    at("2026-01-15T17:00:00Z");
+    const calls = snowDay((call) => (call.path === "notifications" ? Response.json({ message: "the database is busy" }, { status: 503 }) : undefined));
+    await expect(runTask("snow", env)).rejects.toThrow("the database is busy");
+    expect(calls.filter((c) => c.path === "snow_sites" && c.method === "PATCH").at(-1)!.body).toEqual({ alerted_on: null, alerted_pushes: null });
+    expect(calls.some((c) => c.path === "snow_events" && c.method === "POST")).toBe(false);
   });
 });
 

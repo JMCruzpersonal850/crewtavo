@@ -13,6 +13,11 @@ Crewtavo, for the Facebook & Instagram app (not Meta's own logo).
 fal.svg is fal.ai's mark from @lobehub/icons-static-svg 1.95.1 (MIT), in fal's red, for the fal.ai app
 (Find paving).
 
+open-meteo.png is Open-Meteo's own app icon, unchanged, from its public repository (github.com/
+open-meteo/open-meteo, Public/android-chrome-512x512.png, downloaded 2026-11-14), for the Open-Meteo
+app (forecasts from its paid service). It's already a rounded app icon, so AppIcon.tsx shows it edge
+to edge.
+
 abc-supply.svg is ABC Supply's logo as its own website shows it (abcsupply.com, wp-content/uploads/
 2026/03/ABC-US-Exteriors-Logo.svg, downloaded 2026-10-22), in ABC's red and blue, for the ABC Supply
 app (material prices). It's a wordmark, so AppIcon.tsx gives it more width.

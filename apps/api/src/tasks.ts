@@ -2,7 +2,7 @@
  * Background tasks, run by server.ts's built-in scheduler (or by hand: GET/POST /api/cron/:task
  * with CRON_SECRET). Each is safe to run twice.
  */
-import { addDays, jobWeatherRules, lastDate, localDate, occurrenceDates, weatherRisks, zonedTimeToUtc } from "@crewtavo/core";
+import { addDays, iceNotices, iceRisk, jobWeatherRules, lastDate, localDate, localTime, occurrenceDates, snowNotices, snowPlan, weatherRisks, zonedTimeToUtc, type DayOutlook, type IceRisk, type SnowSite } from "@crewtavo/core";
 import type { Env } from "./env";
 import { OtherBooks, runAccountingJob, SentButUnrecorded } from "./integrations/accounting";
 import { runCalendarJob, syncDueCalendars } from "./integrations/calendars";
@@ -26,10 +26,11 @@ import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/soc
 import { sendDueReminders } from "./services/reviews";
 import { deliverNotifications } from "./services/delivery";
 import { remindSubs } from "./services/subs";
-import { dailyOutlook } from "./services/external";
+import { placeKey } from "./services/external";
+import { dailyOutlook, forecasterFor, placeWeathers, snowFallen, type Forecaster } from "./services/forecast";
 import { autoRoutes } from "./services/routes";
 
-export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups"] as const;
+export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "snow", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups"] as const;
 export type TaskName = (typeof TASKS)[number];
 
 /** Cron expressions -> tasks, run by server.ts's scheduler. */
@@ -49,6 +50,9 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   // 100 a day for each rule (services/automatedCampaigns.ts). The automations task sends them.
   "5 * * * *": ["inactive"],
   "0 */6 * * *": ["weather"],
+  // Snow coming by tomorrow at each snow customer: hourly, as the forecast is, from 10am to 10pm
+  // where the business is (snowWatch).
+  "40 * * * *": ["snow"],
   "30 * * * *": ["routes"],
   "10 * * * *": ["website"],
   "15 6 * * *": ["recurrence"],
@@ -84,6 +88,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return hourlyUpkeep(env);
     case "weather":
       return weatherHolds(env);
+    case "snow":
+      return snowWatch(env);
     case "address":
       return runAddressTask(env, adminClient(env));
     case "railway":
@@ -434,7 +440,7 @@ async function hourlyUpkeep(env: Env) {
 }
 
 const WEATHER_FIELDS =
-  "id, scheduled_on, hold_reason, job:jobs(weather_rules, lines:job_line_items(name, service_id, service:services(name))), company:companies(weather_rules:settings->weather_rules), property:properties(lat, lng)";
+  "id, scheduled_on, hold_reason, job:jobs(weather_rules, lines:job_line_items(name, service_id, service:services(name))), company_id, company:companies(weather_rules:settings->weather_rules, weather_source:settings->weather_source), property:properties(lat, lng)";
 
 /**
  * Flag tomorrow's visits whose weather rules fail (rain, cold for asphalt, sealcoat dry time): the
@@ -460,7 +466,9 @@ async function weatherHolds(env: Env) {
   }
 
   // null: the forecast couldn't be fetched (an outage or rate limit), which isn't a clear sky.
-  const outlooks = new Map<string, Awaited<ReturnType<typeof dailyOutlook>> | null>();
+  const outlooks = new Map<string, DayOutlook[] | null>();
+  // Each business's own forecast source (Settings → Weather rules), looked up once.
+  const forecasters = new Map<string, Forecaster>();
   let flagged = 0;
   let unknown = 0;
   for (const v of visits) {
@@ -470,8 +478,10 @@ async function weatherHolds(env: Env) {
     const rules = v.job ? jobWeatherRules(v.job.weather_rules, v.company?.weather_rules, services, ids) : [];
     const p = v.property as { lat: number | null; lng: number | null } | null;
     if (!rules.length || !v.scheduled_on || p?.lat == null || p?.lng == null) continue;
-    const key = `${p.lat.toFixed(2)},${p.lng.toFixed(2)}`;
-    if (!outlooks.has(key)) outlooks.set(key, await dailyOutlook(p.lat, p.lng, 4).catch(() => null));
+    if (!forecasters.has(v.company_id)) forecasters.set(v.company_id, await forecasterFor(env, admin, v.company_id, v.company));
+    const forecaster = forecasters.get(v.company_id)!;
+    const key = `${forecaster.source}:${placeKey(p.lat, p.lng)}`;
+    if (!outlooks.has(key)) outlooks.set(key, await dailyOutlook(p.lat, p.lng, 4, forecaster).catch(() => null));
     const outlook = outlooks.get(key);
     // Without a forecast, leave the visit's hold as it is; the next run checks again.
     if (!outlook) {
@@ -486,4 +496,156 @@ async function weatherHolds(env: Env) {
     }
   }
   return { checked: visits.length, flagged, unknown };
+}
+
+const SNOW_SITE_FIELDS =
+  "job_id, trigger_in, salt_trigger_in, repeat_in, clear_by, priority, alerted_on, alerted_pushes, ice_alerted_on, job:jobs!inner(title, status, paused_at, client:clients(display_name), property:properties(line1, lat, lng))";
+
+/**
+ * Snow (Apps → Crewtavo - Snow), hourly, for each business with it installed, by its own forecast
+ * source:
+ *
+ *   - Between 10am and 10pm where the business is, the day before: when the snow forecast from 6pm
+ *     today through tomorrow (an overnight storm whole) calls for a snow customer's plow or its salt
+ *     (core snowPlan), tell the job's crew and the people listed on it, and the people who schedule
+ *     the team (public.snow_recipients). Once a customer for each snow day (snow_sites.alerted_on),
+ *     and again if the forecast grows into more pushes. The storm goes in the log (snow_events), and
+ *     the subcontractors who'd go out are asked whether they can (snow_availability, answered on
+ *     My day); the business's own people are told, not asked.
+ *   - In the same hours, warn a salting customer's people of freezing rain or a refreeze (core
+ *     iceRisk), once a day, unless they're already being told about snow there.
+ *   - At any hour, write what fell yesterday into the log, as the forecast's own estimate, where the
+ *     office hasn't written its own.
+ *
+ * A paused job isn't checked. Nothing is scheduled: the office does that from the Snow page.
+ */
+async function snowWatch(env: Env) {
+  const admin = adminClient(env);
+  const now = new Date();
+  const { data: companies, error } = await admin.from("companies").select("id, timezone, weather_source:settings->weather_source").eq("settings->snow_app->>enabled", "true");
+  if (error) throw new Error(error.message);
+  const tally = { companies: 0, alerted: 0, iced: 0, logged: 0, unknown: 0 };
+  for (const company of companies) {
+    const today = localDate(now, company.timezone);
+    const hour = Number(localTime(now, company.timezone).slice(0, 2));
+    const forecaster = await forecasterFor(env, admin, company.id, company);
+    tally.logged += await logSnowFallen(admin, company.id, addDays(today, -1), forecaster);
+    if (hour < 10 || hour >= 22) continue;
+    tally.companies++;
+    const tomorrow = addDays(today, 1);
+    const { data: rows, error: sitesError } = await admin.from("snow_sites").select(SNOW_SITE_FIELDS).eq("company_id", company.id).eq("job.status", "active").is("job.paused_at", null).limit(1000);
+    if (sitesError) throw new Error(sitesError.message);
+    // A customer with no map location can't be checked (the Snow page says so); one whose forecast
+    // couldn't be had is checked again next hour.
+    const located = rows.flatMap((site) => (site.job.property?.lat != null && site.job.property.lng != null ? [{ site, lat: site.job.property.lat, lng: site.job.property.lng }] : []));
+    const weather = await placeWeathers(located, forecaster, 3);
+    const named = (site: (typeof rows)[number]) => [site.job.client?.display_name, site.job.property?.line1].filter(Boolean).join(" – ") || site.job.title;
+
+    const snowy: Array<{ site: (typeof rows)[number]; snow: number; pushes: number; kind: "plow" | "salt" }> = [];
+    const icy: Array<{ site: (typeof rows)[number]; risk: IceRisk }> = [];
+    for (const { site, lat, lng } of located) {
+      const here = weather.get(placeKey(lat, lng));
+      const snow = here?.snow_by_day[tomorrow];
+      if (!here || snow == null) {
+        tally.unknown++;
+        continue;
+      }
+      const plan = snowPlan({ trigger_in: Number(site.trigger_in), salt_trigger_in: site.salt_trigger_in == null ? null : Number(site.salt_trigger_in), repeat_in: site.repeat_in == null ? null : Number(site.repeat_in) }, snow);
+      // Told about tomorrow already: more pushes than they were told (or the plow, after salt only) is news.
+      const told = site.alerted_on === tomorrow ? site.alerted_pushes ?? 0 : -1;
+      const pushes = plan?.kind === "plow" ? plan.pushes : 0;
+      if (plan && pushes > told) snowy.push({ site, snow, pushes, kind: plan.kind });
+      const risk = !plan && site.salt_trigger_in != null && site.ice_alerted_on !== tomorrow ? iceRisk(here.hours, `${today}T18:00`, `${addDays(tomorrow, 1)}T00:00`) : null;
+      if (risk) icy.push({ site, risk });
+    }
+
+    // Marked first, and only the customers this run marked are told about: two servers checking at
+    // the same minute tell everyone once. Nobody told (the database was busy): unmarked, for next hour.
+    if (snowy.length) {
+      const marked: string[] = [];
+      for (const pushes of new Set(snowy.map((x) => x.pushes))) {
+        const claim = await admin.from("snow_sites").update({ alerted_on: tomorrow, alerted_pushes: pushes })
+          .in("job_id", snowy.filter((x) => x.pushes === pushes).map((x) => x.site.job_id))
+          .or(`alerted_on.is.null,alerted_on.neq.${tomorrow},alerted_pushes.lt.${pushes}`).select("job_id");
+        if (claim.error) throw new Error(claim.error.message);
+        marked.push(...claim.data.map((r) => r.job_id));
+      }
+      const mine = snowy.filter((x) => marked.includes(x.site.job_id));
+      if (mine.length) {
+        const recipients = await admin.rpc("snow_recipients", { p_jobs: marked });
+        const people = (jobId: string) => (recipients.data ?? []).filter((r) => r.job_id === jobId && !r.office).map((r) => r.user_id);
+        const office = [...new Set((recipients.data ?? []).filter((r) => r.office).map((r) => r.user_id))];
+        const sites: SnowSite[] = mine.map(({ site, snow, pushes, kind }) => ({
+          name: named(site), trigger_in: Number(site.trigger_in), snow_in: snow, plan: { kind, pushes: Math.max(1, pushes) }, clear_by: site.clear_by, priority: site.priority, people: people(site.job_id),
+        }));
+        // Only a subcontractor is asked whether they can go out: they work for themselves. The
+        // business's own people are told. A lookup that fails asks nobody, and still tells everyone.
+        const going = [...new Set(sites.flatMap((s) => s.people))].filter((user) => !office.includes(user));
+        const subs = going.length ? await admin.from("memberships").select("user_id").eq("company_id", company.id).eq("role", "subcontractor").in("user_id", going) : null;
+        const asking = (subs?.data ?? []).map((m) => m.user_id);
+        const sent = recipients.error ? recipients : await admin.from("notifications").insert(
+          snowNotices(sites, office, asking).map((n) => ({ company_id: company.id, user_id: n.user_id, kind: "snow", title: n.title, body: n.body, link: n.office ? "/snow" : "/field" })),
+        );
+        if (sent.error) {
+          await admin.from("snow_sites").update({ alerted_on: null, alerted_pushes: null }).in("job_id", marked);
+          throw new Error(sent.error.message);
+        }
+        // The storm in the log, and the question for the subcontractors who'd go out. Neither is worth
+        // untelling everyone for: scheduling the storm logs it too, and the Snow page asks nobody twice.
+        const logged = await admin.from("snow_events").upsert(
+          mine.map(({ site, snow, pushes, kind }) => ({ company_id: company.id, job_id: site.job_id, snow_date: tomorrow, kind, forecast_in: snow, pushes: Math.max(1, pushes) })),
+          { onConflict: "job_id,snow_date" },
+        );
+        const asked = asking.length
+          ? await admin.from("snow_availability").upsert(asking.map((user_id) => ({ company_id: company.id, snow_date: tomorrow, user_id })), { onConflict: "company_id,snow_date,user_id", ignoreDuplicates: true })
+          : null;
+        for (const problem of [logged.error, subs?.error, asked?.error]) if (problem) reportError(new Error(problem.message), { task: "snow", company: company.id });
+        tally.alerted += mine.length;
+      }
+    }
+
+    if (icy.length) {
+      const claim = await admin.from("snow_sites").update({ ice_alerted_on: tomorrow }).in("job_id", icy.map((x) => x.site.job_id)).or(`ice_alerted_on.is.null,ice_alerted_on.neq.${tomorrow}`).select("job_id");
+      if (claim.error) throw new Error(claim.error.message);
+      const marked = claim.data.map((r) => r.job_id);
+      const mine = icy.filter((x) => marked.includes(x.site.job_id));
+      if (mine.length) {
+        const recipients = await admin.rpc("snow_recipients", { p_jobs: marked });
+        const office = [...new Set((recipients.data ?? []).filter((r) => r.office).map((r) => r.user_id))];
+        const notices = iceNotices(
+          mine.map(({ site, risk }) => ({ name: named(site), risk, priority: site.priority, people: (recipients.data ?? []).filter((r) => r.job_id === site.job_id && !r.office).map((r) => r.user_id) })),
+          office,
+          `${today}T18:00`,
+        );
+        const sent = recipients.error ? recipients : await admin.from("notifications").insert(notices.map((n) => ({ company_id: company.id, user_id: n.user_id, kind: "snow", title: n.title, body: n.body, link: n.office ? "/snow" : "/field" })));
+        if (sent.error) {
+          await admin.from("snow_sites").update({ ice_alerted_on: null }).in("job_id", marked);
+          throw new Error(sent.error.message);
+        }
+        tally.iced += mine.length;
+      }
+    }
+  }
+  return tally;
+}
+
+/**
+ * What fell on `date` at each of the business's logged storms that nobody has an amount for yet:
+ * the forecast's own estimate afterwards (Open-Meteo's, which keeps the last days; the Weather
+ * Service only looks ahead). The office's own figure, once written, is never overwritten.
+ */
+async function logSnowFallen(admin: Db, companyId: string, date: string, forecaster: Forecaster): Promise<number> {
+  const { data: events, error } = await admin.from("snow_events").select("job_id, job:jobs(property:properties(lat, lng))").eq("company_id", companyId).eq("snow_date", date).is("actual_in", null).limit(1000);
+  if (error) throw new Error(error.message);
+  const located = events.flatMap((e) => (e.job?.property?.lat != null && e.job.property.lng != null ? [{ job_id: e.job_id, lat: e.job.property.lat, lng: e.job.property.lng }] : []));
+  if (!located.length) return 0;
+  const fallen = await snowFallen(located, forecaster);
+  let logged = 0;
+  for (const e of located) {
+    const inches = fallen.get(placeKey(e.lat, e.lng))?.[date];
+    if (inches == null) continue;
+    const saved = await admin.from("snow_events").update({ actual_in: inches }).eq("job_id", e.job_id).eq("snow_date", date).is("actual_in", null);
+    if (!saved.error) logged++;
+  }
+  return logged;
 }

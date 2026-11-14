@@ -41,6 +41,8 @@ export const DEFAULT_NOTIFICATION_PREFS: Record<NotificationChannel, Notificatio
  * notifications.kind -> topic. Automations use the subject's type (quote, invoice...) as the kind.
  */
 export function notificationTopic(kind: string): NotificationTopic {
+  // Snow tomorrow (Apps → Crewtavo - Snow) is schedule news: the crew may be going out.
+  if (kind === "snow") return "schedule";
   if (kind === "schedule" || kind === "client" || kind === "equipment" || kind === "time" || kind === "chat" || kind === "hosting" || kind === "subs" || kind === "jobs") return kind;
   // A new review, one of 1 or 2 stars (or changed down to that), and Google access starting or stopping.
   if (kind === "review" || kind === "review_low" || kind === "review_access") return "reviews";

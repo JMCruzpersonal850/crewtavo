@@ -89,6 +89,10 @@ export const TRIGGERS: TriggerDef[] = [
   { verb: "visit.en_route", label: "A crew is on the way", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.started", label: "A visit starts", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.completed", label: "A visit is completed", group: "Visits", subject: "visit", delayable: true },
+  // With Snow installed (20261113000100_snow_app.sql), for snow customers set to be told: their storm
+  // is put on the schedule, and each of its visits is done.
+  { verb: "snow.scheduled", label: "A snow customer's storm is scheduled", group: "Visits", subject: "visit", delayable: false },
+  { verb: "snow.completed", label: "A snow customer's visit is completed", group: "Visits", subject: "visit", delayable: true },
   // From the Client Hub (20261105000600_visit_change_requests.sql): nothing moves until the office
   // approves. The client's own words go in notices and emails, never in a task the crew sees.
   {

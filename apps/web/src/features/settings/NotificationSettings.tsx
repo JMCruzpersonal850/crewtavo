@@ -7,6 +7,7 @@ import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { DEFAULT_NOTIFICATION_PREFS, NOTIFICATION_TOPICS, REVIEW_ACCESS_HINT, reviewNoticesFor, SOCIAL_ACCESS_HINT, type NotificationChannel, type NotificationTopic } from "@crewtavo/core/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { featureOn } from "@/components/shell/nav";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
@@ -37,6 +38,10 @@ const OFF_RAILWAY_HOSTING = { label: "Storage and backups", hint: "When the comp
  */
 const reviewNotices = (session: Session) => reviewNoticesFor(session, marketingOn(session.company.settings));
 
+/** With Snow installed (Apps), snow tomorrow at one of your snow customers comes as schedule news. */
+const withSnow = (session: Session) => <T extends { key: string; hint: string }>(t: T): T =>
+  t.key === "schedule" && featureOn(session.company.settings, "snow_app") ? { ...t, hint: `${t.hint}, and snow on the way at your snow customers` } : t;
+
 /**
  * The kinds this person hears about. A sub hears about their visits, their job offers and pay, and
  * their own paperwork, and their clock only if the office keeps their hours. The team never gets a
@@ -46,12 +51,12 @@ function topicsFor(session: Session) {
   if (isSub(session)) {
     return NOTIFICATION_TOPICS.filter((t) => t.key === "schedule" || t.key === "jobs" || t.key === "subs" || (t.key === "time" && keepsTime(session))).map((t) =>
       t.key === "subs" ? { ...t, label: "My paperwork", hint: "When your insurance is about to run out" } : t,
-    );
+    ).map(withSnow(session));
   }
   const reviews = reviewNotices(session);
   return NOTIFICATION_TOPICS.filter((t) => t.key !== "jobs" && (t.key !== "chat" || chatOn(session)) && (t.key !== "hosting" || hostingWarnings(session)) && (t.key !== "subs" || managesSubs(session)) && (t.key !== "reviews" || reviews) && (t.key !== "social" || reviews)).map((t) =>
     t.key === "hosting" && session.config.platform !== "railway" ? { ...t, ...OFF_RAILWAY_HOSTING } : t.key === "reviews" && reviews === "access" ? { ...t, hint: REVIEW_ACCESS_HINT } : t.key === "social" && reviews === "access" ? { ...t, hint: SOCIAL_ACCESS_HINT } : t,
-  );
+  ).map(withSnow(session));
 }
 
 const COLUMNS: Array<{ channel: NotificationChannel; label: string }> = [

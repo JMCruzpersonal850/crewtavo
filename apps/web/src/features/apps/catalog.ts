@@ -12,7 +12,7 @@ import { can, hasRole, useSession } from "@/lib/session";
 export interface AppRow {
   id: string;
   name: string;
-  category: "Team" | "Marketing" | "Calendar" | "AI" | "Accounting" | "Payments" | "Pricing" | "Messaging" | "Website";
+  category: "Team" | "Marketing" | "Calendar" | "AI" | "Accounting" | "Payments" | "Pricing" | "Messaging" | "Website" | "Weather";
   description: string;
   /** builtin: part of Crewtavo, turned on or off here (team chat). site: the website's editor, by its address (Sveltia CMS). */
   auth: "oauth" | "api_key" | "link" | "connector" | "builtin" | "site";
@@ -188,6 +188,7 @@ export const CATEGORY_LABELS: Record<AppRow["category"], string> = {
   Pricing: "Material prices",
   Messaging: "Messaging",
   Website: "Your website",
+  Weather: "Weather",
 };
 
 /** An app's category on its own page: the built-in ones are simply Crewtavo's. */
@@ -204,6 +205,7 @@ export const MORE_LABELS: Record<AppRow["category"], string> = {
   Pricing: "More material prices",
   Messaging: "More messaging apps",
   Website: "More website apps",
+  Weather: "More weather apps",
 };
 
 /** "Add a Zoho calendar", "Add an Outlook calendar"... */
@@ -406,6 +408,28 @@ export const APP_INFO: Record<string, AppInfo> = {
     website: "https://crewtavo.com/docs/",
     open: "/roofing",
   },
+  snow: {
+    developer: "Crewtavo",
+    tagline: "Snow customers, and crews told the day before",
+    about:
+      "Adds Snow to the sidebar. Mark any job as a snow customer: the inches that send the plow, the inches that send the salt, how soon it's cleared and who works it, a sub included. From 10am to 10pm the snow forecast from 6pm through the next day, so an overnight storm counts whole, is checked every hour at each property. When it calls for service, those people and whoever schedules your team are told once, and again if the storm grows into more pushes, and a subcontractor on it answers whether they can go out. Salting customers are warned of freezing rain and refreezes. Nothing is scheduled by itself: the Storm tab sorts your customers by what's left to do, and you schedule a storm in one click, which puts the crew and the people on tomorrow's visits. On the day it shows how far along each customer is, and who's past the time they were to be clear by. Every storm goes in the season's log with what fell, a printable service report for each visit, and what it bills, by the push or by the depth of the storm.",
+    highlights: [
+      { icon: "snow", title: "A trigger for each customer", text: "Plow at 2 inches, salt at half an inch, clear by 7: each job has its own." },
+      { icon: "bell", title: "Told the day before", text: "The crew, the subs on it and your schedulers hear when the forecast through tomorrow reaches it." },
+      { icon: "calendarCheck", title: "Schedule in one click", text: "Every customer that reaches their trigger gets a visit tomorrow, with its people on it." },
+    ],
+    access: [
+      "Show Snow in the menu to owners, and to admins and office staff with the schedule area",
+      "Check the forecast at each snow customer's property with the source picked in Settings (the US National Weather Service unless you change it, and Open-Meteo outside the United States), sending only its location",
+      "Notify the job's crew, the people you put on it, and owners, admins and office staff with the schedule area when the forecast calls for service, and ask the subcontractors who'd go out whether they can",
+      "Email a snow customer you set to be told when its storm is scheduled and when each visit is done, through two Automations rules you can reword or turn off",
+      "Show the National Weather Service's winter alerts in force where your snow customers are",
+      "Uninstalling hides Snow and stops the notices, and keeps every snow customer and trigger",
+    ],
+    connectsWith: "Crewtavo",
+    website: "https://crewtavo.com/docs/",
+    open: "/snow",
+  },
   google_business: {
     developer: "Google",
     tagline: "Your Google reviews in Crewtavo",
@@ -551,6 +575,25 @@ export const APP_INFO: Record<string, AppInfo> = {
     access: ["Search clients and see their details", "See requests, the schedule, your guides and your setup", "Log requests and add notes, once you allow it", "Change company details, the price list, crews, checklists, booking forms, guides and automations, once you allow it", "Delete things, only with full access"],
     connectsWith: "Connector link",
     website: "https://claude.ai/",
+  },
+  open_meteo: {
+    developer: "Open-Meteo",
+    tagline: "For commercial use, with your own key. Non-commercial use is included in Crewtavo.",
+    about:
+      "This app is for commercial use of Open-Meteo. Non-commercial use is already included in Crewtavo, with nothing to add: Open-Meteo's free service is a choice in Settings → Weather rules, and it's where the forecast for a property outside the United States comes from when the source is the US National Weather Service, as it is until you change it. Open-Meteo's terms keep that free service to non-commercial use. A paid Open-Meteo plan comes with a key and a commercial licence: paste the key here, then pick Open-Meteo (commercial) in Settings → Weather rules, and every forecast, for the weather warnings on visits and for Snow, is asked of the paid service with your key. The forecasts are the same ones. Remove the key and forecasts go back to the National Weather Service.",
+    highlights: [
+      { icon: "cloudSnow", title: "The same forecasts", text: "Hour by hour and ten days out, for every property." },
+      { icon: "check", title: "Licensed for business", text: "Open-Meteo's paid plans allow commercial use. Its free service, built in, doesn't." },
+      { icon: "settings", title: "One switch", text: "Pick it in Settings → Weather rules once the key is in." },
+    ],
+    access: [
+      "Ask Open-Meteo's paid service for forecasts with your key, sending only each property's location",
+      "Nothing else: no clients, prices or anything else from Crewtavo",
+      "Open-Meteo bills your account directly",
+    ],
+    connectsWith: "Key from Open-Meteo",
+    website: "https://open-meteo.com/en/pricing",
+    open: "/settings?tab=weather",
   },
   fal: {
     developer: "fal",

@@ -6,6 +6,7 @@ import chatgptLogo from "@/assets/apps/chatgpt.svg";
 import claudeLogo from "@/assets/apps/claude.svg";
 import crewtavoLogo from "@/assets/apps/crewtavo.svg";
 import falLogo from "@/assets/apps/fal.svg";
+import openMeteoLogo from "@/assets/apps/open-meteo.png";
 import googleBusinessLogo from "@/assets/apps/google-business.svg";
 import googleCalendarLogo from "@/assets/apps/google-calendar.svg";
 import metaLogo from "@/assets/apps/meta.svg";
@@ -26,6 +27,7 @@ const LOGOS: Record<string, string> = {
   marketing: crewtavoLogo,
   paving: crewtavoLogo,
   roofing: crewtavoLogo,
+  snow: crewtavoLogo,
   google_business: googleBusinessLogo,
   meta: metaLogo,
   google_calendar: googleCalendarLogo,
@@ -38,13 +40,14 @@ const LOGOS: Record<string, string> = {
   twilio: twilioLogo,
   anthropic: claudeLogo,
   fal: falLogo,
+  open_meteo: openMeteoLogo,
   chatgpt: chatgptLogo,
   sveltia: sveltiaLogo,
 };
 /** Wordmark-shaped logos get more width. */
 const WIDE = new Set(["zoho_calendar", "zoho_books", "abc_supply"]);
 /** Logos that are already a whole app icon fill the tile. */
-const FULL = new Set(["sveltia"]);
+const FULL = new Set(["sveltia", "open_meteo"]);
 
 export type IconSize = "sm" | "md" | "lg";
 

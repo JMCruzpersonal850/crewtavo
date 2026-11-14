@@ -26,6 +26,7 @@
     "./recurrence": "./src/recurrence.ts",
     "./routing": "./src/routing.ts",
     "./slots": "./src/slots.ts",
+    "./snow": "./src/snow.ts",
     "./weather": "./src/weather.ts",
     "./ical": "./src/ical.ts",
     "./automations": "./src/automations.ts",

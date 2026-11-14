@@ -1,16 +1,17 @@
 /**
  * Icons used across the app: Lucide's, plus six of Crewtavo's own for the things it's built around,
- * drawn on the same 24px grid so they take the same props. Decorative unless given a label.
+ * drawn on the same 24px grid so they take the same props, and one of Tabler's (salt, below).
+ * Decorative unless given a label.
  */
 import {
   Archive, ArchiveRestore, ArrowLeft, AtSign, ArrowRight, Banknote, Bell, Bold, BookOpen, Calculator, Calendar, CalendarCheck, Camera, ChartColumn, ChartLine, Check, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, CircleCheck, CircleQuestionMark, ClipboardCheck, Clock, Cloud, CodeXml, Command, Copy, CreditCard, DollarSign, Download, Ellipsis, ExternalLink, Eye, File, FileImage,
+  ChevronRight, ChevronUp, CircleCheck, CircleQuestionMark, ClipboardCheck, Clock, Cloud, CloudSnow, CodeXml, Command, Copy, CreditCard, DollarSign, Download, Ellipsis, ExternalLink, Eye, File, FileImage,
   FileSpreadsheet, Folder, FolderInput, FolderOpen, FolderPlus, Funnel, Gauge, Gift, Globe, GripVertical, HardDrive, Hash, Heading, Hexagon, Highlighter, History, House, Image,
   Inbox, Info, Italic, Kanban, Landmark, Layers, LayoutGrid, Link, List, ListChecks, ListOrdered, Lock, LogOut, Mail, Map, MapPin, Maximize, Megaphone, Menu, Minimize, MessageSquareText,
   MessageSquareWarning, MessagesSquare, Minus, Monitor, Moon, Package, Palette, Paperclip, PenLine, Signature, Tablet, Type, MousePointer2, Navigation,
   Pause, Pencil, Percent, Phone, Pin, PinOff, Play, Plus, Printer, Quote,  ReceiptText, Redo2, RefreshCw, Reply, Ruler, Scissors, Search, Send, SeparatorHorizontal,
-  Settings, Share, Smartphone, SmilePlus, Sparkles, Spline, SquareUserRound, Star, StickyNote, Sun, Table, Tag, ThumbsUp, Trash, TriangleAlert, TriangleRight, Truck, Underline, Undo2, Upload,
-  User, Users, Video, WifiOff, Wrench, X, Zap, ZoomIn, ZoomOut, createLucideIcon, type LucideIcon,
+  Settings, Share, Smartphone, SmilePlus, Snowflake, Sparkles, Spline, SquareUserRound, Star, StickyNote, Sun, Table, Tag, Thermometer, ThumbsUp, Trash, TriangleAlert, TriangleRight, Truck, Underline, Undo2, Upload,
+  User, Users, Video, WifiOff, Wind, Wrench, X, Zap, ZoomIn, ZoomOut, createLucideIcon, type LucideIcon,
 } from "lucide-react";
 
 // Crewtavo's own: round caps and joins, about 2px clear of the grid's edge, and only a few strokes
@@ -44,6 +45,19 @@ const InvoiceDoc = createLucideIcon("CrewtavoInvoice", [
   ["path", { d: "M11.5 8H9a2 2 0 0 0 0 4h1a2 2 0 0 1 0 4H7", key: "s" }],
   ["path", { d: "M9.5 6.5v11", key: "bar" }],
   ["path", { d: "M14.5 12H17M14.5 16H17", key: "lines" }],
+]);
+
+
+/**
+ * A salt run: Tabler Icons' salt shaker, unchanged (https://tabler.io/icons, MIT License, Copyright
+ * (c) 2020-2025 Paweł Kuna). Lucide has none, and it's drawn on the same grid with the same stroke.
+ */
+const Salt = createLucideIcon("TablerSalt", [
+  ["path", { d: "M12 13v.01", key: "grain-1" }],
+  ["path", { d: "M10 16v.01", key: "grain-2" }],
+  ["path", { d: "M14 16v.01", key: "grain-3" }],
+  ["path", { d: "M7.5 8h9l-.281 -2.248a2 2 0 0 0 -1.985 -1.752h-4.468a2 2 0 0 0 -1.986 1.752l-.28 2.248z", key: "cap" }],
+  ["path", { d: "M7.5 8l-1.612 9.671a2 2 0 0 0 1.973 2.329h8.278a2 2 0 0 0 1.973 -2.329l-1.612 -9.671", key: "shaker" }],
 ]);
 
 /** Paving: a road in perspective, its edges closing in toward the top, a dashed line down the middle. */
@@ -183,6 +197,11 @@ const ICONS = {
   calculator: Calculator,
   paving: Road,
   roofing: Roof,
+  snow: Snowflake,
+  salt: Salt,
+  cloudSnow: CloudSnow,
+  wind: Wind,
+  thermometer: Thermometer,
   checklist: ListChecks,
   callout: MessageSquareWarning,
   table: Table,

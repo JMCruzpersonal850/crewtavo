@@ -2666,6 +2666,118 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"snow_availability": {
+                  Row: {
+                    "answered_at": string | null,"asked_at": string,"can": boolean | null,"company_id": string,"snow_date": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "answered_at"?: string | null,"asked_at"?: string,"can"?: boolean | null,"company_id": string,"snow_date": string,"user_id": string
+                  }
+                  Update: {
+                    "answered_at"?: string | null,"asked_at"?: string,"can"?: boolean | null,"company_id"?: string,"snow_date"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "snow_availability_company_id_user_id_fkey"
+      columns: ["company_id","user_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["company_id","user_id"]
+    }
+                  ]
+                },"snow_events": {
+                  Row: {
+                    "actual_by": string | null,"actual_in": number | null,"company_id": string,"created_at": string,"forecast_in": number | null,"job_id": string,"kind": string,"pushes": number,"snow_date": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actual_by"?: string | null,"actual_in"?: number | null,"company_id": string,"created_at"?: string,"forecast_in"?: number | null,"job_id": string,"kind"?: string,"pushes"?: number,"snow_date": string
+                  }
+                  Update: {
+                    "actual_by"?: string | null,"actual_in"?: number | null,"company_id"?: string,"created_at"?: string,"forecast_in"?: number | null,"job_id"?: string,"kind"?: string,"pushes"?: number,"snow_date"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "snow_events_company_id_job_id_fkey"
+      columns: ["company_id","job_id"]
+isOneToOne: false
+      referencedRelation: "jobs"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"snow_site_people": {
+                  Row: {
+                    "company_id": string,"job_id": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"job_id": string,"user_id": string
+                  }
+                  Update: {
+                    "company_id"?: string,"job_id"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "snow_site_people_company_id_user_id_fkey"
+      columns: ["company_id","user_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["company_id","user_id"]
+    },{
+      foreignKeyName: "snow_site_people_job_id_fkey"
+      columns: ["job_id"]
+isOneToOne: false
+      referencedRelation: "snow_sites"
+      referencedColumns: ["job_id"]
+    }
+                  ]
+                },"snow_sites": {
+                  Row: {
+                    "alerted_on": string | null,"alerted_pushes": number | null,"clear_by": string | null,"company_id": string,"created_at": string,"ice_alerted_on": string | null,"job_id": string,"priority": number,"repeat_in": number | null,"salt_trigger_in": number | null,"tell_client": boolean,"tiers": NonNullable<Json>,"trigger_in": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "alerted_on"?: string | null,"alerted_pushes"?: number | null,"clear_by"?: string | null,"company_id": string,"created_at"?: string,"ice_alerted_on"?: string | null,"job_id": string,"priority"?: number,"repeat_in"?: number | null,"salt_trigger_in"?: number | null,"tell_client"?: boolean,"tiers"?: NonNullable<Json>,"trigger_in": number
+                  }
+                  Update: {
+                    "alerted_on"?: string | null,"alerted_pushes"?: number | null,"clear_by"?: string | null,"company_id"?: string,"created_at"?: string,"ice_alerted_on"?: string | null,"job_id"?: string,"priority"?: number,"repeat_in"?: number | null,"salt_trigger_in"?: number | null,"tell_client"?: boolean,"tiers"?: NonNullable<Json>,"trigger_in"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "snow_sites_company_id_job_id_fkey"
+      columns: ["company_id","job_id"]
+isOneToOne: false
+      referencedRelation: "jobs"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"snow_visits": {
+                  Row: {
+                    "company_id": string,"job_id": string,"snow_date": string,"visit_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"job_id": string,"snow_date": string,"visit_id": string
+                  }
+                  Update: {
+                    "company_id"?: string,"job_id"?: string,"snow_date"?: string,"visit_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "snow_visits_company_id_visit_id_fkey"
+      columns: ["company_id","visit_id"]
+isOneToOne: false
+      referencedRelation: "visits"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "snow_visits_job_id_snow_date_fkey"
+      columns: ["job_id","snow_date"]
+isOneToOne: false
+      referencedRelation: "snow_events"
+      referencedColumns: ["job_id","snow_date"]
+    }
+                  ]
                 },"social_post_images": {
                   Row: {
                     "attachment_id": string | null,"bytes": number,"company_id": string,"created_at": string,"expires_at": string,"height": number,"id": string,"n": number,"path": string,"post_id": string,"token": string,"variant": string,"width": number
@@ -3208,14 +3320,14 @@ isOneToOne: false
                   ]
                 },"visits": {
                   Row: {
-                    "address": string | null,"company_id": string,"completed_at": string | null,"completed_by": string | null,"created_at": string,"crew_id": string | null,"ends_at": string | null,"eta_at": string | null,"hold_reason": string | null,"id": string,"invoice_id": string | null,"job_id": string | null,"kind": string,"notes": string | null,"property_id": string | null,"recurrence_key": string | null,"request_id": string | null,"route_order": number | null,"scheduled_on": string | null,"series_day": number | null,"series_id": string | null,"series_total": number | null,"starts_at": string | null,"status": string,"time_fixed": boolean,"title": string,"updated_at": string
+                    "address": string | null,"company_id": string,"completed_at": string | null,"completed_by": string | null,"created_at": string,"crew_id": string | null,"ends_at": string | null,"eta_at": string | null,"hold_reason": string | null,"id": string,"invoice_id": string | null,"job_id": string | null,"kind": string,"notes": string | null,"price": number | null,"price_note": string | null,"property_id": string | null,"recurrence_key": string | null,"request_id": string | null,"route_order": number | null,"scheduled_on": string | null,"series_day": number | null,"series_id": string | null,"series_total": number | null,"starts_at": string | null,"status": string,"time_fixed": boolean,"title": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address"?: string | null,"company_id": string,"completed_at"?: string | null,"completed_by"?: string | null,"created_at"?: string,"crew_id"?: string | null,"ends_at"?: string | null,"eta_at"?: string | null,"hold_reason"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"kind"?: string,"notes"?: string | null,"property_id"?: string | null,"recurrence_key"?: string | null,"request_id"?: string | null,"route_order"?: number | null,"scheduled_on"?: string | null,"series_day"?: number | null,"series_id"?: string | null,"series_total"?: number | null,"starts_at"?: string | null,"status"?: string,"time_fixed"?: boolean,"title": string,"updated_at"?: string
+                    "address"?: string | null,"company_id": string,"completed_at"?: string | null,"completed_by"?: string | null,"created_at"?: string,"crew_id"?: string | null,"ends_at"?: string | null,"eta_at"?: string | null,"hold_reason"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"kind"?: string,"notes"?: string | null,"price"?: number | null,"price_note"?: string | null,"property_id"?: string | null,"recurrence_key"?: string | null,"request_id"?: string | null,"route_order"?: number | null,"scheduled_on"?: string | null,"series_day"?: number | null,"series_id"?: string | null,"series_total"?: number | null,"starts_at"?: string | null,"status"?: string,"time_fixed"?: boolean,"title": string,"updated_at"?: string
                   }
                   Update: {
-                    "address"?: string | null,"company_id"?: string,"completed_at"?: string | null,"completed_by"?: string | null,"created_at"?: string,"crew_id"?: string | null,"ends_at"?: string | null,"eta_at"?: string | null,"hold_reason"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"kind"?: string,"notes"?: string | null,"property_id"?: string | null,"recurrence_key"?: string | null,"request_id"?: string | null,"route_order"?: number | null,"scheduled_on"?: string | null,"series_day"?: number | null,"series_id"?: string | null,"series_total"?: number | null,"starts_at"?: string | null,"status"?: string,"time_fixed"?: boolean,"title"?: string,"updated_at"?: string
+                    "address"?: string | null,"company_id"?: string,"completed_at"?: string | null,"completed_by"?: string | null,"created_at"?: string,"crew_id"?: string | null,"ends_at"?: string | null,"eta_at"?: string | null,"hold_reason"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"kind"?: string,"notes"?: string | null,"price"?: number | null,"price_note"?: string | null,"property_id"?: string | null,"recurrence_key"?: string | null,"request_id"?: string | null,"route_order"?: number | null,"scheduled_on"?: string | null,"series_day"?: number | null,"series_id"?: string | null,"series_total"?: number | null,"starts_at"?: string | null,"status"?: string,"time_fixed"?: boolean,"title"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -4470,6 +4582,9 @@ isOneToOne: false
 "set_weather_rules":
 { Args: { "p_company": string,"p_rules": Json }; Returns: Json
                            },
+"set_weather_source":
+{ Args: { "p_company": string,"p_source": string }; Returns: string
+                           },
 "settle_notification_deliveries":
 { Args: { "p_delivered": (string)[],"p_error"?: string,"p_failed"?: (string)[],"p_retry"?: (string)[],"p_token": string }; Returns: number
                            },
@@ -4492,6 +4607,17 @@ isOneToOne: false
                            },
 "skip_inactive_backlog":
 { Args: { "p_rule": string }; Returns: number
+                           },
+"snow_answer":
+{ Args: { "p_can": boolean,"p_company": string,"p_date": string }; Returns: boolean
+                           },
+"snow_recipients":
+{ Args: { "p_jobs": (string)[] }; Returns: {
+              "job_id": string,"office": boolean,"user_id": string
+            }[]
+                           },
+"snow_schedule":
+{ Args: { "p_company": string,"p_date": string,"p_plan": Json }; Returns: number
                            },
 "social_photo_facts":
 { Args: { "p_company": string,"p_ids": (string)[] }; Returns: {

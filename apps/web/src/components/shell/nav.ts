@@ -12,7 +12,7 @@ export interface NavItem {
   except?: string[]; // screens under this one that are a section of their own (not highlighted here)
   also?: string[]; // other screens that count as this section (highlighted in the sidebar)
   keywords?: string; // other words people search for it by
-  feature?: "team_chat" | "website" | "careers" | "drive" | "marketing" | "paving_app" | "roofing_app"; // only while the business has this app on (Apps)
+  feature?: "team_chat" | "website" | "careers" | "drive" | "marketing" | "paving_app" | "roofing_app" | "snow_app"; // only while the business has this app on (Apps)
 }
 
 /**
@@ -24,6 +24,7 @@ export const NAV_GROUPS: NavItem[][] = [
     { to: "/", label: "Home", icon: "home", keywords: "dashboard today overview" },
     { to: "/paving", label: "Paving", icon: "paving", roles: ["admin", "office", "estimator"], perm: "sales", feature: "paving_app", keywords: "takeoff asphalt sealcoat striping stalls parking lot estimate proposal find paving" },
     { to: "/roofing", label: "Roofing", icon: "roofing", roles: ["admin", "office", "estimator"], perm: "sales", feature: "roofing_app", keywords: "roof estimate squares pitch shingles metal tear-off measure good better best proposal" },
+    { to: "/snow", label: "Snow", icon: "snow", roles: ["admin", "office"], perm: "schedule", feature: "snow_app", keywords: "snow plow plowing salt trigger inches storm forecast" },
     { to: "/field", label: "My day", icon: "clock", only: ["crew_lead", "field_crew", "subcontractor"], except: ["/field/paperwork", "/field/jobs"], keywords: "today my visits route" },
     { to: "/field/jobs", label: "My jobs", icon: "job", only: ["subcontractor"], keywords: "offers accept decline take turn down price owed paid 1099 total" },
     { to: "/field/paperwork", label: "My paperwork", icon: "file", only: ["subcontractor"], keywords: "w-9 w9 insurance certificate liability workers comp upload send" },
@@ -138,7 +139,7 @@ export function navVisible(session: { role: string; permissions: readonly string
 
 /**
  * An app the business turned on in Apps: companies.settings.team_chat.enabled, .careers.enabled,
- * .drive.enabled, .marketing.enabled, .paving_app.enabled, .roofing_app.enabled (not .roofing, which
+ * .drive.enabled, .marketing.enabled, .paving_app.enabled, .roofing_app.enabled, .snow_app.enabled (not .roofing, which
  * holds the price ranges), or .website.enabled once its editor is added.
  */
 export function featureOn(settings: Record<string, unknown> | null | undefined, feature: NonNullable<NavItem["feature"]>): boolean {

@@ -1,7 +1,7 @@
 /**
- * Crewtavo - Paving and Crewtavo - Roofing on their Apps pages: Install turns the section on, and
+ * Crewtavo - Paving, Roofing and Snow on their Apps pages: Install turns the section on, and
  * Uninstall takes it out of the sidebar and keeps everything (POST /api/paving/enabled and
- * /api/roofing/enabled, public.trade_app_set_enabled). Any business can have either or both: the
+ * /api/roofing/enabled and /api/snow/enabled, public.trade_app_set_enabled). Any business can have either or both: the
  * trade only picks starter prices and terms.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { useSession } from "@/lib/session";
 const WORDS = {
   paving: { name: "Paving", keeps: "Every takeoff and estimate stays" },
   roofing: { name: "Roofing", keeps: "Every roof estimate, package and price range stays" },
+  snow: { name: "Snow", keeps: "Crews stop hearing about snow. Every snow customer and trigger stays" },
 };
 
 export function useTradeAppSwitch(app: keyof typeof WORDS) {

@@ -6,6 +6,7 @@ import { contractDiscountNote } from "@crewtavo/core/promos";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { featureOn } from "@/components/shell/nav";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
@@ -112,6 +113,12 @@ export function JobPage() {
         "This job",
       ),
   });
+  // With Snow installed: whether this job is a snow customer (the Snow page keeps its triggers).
+  const snowSite = useQuery({
+    enabled: featureOn(session.company.settings, "snow_app") && Boolean(id),
+    queryKey: ["snow", session.company.id, "site", id],
+    queryFn: async () => (await supabase().from("snow_sites").select("trigger_in").eq("job_id", id!).maybeSingle()).data,
+  }).data;
   const j = job.data;
   useDocumentTitle(j ? `Job #${j.number}` : "Job");
   const clientId = j?.client?.id ?? null;
@@ -539,6 +546,7 @@ export function JobPage() {
               )}
               {j.kind === "recurring" && <><dt>Repeats</dt><dd>{j.recurrence_rule ? repeatText(j.recurrence_rule) : "—"}{j.starts_on ? `, from ${formatDate(j.starts_on)}` : ""}{j.ends_on ? ` to ${formatDate(j.ends_on)}` : ""}</dd></>}
               {j.crew && <><dt>Crew</dt><dd>{j.crew.name}</dd></>}
+              {snowSite && featureOn(session.company.settings, "snow_app") && <><dt>Snow</dt><dd><Link to={`/snow?edit=${j.id}`}>Plows at {Number(snowSite.trigger_in)} in</Link></dd></>}
               {j.po_number && <><dt>PO</dt><dd>{j.po_number}</dd></>}
               {j.permit_number && <><dt>Permit</dt><dd>{j.permit_number}</dd></>}
               {Number(j.retainage_pct) > 0 && <><dt>Retainage</dt><dd>{Number(j.retainage_pct)}%</dd></>}

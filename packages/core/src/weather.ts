@@ -21,6 +21,49 @@ export interface DayOutlook {
   temp_max_f: number | null;
   rain_chance_pct: number | null;
   wind_max_mph?: number | null;
+  snow_in?: number | null; // inches of snow from 6pm the evening before through that day: an overnight storm counts whole
+}
+
+/**
+ * Where a business's forecasts come from (Settings → Weather rules, companies.settings.weather_source):
+ * the US National Weather Service, free for any use, with Open-Meteo's forecast for a property
+ * outside the United States; Open-Meteo's free service everywhere, which its terms keep to
+ * non-commercial use; or Open-Meteo with the business's own paid key (Apps → Open-Meteo). The
+ * Weather Service is the default: its forecasters set how much snow an inch of water makes storm by
+ * storm, where Open-Meteo counts a flat 7 to 1 and so calls most cold storms short.
+ */
+export const WEATHER_SOURCES = ["nws", "open_meteo", "open_meteo_commercial"] as const;
+export type WeatherSource = (typeof WEATHER_SOURCES)[number];
+export const WEATHER_SOURCE_LABELS: Record<WeatherSource, string> = {
+  open_meteo: "Open-Meteo (non-commercial)",
+  open_meteo_commercial: "Open-Meteo (commercial)",
+  nws: "US National Weather Service",
+};
+/** The source a business chose; the National Weather Service until it picks another. */
+export const weatherSourceOf = (settings: unknown): WeatherSource => {
+  const chosen = (settings as { weather_source?: unknown } | null | undefined)?.weather_source;
+  return WEATHER_SOURCES.includes(chosen as WeatherSource) ? (chosen as WeatherSource) : "nws";
+};
+
+/** What the sky is doing, in the few words the app uses, however the forecast's provider codes it. */
+export type Sky = "clear" | "partly_cloudy" | "cloudy" | "fog" | "drizzle" | "rain" | "freezing_rain" | "snow" | "storm";
+
+/**
+ * A place's weather in detail, for the Snow app's weather view: now, hour by hour and day by day.
+ * Times are the place's own, as "2026-11-14T18:00". Whatever provider it comes from is turned into
+ * this in the API (services/external.ts), so the page never knows which.
+ */
+export interface PlaceWeather {
+  /** Whose forecast this is: the business's choice, or Open-Meteo where that one has none for the place. */
+  source: WeatherSource;
+  /** wind_from_deg: the compass bearing the wind blows from (0 north, 90 east). */
+  now: { time: string; night: boolean; temp_f: number | null; feels_f: number | null; sky: Sky; wind_mph: number | null; gust_mph: number | null; wind_from_deg: number | null; snow_depth_in: number | null };
+  /** The next 48 hours, starting with this one. */
+  hours: Array<{ time: string; night: boolean; temp_f: number | null; sky: Sky; snow_in: number; rain_chance_pct: number | null; wind_mph: number | null; gust_mph: number | null }>;
+  /** Today and the days after it; snow_in is that date's own snow, midnight to midnight. */
+  days: Array<{ date: string; sky: Sky; temp_min_f: number | null; temp_max_f: number | null; snow_in: number; rain_chance_pct: number | null; wind_max_mph: number | null; gust_max_mph: number | null }>;
+  /** Inches of snow for each date counted from 6pm the evening before, as snow alerts count it. */
+  snow_by_day: Record<string, number>;
 }
 
 /** A rule in one line, as Settings lists it: "Paver patio: at most 50% rain, 24 dry hours after". */

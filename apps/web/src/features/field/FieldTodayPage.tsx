@@ -26,7 +26,9 @@ import { CrewClockCard } from "./CrewClockCard";
 import { pendingVisitStatus, showVisitStatus, statusSaved, type VisitStatusChange } from "./fieldActions";
 import { useStatusTap } from "./fieldData";
 import { InstallAppCard } from "./InstallAppCard";
+import { SnowAvailabilityCard } from "../snow/SnowAvailabilityCard";
 import { OfflineNote } from "./OfflineNote";
+import { featureOn } from "@/components/shell/nav";
 import { FIELD_SCOPE } from "@/lib/offline";
 import { toast } from "@/lib/toast";
 
@@ -144,6 +146,7 @@ export function FieldTodayPage() {
       {!hasRole(session, "admin", "office", "estimator") && <InstallAppCard />}
       {keepsTime(session) && <ClockCard visits={open.filter((v) => v.status === "in_progress").map((v) => ({ id: v.id, title: v.title, job_id: v.job?.id ?? null }))} />}
       {session.role === "crew_lead" && <CrewClockCard visits={data.data?.today ?? []} />}
+      {featureOn(session.company.settings, "snow_app") && <SnowAvailabilityCard />}
 
       {data.isPending && <Loading label="Loading your visits"><div className="stack">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={2} />)}</div></Loading>}
       {data.error && !data.data && <div className="card"><ErrorState error={data.error} onRetry={() => data.refetch()} /></div>}

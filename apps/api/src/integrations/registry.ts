@@ -10,7 +10,7 @@
  *               companies.settings.careers, the same routes; drive: companies.settings.drive,
  *               routes/drive.ts; marketing: companies.settings.marketing, routes/marketing.ts;
  *               paving and roofing: companies.settings.paving_app and .roofing_app, routes/paving.ts
- *               and routes/roofing.ts)
+ *               and routes/roofing.ts; snow: .snow_app, routes/snow.ts)
  *   site      - the company's website editor, by its address (Sveltia CMS: companies.settings.website, integrations/website.ts)
  * ABC Supply is an api_key app with two keys: its own app's Client ID and secret (integrations/abcSupply.ts).
  * Google Business Profile signs in like Google Calendar, with the same Google app, and brings the
@@ -24,17 +24,17 @@ import type { Env } from "../env";
 import { DIALOG, GRAPH_VERSION, META_SCOPES } from "./metaConfig";
 
 /** Apps with a row in integrations (and maybe integration_secrets). */
-export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "fal" | "railway" | "abc_supply";
+export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "fal" | "railway" | "abc_supply" | "open_meteo";
 /** Apps whose calendars are added by link. They're also the calendar_sources.app values (with google_calendar). */
 export type LinkApp = "zoho_calendar" | "outlook_calendar" | "apple_calendar" | "ics_calendar";
-export type AppId = Provider | LinkApp | "chatgpt" | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "sveltia";
+export type AppId = Provider | LinkApp | "chatgpt" | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "snow" | "sveltia";
 export type CalendarApp = LinkApp | "google_calendar";
 export const CALENDAR_APPS: readonly CalendarApp[] = ["google_calendar", "zoho_calendar", "outlook_calendar", "apple_calendar", "ics_calendar"];
 
 export interface CatalogEntry {
   id: AppId;
   name: string;
-  category: "Team" | "Marketing" | "Calendar" | "AI" | "Accounting" | "Payments" | "Pricing" | "Messaging" | "Website";
+  category: "Team" | "Marketing" | "Calendar" | "AI" | "Accounting" | "Payments" | "Pricing" | "Messaging" | "Website" | "Weather";
   description: string;
   auth: "oauth" | "api_key" | "link" | "connector" | "builtin" | "site";
   docs: string;
@@ -121,6 +121,15 @@ export const CATALOG: CatalogEntry[] = [
     available: () => true,
   },
   {
+    id: "snow",
+    name: "Crewtavo - Snow",
+    category: "Team",
+    description: "Snow customers with the inches that call for each, and their crews told the day before when the forecast reaches it.",
+    auth: "builtin",
+    docs: "https://crewtavo.com/docs/",
+    available: () => true,
+  },
+  {
     id: "google_business",
     name: "Google Business Profile",
     category: "Marketing",
@@ -194,6 +203,16 @@ export const CATALOG: CatalogEntry[] = [
     description: "Use Crewtavo from Claude, and power Crewtavo's writing help and SOP answers with your own Anthropic key.",
     auth: "api_key",
     docs: "https://docs.claude.com/",
+    available: () => true,
+  },
+  {
+    id: "open_meteo",
+    // Named for what it's for: non-commercial use of Open-Meteo is built in and needs no app.
+    name: "Open-Meteo (commercial)",
+    category: "Weather",
+    description: "For commercial use: forecasts for weather holds and Snow from Open-Meteo's paid service, with your own key. Non-commercial use is included in Crewtavo.",
+    auth: "api_key",
+    docs: "https://crewtavo.com/docs/",
     available: () => true,
   },
   {

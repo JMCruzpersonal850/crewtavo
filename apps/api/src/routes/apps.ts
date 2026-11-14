@@ -1,5 +1,5 @@
 /** Apps page: catalog with status, OAuth connect/callback/disconnect, API keys, and AI helpers. */
-import { ADMINS, type Role } from "@crewtavo/core";
+import { ADMINS, weatherSourceOf, type Role } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { projectNumber } from "@crewtavo/core/reviews";
 import { websiteOf } from "@crewtavo/core/website";
@@ -21,6 +21,7 @@ import { AbcProblem, chooseAbcAccount, connectAbc, settingsOf as abcSettingsOf }
 import { describeAccount, retryAccounting } from "../integrations/accounting";
 import { deleteVisitsCalendar, describeGoogleAccount, pushUpcomingVisits } from "../integrations/calendars";
 import { checkFalKey } from "../integrations/fal";
+import { checkOpenMeteoKey } from "../services/forecast";
 import { describeGoogleBusiness, findLocation, GoogleBusinessError } from "../integrations/googleBusiness";
 import { badKeys, MetaError, metaAuthorizeUrl, type MetaKeys } from "../integrations/meta";
 import { CATALOG, catalogEntry, isCalendarApp, OAUTH, UntrustedServerError, zohoAccountsServer, type Provider } from "../integrations/registry";
@@ -78,9 +79,10 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   builtinOn.careers = (company.data?.settings as { careers?: { enabled?: boolean } } | null)?.careers?.enabled === true;
   builtinOn.drive = (company.data?.settings as { drive?: { enabled?: boolean } } | null)?.drive?.enabled === true;
   builtinOn.marketing = marketingOn(company.data?.settings as Record<string, unknown> | null);
-  // Paving and Roofing (routes/paving.ts, routes/roofing.ts).
+  // Paving, Roofing and Snow (routes/paving.ts, routes/roofing.ts, routes/snow.ts).
   builtinOn.paving = (company.data?.settings as { paving_app?: { enabled?: boolean } } | null)?.paving_app?.enabled === true;
   builtinOn.roofing = (company.data?.settings as { roofing_app?: { enabled?: boolean } } | null)?.roofing_app?.enabled === true;
+  builtinOn.snow = (company.data?.settings as { snow_app?: { enabled?: boolean } } | null)?.snow_app?.enabled === true;
   const calendarRows = must(calendars);
   const stripeSettings = (integrations.find((r) => r.provider === "stripe")?.settings ?? {}) as { webhook?: boolean; livemode?: boolean; key_kind?: string; import?: ImportState };
   // ABC Supply: the account and branch prices come from, and the others there are to pick.
@@ -356,6 +358,12 @@ apps.post("/apps/:provider/disconnect", requireUser, requireCompany(ADMINS, "app
     .update({ status: "disconnected", account_label: null, last_error: null, ...(provider === "google_calendar" || provider === "google_business" ? { settings: {} } : provider === "meta" ? { settings: kept as never } : {}) })
     .match({ company_id: c.var.companyId, provider });
   if (error) throw dbError(error);
+  // Without its key, Open-Meteo's paid service isn't a choice: forecasts go back to the default source, and Settings says so.
+  if (provider === "open_meteo") {
+    const { data: company } = await admin.from("companies").select("settings").eq("id", c.var.companyId).maybeSingle();
+    const settings = (company?.settings ?? {}) as Record<string, unknown>;
+    if (settings.weather_source === "open_meteo_commercial") await admin.from("companies").update({ settings: asJson({ ...settings, weather_source: weatherSourceOf(null) }) }).eq("id", c.var.companyId);
+  }
   if (who && was) runInBackground(c, noteStripeChange(c, who, { before: was.label, after: null, from: was.id, to: null, moved: null }));
   return c.json({ provider, status: "disconnected", ...(provider === "google_business" ? { removed } : {}), ...(shared ? { revoked: false } : {}) });
 });
@@ -661,6 +669,11 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
   // fal.ai: checked against its free price list first, so a key pasted wrong says so now.
   if (provider === "fal") {
     const problem = await checkFalKey(body.api_key);
+    if (problem) throw new HttpError(400, problem);
+  }
+  // Open-Meteo's paid service: asked one small question with the key, for the same reason.
+  if (provider === "open_meteo") {
+    const problem = await checkOpenMeteoKey(body.api_key);
     if (problem) throw new HttpError(400, problem);
   }
   const { error } = await admin.from("integrations").upsert({
