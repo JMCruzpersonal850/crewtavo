@@ -302,6 +302,40 @@ select public.create_invoice_for_job(:'skipped') as skipped_final \gset
 select tpg.check(tpg.rows(:'skipped') = '1:200.00:standard/800.00, 2:600.00:standard/800.00'
   and (select count(*) = 1 from public.invoices where job_id = :'skipped'),
   'the Invoice button with an earlier payment never invoiced bills all that''s left in one final invoice, and both payments are on it');
+-- The work is done and its payment invoiced; all that's left is a payment held back to a date. The
+-- Invoice button doesn't bill it early (20261113001690_dated_payments_wait_for_their_day.sql).
+select tpg.old_job(:'co', :'erin', :'olly', 1000, 0.10, jsonb_build_array(
+    jsonb_build_object('kind', 'percent', 'value', 30, 'due', 'by_hand'), jsonb_build_object('kind', 'percent', 'value', 60, 'due', 'work_done'),
+    jsonb_build_object('kind', 'rest', 'due', 'date', 'on', (private.company_today(:'co') + 30)::text))) as held \gset
+begin;
+select tpg.as_user(:'olly');
+select public.invoice_installment((select id from public.job_installments where job_id = :'held' and position = 1));
+update public.visits set status = 'completed' where job_id = :'held';
+select public.create_invoice_for_job(:'held') as held_done \gset
+select tpg.check(tpg.rows(:'held') = '1:330.00:progress/330.00, 2:660.00:progress/660.00, 3:110.00:-' and (select status = 'requires_invoicing' from public.jobs where id = :'held'),
+  'the Invoice button on a finished job bills the payment for when the work is done, and the job waits for the one held back');
+select tpg.check(tpg.error_of(format('select public.create_invoice_for_job(%L)', :'held'))
+    = format('22023: Payment 3 of 3 ($110.00) is due on %s and is invoiced by itself that day. To bill it sooner, use Invoice now on the job''s payment schedule', to_char(private.company_today(:'co') + 30, 'Mon FMDD, YYYY')),
+  'pressed again, it doesn''t bill the held-back payment before its day, and says when that is');
+commit;
+update public.job_installments set due_on = private.company_today(:'co') where job_id = :'held' and position = 3;
+select public.make_due_installments();
+select tpg.check(tpg.rows(:'held') = '1:330.00:progress/330.00, 2:660.00:progress/660.00, 3:110.00:standard/110.00'
+  and (select sum(total) = 1100 and sum(tax_amount) = 100 from public.invoices where job_id = :'held') and (select status = 'completed' from public.jobs where id = :'held'),
+  'on its day it''s invoiced by itself as the final invoice, $110 with the job''s $100 of tax, and the job closes');
+-- The office can still choose to bill a dated payment early, on the payment itself.
+select tpg.old_job(:'co', :'erin', :'olly', 500, 0, jsonb_build_array(
+    jsonb_build_object('kind', 'percent', 'value', 50, 'due', 'date', 'on', (private.company_today(:'co') + 10)::text),
+    jsonb_build_object('kind', 'rest', 'due', 'date', 'on', (private.company_today(:'co') + 40)::text))) as early \gset
+begin;
+select tpg.as_user(:'olly');
+select tpg.check(tpg.error_of(format('select public.create_invoice_for_job(%L)', :'early')) like '22023: Payment 1 of 2 ($250.00) is due on %',
+  'a job whose payments are all dated and still to come isn''t invoiced by the button either: the first to come is named');
+select public.invoice_installment((select id from public.job_installments where job_id = :'early' and position = 1));
+select public.invoice_installment((select id from public.job_installments where job_id = :'early' and position = 2));
+commit;
+select tpg.check(tpg.rows(:'early') = '1:250.00:progress/250.00, 2:250.00:standard/250.00', 'Invoice now on each bills them early when the office chooses to');
+
 -- A payment that comes to more than the job does (its lines were cut after it was signed) isn't made.
 select tpg.old_job(:'co', :'erin', :'olly', 1000, 0.10, '[{"kind": "percent", "value": 60, "due": "by_hand"}, {"kind": "percent", "value": 30, "due": "by_hand"}, {"kind": "rest", "due": "work_done"}]') as cut \gset
 update public.job_line_items set unit_price = 500 where job_id = :'cut';
