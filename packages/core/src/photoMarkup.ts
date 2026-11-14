@@ -49,6 +49,23 @@ export function exportSize(width: number, height: number, max = MARKUP_MAX_SIDE)
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** The dark edge kept around the photo in the editor, in screen pixels (the stage's canvas rule in components.css says the same). */
+export const STAGE_EDGE = 8;
+
+/**
+ * The size a picture is shown at so that all of it is on screen: its own shape, inside the box
+ * less an edge all round, and never larger than the picture is. Null while the box isn't laid out.
+ * The editor sets the canvas to this, so a tall photo on a wide screen, or a wide one on a phone
+ * whose tool bar has wrapped, is never cut off.
+ */
+export function fitInside(picture: { width: number; height: number }, box: { width: number; height: number }, edge = STAGE_EDGE): { width: number; height: number } | null {
+  const w = box.width - edge * 2;
+  const h = box.height - edge * 2;
+  if (!(picture.width > 0) || !(picture.height > 0) || !(w > 0) || !(h > 0)) return null;
+  const scale = Math.min(1, w / picture.width, h / picture.height);
+  return { width: Math.max(1, Math.floor(picture.width * scale)), height: Math.max(1, Math.floor(picture.height * scale)) };
+}
+
 /** How thick a line is in the picture's pixels: about the same on screen whatever the photo's size. */
 export function strokeWidth(width: MarkupWidth, picture: { width: number; height: number }): number {
   const side = Math.max(picture.width, picture.height);

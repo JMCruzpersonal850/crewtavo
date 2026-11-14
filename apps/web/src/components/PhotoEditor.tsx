@@ -21,6 +21,7 @@ import {
   emptyHistory,
   exportSize,
   extendStroke,
+  fitInside,
   MARKUP_COLORS,
   MARKUP_TOOLS,
   redo,
@@ -146,6 +147,22 @@ export function PhotoEditor({
     }
   }, []);
 
+  // How much room the photo has: what the bars leave, measured again whenever that changes (the
+  // tool bar wrapping, the phone turned, the keyboard up).
+  const stage = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<{ width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    const measure = () => setRoom((was) => (was && was.width === el.clientWidth && was.height === el.clientHeight ? was : { width: el.clientWidth, height: el.clientHeight }));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  const shown = size && room ? fitInside(size, room) : null;
+
   // The picture and every mark, the one being drawn last.
   useEffect(() => {
     const el = canvas.current;
@@ -251,7 +268,7 @@ export function PhotoEditor({
         <button type="button" className="photo-editor-tool" aria-label={t("Clear")} title={t("Clear")} disabled={!history.marks.length || Boolean(busy)} onClick={() => setHistory(clearMarks)}><Icon name="trash" size={20} /></button>
       </div>
 
-      <div className="photo-editor-stage">
+      <div className="photo-editor-stage" ref={stage}>
         {failed ? (
           <div className="stack-sm" style={{ textAlign: "center", padding: 16 }}>
             <span>{failed}</span>
@@ -270,7 +287,8 @@ export function PhotoEditor({
             onPointerMove={move}
             onPointerUp={up}
             onPointerCancel={up}
-            style={{ cursor: tool === "text" ? "text" : "crosshair" }}
+            // All of the photo, whatever its shape and however much the bars take (core fitInside).
+            style={{ cursor: tool === "text" ? "text" : "crosshair", ...(shown && { width: shown.width, height: shown.height }) }}
           />
         )}
       </div>

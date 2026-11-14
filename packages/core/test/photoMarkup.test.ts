@@ -10,6 +10,7 @@ import {
   emptyHistory,
   exportSize,
   extendStroke,
+  fitInside,
   keepsMark,
   MARKUP_COLORS,
   MARKUP_MAX_SIDE,
@@ -65,6 +66,50 @@ describe("the size a marked-up copy is saved at", () => {
     expect(exportSize(0, 0)).toEqual({ width: 1, height: 1 });
     expect(exportSize(Number.NaN, 300)).toEqual({ width: 1, height: 1 });
     expect(exportSize(10_000, 1)).toEqual({ width: 2000, height: 1 });
+  });
+});
+
+describe("the size the photo is shown at in the editor", () => {
+  // What the bars leave on each screen (measured: a 60 px title bar, a tool bar of 60 px on a desktop
+  // and 112 px wrapped to two rows on a phone, 160 px with the words box, and a 56 px bar of buttons).
+  const DESKTOP = { width: 1280, height: 624 };
+  const PHONE = { width: 390, height: 439 };
+  const PHONE_WORDS = { width: 390, height: 391 };
+  const PHONE_SIDEWAYS = { width: 667, height: 166 };
+  const LANDSCAPE = { width: 2000, height: 1500 };
+  const PORTRAIT = { width: 1500, height: 2000 };
+
+  it("is all of the photo, inside the stage less its edge, on a desktop and on a phone", () => {
+    expect(fitInside(LANDSCAPE, DESKTOP)).toEqual({ width: 810, height: 608 });
+    expect(fitInside(PORTRAIT, DESKTOP)).toEqual({ width: 456, height: 608 });
+    expect(fitInside(LANDSCAPE, PHONE)).toEqual({ width: 374, height: 280 });
+    expect(fitInside(PORTRAIT, PHONE)).toEqual({ width: 317, height: 423 });
+  });
+
+  it("never comes out taller or wider than the room, whatever the photo's shape and however much the bars take", () => {
+    for (const box of [DESKTOP, PHONE, PHONE_WORDS, PHONE_SIDEWAYS, { width: 320, height: 300 }]) {
+      for (const picture of [LANDSCAPE, PORTRAIT, { width: 2000, height: 900 }, { width: 300, height: 2000 }, { width: 640, height: 480 }]) {
+        const shown = fitInside(picture, box)!;
+        expect(shown.width).toBeLessThanOrEqual(box.width - 16);
+        expect(shown.height).toBeLessThanOrEqual(box.height - 16);
+        // Its own shape, to within the pixel it's rounded down to.
+        expect(Math.abs(shown.width / shown.height - picture.width / picture.height)).toBeLessThan(0.05);
+      }
+    }
+  });
+
+  it("gets smaller when the tool bar takes another row", () => {
+    expect(fitInside(PORTRAIT, PHONE_WORDS)).toEqual({ width: 281, height: 375 });
+  });
+
+  it("is never larger than the photo itself", () => {
+    expect(fitInside({ width: 640, height: 480 }, DESKTOP)).toEqual({ width: 640, height: 480 });
+  });
+
+  it("waits for the stage to be laid out", () => {
+    expect(fitInside(LANDSCAPE, { width: 0, height: 0 })).toBeNull();
+    expect(fitInside(LANDSCAPE, { width: 16, height: 400 })).toBeNull();
+    expect(fitInside({ width: 0, height: 0 }, DESKTOP)).toBeNull();
   });
 });
 

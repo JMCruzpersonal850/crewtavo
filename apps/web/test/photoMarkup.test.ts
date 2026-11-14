@@ -4,6 +4,7 @@
  * uploads it and then points the photo's row at it, and takes the file back off when the row
  * can't take it; taking the drawing off leaves the original.
  */
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const server = vi.hoisted(() => ({
@@ -131,5 +132,31 @@ describe("taking a drawing off", () => {
   it("says so when the photo isn't theirs to change", async () => {
     server.refuse = true;
     await expect(removeMarkup({ id: "p1" })).rejects.toThrow("You can change photos you added.");
+  });
+});
+
+describe("the editor's layout", () => {
+  const css = readFileSync(new URL("../src/styles/components.css", import.meta.url), "utf8");
+  const rule = (selector: string) => css.split("\n").find((line) => line.startsWith(`${selector} {`)) ?? "";
+
+  it("gives the photo what the bars leave: a column whose stage takes the rest, never a row sized by the photo", () => {
+    expect(rule(".photo-editor[open]")).toContain("flex-direction: column");
+    expect(rule(".photo-editor-bar")).toContain("flex: none");
+    const stage = rule(".photo-editor-stage");
+    expect(stage).toContain("flex: 1 1 0");
+    expect(stage).toContain("min-height: 0");
+    expect(stage).toContain("position: relative");
+    // A grid here sizes its row by the canvas, and the canvas's "100%" then means its own height: the photo was cut off.
+    for (const selector of [".photo-editor", ".photo-editor[open]", ".photo-editor-stage", ".photo-editor-stage canvas"]) expect(rule(selector)).not.toContain("grid");
+  });
+
+  it("places the canvas against the stage's own box, and the editor sizes it to fit", () => {
+    const canvas = rule(".photo-editor-stage canvas");
+    expect(canvas).toContain("position: absolute");
+    expect(canvas).toContain("max-width: calc(100% - 16px)");
+    expect(canvas).toContain("max-height: calc(100% - 16px)");
+    const editor = readFileSync(new URL("../src/components/PhotoEditor.tsx", import.meta.url), "utf8");
+    expect(editor).toContain("fitInside(size, room)");
+    expect(editor).toContain("ResizeObserver");
   });
 });

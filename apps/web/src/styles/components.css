@@ -639,12 +639,16 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 /* ---------- Photo editor (components/PhotoEditor.tsx) ---------- */
 /* The whole screen, dark around the photo whatever the theme, so colours on it read true. */
 .photo-editor { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #151515; color: #f2f2f2; display: none; }
-.photo-editor[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+/* A column: the bars take what they need (the tool bar wraps to two or three rows on a phone) and the stage takes exactly what's left. */
+.photo-editor[open] { display: flex; flex-direction: column; }
 .photo-editor::backdrop { background: #151515; }
-.photo-editor-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: #202020; }
+.photo-editor-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: #202020; }
 .photo-editor-bar .input { background: #fff; color: #111; }
-.photo-editor-stage { min-height: 0; display: grid; place-items: center; padding: 8px; overflow: hidden; }
-.photo-editor-stage canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* The photo always fits whole inside the stage, upright or on its side: the canvas is placed against the stage's own box
+   (its size comes from the column, never from the photo), 8px in from each edge, and the editor sets its size in pixels
+   (core fitInside). The max sizes say the same without the script, so nothing rests on a row sized by its content. */
+.photo-editor-stage { flex: 1 1 0; min-height: 0; min-width: 0; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.photo-editor-stage canvas { position: absolute; inset: 8px; margin: auto; display: block; max-width: calc(100% - 16px); max-height: calc(100% - 16px); width: auto; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
 .photo-editor-tool { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: #f2f2f2; cursor: pointer; }
 .photo-editor-tool:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
 .photo-editor-tool[aria-pressed="true"] { background: #f2f2f2; color: #151515; }
