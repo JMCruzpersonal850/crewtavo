@@ -117,6 +117,17 @@ describe("a shared device", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it("changes nothing while the server is one from before languages (mid-update): it says nothing about theirs", async () => {
+    device.set(SIGNED_IN, "{}");
+    device.set("crewtavo.locale", "es");
+    await startLocale();
+    const none = saving();
+    await followProfile(undefined, none.save);
+    expect(deviceLocale()).toBe("es");
+    expect(reload).not.toHaveBeenCalled();
+    expect(none.saved).toEqual([]);
+  });
+
   it("asks each person for themselves on My day", () => {
     noteAsked("maria");
     expect(askedHere("maria")).toBe(true);

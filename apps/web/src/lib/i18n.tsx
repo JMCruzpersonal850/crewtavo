@@ -246,6 +246,8 @@ export function languageAtSignIn(profile: string | null | undefined, picked: Loc
  * Reloads when that means another language than the one the app opened in.
  */
 export async function followProfile(profileLocale: string | null | undefined, save: (locale: Locale) => Promise<void>) {
+  // A server from before languages (mid-update) says nothing about theirs: left as the app opened, until it does.
+  if (profileLocale === undefined) return;
   const { locale, save: saves } = languageAtSignIn(profileLocale, pickedAtSignIn());
   if (saves) {
     try {
