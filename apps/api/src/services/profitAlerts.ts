@@ -5,6 +5,9 @@
  * from the same rows (sub and crew pay from the database's one sum of it), and the
  * people who see job costs are told once as a job goes below the line. Right after the line changes,
  * every open one-off job is looked at quietly instead, and they get one note saying how many are below.
+ * A job that was there when the line took effect and is first looked at later (a finished job whose
+ * timesheet is approved) is listed quietly too: the database decides that as it records the check
+ * (20261113001688_first_profit_look_is_quiet.sql), so `told` is its count, not this file's.
  * Repeating jobs aren't checked (belowProfitLine says why).
  */
 import { belowProfitLine, costJobRows, profitAlertDecision, profitAlertText, type CostedLine } from "@crewtavo/core";
