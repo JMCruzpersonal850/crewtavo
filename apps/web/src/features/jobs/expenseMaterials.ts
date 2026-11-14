@@ -28,6 +28,7 @@
  */
 import { lineAmount, type MaterialCandidate, type ReceiptLine } from "@crewtavo/core/receipts";
 import { formatDate, formatMoneyCents } from "@/lib/format";
+import { t } from "@/lib/i18n";
 
 /** A material already logged on the job (job_materials), before this invoice. */
 export interface LoggedBefore {
@@ -181,15 +182,21 @@ export function lookalikes(next: NewReceipt, known: readonly KnownExpense[]): Kn
   });
 }
 
-/** What's asked before saving a receipt that looks to be in already. Null when nothing looks like it. */
+/**
+ * What's asked before saving a receipt that looks to be in already. Null when nothing looks like it.
+ * A crew member adding their own receipt twice sees it too, so it's said in their language.
+ */
 export function sameReceiptQuestion(matches: readonly KnownExpense[]) {
   if (!matches.length) return null;
   const one = (e: KnownExpense) =>
-    `${e.vendor?.trim() || "An expense"}, ${formatMoneyCents(Number(e.receipt_total ?? e.amount))} on ${formatDate(e.incurred_on)}${e.invoice_number ? `, invoice ${e.invoice_number}` : ""}${e.job?.number != null ? `, on job #${e.job.number}` : ""}`;
+    t("{vendor}, {total} on {date}", { vendor: e.vendor?.trim() || t("An expense"), total: formatMoneyCents(Number(e.receipt_total ?? e.amount)), date: formatDate(e.incurred_on) }) +
+    (e.invoice_number ? t(", invoice {number}", { number: e.invoice_number }) : "") +
+    (e.job?.number != null ? t(", on job #{number}", { number: e.job.number }) : "");
+  const more = matches.length > 3 ? t("; and {count} more", { count: matches.length - 3 }) : "";
   return {
-    title: "This looks like a receipt that's already in",
-    body: `${matches.slice(0, 3).map(one).join("; ")}${matches.length > 3 ? `; and ${matches.length - 3} more` : ""}. Saving this one as well would count it twice.`,
-    confirmLabel: "Save it anyway",
-    cancelLabel: "Go back",
+    title: t("This looks like a receipt that's already in"),
+    body: `${matches.slice(0, 3).map(one).join("; ")}${more}. ${t("Saving this one as well would count it twice.")}`,
+    confirmLabel: t("Save it anyway"),
+    cancelLabel: t("Go back"),
   };
 }
