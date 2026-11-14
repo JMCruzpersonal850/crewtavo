@@ -389,6 +389,66 @@ set role service_role;
 select tps.check(public.make_due_installments() = 0, 'and it isn''t tried again by itself');
 reset role;
 
+-- ===== One payment that can't be made doesn't stop the others ====================================
+-- (20261113001610_one_payment_doesnt_stop_the_others.sql) Two jobs with a payment due today. The
+-- first one's invoice fails in a way the database didn't expect (a stand-in guard here).
+create function tps.locked_books() returns trigger language plpgsql as $$
+begin
+  raise exception 'The books are locked';
+end $$;
+create trigger tps_locked_books before insert on public.invoices
+  for each row when (new.subject like '%Cursed deck%') execute function tps.locked_books();
+begin;
+set local role authenticated;
+select tps.as_user(:'pat');
+select public.merge_company_settings(:'co', '{"payment_schedule": {"send": false}}');
+select tps.as_user(:'olly');
+select tps.quote(:'co', :'erin', 'Cursed deck', 900) as cursed \gset
+update public.quotes set payment_schedule = jsonb_build_array(
+    jsonb_build_object('kind', 'percent', 'value', 50, 'due', 'date', 'on', private.company_today(:'co')::text),
+    jsonb_build_object('kind', 'rest', 'due', 'work_done')),
+  status = 'approved', approved_at = now()
+ where id = :'cursed';
+select public.convert_quote_to_job(:'cursed') as cursed_job \gset
+select tps.quote(:'co', :'erin', 'Good deck', 700) as good \gset
+update public.quotes set payment_schedule = jsonb_build_array(
+    jsonb_build_object('kind', 'percent', 'value', 50, 'due', 'date', 'on', private.company_today(:'co')::text),
+    jsonb_build_object('kind', 'rest', 'due', 'work_done')),
+  status = 'approved', approved_at = now()
+ where id = :'good';
+select public.convert_quote_to_job(:'good') as good_job \gset
+commit;
+set role service_role;
+select tps.check(public.make_due_installments() = 1, 'with one payment that can''t be made, the hourly run still makes the other');
+reset role;
+select tps.check(tps.rows(:'good_job') = '1:350.00:date:progress/350.00/draft, 2:350.00:work_done:-', 'the good job''s payment is a draft invoice');
+select tps.check((select invoice_id is null and made_at is null and attempts = 1 and problem = 'The books are locked' from public.job_installments where id = tps.row_id(:'cursed_job', 1))
+  and tps.told('Payment 1 of 2 for job #' || (select number from public.jobs where id = :'cursed_job') || ' couldn''t%') is null,
+  'the one that failed keeps its reason, to try again, and nobody is told yet');
+set role service_role;
+select public.make_due_installments() as made \gset
+select tps.check(:'made' = 0 and (select attempts = 2 and made_at is null from public.job_installments where id = tps.row_id(:'cursed_job', 1)),
+  'the next hour it''s tried again');
+select public.make_due_installments() as made \gset
+select tps.check(:'made' = 0 and (select attempts = 3 and made_at is not null and problem = 'The books are locked' from public.job_installments where id = tps.row_id(:'cursed_job', 1)),
+  'and after the third try it''s left for the office');
+select public.make_due_installments() as made \gset
+select tps.check(:'made' = 0 and (select attempts = 3 from public.job_installments where id = tps.row_id(:'cursed_job', 1)), 'never tried again by itself');
+reset role;
+select tps.check(tps.told('Payment 1 of 2 for job #' || (select number from public.jobs where id = :'cursed_job') || ' couldn''t%') = (select format(
+    E'olly@pine-patios.test: Payment 1 of 2 for job #%1$s couldn''t be invoiced | The books are locked. It was tried three times and won''t be tried again by itself. Invoice it from the job when it''s sorted out.\n'
+    'pat@pine-patios.test: Payment 1 of 2 for job #%1$s couldn''t be invoiced | The books are locked. It was tried three times and won''t be tried again by itself. Invoice it from the job when it''s sorted out.',
+    (select number from public.jobs where id = :'cursed_job'))),
+  'the owner and the office are told once, with the reason');
+drop trigger tps_locked_books on public.invoices;
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+select public.invoice_installment(tps.row_id(:'cursed_job', 1)) as cursed_invoice \gset
+commit;
+select tps.check((select problem is null and invoice_id = :'cursed_invoice' from public.job_installments where id = tps.row_id(:'cursed_job', 1)),
+  'once it''s sorted out, the office invoices it from the job and the reason is gone');
+
 -- Only the server runs the hourly run and the sends.
 select tps.check(not has_function_privilege('authenticated', 'public.make_due_installments()', 'execute')
   and not has_function_privilege('authenticated', 'public.claim_installment_sends(integer)', 'execute')
