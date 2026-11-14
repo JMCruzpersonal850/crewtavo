@@ -11,6 +11,9 @@ import { formatPhoneTyping } from "@/lib/validate";
 import styles from "./auth.module.css";
 import { BrandLockup } from "@/components/shell/BrandMark";
 import { afterAsking, ASK_THE_OFFICE, askFor, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
+import { getLocale, LOCALE_NAMES, switchLocale, t, T } from "@/lib/i18n";
+import { LOCALES } from "@crewtavo/core/i18n";
+import { translateError } from "@crewtavo/core/i18n/patterns";
 
 type Mode = "sign_in" | "sign_up" | "magic_link" | "forgot" | "recover" | "code";
 
@@ -26,7 +29,7 @@ function useAuthSettings() {
     queryFn: async () => {
       const config = await loadConfig();
       const res = await fetch(`${config.supabaseUrl}/auth/v1/settings`, { headers: { apikey: config.supabaseKey } });
-      if (!res.ok) throw new Error("settings");
+      if (!res.ok) throw new Error("settings"); // i18n-ignore: only for the query's retry
       return (await res.json()) as AuthSettings;
     },
   });
@@ -42,15 +45,15 @@ export const signupOpen = (settings: AuthSettings | undefined) => settings?.disa
 /** Supabase's messages, in plain words. */
 export function authMessage(error: { message: string; status?: number; code?: string }): string {
   const m = error.message.toLowerCase();
-  if (m.includes("invalid login credentials")) return "That email and password don't match. Check them, or reset your password.";
-  if (m.includes("email not confirmed")) return "Confirm your email first. We sent you a link when you signed up.";
-  if (m.includes("user already registered") || m.includes("already been registered")) return "There's already an account with that email. Sign in instead.";
-  if (m.includes("rate limit") || error.status === 429) return "Too many attempts. Wait a minute and try again.";
-  if (m.includes("signups not allowed") || m.includes("signup is disabled")) return "New accounts are by invitation. Ask your company's admin to invite you.";
-  if (m.includes("same password") || m.includes("different from the old")) return "Your new password has to be different from the old one.";
-  if (m.includes("password should be") || m.includes("weak")) return "Choose a stronger password: at least 8 characters, mixing letters and numbers.";
-  if (m.includes("failed to fetch") || m.includes("network")) return "You seem to be offline. Check your connection and try again.";
-  return error.message;
+  if (m.includes("invalid login credentials")) return t("That email and password don't match. Check them, or reset your password.");
+  if (m.includes("email not confirmed")) return t("Confirm your email first. We sent you a link when you signed up.");
+  if (m.includes("user already registered") || m.includes("already been registered")) return t("There's already an account with that email. Sign in instead.");
+  if (m.includes("rate limit") || error.status === 429) return t("Too many attempts. Wait a minute and try again.");
+  if (m.includes("signups not allowed") || m.includes("signup is disabled")) return t("New accounts are by invitation. Ask your company's admin to invite you.");
+  if (m.includes("same password") || m.includes("different from the old")) return t("Your new password has to be different from the old one.");
+  if (m.includes("password should be") || m.includes("weak")) return t("Choose a stronger password: at least 8 characters, mixing letters and numbers.");
+  if (m.includes("failed to fetch") || m.includes("network")) return t("You seem to be offline. Check your connection and try again.");
+  return translateError(getLocale(), error.message);
 }
 
 export function AuthLayout({ children }: { children: ReactNode }) {
@@ -59,8 +62,25 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       <main className={styles.main}>
         <div className={styles.brand}><BrandLockup size={34} /></div>
         {children}
+        <LanguageSwitch />
       </main>
     </div>
+  );
+}
+
+/** English · Español under the sign-in screens: kept on this phone, and the page reloads in it. */
+function LanguageSwitch() {
+  const current = getLocale();
+  return (
+    <nav className="row muted small" aria-label={t("Language")} style={{ justifyContent: "center", gap: 12, marginTop: 16 }}>
+      {LOCALES.map((locale) =>
+        locale === current ? (
+          <strong key={locale} lang={locale} aria-current="true">{LOCALE_NAMES[locale]}</strong>
+        ) : (
+          <button key={locale} type="button" className="link-btn" lang={locale} onClick={() => switchLocale(locale)}>{LOCALE_NAMES[locale]}</button>
+        ),
+      )}
+    </nav>
   );
 }
 
@@ -156,7 +176,7 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
         const { error } = await auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
       } else if (mode === "sign_up") {
-        if (fullName.trim().length < 2) throw new Error("Enter your name.");
+        if (fullName.trim().length < 2) throw new Error(t("Enter your name."));
         const { data, error } = await auth.signUp({ email: email.trim(), password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: window.location.origin } });
         if (error) throw error;
         if (!data.session) {
@@ -219,14 +239,14 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
     return (
       <AuthLayout>
         <div className={`card card-pad ${styles.card}`} style={{ padding: 28 }}>
-          <h1 className={styles.title}>We can't email you a link</h1>
-          <p className="muted" style={{ margin: 0 }}>This Crewtavo isn't set up to send email yet, so here's how to get back in:</p>
+          <h1 className={styles.title}>{t("We can't email you a link")}</h1>
+          <p className="muted" style={{ margin: 0 }}>{t("This Crewtavo isn't set up to send email yet, so here's how to get back in:")}</p>
           <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 10, lineHeight: 1.5 }}>
-            <li><strong>On a team?</strong> Ask the owner or an admin for a reset link. They make one under <strong>Settings → People</strong>, next to your name.</li>
-            <li><strong>The owner?</strong> Upload the key file you saved when you set up Crewtavo.</li>
+            <li><T text="<b>On a team?</b> Ask the owner or an admin for a reset link. They make one under <b>Settings → People</b>, next to your name." b={(s) => <strong>{s}</strong>} /></li>
+            <li><T text="<b>The owner?</b> Upload the key file you saved when you set up Crewtavo." b={(s) => <strong>{s}</strong>} /></li>
           </ul>
-          <Button variant="primary" icon="lock" onClick={() => { setEmailOff(false); switchTo("recover"); }}>I'm the owner: use my key file</Button>
-          <Button variant="ghost" icon="arrowLeft" onClick={() => { setEmailOff(false); switchTo("sign_in"); }}>Back to sign in</Button>
+          <Button variant="primary" icon="lock" onClick={() => { setEmailOff(false); switchTo("recover"); }}>{t("I'm the owner: use my key file")}</Button>
+          <Button variant="ghost" icon="arrowLeft" onClick={() => { setEmailOff(false); switchTo("sign_in"); }}>{t("Back to sign in")}</Button>
         </div>
       </AuthLayout>
     );
@@ -237,15 +257,18 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
         <div className={`card card-pad ${styles.card}`} style={{ padding: 32 }}>
           <div className={styles.sent}>
             <span className={styles.sentIcon}><Icon name="mail" size={24} /></span>
-            <h1 className={styles.title}>Check your email</h1>
+            <h1 className={styles.title}>{t("Check your email")}</h1>
             <p className="muted" style={{ margin: 0 }}>
-              {sent.kind === "link" ? "Sign-in link sent to " : sent.kind === "reset" ? "Reset link sent to " : "Confirmation link sent to "}
-              <strong style={{ color: "var(--ink)" }}>{sent.email}</strong>
+              <T
+                text={sent.kind === "link" ? "Sign-in link sent to <b>{email}</b>" : sent.kind === "reset" ? "Reset link sent to <b>{email}</b>" : "Confirmation link sent to <b>{email}</b>"}
+                b={(s) => <strong style={{ color: "var(--ink)" }}>{s}</strong>}
+                email={sent.email}
+              />
             </p>
             {sent.kind === "confirm" && (
               <>
-                <p style={{ margin: 0 }}>Open the link in that email, then come back to this tab. You'll be signed in automatically.</p>
-                <p className="muted small" style={{ margin: 0 }}>If the link opens a page that doesn't load, that's fine: your email is still confirmed. Not there after a few minutes? Check your spam folder.</p>
+                <p style={{ margin: 0 }}>{t("Open the link in that email, then come back to this tab. You'll be signed in automatically.")}</p>
+                <p className="muted small" style={{ margin: 0 }}>{t("If the link opens a page that doesn't load, that's fine: your email is still confirmed. Not there after a few minutes? Check your spam folder.")}</p>
               </>
             )}
           </div>
@@ -263,15 +286,15 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
               }
             }}
           >
-            {cooldown > 0 ? `Send again in ${cooldown}s` : "Send again"}
+            {cooldown > 0 ? t("Send again in {seconds}s", { seconds: cooldown }) : t("Send again")}
           </Button>
           {error && <p role="alert" className="field-error" style={{ margin: 0 }}>{error}</p>}
-          <Button variant="ghost" icon="arrowLeft" onClick={() => { setSent(null); setConfirming(null); switchTo("sign_in"); }}>Back to sign in</Button>
+          <Button variant="ghost" icon="arrowLeft" onClick={() => { setSent(null); setConfirming(null); switchTo("sign_in"); }}>{t("Back to sign in")}</Button>
         </div>
       </AuthLayout>
     );
 
-  const heading = { sign_in: "Sign in", sign_up: "Create your account", magic_link: "Sign in with email", forgot: "Reset your password", recover: typingKey ? "Type a spare key" : "Use your key file" }[mode];
+  const heading = { sign_in: t("Sign in"), sign_up: t("Create your account"), magic_link: t("Sign in with email"), forgot: t("Reset your password"), recover: typingKey ? t("Type a spare key") : t("Use your key file") }[mode];
 
   return (
     <AuthLayout>
@@ -281,32 +304,32 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
 
         {mode === "recover" && !typingKey && (
           <>
-            <p style={{ margin: 0, lineHeight: 1.5 }}>Upload the key file you saved when you set up Crewtavo. It's called <strong>{KEY_FILE_NAME}</strong>.</p>
+            <p style={{ margin: 0, lineHeight: 1.5 }}><T text="Upload the key file you saved when you set up Crewtavo. It's called <b>{file}</b>." b={(s) => <strong>{s}</strong>} file={KEY_FILE_NAME} /></p>
             <input ref={keyFileInput} type="file" accept=".txt,text/plain" hidden onChange={submitKeyFile} />
-            <Button variant="primary" size="lg" icon="upload" loading={busy === "form"} onClick={() => keyFileInput.current?.click()}>Upload key file</Button>
+            <Button variant="primary" size="lg" icon="upload" loading={busy === "form"} onClick={() => keyFileInput.current?.click()}>{t("Upload key file")}</Button>
           </>
         )}
         {mode === "recover" && typingKey && (
           <p className="muted small" style={{ margin: 0, lineHeight: 1.5 }}>
-            Enter your email and one of the keys from your key file or printout. Each key works once.
+            {t("Enter your email and one of the keys from your key file or printout. Each key works once.")}
           </p>
         )}
         {mode === "sign_up" && (
-          <Field label="Your name"><input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} maxLength={120} autoFocus /></Field>
+          <Field label={t("Your name")}><input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} maxLength={120} autoFocus /></Field>
         )}
         {!(mode === "recover" && !typingKey) && <Field label="Email"><input className="input" type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }} autoComplete="email" required autoFocus={mode !== "sign_up"} inputMode="email" /></Field>}
         {mode === "recover" && typingKey && (
-          <Field label="Spare key" hint="Like 7K4M-PQ2X-9DRF. Dashes and capitals don't matter.">
+          <Field label={t("Spare key")} hint={t("Like 7K4M-PQ2X-9DRF. Dashes and capitals don't matter.")}>
             <input className="input" value={code} onChange={(e) => { setCode(e.target.value); setError(null); }} autoComplete="off" autoCapitalize="characters" spellCheck={false} required minLength={12} maxLength={500} style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace" }} />
           </Field>
         )}
         {(mode === "sign_in" || mode === "sign_up") && (
           <div style={{ position: "relative" }}>
-          {mode === "sign_in" && <button type="button" className="link-btn small" style={{ position: "absolute", top: 0, right: 0, zIndex: 1 }} onClick={() => switchTo("forgot")}>Forgot password?</button>}
-          <Field label="Password" hint={mode === "sign_up" ? "At least 8 characters." : undefined}>
+          {mode === "sign_in" && <button type="button" className="link-btn small" style={{ position: "absolute", top: 0, right: 0, zIndex: 1 }} onClick={() => switchTo("forgot")}>{t("Forgot password?")}</button>}
+          <Field label={t("Password")} hint={mode === "sign_up" ? t("At least 8 characters.") : undefined}>
             <div className="input-group">
               <input className="input" type={show ? "text" : "password"} value={password} onChange={(e) => { setPassword(e.target.value); setError(null); }} autoComplete={mode === "sign_up" ? "new-password" : "current-password"} minLength={mode === "sign_up" ? 8 : 1} required style={{ paddingLeft: 12, paddingRight: 40 }} />
-              <button type="button" className="icon-btn" style={{ position: "absolute", right: 3 }} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={16} /></button>
+              <button type="button" className="icon-btn" style={{ position: "absolute", right: 3 }} aria-label={show ? t("Hide password") : t("Show password")} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={16} /></button>
             </div>
           </Field>
           </div>
@@ -321,24 +344,24 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
         )}
         {mode === "recover" && (
           <button type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => { setTypingKey(!typingKey); setError(null); }}>
-            {typingKey ? "Upload the key file instead" : "No file? Type a key from your printout"}
+            {typingKey ? t("Upload the key file instead") : t("No file? Type a key from your printout")}
           </button>
         )}
 
         {(mode === "sign_in" || (mode === "sign_up" && google)) && (
           <>
-            <div className={styles.divider}>or</div>
-            {google && <Button size="lg" loading={busy === "google"} disabled={Boolean(busy)} onClick={withGoogle} icon="globe">Continue with Google</Button>}
-            {mode === "sign_in" && <Button size="lg" variant="ghost" icon="mail" onClick={() => switchTo("magic_link")}>Email me a sign-in link</Button>}
+            <div className={styles.divider}>{t("or")}</div>
+            {google && <Button size="lg" loading={busy === "google"} disabled={Boolean(busy)} onClick={withGoogle} icon="globe">{t("Continue with Google")}</Button>}
+            {mode === "sign_in" && <Button size="lg" variant="ghost" icon="mail" onClick={() => switchTo("magic_link")}>{t("Email me a sign-in link")}</Button>}
           </>
         )}
         {mode === "sign_in" && config.data && <NewPhoneOffer offers={newPhoneOffers(config.data.features)} onPick={(way) => { setCodeWay(way); switchTo("code"); }} />}
 
         <div className={styles.links} style={{ justifyContent: "center" }}>
           {mode === "sign_in" ? (
-            signupOpen(settings.data) && <span className="muted">New to Crewtavo? <button type="button" className="link-btn" onClick={() => switchTo("sign_up")}>Create an account</button></span>
+            signupOpen(settings.data) && <span className="muted">{t("New to Crewtavo?")} <button type="button" className="link-btn" onClick={() => switchTo("sign_up")}>{t("Create an account")}</button></span>
           ) : (
-            <span className="muted">{mode === "sign_up" ? "Already have an account? " : ""}<button type="button" className="link-btn" onClick={() => switchTo("sign_in")}>{mode === "sign_up" ? "Sign in" : "Back to sign in"}</button></span>
+            <span className="muted">{mode === "sign_up" ? t("Already have an account? ") : ""}<button type="button" className="link-btn" onClick={() => switchTo("sign_in")}>{mode === "sign_up" ? t("Sign in") : t("Back to sign in")}</button></span>
           )}
         </div>
       </form>
@@ -351,7 +374,7 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
  * with no phone on file), a code by email, or asking the office.
  */
 function NewPhoneOffer({ offers, onPick }: { offers: ReturnType<typeof newPhoneOffers>; onPick: (way: CodeWay) => void }) {
-  if (offers === "ask_office") return <p className="muted small" style={{ margin: 0, textAlign: "center" }}>{ASK_THE_OFFICE}</p>;
+  if (offers === "ask_office") return <p className="muted small" style={{ margin: 0, textAlign: "center" }}>{t(ASK_THE_OFFICE)}</p>;
   return offers.map((offer) => (
     <button key={offer.way} type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => onPick(offer.way)}>
       {offer.label}
@@ -466,10 +489,10 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
     return (
       <AuthLayout>
         <div className={`card card-pad ${styles.card}`} style={{ padding: 28 }}>
-          <h1 className={styles.title}>We can't text you a code</h1>
-          <p className="muted" style={{ margin: 0 }}>{TEXTING_OFF}</p>
-          {features?.emailCodes && <Button variant="primary" icon="mail" onClick={() => switchWay("email")}>Get a code by email instead</Button>}
-          <Button variant="ghost" icon="arrowLeft" onClick={onBack}>Back to sign in</Button>
+          <h1 className={styles.title}>{t("We can't text you a code")}</h1>
+          <p className="muted" style={{ margin: 0 }}>{t(TEXTING_OFF)}</p>
+          {features?.emailCodes && <Button variant="primary" icon="mail" onClick={() => switchWay("email")}>{t("Get a code by email instead")}</Button>}
+          <Button variant="ghost" icon="arrowLeft" onClick={onBack}>{t("Back to sign in")}</Button>
         </div>
       </AuthLayout>
     );
@@ -479,10 +502,10 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
       <form className={`card card-pad ${styles.card}`} style={{ padding: 28 }} onSubmit={submit} noValidate>
         {step.step === "address" ? (
           <>
-            <h1 className={styles.title}>Get a sign-in code</h1>
+            <h1 className={styles.title}>{t("Get a sign-in code")}</h1>
             <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>{words.intro}</p>
             {way === "text" ? (
-              <Field label="Mobile phone" hint="With the area code. Outside the US and Canada, start with + and your country code.">
+              <Field label={t("Mobile phone")} hint={t("With the area code. Outside the US and Canada, start with + and your country code.")}>
                 <input className="input" type="tel" inputMode="tel" autoComplete="tel" value={typed.text} onChange={(e) => { setTyped({ ...typed, text: formatPhoneTyping(e.target.value) }); setError(null); }} maxLength={40} required autoFocus />
               </Field>
             ) : (
@@ -496,9 +519,9 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
           </>
         ) : (
           <>
-            <h1 className={styles.title}>Enter your code</h1>
+            <h1 className={styles.title}>{t("Enter your code")}</h1>
             <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>{sentTo(way, step.address)}</p>
-            <Field label="Code" hint={`It runs out in ${SIGN_IN_CODE_MINUTES} minutes.`}>
+            <Field label={t("Code")} hint={t("It runs out in {minutes} minutes.", { minutes: SIGN_IN_CODE_MINUTES })}>
               <input
                 className="input"
                 inputMode="numeric"
@@ -513,14 +536,14 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
               />
             </Field>
             {alert}
-            <Button type="submit" variant="primary" size="lg" loading={busy === "sign_in"} disabled={!wholeCode(code) || Boolean(busy)}>Sign in</Button>
+            <Button type="submit" variant="primary" size="lg" loading={busy === "sign_in"} disabled={!wholeCode(code) || Boolean(busy)}>{t("Sign in")}</Button>
             <Button disabled={wait > 0 || Boolean(busy)} loading={busy === "send"} onClick={() => sendCode(step.address)}>{resendLabel(wait)}</Button>
-            <p className="muted small" style={{ margin: 0, textAlign: "center" }}>{NOTHING_CAME[way]}</p>
+            <p className="muted small" style={{ margin: 0, textAlign: "center" }}>{t(NOTHING_CAME[way])}</p>
             <button type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => { setStep({ step: "address" }); setCode(""); setError(null); }}>{words.other}</button>
           </>
         )}
         <div className={styles.links} style={{ justifyContent: "center" }}>
-          <button type="button" className="link-btn" onClick={onBack}>Back to sign in</button>
+          <button type="button" className="link-btn" onClick={onBack}>{t("Back to sign in")}</button>
         </div>
       </form>
     </AuthLayout>
@@ -556,17 +579,17 @@ export function SetPasswordPage({ kind, onDone, onSignOut, onSignOutElsewhere }:
   return (
     <AuthLayout>
       <form className={`card card-pad ${styles.card}`} style={{ padding: 28 }} onSubmit={submit}>
-        <h1 className={styles.title}>{kind === "invite" ? "Set your password" : "Choose a new password"}</h1>
-        <Field label="New password" hint="At least 8 characters.">
+        <h1 className={styles.title}>{kind === "invite" ? t("Set your password") : t("Choose a new password")}</h1>
+        <Field label={t("New password")} hint={t("At least 8 characters.")}>
           <div className="input-group">
             <input className="input" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required autoFocus style={{ paddingLeft: 12, paddingRight: 40 }} />
-            <button type="button" className="icon-btn" style={{ position: "absolute", right: 3 }} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={16} /></button>
+            <button type="button" className="icon-btn" style={{ position: "absolute", right: 3 }} aria-label={show ? t("Hide password") : t("Show password")} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={16} /></button>
           </div>
         </Field>
-        <Field label="Confirm password"><input className="input" type={show ? "text" : "password"} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" required /></Field>
+        <Field label={t("Confirm password")}><input className="input" type={show ? "text" : "password"} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" required /></Field>
         {error && <div className="callout callout-warning" role="alert" style={{ padding: "10px 12px" }}><Icon name="alert" size={16} /><span className="grow small" style={{ fontWeight: 600 }}>{error}</span></div>}
-        <Button type="submit" variant="primary" size="lg" loading={busy}>Save password</Button>
-        {kind === "invite" ? <Button variant="ghost" onClick={onDone}>Skip for now</Button> : <Button variant="ghost" icon="arrowLeft" onClick={() => onSignOut().then((signedOut) => signedOut && onDone())}>Back to sign in</Button>}
+        <Button type="submit" variant="primary" size="lg" loading={busy}>{t("Save password")}</Button>
+        {kind === "invite" ? <Button variant="ghost" onClick={onDone}>{t("Skip for now")}</Button> : <Button variant="ghost" icon="arrowLeft" onClick={() => onSignOut().then((signedOut) => signedOut && onDone())}>{t("Back to sign in")}</Button>}
       </form>
     </AuthLayout>
   );

@@ -1,5 +1,7 @@
 import { useId, useState, type KeyboardEvent } from "react";
 import { Icon } from "./Icon";
+import { t } from "@/lib/i18n";
+import { formatNumber } from "@/lib/format";
 
 export interface TagOption {
   label: string;
@@ -12,7 +14,7 @@ export interface TagOption {
  * Backspace on an empty field removes the last. Suggestions (or `options`, with how many have each)
  * open in a list as the field gets focus, narrowed as you type, the ones already chosen left out.
  */
-export function TagInput({ value, onChange, suggestions = [], options, placeholder = "Add a tag", max = 20 }: { value: string[]; onChange: (tags: string[]) => void; suggestions?: string[]; options?: TagOption[]; placeholder?: string; max?: number }) {
+export function TagInput({ value, onChange, suggestions = [], options, placeholder = t("Add a tag"), max = 20 }: { value: string[]; onChange: (tags: string[]) => void; suggestions?: string[]; options?: TagOption[]; placeholder?: string; max?: number }) {
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(-1);
@@ -55,7 +57,7 @@ export function TagInput({ value, onChange, suggestions = [], options, placehold
       {value.map((tag) => (
         <span key={tag} className="tag">
           {tag}
-          <button type="button" aria-label={`Remove ${tag}`} onClick={() => onChange(value.filter((t) => t !== tag))}><Icon name="x" size={12} strokeWidth={2} /></button>
+          <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => onChange(value.filter((x) => x !== tag))}><Icon name="x" size={12} strokeWidth={2} /></button>
         </span>
       ))}
       <input
@@ -101,7 +103,7 @@ export function TagInput({ value, onChange, suggestions = [], options, placehold
               }}
             >
               <span className="grow ellipsis">{s.label}</span>
-              {s.count != null && <span className="muted small tabular">{s.count.toLocaleString()} {s.count === 1 ? "client" : "clients"}</span>}
+              {s.count != null && <span className="muted small tabular">{t.plural(s.count, { one: "{number} client", other: "{number} clients" }, { number: formatNumber(s.count) })}</span>}
             </button>
           ))}
         </div>

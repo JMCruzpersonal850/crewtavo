@@ -1,5 +1,6 @@
 import { toUnits } from "@crewtavo/core/money";
 import { useEffect, useState } from "react";
+import { t } from "@/lib/i18n";
 
 /**
  * What was typed in a MoneyInput, read as written and rounded to cents, or for a percent to
@@ -43,7 +44,7 @@ export function MoneyInput({ value, onSave, onEdit, onUnchanged, percent, max, w
         value={draft}
         aria-label={label}
         aria-invalid={error || undefined}
-        title={error ? (max !== undefined ? `Enter 0 to ${max}` : "Enter a number") : undefined}
+        title={error ? (max !== undefined ? t("Enter 0 to {max}", { max }) : t("Enter a number")) : undefined}
         onChange={(e) => {
           setDraft(e.target.value.replace(/[^0-9.]/g, ""));
           onEdit?.();

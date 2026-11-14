@@ -18,6 +18,7 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { Spinner } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
 import { createItems, NAV_GROUPS, navVisible, OTHER_SCREENS } from "./nav";
+import { english, msg, t } from "@/lib/i18n";
 
 let opener: (() => void) | null = null;
 export const openPalette = () => opener?.();
@@ -60,9 +61,9 @@ const KIND_PATH: Record<string, (r: { id: string; client_id: string | null; titl
   promo: () => "/marketing?tab=promos",
 };
 const KIND_LABEL: Record<string, string> = {
-  client: "Client", property: "Property", request: "Request", quote: "Quote", job: "Job", invoice: "Invoice", equipment: "Equipment",
-  measurement: "Measurement", kb: "Guide", campaign: "Campaign", rule: "Automation", service: "Price list", sub: "Subcontractor", file: "File",
-  applicant: "Applicant", channel: "Team chat", asset: "Property equipment", promo: "Promo code",
+  client: msg("Client"), property: msg("Property"), request: msg("Request"), quote: msg("Quote"), job: msg("Job"), invoice: msg("Invoice"), equipment: msg("Equipment"),
+  measurement: msg("Measurement"), kb: msg("Guide"), campaign: msg("Campaign"), rule: msg("Automation"), service: msg("Price list"), sub: msg("Subcontractor"), file: msg("File"),
+  applicant: msg("Applicant"), channel: msg("Team chat"), asset: msg("Property equipment"), promo: msg("Promo code"),
 };
 const SCREENS = [...NAV_GROUPS.flat(), ...OTHER_SCREENS];
 /** Kinds that live in an app or area someone may not have: shown only to whoever sees that screen. */
@@ -179,32 +180,33 @@ export function CommandPalette() {
 
   const items = useMemo<Item[]>(() => {
     const isOffice = hasRole(session, "admin", "office");
-    const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: "Create", icon: c.icon, title: `New ${c.label.toLowerCase()}`, keywords: `add ${c.keywords}`, run: () => go(c.to) }));
+    const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: msg("Create"), icon: c.icon, title: c.newLabel, keywords: `add new ${english(c.label)} ${c.keywords}`, run: () => go(c.to) }));
     const actions: Item[] = [
       ...creates,
-      ...(isOffice && can(session, "kb_edit") ? [{ id: "new-guide", group: "Create", icon: "book" as IconName, title: "New guide", keywords: "add knowledge base sop procedure page", run: () => go("/kb/new") }] : []),
-      ...(isOffice && can(session, "automations") ? [{ id: "new-rule", group: "Create", icon: "bolt" as IconName, title: "New automation", keywords: "add rule reminder follow up", run: () => go("/automations/new") }] : []),
-      ...(managesSubs(session) ? [{ id: "new-sub", group: "Create", icon: "users" as IconName, title: "New subcontractor", keywords: "add sub contractor vendor", run: () => go("/subs?new=1") }] : []),
+      ...(isOffice && can(session, "kb_edit") ? [{ id: "new-guide", group: msg("Create"), icon: "book" as IconName, title: t("New guide"), keywords: "add knowledge base sop procedure page", run: () => go("/kb/new") }] : []),
+      ...(isOffice && can(session, "automations") ? [{ id: "new-rule", group: msg("Create"), icon: "bolt" as IconName, title: t("New automation"), keywords: "add rule reminder follow up", run: () => go("/automations/new") }] : []),
+      ...(managesSubs(session) ? [{ id: "new-sub", group: msg("Create"), icon: "users" as IconName, title: t("New subcontractor"), keywords: "add sub contractor vendor", run: () => go("/subs?new=1") }] : []),
     ];
     const screens: Item[] = SCREENS
       .filter((n) => navVisible(session, n))
-      .map((n) => ({ id: `go-${n.to}`, group: "Go to", icon: n.icon, title: n.label, keywords: `${n.to} ${n.keywords ?? ""}`, run: () => go(n.to) }));
-    screens.push({ id: "go-settings", group: "Go to", icon: "settings", title: "Settings", keywords: "preferences options setup", run: () => go("/settings") });
+      // Found by its name in either language ("agenda" or "schedule").
+      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(n.label), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, run: () => go(n.to) }));
+    screens.push({ id: "go-settings", group: msg("Go to"), icon: "settings", title: t("Settings"), keywords: "preferences options setup", run: () => go("/settings") });
     const settings: Item[] = settingsGroups(session).flatMap((g) =>
       g.items.map((s) => {
         const to = "tab" in s ? `/settings?tab=${s.tab}` : s.to;
-        return { id: `go-${to}`, group: "Go to", icon: s.icon, title: s.label, subtitle: "Settings", keywords: `${g.title} ${s.keywords}`, run: () => go(to) };
+        return { id: `go-${to}`, group: msg("Go to"), icon: s.icon, title: t(s.label), subtitle: t("Settings"), keywords: `${g.title} ${s.keywords}`, run: () => go(to) };
       }),
     );
     const appItems: Item[] = (apps.data?.apps ?? []).map((a) => ({
-      id: `app-${a.id}`, group: "Go to", icon: "apps", title: a.name, subtitle: `Apps · ${categoryName(a.category)}`,
+      id: `app-${a.id}`, group: msg("Go to"), icon: "apps", title: a.name, subtitle: `Apps · ${categoryName(a.category)}`,
       keywords: `app integration ${a.id.replace(/_/g, " ")} ${infoFor(a).tagline}`, run: () => go(`/apps/${a.id}`),
     }));
 
     const q = query.trim().toLowerCase();
     if (!q) {
       const recents: Item[] = getRecents(session.company.id).map((r) => ({
-        id: `recent-${r.kind}-${r.id}`, group: "Recent", icon: KIND_ICON[r.kind] ?? "file", title: r.title, subtitle: r.subtitle, run: () => go(r.path),
+        id: `recent-${r.kind}-${r.id}`, group: msg("Recent"), icon: KIND_ICON[r.kind] ?? "file", title: r.title, subtitle: r.subtitle, run: () => go(r.path),
       }));
       return [...creates, ...recents, ...screens.slice(0, 6)];
     }
@@ -215,13 +217,13 @@ export function CommandPalette() {
       const text = `${i.title} ${i.subtitle ?? ""} ${i.keywords ?? ""}`.toLowerCase();
       return words.every((w) => text.includes(w));
     });
-    const best = local.filter((i) => i.title.toLowerCase().startsWith(q)).map((i) => ({ ...i, group: "Best match" }));
+    const best = local.filter((i) => i.title.toLowerCase().startsWith(q)).map((i) => ({ ...i, group: msg("Best match") }));
     const records: Item[] = (results.data ?? []).map((r) => ({
       id: `${r.kind}-${r.id}`,
-      group: "Results",
+      group: msg("Results"),
       icon: KIND_ICON[r.kind] ?? "file",
       title: r.number ? `${r.title} · #${r.number}` : r.title,
-      subtitle: [KIND_LABEL[r.kind], r.subtitle].filter(Boolean).join(" · "),
+      subtitle: [KIND_LABEL[r.kind] && t(KIND_LABEL[r.kind]), r.subtitle].filter(Boolean).join(" · "),
       run: () => go(KIND_PATH[r.kind](r)),
     }));
     return [...best, ...records, ...local.filter((i) => !best.some((b) => b.id === i.id))];
@@ -253,7 +255,7 @@ export function CommandPalette() {
     <dialog
       ref={ref}
       className="dialog palette"
-      aria-label="Search and commands"
+      aria-label={t("Search and commands")}
       onClose={() => setOpen(false)}
       onCancel={(e) => {
         e.preventDefault();
@@ -270,8 +272,8 @@ export function CommandPalette() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Search anything: clients, jobs, files, apps, settings… or type a command"
-              aria-label="Search"
+              placeholder={t("Search anything: clients, jobs, files, apps, settings… or type a command")}
+              aria-label={t("Search")}
               role="combobox"
               aria-expanded="true"
               aria-controls="palette-list"
@@ -279,18 +281,18 @@ export function CommandPalette() {
               autoComplete="off"
               spellCheck={false}
             />
-            <button type="button" className="kbd" onClick={() => setOpen(false)} style={{ cursor: "pointer" }}>Esc</button>
+            <button type="button" className="kbd" onClick={() => setOpen(false)} style={{ cursor: "pointer" }}>{t("Esc")}</button>
           </div>
           <div className="palette-list" id="palette-list" role="listbox" ref={list}>
             {items.length === 0 && (
               <div className="empty-state empty-state-sm">
                 <span className="empty-icon"><Icon name="search" size={20} /></span>
-                <h3>{term.length < 2 ? "Keep typing…" : results.isFetching ? "Searching…" : `No results for “${query.trim()}”`}</h3>
+                <h3>{term.length < 2 ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}</h3>
                 
               </div>
             )}
             {items.map((item, i) => {
-              const header = item.group !== lastGroup ? <div className="palette-group" key={`g-${item.group}`}>{item.group}</div> : null;
+              const header = item.group !== lastGroup ? <div className="palette-group" key={`g-${item.group}`}>{t(item.group)}</div> : null;
               lastGroup = item.group;
               return (
                 <div key={item.id}>
@@ -317,9 +319,9 @@ export function CommandPalette() {
             })}
           </div>
           <div className="palette-foot hide-mobile">
-            <span><kbd className="kbd">↑</kbd> <kbd className="kbd">↓</kbd> to move</span>
-            <span><kbd className="kbd">Enter</kbd> to open</span>
-            <span><kbd className="kbd">Esc</kbd> to close</span>
+            <span><kbd className="kbd">↑</kbd> <kbd className="kbd">↓</kbd> {t("to move")}</span>
+            <span><kbd className="kbd">{t("Enter")}</kbd> {t("to open")}</span>
+            <span><kbd className="kbd">{t("Esc")}</kbd> {t("to close")}</span>
           </div>
         </>
       )}

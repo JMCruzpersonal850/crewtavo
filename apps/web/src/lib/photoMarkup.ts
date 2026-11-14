@@ -10,6 +10,8 @@
  */
 import { supabase, unwrap } from "./api";
 import { signedUrls, uploadOnce } from "./files";
+import { msg } from "./i18n";
+import { t } from "@/lib/i18n";
 
 /** A photo's row, as far as its drawing goes. */
 export interface MarkablePhoto {
@@ -38,7 +40,7 @@ export async function photoLinks<P extends Pick<MarkablePhoto, "path" | "marked_
 /** A stored photo's picture, to draw on: read as the person, under the files bucket's rules. */
 export async function photoPicture(path: string): Promise<Blob> {
   const { data, error } = await supabase().storage.from("files").download(path);
-  if (error || !data) throw new Error("This photo couldn't be opened. Check your signal and try again.");
+  if (error || !data) throw new Error(msg("This photo couldn't be opened. Check your signal and try again."));
   return data;
 }
 
@@ -52,7 +54,7 @@ export async function saveMarkup(photo: Pick<MarkablePhoto, "id" | "path">, pict
   await uploadOnce(path, picture);
   try {
     const rows = unwrap(await supabase().from("attachments").update({ marked_path: path }).eq("id", photo.id).select("id"));
-    if (!rows.length) throw new Error("You can draw on photos you added. Ask the office to draw on this one.");
+    if (!rows.length) throw new Error(t("You can draw on photos you added. Ask the office to draw on this one."));
   } catch (error) {
     await supabase().storage.from("files").remove([path]).catch(() => undefined);
     throw error;
@@ -63,5 +65,5 @@ export async function saveMarkup(photo: Pick<MarkablePhoto, "id" | "path">, pict
 /** Takes the drawing off a photo: the original shows again, and the drawing goes to the Trash. */
 export async function removeMarkup(photo: Pick<MarkablePhoto, "id">): Promise<void> {
   const rows = unwrap(await supabase().from("attachments").update({ marked_path: null }).eq("id", photo.id).select("id"));
-  if (!rows.length) throw new Error("You can change photos you added. Ask the office to change this one.");
+  if (!rows.length) throw new Error(t("You can change photos you added. Ask the office to change this one."));
 }

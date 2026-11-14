@@ -18,6 +18,7 @@
 import type { DetailedError, HttpRequest, Upload as TusUpload } from "tus-js-client";
 import { loadConfig, supabase } from "./api";
 import { StorageFullError } from "./errors";
+import { t } from "@/lib/i18n";
 
 export { StorageFullError } from "./errors";
 
@@ -252,9 +253,9 @@ export function storageError(status: number, body: string, label: string, size: 
     message = /^\s*</.test(body ?? "") ? "" : (body ?? "").trim().slice(0, 200);
   }
   if (status === 507) return new StorageFullError(message);
-  if (status === 413 || /maximum allowed size|too large/i.test(message)) return new TooLargeError(`${label} (${megabytes(size)}) is bigger than this Crewtavo accepts.`, true);
-  if (status === 401 || status === 403 || /row-level security|unauthorized/i.test(message)) return new Error("You don't have permission to add files here.");
-  return new Error(`Upload failed${message ? `: ${message.replace(/[.\s]+$/, "")}` : ""}. Try again.`);
+  if (status === 413 || /maximum allowed size|too large/i.test(message)) return new TooLargeError(t("{label} ({size}) is bigger than this Crewtavo accepts.", { label, size: megabytes(size) }), true);
+  if (status === 401 || status === 403 || /row-level security|unauthorized/i.test(message)) return new Error(t("You don't have permission to add files here."));
+  return new Error(message ? t("Upload failed: {reason}. Try again.", { reason: message.replace(/[.\s]+$/, "") }) : t("Upload failed. Try again."));
 }
 
 // ---------------------------------------------------------------------------------------------

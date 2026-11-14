@@ -10,12 +10,13 @@ import { photoPicture, removeMarkup, saveMarkup, shownPath, type MarkablePhoto }
 import { toast } from "@/lib/toast";
 import { PhotoEditor } from "./PhotoEditor";
 import { Icon } from "./ui/Icon";
+import { t } from "@/lib/i18n";
 
 /** Who may draw on a stored photo: whoever may change it (attachments_update), the office or whoever added it. Never a sub. */
 export const canDrawOn = (session: Pick<Session, "role" | "userId">, photo: { created_by?: string | null; author_id?: string | null }) =>
   !isSub(session) && (hasRole(session, "admin", "office") || (photo.created_by ?? photo.author_id) === session.userId);
 
-export function DrawOnPhoto({ photo, label = "this photo", onSaved }: { photo: MarkablePhoto; label?: string; onSaved: () => void }) {
+export function DrawOnPhoto({ photo, label, onSaved }: { photo: MarkablePhoto; label?: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const done = (words: string) => {
     toast.success(words);
@@ -24,7 +25,7 @@ export function DrawOnPhoto({ photo, label = "this photo", onSaved }: { photo: M
   };
   return (
     <>
-      <button type="button" className="thumb-draw" aria-label={`Draw on ${label}`} title="Draw on it" onClick={() => setOpen(true)}>
+      <button type="button" className="thumb-draw" aria-label={label ? t("Draw on {label}", { label }) : t("Draw on this photo")} title={t("Draw on it")} onClick={() => setOpen(true)}>
         <span className="thumb-draw-badge"><Icon name="pen" size={14} /></span>
       </button>
       {open && (
@@ -33,11 +34,11 @@ export function DrawOnPhoto({ photo, label = "this photo", onSaved }: { photo: M
           onCancel={() => setOpen(false)}
           onSave={async (drawn) => {
             if (drawn) await saveMarkup(photo, drawn);
-            done("Drawing saved");
+            done(t("Drawing saved"));
           }}
           onRemoveDrawing={photo.marked_path ? async () => {
             await removeMarkup(photo);
-            done("Drawing taken off");
+            done(t("Drawing taken off"));
           } : undefined}
         />
       )}
@@ -46,7 +47,7 @@ export function DrawOnPhoto({ photo, label = "this photo", onSaved }: { photo: M
 }
 
 /** On a photo with a drawing: a link to the photo as taken. */
-export function OriginalLink({ url, label = "this photo" }: { url: string | null | undefined; label?: string }) {
+export function OriginalLink({ url, label }: { url: string | null | undefined; label?: string }) {
   if (!url) return null;
-  return <a className="thumb-original" href={url} target="_blank" rel="noreferrer" aria-label={`Open ${label} as it was taken`}>Original</a>;
+  return <a className="thumb-original" href={url} target="_blank" rel="noreferrer" aria-label={label ? t("Open {label} as it was taken", { label }) : t("Open this photo as it was taken")}>{t("Original")}</a>;
 }

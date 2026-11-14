@@ -37,6 +37,7 @@
  * (STATUS_CHOICES) repeats these words for the automation builder, so change both together. A paving or roofing project's stage ("Proposal sent",
  * "Won") is its own thing, worded in features/paving/data.ts and features/roofing/data.ts.
  */
+import { msg, t } from "@/lib/i18n";
 
 const TONES = {
   good: { bg: "var(--green-tint)", fg: "var(--green-dark)", dot: "var(--job)" },
@@ -50,10 +51,10 @@ export type Tone = keyof typeof TONES;
 
 /** Status is always shown as text in a pill, never color alone. */
 export function StatusPill({ label, tone = "muted" }: { label: string; tone?: Tone }) {
-  const t = TONES[tone];
+  const colors = TONES[tone];
   return (
-    <span className="pill" style={{ background: t.bg, color: t.fg }}>
-      <span className="pill-dot" style={{ background: t.dot }} />
+    <span className="pill" style={{ background: colors.bg, color: colors.fg }}>
+      <span className="pill-dot" style={{ background: colors.dot }} />
       {label}
     </span>
   );
@@ -62,13 +63,17 @@ export function StatusPill({ label, tone = "muted" }: { label: string; tone?: To
 /** "in_progress" -> "In progress". For other snake_case words; a record's status goes through statusText. */
 export const statusLabel = (status: string) => (status.charAt(0).toUpperCase() + status.slice(1)).replace(/_/g, " ");
 
+/**
+ * The kinds a team member meets on their own screens are marked for translation, each with its kind
+ * as the context (a visit is "Terminada", a job "Terminado"); the office's own kinds stay English.
+ */
 const STATUS_TEXT = {
-  client: { lead: "Lead", active: "Active", archived: "Archived" },
-  request: { new: "New", assessment_scheduled: "Assessment booked", assessment_complete: "Assessment done", quoted: "Quoted", converted: "Converted", archived: "Archived" },
-  quote: { draft: "Draft", sent: "Awaiting response", changes_requested: "Changes requested", approved: "Approved", converted: "Converted", lost: "Lost", archived: "Archived" },
-  job: { active: "Active", requires_invoicing: "Requires invoicing", completed: "Completed", archived: "Archived", late: "Late", today: "Today", upcoming: "Upcoming", unscheduled: "Unscheduled", paused: "Paused" },
-  invoice: { draft: "Draft", sent: "Awaiting payment", partially_paid: "Partly paid", paid: "Paid", overdue: "Past due", void: "Void", written_off: "Written off" },
-  visit: { unscheduled: "Unscheduled", scheduled: "Scheduled", en_route: "On the way", in_progress: "In progress", completed: "Completed", cancelled: "Cancelled" },
+  client: { lead: msg("Lead", "client"), active: msg("Active", "client"), archived: msg("Archived", "client") },
+  request: { new: msg("New", "request"), assessment_scheduled: msg("Assessment booked", "request"), assessment_complete: msg("Assessment done", "request"), quoted: msg("Quoted", "request"), converted: msg("Converted", "request"), archived: msg("Archived", "request") },
+  quote: { draft: msg("Draft", "quote"), sent: msg("Awaiting response", "quote"), changes_requested: msg("Changes requested", "quote"), approved: msg("Approved", "quote"), converted: msg("Converted", "quote"), lost: msg("Lost", "quote"), archived: msg("Archived", "quote") },
+  job: { active: msg("Active", "job"), requires_invoicing: msg("Requires invoicing", "job"), completed: msg("Completed", "job"), archived: msg("Archived", "job"), late: msg("Late", "job"), today: msg("Today", "job"), upcoming: msg("Upcoming", "job"), unscheduled: msg("Unscheduled", "job"), paused: msg("Paused", "job") },
+  invoice: { draft: msg("Draft", "invoice"), sent: msg("Awaiting payment", "invoice"), partially_paid: msg("Partly paid", "invoice"), paid: msg("Paid", "invoice"), overdue: msg("Past due", "invoice"), void: msg("Void", "invoice"), written_off: msg("Written off", "invoice") },
+  visit: { unscheduled: msg("Unscheduled", "visit"), scheduled: msg("Scheduled", "visit"), en_route: msg("On the way", "visit"), in_progress: msg("In progress", "visit"), completed: msg("Completed", "visit"), cancelled: msg("Cancelled", "visit") },
   referral: { new: "New lead", quoted: "Quoted", won: "Won", lost: "Lost" },
   credit: { pending: "Pending", earned: "Earned", applied: "Applied", issued: "Given", none: "No credit" },
   campaign: { draft: "Draft", scheduled: "Scheduled", sending: "Sending", sent: "Sent", cancelled: "Stopped", automated: "Automated" },
@@ -81,7 +86,7 @@ const STATUS_TEXT = {
 export type StatusKind = keyof typeof STATUS_TEXT;
 
 /** The label for a record's state, from the list at the top: statusText("invoice", "overdue") is "Past due". */
-export const statusText = (kind: StatusKind, status: string) => (STATUS_TEXT[kind] as Record<string, string>)[status] ?? statusLabel(status);
+export const statusText = (kind: StatusKind, status: string) => t((STATUS_TEXT[kind] as Record<string, string>)[status] ?? statusLabel(status));
 
 const VISIT_TONES: Record<string, Tone> = {
   completed: "good",

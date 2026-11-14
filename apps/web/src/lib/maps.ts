@@ -9,6 +9,7 @@
  * Maps, the two that take many stops from a link. Each takes only so many, so a long day opens in
  * parts, each starting where the last one ended.
  */
+import { msg } from "./i18n";
 
 export type MapsApp = "apple" | "google" | "waze" | "other";
 
@@ -26,7 +27,8 @@ export interface Place {
 
 const KEY = "crewtavo.maps.app";
 
-export const MAPS_LABELS: Record<MapsApp, string> = { apple: "Apple Maps", google: "Google Maps", waze: "Waze", other: "Other app" };
+/** Shown with t(): "Other app" is translated, the apps' own names aren't. */
+export const MAPS_LABELS: Record<MapsApp, string> = { apple: "Apple Maps", google: "Google Maps", waze: "Waze", other: msg("Other app") };
 
 /** The address as one line, for copying and for apps that search by address. */
 export function placeText(p: Place): string {

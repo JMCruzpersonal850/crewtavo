@@ -17,6 +17,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import { errorMessage } from "./errors";
 import { queryClient } from "./queryClient";
 import { toast, type ToastTone } from "./toast";
+import { t } from "@/lib/i18n";
 
 export interface UndoableOptions {
   /** What happened, in the past tense: "Note deleted". */
@@ -73,7 +74,7 @@ export function undoable({ title, description, tone, hide, restore, commit }: Un
     countdown: true,
     duration: 6000,
     action: {
-      label: "Undo",
+      label: t("Undo"),
       onClick: () => {
         if (settled) return;
         settled = true;

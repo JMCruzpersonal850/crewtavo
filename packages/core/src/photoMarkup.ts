@@ -7,24 +7,26 @@
  * so a line drawn on a phone and saved lands where the finger was.
  */
 
+import { msg } from "./i18n";
+
 export type MarkupTool = "pen" | "arrow" | "ellipse" | "box" | "text";
 export type MarkupWidth = "thin" | "thick";
 
 export const MARKUP_TOOLS: ReadonlyArray<{ tool: MarkupTool; label: string }> = [
-  { tool: "pen", label: "Pen" },
-  { tool: "arrow", label: "Arrow" },
-  { tool: "ellipse", label: "Circle" },
-  { tool: "box", label: "Box" },
-  { tool: "text", label: "Text" },
+  { tool: "pen", label: msg("Pen") },
+  { tool: "arrow", label: msg("Arrow") },
+  { tool: "ellipse", label: msg("Circle") },
+  { tool: "box", label: msg("Box") },
+  { tool: "text", label: msg("Text") },
 ];
 
 /** A few colours that show on grass, roofs, concrete and sky alike. */
 export const MARKUP_COLORS: ReadonlyArray<{ color: string; label: string }> = [
-  { color: "#e5243b", label: "Red" },
-  { color: "#ffd60a", label: "Yellow" },
-  { color: "#1d6cf2", label: "Blue" },
-  { color: "#ffffff", label: "White" },
-  { color: "#111111", label: "Black" },
+  { color: "#e5243b", label: msg("Red") },
+  { color: "#ffd60a", label: msg("Yellow") },
+  { color: "#1d6cf2", label: msg("Blue") },
+  { color: "#ffffff", label: msg("White") },
+  { color: "#111111", label: msg("Black") },
 ];
 
 export interface Point {

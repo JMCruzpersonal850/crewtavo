@@ -18,6 +18,7 @@ import { supabase, unwrap } from "./api";
 import { ApiError, errorMessage, isAuthError, isNetworkError, isRestarting } from "./errors";
 import { storedExtension, storedType, uploadBody, uploadOnce } from "./files";
 import { toast } from "./toast";
+import { t } from "@/lib/i18n";
 
 export interface PhonePhoto {
   /** Made on the phone: the attachment's id and the file's name in storage. */
@@ -65,10 +66,10 @@ const STORAGE_WAIT = 5_000;
  */
 function inStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
-    const late = setTimeout(() => reject(new Error("The phone's storage didn't answer.")), STORAGE_WAIT);
+    const late = setTimeout(() => reject(new Error(t("The phone's storage didn't answer."))), STORAGE_WAIT);
     const fail = (error: unknown) => {
       clearTimeout(late);
-      reject(error ?? new Error("The phone's storage refused."));
+      reject(error ?? new Error(t("The phone's storage refused.")));
     };
     const opening = indexedDB.open(DB, 1);
     opening.onupgradeneeded = () => void opening.result.createObjectStore(STORE, { keyPath: "id" });
@@ -246,7 +247,7 @@ async function send() {
       try {
         await to.upload(next);
       } catch (error) {
-        failure = error ?? new Error("Upload failed.");
+        failure = error ?? new Error(t("Upload failed."));
       }
       // Removed, or signed out, meanwhile: nothing more to do with it.
       if (!held(next.id)) continue;
@@ -267,7 +268,7 @@ async function send() {
       // stays on the phone, and isn't tried again until the person asks or the app next opens.
       const problem = errorMessage(failure);
       change(next.id, { sending: false, problem });
-      toast.error("A photo didn't upload", { description: `${problem} It's still on this phone.` });
+      toast.error(t("A photo didn't upload"), { description: `${problem} ${t("It's still on this phone.")}` });
     }
   } finally {
     busy = false;

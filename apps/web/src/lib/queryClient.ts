@@ -7,6 +7,7 @@ import { activeCompany, api, refreshSignIn } from "./api";
 import { ApiError, errorMessage, isAuthError, isRestarting, OFFLINE, SESSION_EXPIRED } from "./errors";
 import { reportError } from "./monitoring";
 import { toast, type ToastTone } from "./toast";
+import { t } from "@/lib/i18n";
 
 /**
  * After any change, ask the API to run automations that are due now (notifications, follow-ups),
@@ -58,7 +59,7 @@ function handleAuth(error: unknown, stillSignedIn: (outcome: "ok" | "offline") =
   const signIn = (error as ApiError).code === SESSION_EXPIRED ? Promise.resolve("expired" as const) : refreshSignIn();
   void signIn.then((outcome) => {
     if (outcome !== "expired") return stillSignedIn(outcome);
-    toast.info("Your session expired. Sign in again to continue.");
+    toast.info(t("Your session expired. Sign in again to continue."));
     onSessionExpired?.();
   });
   return true;
@@ -81,20 +82,20 @@ export const queryClient = new QueryClient({
       if (error instanceof ApiError && isRestarting(error.status)) return;
       // A first load that fails shows an error state on the screen. A refresh that fails while
       // data is already showing gets a toast instead, so stale data isn't silently presented as fresh.
-      if (query.state.data !== undefined && !query.meta?.silent) toast.error("Couldn't refresh", { description: errorMessage(error) });
+      if (query.state.data !== undefined && !query.meta?.silent) toast.error(t("Couldn't refresh"), { description: errorMessage(error) });
     },
   }),
   mutationCache: new MutationCache({
     onSuccess: (data, variables, _context, mutation) => {
       const success = mutation.meta?.success;
       const message = typeof success === "function" ? (success as (d: unknown, v: unknown) => string | null | undefined)(data, variables) : success;
-      if (message) toast.success(message, mutation.meta?.tone ? { tone: mutation.meta.tone } : undefined);
+      if (message) toast.success(t(message), mutation.meta?.tone ? { tone: mutation.meta.tone } : undefined);
       kickAutomations();
       // Sidebar badges are cheap to recount after any change.
       queryClient.invalidateQueries({ queryKey: ["nav-counts"] });
     },
     onError: (error, _variables, _context, mutation) => {
-      const tryAgain = (outcome: "ok" | "offline") => !mutation.meta?.inline && toast.error(outcome === "offline" ? OFFLINE : "That didn't go through. Try again.");
+      const tryAgain = (outcome: "ok" | "offline") => !mutation.meta?.inline && toast.error(outcome === "offline" ? t(OFFLINE) : t("That didn't go through. Try again."));
       if (handleAuth(error, tryAgain)) return;
       reportUnexpected(error, { mutation: String(mutation.options.mutationKey?.[0] ?? "") });
       if (!mutation.meta?.inline) toast.error(errorMessage(error));

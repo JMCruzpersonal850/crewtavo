@@ -10,6 +10,7 @@ import { ApiError, isRestarting } from "@/lib/errors";
 import { Spinner } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { motion, play, topLayerProps, useTopLayer } from "../ui/topLayer";
+import { t } from "@/lib/i18n";
 
 /** Seconds before it tries again by itself. */
 const COUNTDOWN = 8;
@@ -127,17 +128,17 @@ export function RestartBanner() {
       {back ? (
         <>
           <Icon name="check" size={16} strokeWidth={2} />
-          Crewtavo is back
+          {t("Crewtavo is back")}
         </>
       ) : (
         <>
           <Spinner size={14} />
           <span>
-            Crewtavo is restarting. <span aria-hidden="true">{trying ? "Trying again…" : `Trying again in ${seconds}s`}</span>
-            <span className="sr-only">It tries again by itself.</span>
+            {t("Crewtavo is restarting.")} <span aria-hidden="true">{trying ? t("Trying again…") : t("Trying again in {seconds}s", { seconds })}</span>
+            <span className="sr-only">{t("It tries again by itself.")}</span>
           </span>
           {/* While it tries it ignores presses but keeps focus (aria-disabled, not disabled). */}
-          <button type="button" className="restart-banner-try" aria-disabled={trying || undefined} onClick={() => !trying && void tryNow()}>Try now</button>
+          <button type="button" className="restart-banner-try" aria-disabled={trying || undefined} onClick={() => !trying && void tryNow()}>{t("Try now")}</button>
         </>
       )}
     </div>

@@ -1,6 +1,7 @@
 /** Photo and receipt uploads to the private "files" bucket, under the company's folder. */
 import { supabase } from "./api";
 import { ApiError, isRestarting, OFFLINE, StorageFullError } from "./errors";
+import { t } from "./i18n";
 
 /** The largest file an upload sends (a photo once it's shrunk). */
 export const MAX_BYTES = 15 * 1024 * 1024;
@@ -165,7 +166,7 @@ export function base64Of(blob: Blob): Promise<string> {
  * sent (a 20 MB phone photo is usually a few MB once shrunk). Other files are checked as they are.
  */
 export async function uploadBody(file: File, shrink: (file: File) => Promise<Blob> = compressImage): Promise<Blob> {
-  const tooBig = () => new Error(`${file.name} is larger than 15 MB.`);
+  const tooBig = () => new Error(t("{name} is larger than 15 MB.", { name: file.name }));
   if (!file.type.startsWith("image/") && file.size > MAX_BYTES) throw tooBig();
   const body = await shrink(file);
   if (body.size > MAX_BYTES) throw tooBig();
@@ -213,7 +214,7 @@ export async function uploadOnce(path: string, body: Blob): Promise<void> {
 export function uploadRefused(error: { message: string; status?: unknown; statusCode?: unknown }, notAllowed: string): Error {
   if (Number(error.status) === 507 || String(error.statusCode ?? "") === "507") return new StorageFullError(error.message);
   if (/row-level security/i.test(error.message)) return new Error(notAllowed);
-  return new Error(`Upload failed: ${error.message}`);
+  return new Error(t("Upload failed: {reason}", { reason: error.message }));
 }
 
 export async function signedUrls(paths: string[], seconds = 3600): Promise<Record<string, string>> {

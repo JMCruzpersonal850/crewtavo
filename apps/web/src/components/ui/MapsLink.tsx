@@ -9,20 +9,21 @@ import { copyText } from "@/lib/clipboard";
 import { MAPS_LABELS, mapsApps, mapsUrl, placeText, rememberApp, rememberedApp, routeApp, routeApps, routeLegs, type MapsApp, type Place, type Route, type RouteApp } from "@/lib/maps";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
+import { t } from "@/lib/i18n";
 
 export function MapsLink({ place, className = "address-link", title, children }: { place: Place; className?: string; title?: string; children: ReactNode }) {
   const [choosing, setChoosing] = useState(false);
   const app = rememberedApp();
   if (app) {
     return (
-      <a className={className} href={mapsUrl(app, place)} target={app === "other" ? undefined : "_blank"} rel="noreferrer" title={title ?? `Open in ${MAPS_LABELS[app]}`}>
+      <a className={className} href={mapsUrl(app, place)} target={app === "other" ? undefined : "_blank"} rel="noreferrer" title={title ?? t("Open in {app}", { app: t(MAPS_LABELS[app]) })}>
         {children}
       </a>
     );
   }
   return (
     <>
-      <button type="button" className={className} title={title ?? "Open in a maps app"} onClick={() => setChoosing(true)}>
+      <button type="button" className={className} title={title ?? t("Open in a maps app")} onClick={() => setChoosing(true)}>
         {children}
       </button>
       {choosing && <MapsChooser place={place} onClose={() => setChoosing(false)} />}
@@ -38,27 +39,27 @@ export function MapsChooser({ place, onClose }: { place: Place; onClose: () => v
     onClose();
   };
   return (
-    <Dialog open onClose={onClose} title="Open in" description={text || undefined} size="sm">
+    <Dialog open onClose={onClose} title={t("Open in")} description={text || undefined} size="sm">
       <div className="dialog-body">
         <div className="maps-choices">
           {mapsApps().map((app) => (
             <a key={app} className="btn big-action" href={mapsUrl(app, place)} target={app === "other" ? undefined : "_blank"} rel="noreferrer" onClick={() => pick(app)}>
               <Icon name={app === "other" ? "apps" : "navigation"} size={20} />
-              {MAPS_LABELS[app]}
+              {t(MAPS_LABELS[app])}
             </a>
           ))}
           {text && (
             <button type="button" className="btn big-action" onClick={() => { void copyText(text, "Address copied"); onClose(); }}>
               <Icon name="copy" size={20} />
-              Copy address
+              {t("Copy address")}
             </button>
           )}
         </div>
         <label className="checkbox">
           <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} />
-          <span>Always use this app on this device</span>
+          <span>{t("Always use this app on this device")}</span>
         </label>
-        <span className="muted small">An app that isn't installed opens its website instead. Change this in Settings → Profile.</span>
+        <span className="muted small">{t("An app that isn't installed opens its website instead. Change this in Settings → Profile.")}</span>
       </div>
     </Dialog>
   );
@@ -74,14 +75,14 @@ export function RouteMapsLink({ route, className, title, children }: { route: Ro
   const legs = app ? routeLegs(app, route) : [];
   if (app && legs.length === 1) {
     return (
-      <a className={className} href={legs[0]!.url} target="_blank" rel="noreferrer" title={title ?? `Open the route in ${MAPS_LABELS[app]}`}>
+      <a className={className} href={legs[0]!.url} target="_blank" rel="noreferrer" title={title ?? t("Open the route in {app}", { app: t(MAPS_LABELS[app]) })}>
         {children}
       </a>
     );
   }
   return (
     <>
-      <button type="button" className={className} title={title ?? "Open the route in a maps app"} onClick={() => setChoosing(true)}>
+      <button type="button" className={className} title={title ?? t("Open the route in a maps app")} onClick={() => setChoosing(true)}>
         {children}
       </button>
       {choosing && <RouteChooser route={route} apps={app ? [app] : routeApps()} onClose={() => setChoosing(false)} />}
@@ -97,8 +98,13 @@ function RouteChooser({ route, apps, onClose }: { route: Route; apps: RouteApp[]
   };
   const choices = apps.map((app) => ({ app, legs: routeLegs(app, route) }));
   const count = route.stops.length;
-  const stops = `${count} ${count === 1 ? "stop" : "stops"}`;
-  const description = route.start ? `${stops}, from the shop${route.end ? " and back" : ""}` : `${stops} from where you are${route.end ? ", then back to the shop" : ""}`;
+  const description = route.start
+    ? route.end
+      ? t.plural(count, { one: "{count} stop, from the shop and back", other: "{count} stops, from the shop and back" })
+      : t.plural(count, { one: "{count} stop, from the shop", other: "{count} stops, from the shop" })
+    : route.end
+      ? t.plural(count, { one: "{count} stop from where you are, then back to the shop", other: "{count} stops from where you are, then back to the shop" })
+      : t.plural(count, { one: "{count} stop from where you are", other: "{count} stops from where you are" });
   const link = (app: RouteApp, url: string, label: string) => (
     <a key={url} className="btn big-action" href={url} target="_blank" rel="noreferrer" onClick={() => pick(app)}>
       <Icon name="navigation" size={20} />
@@ -106,16 +112,21 @@ function RouteChooser({ route, apps, onClose }: { route: Route; apps: RouteApp[]
     </a>
   );
   return (
-    <Dialog open onClose={onClose} title="Open route in" description={description} size="sm">
+    <Dialog open onClose={onClose} title={t("Open route in")} description={description} size="sm">
       <div className="dialog-body">
         <div className="maps-choices">
           {choices.map(({ app, legs }) =>
             legs.length === 1 ? (
-              link(app, legs[0]!.url, MAPS_LABELS[app])
+              link(app, legs[0]!.url, t(MAPS_LABELS[app]))
             ) : (
               <Fragment key={app}>
-                <strong className="small">{MAPS_LABELS[app]}</strong>
-                {legs.map((leg, i) => link(app, leg.url, `Part ${i + 1} · ${leg.last - leg.first + 1} ${leg.last === leg.first ? "stop" : "stops"}${leg.back ? ", then the shop" : ""}`))}
+                <strong className="small">{t(MAPS_LABELS[app])}</strong>
+                {legs.map((leg, i) => {
+                  const stops = leg.last - leg.first + 1;
+                  const part = t("Part {part}", { part: i + 1 });
+                  const which = leg.back ? t.plural(stops, { one: "{count} stop, then the shop", other: "{count} stops, then the shop" }) : t.plural(stops, { one: "{count} stop", other: "{count} stops" });
+                  return link(app, leg.url, `${part} · ${which}`);
+                })}
               </Fragment>
             ),
           )}
@@ -123,12 +134,12 @@ function RouteChooser({ route, apps, onClose }: { route: Route; apps: RouteApp[]
         {apps.length > 1 && (
           <label className="checkbox">
             <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} />
-            <span>Always use this app on this device</span>
+            <span>{t("Always use this app on this device")}</span>
           </label>
         )}
         <span className="muted small">
-          {choices.some((c) => c.legs.length > 1) && "Maps apps take only so many stops at once, so a long day opens in parts. Open the next part when you finish one. "}
-          An app that isn't installed opens its website instead.
+          {choices.some((c) => c.legs.length > 1) && t("Maps apps take only so many stops at once, so a long day opens in parts. Open the next part when you finish one. ")}
+          {t("An app that isn't installed opens its website instead.")}
         </span>
       </div>
     </Dialog>
@@ -140,7 +151,7 @@ export function MapsAppSetting() {
   const [app, setApp] = useState<MapsApp | "">(() => rememberedApp() ?? "");
   return (
     <div className="card card-pad stack-sm">
-      <strong id="maps-app-title">Directions</strong>
+      <strong id="maps-app-title">{t("Directions")}</strong>
       <select
         className="select"
         aria-labelledby="maps-app-title"
@@ -152,10 +163,10 @@ export function MapsAppSetting() {
           rememberApp(next || null);
         }}
       >
-        <option value="">Ask which app each time</option>
-        {mapsApps().map((a) => <option key={a} value={a}>{MAPS_LABELS[a]}</option>)}
+        <option value="">{t("Ask which app each time")}</option>
+        {mapsApps().map((a) => <option key={a} value={a}>{t(MAPS_LABELS[a])}</option>)}
       </select>
-      <span className="muted small">Tapping an address or Directions opens this app. Saved on this device.</span>
+      <span className="muted small">{t("Tapping an address or Directions opens this app. Saved on this device.")}</span>
     </div>
   );
 }

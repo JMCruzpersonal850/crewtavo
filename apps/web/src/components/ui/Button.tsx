@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useState, type ButtonHTMLAttributes } from "react";
 import { Icon, type IconName } from "./Icon";
+import { t } from "@/lib/i18n";
 
 export type ButtonVariant = "secondary" | "primary" | "danger" | "danger-solid" | "ghost" | "dark";
 
@@ -31,7 +32,7 @@ const SLOW = 10_000;
 export const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" ");
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "secondary", size = "md", loading = false, icon, block, wrap, done, doneLabel = "Saved", slowHint = "Still working. Check your signal.", className, disabled, type = "button", children, ...rest },
+  { variant = "secondary", size = "md", loading = false, icon, block, wrap, done, doneLabel = t("Saved"), slowHint = t("Still working. Check your signal."), className, disabled, type = "button", children, ...rest },
   ref,
 ) {
   const iconSize = size === "sm" ? 14 : size === "lg" ? 20 : 16;

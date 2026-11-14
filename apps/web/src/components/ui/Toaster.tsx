@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { dismissToast, getToasts, subscribeToasts, type ToastItem } from "@/lib/toast";
 import { Icon } from "./Icon";
+import { t } from "@/lib/i18n";
 
 const supportsPopover = typeof HTMLElement !== "undefined" && "showPopover" in HTMLElement.prototype;
 /** How far each older toast peeks out above the one in front, and the gap between them fanned out. */
@@ -292,7 +293,7 @@ function Toast({ toast, index, offset, expanded, frontHeight, paused, onHeight }
           )}
         </button>
       )}
-      <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => dismissToast(toast.id)}><Icon name="x" size={14} /></button>
+      <button type="button" className="toast-x" aria-label={t("Dismiss")} onClick={() => dismissToast(toast.id)}><Icon name="x" size={14} /></button>
     </div>
   );
 }

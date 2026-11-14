@@ -25,7 +25,14 @@ const PATTERN_FILES = new Set(["index.ts", "notices.ts", "errors.ts"]);
  * The screens a team member works in, which must have no English outside t() (Español is offered
  * for these). Office screens are left for later: see docs/spanish-support-plan.md.
  */
-export const COVERED = [];
+export const COVERED = [
+  // The shell: navigation, header, account menu, dialogs, empty states, toasts, sign-in and sign-out.
+  "apps/web/src/components",
+  "apps/web/src/features/auth/LoginPage.tsx",
+  "apps/web/src/features/auth/textCode.ts",
+  "apps/web/src/features/settings/Language.tsx",
+  ...["errors.ts", "files.ts", "offline.ts", "offlinePhotos.ts", "photoMarkup.ts", "push.ts", "queryClient.ts", "resumable.ts", "session.tsx", "undo.ts"].map((f) => `apps/web/src/lib/${f}`),
+];
 
 /** Where t()/msg()/<T> text is read from. */
 const SOURCES = ["apps/web/src", "apps/api/src", "packages/core/src"];
@@ -34,10 +41,10 @@ const SOURCES = ["apps/web/src", "apps/api/src", "packages/core/src"];
 const TEXT_PROPS = new Set([
   "label", "title", "placeholder", "aria-label", "alt", "hint", "description", "emptyText", "confirmLabel", "cancelLabel",
   "subtitle", "caption", "help", "tooltip", "message", "heading", "actionLabel", "empty", "aria-description", "aria-valuetext", "note",
-  "eyebrow", "detail", "summary", "doneLabel", "saveLabel", "submitLabel", "busyLabel", "addLabel", "lede",
+  "eyebrow", "detail", "summary", "doneLabel", "saveLabel", "submitLabel", "busyLabel", "addLabel", "lede", "body", "slowHint",
 ]);
 /** Object keys whose text people read (toasts' meta, confirm()'s question, a menu's items). */
-const TEXT_KEYS = new Set(["success", "error", "title", "body", "message", "label", "hint", "description", "confirmLabel", "cancelLabel", "placeholder", "empty", "note", "detail"]);
+const TEXT_KEYS = new Set(["success", "error", "title", "body", "message", "label", "hint", "description", "confirmLabel", "cancelLabel", "placeholder", "empty", "note", "detail", "heading"]);
 /** Calls whose string arguments people read. */
 const TEXT_CALLS = /^(toast(\.\w+)?|alert|window\.alert|window\.confirm|window\.prompt|new Error)$/;
 /** Text that reads the same in every language. */
@@ -126,8 +133,16 @@ export function keysIn(file) {
       }
     } else if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(sf) === "T") {
       const attr = node.attributes.properties.find((a) => ts.isJsxAttribute(a) && a.name.getText(sf) === "text");
-      const value = attr && (stringValue(attr.initializer) ?? (attr.initializer && ts.isJsxExpression(attr.initializer) ? stringValue(attr.initializer.expression) : null));
-      if (value != null) keys.push({ file, line: lineOf(sf, node), kind: "T", key: value, english: value });
+      // text="…", or text={a ? "…" : "…"}: each sentence it can be.
+      const texts = [];
+      const gather = (expr) => {
+        if (!expr) return;
+        if (ts.isParenthesizedExpression(expr)) gather(expr.expression);
+        else if (ts.isConditionalExpression(expr)) [expr.whenTrue, expr.whenFalse].forEach(gather);
+        else if (stringValue(expr) != null) texts.push(stringValue(expr));
+      };
+      gather(attr?.initializer && ts.isJsxExpression(attr.initializer) ? attr.initializer.expression : attr?.initializer);
+      for (const value of texts) keys.push({ file, line: lineOf(sf, node), kind: "T", key: value, english: value });
     }
     ts.forEachChild(node, visit);
   };
@@ -238,6 +253,8 @@ const readable = (text) => {
   const s = text.trim();
   if (!/[A-Za-z]{2,}/.test(s)) return false;
   if (SAME_EVERYWHERE.has(s)) return false;
+  // A web address or a file name reads the same in every language.
+  if (!/\s/.test(s) && /[./]/.test(s)) return false;
   return true;
 };
 const ignored = (sf, node) => {
@@ -298,7 +315,10 @@ export function rawStrings(file) {
       if (readable(text) && !insideTranslate(node)) {
         const clean = text === text.trim() && !/&\w+;/.test(text);
         const mixed = mixedSentence(node);
-        add(node, text, mixed ? "sentence around values or links" : "text", !mixed && clean ? [node.getStart(sf), node.getEnd(), `{t(${JSON.stringify(text)})}`] : undefined);
+        // Only the words are replaced: the line breaks around them stay where they were.
+        const start = node.pos + (node.text.length - node.text.trimStart().length);
+        const end = node.end - (node.text.length - node.text.trimEnd().length);
+        add(node, text, mixed ? "sentence around values or links" : "text", !mixed && clean ? [start, end, `{t(${JSON.stringify(text)})}`] : undefined);
       }
     } else if (ts.isJsxAttribute(node) && TEXT_PROPS.has(node.name.getText(sf))) {
       const init = node.initializer;
@@ -307,6 +327,9 @@ export function rawStrings(file) {
       return;
     } else if (ts.isJsxExpression(node) && node.parent && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
       literalLeaves(node.expression, "text");
+    } else if (ts.isBindingElement(node) && node.initializer && TEXT_PROPS.has((node.propertyName ?? node.name).getText(sf))) {
+      // A component's default text: ({ label = "Loading" }).
+      literalLeaves(node.initializer, `${node.name.getText(sf)} =`);
     } else if (ts.isPropertyAssignment(node) && TEXT_KEYS.has(node.name.getText(sf).replace(/["']/g, ""))) {
       literalLeaves(node.initializer, `${node.name.getText(sf)}:`);
     } else if (ts.isCallExpression(node) || ts.isNewExpression(node)) {

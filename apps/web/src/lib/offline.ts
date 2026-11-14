@@ -22,6 +22,7 @@ import { dehydrate, hydrate, onlineManager, type DehydratedState, type Mutation,
 import { ApiError, isAuthError, isNetworkError, isRestarting, SESSION_EXPIRED } from "./errors";
 import { forgetPhonePhotos, photosWaiting, startPhotoQueue, subscribePhonePhotos } from "./offlinePhotos";
 import { forgetRecents } from "./recent";
+import { t } from "./i18n";
 
 // React Query assumes it's online until it hears otherwise; a phone that opens the app with no
 // signal is offline from the start, so field actions queue instead of failing.
@@ -502,10 +503,17 @@ export const pendingFieldActions = (queryClient: QueryClient) => queryClient.get
  */
 export function signOutWarning(updates: number, photos: number): { title: string; body: string } | null {
   if (!updates && !photos) return null;
-  const parts = [updates ? (updates === 1 ? "1 update" : `${updates} updates`) : "", photos ? (photos === 1 ? "1 photo" : `${photos} photos`) : ""].filter(Boolean);
   const one = updates + photos === 1;
+  const updatesText = t.plural(updates, { one: "{count} update", other: "{count} updates" });
+  const photosText = t.plural(photos, { one: "{count} photo", other: "{count} photos" });
   return {
-    title: `${parts.join(" and ")} ${one ? "hasn't" : "haven't"} sent yet`,
-    body: `${one ? "It's waiting on this phone and goes" : "They're waiting on this phone and go"} out when you have signal. Signing out now deletes ${one ? "it" : "them"}.`,
+    title: updates && photos
+      ? t("{updates} and {photos} haven't sent yet", { updates: updatesText, photos: photosText })
+      : updates
+        ? t.plural(updates, { one: "{count} update hasn't sent yet", other: "{count} updates haven't sent yet" })
+        : t.plural(photos, { one: "{count} photo hasn't sent yet", other: "{count} photos haven't sent yet" }),
+    body: one
+      ? t("It's waiting on this phone and goes out when you have signal. Signing out now deletes it.")
+      : t("They're waiting on this phone and go out when you have signal. Signing out now deletes them."),
   };
 }

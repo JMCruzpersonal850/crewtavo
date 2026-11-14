@@ -5,6 +5,7 @@ import { looksTechnical } from "@/lib/errors";
 import { reportError } from "@/lib/monitoring";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
+import { t } from "@/lib/i18n";
 
 const RELOAD_KEY = "crewtavo.chunk-reload";
 
@@ -44,10 +45,10 @@ export function RouteError({ fullPage }: { fullPage?: boolean }) {
     }
   }
   if (notFound) {
-    return <Wrap fullPage={fullPage} icon="search" title="Page not found" body="That page doesn't exist or was moved." />;
+    return <Wrap fullPage={fullPage} icon="search" title={t("Page not found")} body={t("That page doesn't exist or was moved.")} />;
   }
   if (staleBuild) {
-    return <Wrap fullPage={fullPage} icon="alert" title="Crewtavo was updated" body="Reload to get the latest version." />;
+    return <Wrap fullPage={fullPage} icon="alert" title={t("Crewtavo was updated")} body={t("Reload to get the latest version.")} />;
   }
   // Something the app threw for people to read ("Still loading. Try again in a moment.") can just say so.
   const readable = error instanceof Error && Boolean(message) && !looksTechnical(message);
@@ -57,14 +58,14 @@ export function RouteError({ fullPage }: { fullPage?: boolean }) {
     <Wrap
       fullPage={fullPage}
       icon="alert"
-      title="Something went wrong"
-      body={readable ? message : "This screen hit an unexpected problem. Reloading usually fixes it. If it keeps happening, let us know what you were doing."}
+      title={t("Something went wrong")}
+      body={readable ? message : t("This screen hit an unexpected problem. Reloading usually fixes it. If it keeps happening, let us know what you were doing.")}
     >
       {!readable && raw && (
         <details className="crash-details">
-          <summary>Details for support</summary>
+          <summary>{t("Details for support")}</summary>
           <pre>{details}</pre>
-          <Button size="sm" icon="copy" onClick={() => void copyText(details, "Copied")}>Copy details</Button>
+          <Button size="sm" icon="copy" onClick={() => void copyText(details, "Copied")}>{t("Copy details")}</Button>
         </details>
       )}
     </Wrap>
@@ -79,8 +80,8 @@ function Wrap({ fullPage, icon, title, body, children }: { fullPage?: boolean; i
         <h3>{title}</h3>
         <p>{body}</p>
         <div className="actions">
-          <Button variant="primary" icon="refresh" onClick={() => window.location.reload()}>Reload</Button>
-          <Link className="btn" to="/">Go home</Link>
+          <Button variant="primary" icon="refresh" onClick={() => window.location.reload()}>{t("Reload")}</Button>
+          <Link className="btn" to="/">{t("Go home")}</Link>
         </div>
         {children}
       </div>

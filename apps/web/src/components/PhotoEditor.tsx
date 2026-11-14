@@ -38,6 +38,7 @@ import { errorMessage } from "@/lib/errors";
 import { confirm } from "./ui/Confirm";
 import { Button } from "./ui/Button";
 import { Icon, type IconName } from "./ui/Icon";
+import { t } from "@/lib/i18n";
 
 const TOOL_ICONS: Record<MarkupTool, IconName> = { pen: "pen", arrow: "arrowUpRight", ellipse: "circle", box: "square", text: "type" };
 
@@ -77,15 +78,15 @@ function render(picture: Picture, marks: readonly Mark[], size: { width: number;
     canvas.toBlob((blob) => {
       canvas.width = canvas.height = 0; // hand the memory back
       if (blob) resolve(blob);
-      else reject(new Error("This phone couldn't save the drawing. Try again."));
+      else reject(new Error(t("This phone couldn't save the drawing. Try again.")));
     }, "image/jpeg", 0.85),
   );
 }
 
 export function PhotoEditor({
   picture: source,
-  title = "Draw on the photo",
-  saveLabel = "Save",
+  title,
+  saveLabel,
   keepsBlank = false,
   onSave,
   onCancel,
@@ -128,7 +129,7 @@ export function PhotoEditor({
         const opened = await openPicture(blob);
         if (!gone) setPicture(opened);
       } catch (error) {
-        if (!gone) setFailed(error instanceof Error && /couldn't be opened/.test(error.message) ? error.message : "This photo can't be drawn on in this browser.");
+        if (!gone) setFailed(error instanceof Error && /couldn't be opened/.test(error.message) ? t(error.message) : t("This photo can't be drawn on in this browser."));
       }
     })();
     return () => {
@@ -195,7 +196,7 @@ export function PhotoEditor({
 
   const leave = async () => {
     if (busy) return;
-    if (history.marks.length && !(await confirm({ title: "Throw away the drawing?", body: "What you drew on this photo won't be saved.", confirmLabel: "Throw it away", cancelLabel: "Keep drawing", danger: true }))) return;
+    if (history.marks.length && !(await confirm({ title: t("Throw away the drawing?"), body: t("What you drew on this photo won't be saved."), confirmLabel: t("Throw it away"), cancelLabel: t("Keep drawing"), danger: true }))) return;
     onCancel();
   };
   const save = async () => {
@@ -211,7 +212,7 @@ export function PhotoEditor({
   };
   const removeDrawing = async () => {
     if (!onRemoveDrawing || busy) return;
-    if (!(await confirm({ title: "Take the drawing off?", body: "The photo shows as it was taken. The drawing goes to the Trash.", confirmLabel: "Take it off" }))) return;
+    if (!(await confirm({ title: t("Take the drawing off?"), body: t("The photo shows as it was taken. The drawing goes to the Trash."), confirmLabel: t("Take it off") }))) return;
     setBusy("remove");
     setProblem(null);
     try {
@@ -235,7 +236,7 @@ export function PhotoEditor({
     <dialog
       ref={dialog}
       className="photo-editor"
-      aria-label={title}
+      aria-label={title ?? t("Draw on the photo")}
       onKeyDown={keys}
       // Escape asks first when something's drawn.
       onCancel={(e) => {
@@ -244,27 +245,27 @@ export function PhotoEditor({
       }}
     >
       <div className="photo-editor-bar">
-        <strong className="grow">{title}</strong>
-        <button type="button" className="photo-editor-tool" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo(history) || Boolean(busy)} onClick={() => setHistory(undo)}><Icon name="undo" size={20} /></button>
-        <button type="button" className="photo-editor-tool" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo(history) || Boolean(busy)} onClick={() => setHistory(redo)}><Icon name="redo" size={20} /></button>
-        <button type="button" className="photo-editor-tool" aria-label="Clear" title="Clear" disabled={!history.marks.length || Boolean(busy)} onClick={() => setHistory(clearMarks)}><Icon name="trash" size={20} /></button>
+        <strong className="grow">{title ?? t("Draw on the photo")}</strong>
+        <button type="button" className="photo-editor-tool" aria-label={t("Undo")} title={t("Undo (Ctrl+Z)")} disabled={!canUndo(history) || Boolean(busy)} onClick={() => setHistory(undo)}><Icon name="undo" size={20} /></button>
+        <button type="button" className="photo-editor-tool" aria-label={t("Redo")} title={t("Redo (Ctrl+Shift+Z)")} disabled={!canRedo(history) || Boolean(busy)} onClick={() => setHistory(redo)}><Icon name="redo" size={20} /></button>
+        <button type="button" className="photo-editor-tool" aria-label={t("Clear")} title={t("Clear")} disabled={!history.marks.length || Boolean(busy)} onClick={() => setHistory(clearMarks)}><Icon name="trash" size={20} /></button>
       </div>
 
       <div className="photo-editor-stage">
         {failed ? (
           <div className="stack-sm" style={{ textAlign: "center", padding: 16 }}>
             <span>{failed}</span>
-            {keepsBlank && <span className="small">You can still add it as it is.</span>}
+            {keepsBlank && <span className="small">{t("You can still add it as it is.")}</span>}
           </div>
         ) : !picture ? (
-          <span className="spinner" style={{ width: 28, height: 28 }} aria-label="Opening the photo" />
+          <span className="spinner" style={{ width: 28, height: 28 }} aria-label={t("Opening the photo")} />
         ) : (
           <canvas
             ref={canvas}
             width={size!.width}
             height={size!.height}
             role="img"
-            aria-label={`The photo${history.marks.length ? `, with ${history.marks.length === 1 ? "1 mark" : `${history.marks.length} marks`}` : ""}`}
+            aria-label={history.marks.length ? t.plural(history.marks.length, { one: "The photo, with {count} mark", other: "The photo, with {count} marks" }) : t("The photo")}
             onPointerDown={down}
             onPointerMove={move}
             onPointerUp={up}
@@ -275,21 +276,21 @@ export function PhotoEditor({
       </div>
 
       <div className="photo-editor-bar photo-editor-tools">
-        <div className="row wrap" role="group" aria-label="Draw with" style={{ gap: 4 }}>
-          {MARKUP_TOOLS.map((t) => (
-            <button key={t.tool} type="button" className="photo-editor-tool" aria-pressed={tool === t.tool} aria-label={t.label} title={t.label} onClick={() => setTool(t.tool)}>
-              <Icon name={TOOL_ICONS[t.tool]} size={20} />
+        <div className="row wrap" role="group" aria-label={t("Draw with")} style={{ gap: 4 }}>
+          {MARKUP_TOOLS.map((m) => (
+            <button key={m.tool} type="button" className="photo-editor-tool" aria-pressed={tool === m.tool} aria-label={t(m.label)} title={t(m.label)} onClick={() => setTool(m.tool)}>
+              <Icon name={TOOL_ICONS[m.tool]} size={20} />
             </button>
           ))}
         </div>
-        <div className="row wrap" role="group" aria-label="Colour" style={{ gap: 6 }}>
+        <div className="row wrap" role="group" aria-label={t("Colour")} style={{ gap: 6 }}>
           {MARKUP_COLORS.map((c) => (
-            <button key={c.color} type="button" className="photo-editor-swatch" aria-pressed={color === c.color} aria-label={c.label} title={c.label} style={{ background: c.color }} onClick={() => setColor(c.color)} />
+            <button key={c.color} type="button" className="photo-editor-swatch" aria-pressed={color === c.color} aria-label={t(c.label)} title={t(c.label)} style={{ background: c.color }} onClick={() => setColor(c.color)} />
           ))}
         </div>
-        <div className="row" role="group" aria-label="Line" style={{ gap: 4 }}>
+        <div className="row" role="group" aria-label={t("Line")} style={{ gap: 4 }}>
           {(["thin", "thick"] as const).map((w) => (
-            <button key={w} type="button" className="photo-editor-tool" aria-pressed={width === w} aria-label={w === "thin" ? "Thin line" : "Thick line"} title={w === "thin" ? "Thin" : "Thick"} onClick={() => setWidth(w)}>
+            <button key={w} type="button" className="photo-editor-tool" aria-pressed={width === w} aria-label={w === "thin" ? t("Thin line") : t("Thick line")} title={w === "thin" ? t("Thin") : t("Thick")} onClick={() => setWidth(w)}>
               <span aria-hidden="true" style={{ display: "block", width: 20, height: w === "thin" ? 2 : 6, borderRadius: 3, background: "currentColor" }} />
             </button>
           ))}
@@ -303,18 +304,18 @@ export function PhotoEditor({
               addWords();
             }}
           >
-            <input id="photo-editor-words" className="input grow" aria-label="Words to add" placeholder="Type, then tap where it goes" value={words} maxLength={120} onChange={(e) => setWords(e.target.value)} />
-            <Button size="sm" type="submit" disabled={!words.trim()}>Add</Button>
+            <input id="photo-editor-words" className="input grow" aria-label={t("Words to add")} placeholder={t("Type, then tap where it goes")} value={words} maxLength={120} onChange={(e) => setWords(e.target.value)} />
+            <Button size="sm" type="submit" disabled={!words.trim()}>{t("Add")}</Button>
           </form>
         )}
       </div>
 
       <div className="photo-editor-bar">
         {problem ? <span className="grow small photo-editor-problem" role="alert">{problem}</span> : <span className="grow" />}
-        {onRemoveDrawing && <Button variant="ghost" loading={busy === "remove"} disabled={busy === "save"} onClick={() => void removeDrawing()}>Take the drawing off</Button>}
-        <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void leave()}>Cancel</Button>
+        {onRemoveDrawing && <Button variant="ghost" loading={busy === "remove"} disabled={busy === "save"} onClick={() => void removeDrawing()}>{t("Take the drawing off")}</Button>}
+        <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void leave()}>{t("Cancel")}</Button>
         <Button variant="primary" icon="check" loading={busy === "save"} disabled={(nothing || !picture) && !(keepsBlank && failed) || busy === "remove"} onClick={() => (failed && keepsBlank ? void onSave(null) : void save())}>
-          {saveLabel}
+          {saveLabel ?? t("Save")}
         </Button>
       </div>
     </dialog>

@@ -27,6 +27,7 @@ import { setRecentsPerson } from "./recent";
 import { setSessionExpiredHandler } from "./queryClient";
 import { toast } from "./toast";
 import { flushUndos } from "./undo";
+import { t } from "@/lib/i18n";
 
 /**
  * The active company. A sub gets only its basics (company_basics() in the database): no slug, trade
@@ -302,7 +303,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
       !warning ||
       (await confirm({
         ...warning,
-        confirmLabel: "Sign out anyway",
+        confirmLabel: t("Sign out anyway"),
         danger: true,
       }));
     if (!ok) return false;
@@ -312,7 +313,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     await supabase().auth.signOut().catch(() => undefined);
     // Still set: no SIGNED_OUT came (the sign-in needed refreshing and that didn't get through).
     const signedOut = !signingOut.current;
-    if (!signedOut) toast.error("Couldn't sign out. Try again when you have signal.");
+    if (!signedOut) toast.error(t("Couldn't sign out. Try again when you have signal."));
     signingOut.current = false;
     return signedOut;
   }, [queryClient, userId]);
@@ -341,7 +342,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     return (
       <SetupGate>
         <Centered>
-          <ErrorState title="Can't reach Crewtavo" error={config.error} onRetry={() => config.refetch()} />
+          <ErrorState title={t("Can't reach Crewtavo")} error={config.error} onRetry={() => config.refetch()} />
         </Centered>
       </SetupGate>
     );
@@ -356,9 +357,9 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     return (
       <SetupGate>
         <Centered>
-          <ErrorState title="Couldn't load your account" error={me.error} onRetry={() => me.refetch()} />
+          <ErrorState title={t("Couldn't load your account")} error={me.error} onRetry={() => me.refetch()} />
           <div style={{ display: "flex", justifyContent: "center", paddingBottom: 24, marginTop: -12 }}>
-            <Button variant="ghost" icon="logout" onClick={() => signOut()}>Sign out</Button>
+            <Button variant="ghost" icon="logout" onClick={() => signOut()}>{t("Sign out")}</Button>
           </div>
         </Centered>
       </SetupGate>
@@ -370,8 +371,8 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     if (requireCompany && me.data.can_create_company === false) {
       return (
         <Centered>
-          <EmptyState icon="lock" title="Your sign-in is turned off" action={<Button variant="ghost" icon="logout" onClick={() => signOut()}>Sign out</Button>}>
-            The business that gave you this sign-in has turned it off. Ask their office to turn it back on.
+          <EmptyState icon="lock" title={t("Your sign-in is turned off")} action={<Button variant="ghost" icon="logout" onClick={() => signOut()}>{t("Sign out")}</Button>}>
+            {t("The business that gave you this sign-in has turned it off. Ask their office to turn it back on.")}
           </EmptyState>
         </Centered>
       );
@@ -393,7 +394,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
 
 export function useSession(): Session {
   const session = useContext(SessionContext);
-  if (!session) throw new Error("useSession must be used inside SessionProvider");
+  if (!session) throw new Error("useSession must be used inside SessionProvider"); // i18n-ignore: for developers
   return session;
 }
 

@@ -7,6 +7,7 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
+import { t, T } from "@/lib/i18n";
 
 interface ConfirmOptions {
   title: string;
@@ -84,13 +85,13 @@ export function ConfirmHost() {
         {view.body && <div className="muted" style={{ marginTop: -6 }}>{view.body}</div>}
         {view.typeToConfirm && (
           <label className="field">
-            <span>Type <strong>{view.typeToConfirm}</strong> to confirm</span>
+            <span><T text="Type <word>{typed}</word> to confirm" word={(s) => <strong>{s}</strong>} typed={view.typeToConfirm} /></span>
             <input className="input" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
           </label>
         )}
         <div className="form-actions">
-          <Button onClick={() => answer("cancel")}>{view.cancelLabel ?? "Cancel"}</Button>
-          <Button type="submit" variant={view.danger ? "danger-solid" : "primary"} disabled={blocked}>{view.confirmLabel ?? "Confirm"}</Button>
+          <Button onClick={() => answer("cancel")}>{view.cancelLabel ?? t("Cancel")}</Button>
+          <Button type="submit" variant={view.danger ? "danger-solid" : "primary"} disabled={blocked}>{view.confirmLabel ?? t("Confirm")}</Button>
         </div>
       </form>
     </Dialog>

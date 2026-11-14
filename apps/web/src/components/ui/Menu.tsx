@@ -4,6 +4,7 @@
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
+import { t } from "@/lib/i18n";
 
 export type MenuEntry =
   | { label: string; icon?: IconName; onSelect: () => void; danger?: boolean; disabled?: boolean; hidden?: boolean; /** Shown on hover, e.g. why it's turned off. */ title?: string }
@@ -12,7 +13,7 @@ export type MenuEntry =
 
 export function Menu({
   items,
-  label = "More actions",
+  label = t("More actions"),
   trigger,
   triggerClassName = "btn btn-icon",
   align = "end",

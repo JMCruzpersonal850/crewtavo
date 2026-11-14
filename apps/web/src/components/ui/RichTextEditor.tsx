@@ -18,6 +18,7 @@ import { markdownPaste } from "@/lib/markdownPaste";
 import { CALLOUTS, contractExtensions, guideExtensions, type PictureLink } from "./editorExtensions";
 import { Icon, type IconName } from "./Icon";
 import { Menu } from "./Menu";
+import { t } from "@/lib/i18n";
 
 /** Something the link box offers as you type, like a guide: its title, where it goes, and a word about it. */
 export interface LinkTarget { title: string; href: string; detail?: string }
@@ -35,9 +36,9 @@ const isPicture = (f: File) => f.type.startsWith("image/") || /\.(heic|heif)$/i.
 export function RichTextEditor({
   initialHtml,
   onChange,
-  placeholder = "Start writing…",
+  placeholder = t("Start writing…"),
   minHeight = 320,
-  label = "Content",
+  label = t("Content"),
   mode = "guide",
   fillIns = [],
   findLinks,
@@ -165,7 +166,7 @@ export function RichTextEditor({
         .then((stored) => settle(id, { path: stored.path, width: stored.width || null, height: stored.height || null }))
         .catch((error: unknown) => {
           settle(id, null);
-          setPictureError(`${file.name || "That picture"} wasn't added. ${error instanceof Error ? error.message : "Try again."}`);
+          setPictureError(`${file.name ? t("{name} wasn't added.", { name: file.name }) : t("That picture wasn't added.")} ${error instanceof Error ? t(error.message) : t("Try again.")}`);
         })
         .finally(() => setAdding((n) => n - 1));
     }
@@ -237,69 +238,69 @@ export function RichTextEditor({
 
   return (
     <div className="rte">
-      <div className="rte-toolbar" role="toolbar" aria-label="Formatting">
-        {heading(contract ? 3 : 2, "H1", "Heading")}
-        {heading(contract ? 4 : 3, "H2", "Subheading")}
+      <div className="rte-toolbar" role="toolbar" aria-label={t("Formatting")}>
+        {heading(contract ? 3 : 2, "H1", t("Heading"))}
+        {heading(contract ? 4 : 3, "H2", t("Subheading"))}
         <span className="rte-sep" />
-        {tool("bold", "Bold (⌘B)", () => focus().toggleBold().run(), active.bold)}
-        {tool("italic", "Italic (⌘I)", () => focus().toggleItalic().run(), active.italic)}
-        {tool("underline", "Underline (⌘U)", () => focus().toggleUnderline().run(), active.underline)}
+        {tool("bold", t("Bold (⌘B)"), () => focus().toggleBold().run(), active.bold)}
+        {tool("italic", t("Italic (⌘I)"), () => focus().toggleItalic().run(), active.italic)}
+        {tool("underline", t("Underline (⌘U)"), () => focus().toggleUnderline().run(), active.underline)}
         <span className="rte-sep" />
-        {tool("listOrdered", contract ? "Numbered list" : "Numbered steps", () => focus().toggleOrderedList().run(), active.steps)}
-        {tool("list", "Bulleted list", () => focus().toggleBulletList().run(), active.bullets)}
-        {!contract && tool("checklist", "Checklist", () => focus().toggleTaskList().run(), active.checklist)}
+        {tool("listOrdered", contract ? t("Numbered list") : t("Numbered steps"), () => focus().toggleOrderedList().run(), active.steps)}
+        {tool("list", t("Bulleted list"), () => focus().toggleBulletList().run(), active.bullets)}
+        {!contract && tool("checklist", t("Checklist"), () => focus().toggleTaskList().run(), active.checklist)}
         <span className="rte-sep" />
-        {tool("quoteMark", "Quote", () => focus().toggleBlockquote().run(), active.quote)}
+        {tool("quoteMark", t("Quote", { context: "text" }), () => focus().toggleBlockquote().run(), active.quote)}
         {!contract && (
           <Menu
-            label="Callout"
+            label={t("Callout")}
             trigger={<Icon name="callout" size={16} />}
             triggerClassName={`rte-btn${active.callout ? " is-on" : ""}`}
             align="start"
             items={[
               ...CALLOUTS.map((c) => ({ label: c.label, icon: (active.callout === c.tone ? "check" : c.tone === "tip" ? "info" : "alert") as IconName, onSelect: () => focus().setCallout(c.tone).run() })),
               { separator: true, hidden: !active.callout },
-              { label: "Remove callout", icon: "x", hidden: !active.callout, onSelect: () => focus().unsetCallout().run() },
+              { label: t("Remove callout"), icon: "x", hidden: !active.callout, onSelect: () => focus().unsetCallout().run() },
             ]}
           />
         )}
         <Menu
-          label="Table"
+          label={t("Table")}
           trigger={<Icon name="table" size={16} />}
           triggerClassName={`rte-btn${active.table ? " is-on" : ""}`}
           align="start"
           items={[
-            { label: "Insert table", icon: "table", hidden: active.table, onSelect: () => focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-            { label: "Add row below", icon: "plus", hidden: !active.table, onSelect: () => focus().addRowAfter().run() },
-            { label: "Add column to the right", icon: "plus", hidden: !active.table, onSelect: () => focus().addColumnAfter().run() },
-            { label: "Header row on or off", icon: "heading", hidden: !active.table, onSelect: () => focus().toggleHeaderRow().run() },
+            { label: t("Insert table"), icon: "table", hidden: active.table, onSelect: () => focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+            { label: t("Add row below"), icon: "plus", hidden: !active.table, onSelect: () => focus().addRowAfter().run() },
+            { label: t("Add column to the right"), icon: "plus", hidden: !active.table, onSelect: () => focus().addColumnAfter().run() },
+            { label: t("Header row on or off"), icon: "heading", hidden: !active.table, onSelect: () => focus().toggleHeaderRow().run() },
             { separator: true, hidden: !active.table },
-            { label: "Delete row", icon: "minus", hidden: !active.table, onSelect: () => focus().deleteRow().run() },
-            { label: "Delete column", icon: "minus", hidden: !active.table, onSelect: () => focus().deleteColumn().run() },
-            { label: "Delete table", icon: "trash", danger: true, hidden: !active.table, onSelect: () => focus().deleteTable().run() },
+            { label: t("Delete row"), icon: "minus", hidden: !active.table, onSelect: () => focus().deleteRow().run() },
+            { label: t("Delete column"), icon: "minus", hidden: !active.table, onSelect: () => focus().deleteColumn().run() },
+            { label: t("Delete table"), icon: "trash", danger: true, hidden: !active.table, onSelect: () => focus().deleteTable().run() },
           ]}
         />
-        {!contract && tool("link", "Link (⌘K)", openLink)}
-        {pictures && tool("image", "Picture (or paste or drop one in)", () => pictureInput.current?.click())}
-        {!contract && tool("video", "Video (YouTube or Vimeo)", openVideo)}
-        {tool("divider", "Divider", () => focus().setHorizontalRule().run())}
+        {!contract && tool("link", t("Link (⌘K)"), openLink)}
+        {pictures && tool("image", t("Picture (or paste or drop one in)"), () => pictureInput.current?.click())}
+        {!contract && tool("video", t("Video (YouTube or Vimeo)"), openVideo)}
+        {tool("divider", t("Divider"), () => focus().setHorizontalRule().run())}
         <span className="rte-sep" />
-        {tool("undo", "Undo (⌘Z)", () => focus().undo().run(), undefined, !active.canUndo)}
-        {tool("redo", "Redo (⇧⌘Z)", () => focus().redo().run(), undefined, !active.canRedo)}
+        {tool("undo", t("Undo (⌘Z)"), () => focus().undo().run(), undefined, !active.canUndo)}
+        {tool("redo", t("Redo (⇧⌘Z)"), () => focus().redo().run(), undefined, !active.canRedo)}
         {fillIns.length > 0 && (
           <>
             <span className="rte-sep" />
             <Menu
-              label="Insert a fill-in"
+              label={t("Insert a fill-in")}
               trigger={
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <Icon name="hash" size={14} />
-                  Fill-in
+                  {t("Fill-in")}
                 </span>
               }
               triggerClassName="rte-btn"
               align="start"
-              items={[{ heading: "Filled in on each estimate" }, ...fillIns.map((f) => ({ label: f.label, onSelect: () => focus().insertContent({ type: "text", text: f.token }).run() }))]}
+              items={[{ heading: t("Filled in on each estimate") }, ...fillIns.map((f) => ({ label: f.label, onSelect: () => focus().insertContent({ type: "text", text: f.token }).run() }))]}
             />
           </>
         )}
@@ -321,8 +322,8 @@ export function RichTextEditor({
       {(adding > 0 || pictureError) && (
         <div className="rte-link" role="status">
           <Icon name={pictureError ? "alert" : "image"} size={14} />
-          <span className="grow small" style={{ color: pictureError ? "var(--danger)" : undefined }}>{pictureError ?? (adding === 1 ? "Adding the picture…" : `Adding ${adding} pictures…`)}</span>
-          {pictureError && <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setPictureError(null)}><Icon name="x" size={16} /></button>}
+          <span className="grow small" style={{ color: pictureError ? "var(--danger)" : undefined }}>{pictureError ?? (adding === 1 ? t("Adding the picture…") : t("Adding {count} pictures…", { count: adding }))}</span>
+          {pictureError && <button type="button" className="icon-btn" aria-label={t("Dismiss")} onClick={() => setPictureError(null)}><Icon name="x" size={16} /></button>}
         </div>
       )}
       {active.picture && linking === null && !videoForm && (
@@ -333,8 +334,8 @@ export function RichTextEditor({
             className="input"
             defaultValue={active.picture.alt}
             maxLength={300}
-            placeholder="Describe the picture, for anyone who can't see it (optional)"
-            aria-label="Picture description"
+            placeholder={t("Describe the picture, for anyone who can't see it (optional)")}
+            aria-label={t("Picture description")}
             onChange={(e) => editor.commands.updateAttributes("image", { alt: e.target.value || null })}
             onKeyDown={(e) => (e.key === "Escape" || e.key === "Enter") && (e.preventDefault(), editor.commands.focus())}
           />
@@ -347,8 +348,8 @@ export function RichTextEditor({
           <input
             ref={videoInput}
             className="input"
-            placeholder="Paste a YouTube or Vimeo link"
-            aria-label="YouTube or Vimeo link"
+            placeholder={t("Paste a YouTube or Vimeo link")}
+            aria-label={t("YouTube or Vimeo link")}
             aria-invalid={videoForm.error || undefined}
             aria-describedby={videoForm.error ? videoErrorId : undefined}
             autoFocus
@@ -358,9 +359,9 @@ export function RichTextEditor({
               else if (e.key === "Enter") { e.preventDefault(); addVideo(e.currentTarget.value); }
             }}
           />
-          <button type="button" className="btn btn-sm btn-primary" onClick={() => addVideo(videoInput.current?.value ?? "")}>Add video</button>
-          <button type="button" className="icon-btn" aria-label="Cancel" onClick={closeVideo}><Icon name="x" size={16} /></button>
-          {videoForm.error && <p id={videoErrorId} className="error-text" role="alert">That isn't a YouTube or Vimeo link. On the video's page, choose Share, copy the link and paste it here.</p>}
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => addVideo(videoInput.current?.value ?? "")}>{t("Add video")}</button>
+          <button type="button" className="icon-btn" aria-label={t("Cancel")} onClick={closeVideo}><Icon name="x" size={16} /></button>
+          {videoForm.error && <p id={videoErrorId} className="error-text" role="alert">{t("That isn't a YouTube or Vimeo link. On the video's page, choose Share, copy the link and paste it here.")}</p>}
         </div>
       )}
       <EditorContent editor={editor} />
@@ -386,8 +387,8 @@ function LinkForm({ initial, find, onApply, onClose }: { initial: string; find?:
         className="input"
         value={term}
         onChange={(e) => { setTerm(e.target.value); setIndex(0); }}
-        placeholder={find ? "Search guides, or paste a link, email or phone" : "Paste a link (https://…), email or phone"}
-        aria-label="Link"
+        placeholder={find ? t("Search guides, or paste a link, email or phone") : t("Paste a link (https://…), email or phone")}
+        aria-label={t("Link")}
         autoFocus
         autoComplete="off"
         role={find ? "combobox" : undefined}
@@ -402,12 +403,12 @@ function LinkForm({ initial, find, onApply, onClose }: { initial: string; find?:
           else if (e.key === "ArrowUp" && hits.length) { e.preventDefault(); setIndex((i) => (i <= 0 ? hits.length - 1 : i - 1)); }
         }}
       />
-      <button type="button" className="btn btn-sm btn-primary" onClick={apply}>Apply</button>
-      {initial && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onApply("")}>Remove</button>}
-      <button type="button" className="icon-btn" aria-label="Cancel" onClick={onClose}><Icon name="x" size={16} /></button>
-      {find && typed && !address && !hits.length && <p className="muted small rte-link-note">No guide has that in its title. Paste a link instead, or try other words.</p>}
+      <button type="button" className="btn btn-sm btn-primary" onClick={apply}>{t("Apply")}</button>
+      {initial && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onApply("")}>{t("Remove")}</button>}
+      <button type="button" className="icon-btn" aria-label={t("Cancel")} onClick={onClose}><Icon name="x" size={16} /></button>
+      {find && typed && !address && !hits.length && <p className="muted small rte-link-note">{t("No guide has that in its title. Paste a link instead, or try other words.")}</p>}
       {hits.length > 0 && (
-        <div className="tag-suggest" id={listId} role="listbox" aria-label="Guides">
+        <div className="tag-suggest" id={listId} role="listbox" aria-label={t("Guides")}>
           {hits.map((t, i) => (
             <button key={t.href} id={`${listId}-${i}`} type="button" role="option" aria-selected={i === index} className="menu-item" onMouseDown={(e) => e.preventDefault()} onMouseMove={() => i !== index && setIndex(i)} onClick={() => onApply(t.href, t.title)}>
               <Icon name="book" size={14} />
