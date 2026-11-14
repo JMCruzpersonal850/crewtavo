@@ -51,7 +51,7 @@ Supabase: Postgres (all data, RLS per company), Auth (staff sign-in, OAuth serve
           Storage (photos, receipts, PDFs), Realtime (schedule board), Cron (optional scheduler)
 
 Outbound from the API: QuickBooks Online, Zoho Books, Google Calendar, Stripe, Twilio, Resend,
-Google Geocoding and Solar API (optional), US Census and OpenStreetMap geocoders, Open-Meteo, Anthropic (Claude)
+Google Solar API (optional), US Census and OpenStreetMap geocoders, Open-Meteo, Anthropic (Claude)
 Inbound to the API: Claude and ChatGPT over MCP at /mcp; Stripe webhooks; public booking forms
 ```
 

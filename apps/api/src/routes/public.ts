@@ -173,7 +173,7 @@ export function geocodeLater(c: Parameters<typeof appUrl>[0], propertyId: string
   runInBackground(
     c,
     (async () => {
-      const hit = await geocodeAddress([address.line1, address.city, address.postal_code].filter(Boolean).join(", "), c.env.GOOGLE_MAPS_SERVER_KEY);
+      const hit = await geocodeAddress([address.line1, address.city, address.postal_code].filter(Boolean).join(", "));
       if (hit) await adminClient(c.env).from("properties").update({ lat: hit.lat, lng: hit.lng }).eq("id", propertyId);
     })(),
   );
@@ -181,7 +181,7 @@ export function geocodeLater(c: Parameters<typeof appUrl>[0], propertyId: string
 
 /**
  * Booking forms, referrals and "request work" each make a request and tell the office, and the
- * first two add a client and look up the address (a billed Google call). So a script can't send
+ * first two add a client and look up the address with a free public geocoder. So a script can't send
  * them by the thousand: a few an hour from one visitor, and a hundred an hour for each company.
  */
 async function limitSubmissions(c: Parameters<typeof appUrl>[0], kind: "form" | "referral" | "hub-request", companyId: string) {

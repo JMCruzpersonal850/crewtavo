@@ -97,7 +97,7 @@ export const companyTools = {
       let located: boolean | null = null;
       const oldAddress = (c.address ?? {}) as Record<string, string>;
       if (a.address?.line1 && (a.address.line1 !== oldAddress.line1 || a.address.city !== oldAddress.city || !depot)) {
-        const hit = await geocodeAddress([a.address.line1, a.address.city, a.address.region, a.address.postal_code].filter(Boolean).join(", "), ctx.env.GOOGLE_MAPS_SERVER_KEY).catch(() => null);
+        const hit = await geocodeAddress([a.address.line1, a.address.city, a.address.region, a.address.postal_code].filter(Boolean).join(", ")).catch(() => null);
         located = Boolean(hit);
         depot = hit ? { lat: hit.lat, lng: hit.lng } : null;
       }

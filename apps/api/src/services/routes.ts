@@ -58,7 +58,7 @@ export async function locateMissing(db: Db, env: Env, visits: DayVisit[], limit 
   for (const p of missing) {
     const abroad = Boolean(p.country && !/^(us|usa|united states( of america)?)$/i.test(p.country.trim()));
     const address = [p.line1, p.line2, p.city, p.region, p.postal_code, abroad ? p.country : null].filter(Boolean).join(", ");
-    const hit = await geocodeAddress(address, env.GOOGLE_MAPS_SERVER_KEY, { world: abroad }).catch(() => null);
+    const hit = await geocodeAddress(address, { world: abroad }).catch(() => null);
     if (!hit) continue;
     const { error } = await db.from("properties").update({ lat: hit.lat, lng: hit.lng }).eq("id", p.id);
     if (error) continue;

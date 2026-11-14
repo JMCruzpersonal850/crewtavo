@@ -17,7 +17,7 @@ export async function geocodeProperty(db: Db, env: Env, companyId: string, id: s
   if (!property) return null;
   const abroad = Boolean(property.country && !/^(us|usa|united states( of america)?)$/i.test(property.country.trim()));
   const address = [property.line1, property.line2, property.city, property.region, property.postal_code, abroad ? property.country : null].filter(Boolean).join(", ");
-  const result = await geocodeAddress(address, env.GOOGLE_MAPS_SERVER_KEY, { world: abroad });
+  const result = await geocodeAddress(address, { world: abroad });
   if (!result) return null;
   const { error } = await db.from("properties").update({ lat: result.lat, lng: result.lng }).eq("id", id);
   if (error) throw new Error(error.message);

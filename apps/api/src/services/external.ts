@@ -1,4 +1,4 @@
-/** Small clients for keyless or key-only public APIs: Open-Meteo weather and Google's Solar API. */
+/** Small clients for keyless or key-only public APIs: Open-Meteo weather, Google's Solar API, and the free geocoders (US Census, OpenStreetMap). */
 import { pitchFromDegrees, SQFT_PER_SQM, type DayOutlook } from "@crewtavo/core";
 
 /** Daily outlook from Open-Meteo (no key needed). */
@@ -77,37 +77,39 @@ export interface GeocodeResult {
   formatted: string | null;
   /** Two-letter country code when the geocoder says (US for the Census geocoder). */
   country: string | null;
-  source: "google" | "census" | "openstreetmap";
+  source: "census" | "openstreetmap";
 }
 
 /**
- * Address -> coordinates. Google's Geocoding API when GOOGLE_MAPS_SERVER_KEY is set, otherwise the
- * free US Census Bureau geocoder (US addresses only, no key). With `world`, an address the Census
- * doesn't know is looked up in OpenStreetMap (Photon, free, no key), so the measuring map can find
- * places outside the US. Returns null when nothing matched.
+ * What looking an address up said: where it is, "none" when the geocoders answered and don't know
+ * it, or "failed" when one couldn't be reached or didn't answer properly (worth asking again later).
  */
-export async function geocodeAddress(address: string, googleKey?: string | null, options: { world?: boolean } = {}): Promise<GeocodeResult | null> {
+export type AddressLookup = GeocodeResult | "none" | "failed";
+
+/**
+ * Address -> coordinates, from the free US Census Bureau geocoder (US addresses only, no key). With
+ * `world`, an address the Census doesn't know is looked up in OpenStreetMap (Photon, free, no key),
+ * so the measuring map can find places outside the US. Only these two are asked: what they say can
+ * be kept with the property and shown on any map.
+ */
+export async function lookUpAddress(address: string, options: { world?: boolean } = {}): Promise<AddressLookup> {
   const query = address.replace(/\s+/g, " ").trim();
-  if (query.length < 5) return null;
-  if (googleKey) {
-    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${new URLSearchParams({ address: query, key: googleKey })}`).catch(() => null);
-    if (res?.ok) {
-      const body = (await res.json()) as {
-        status: string;
-        results?: Array<{ formatted_address: string; geometry: { location: { lat: number; lng: number } }; address_components?: Array<{ short_name: string; types: string[] }> }>;
-      };
-      const hit = body.results?.[0];
-      const country = hit?.address_components?.find((part) => part.types.includes("country"))?.short_name ?? null;
-      if (body.status === "OK" && hit) return { lat: hit.geometry.location.lat, lng: hit.geometry.location.lng, formatted: hit.formatted_address, country, source: "google" };
-      if (body.status === "ZERO_RESULTS") return null;
-    }
-  }
+  if (query.length < 5) return "none";
   const params = new URLSearchParams({ address: query, benchmark: "Public_AR_Current", format: "json" });
   const res = await fetch(`https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?${params}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
   const body = res?.ok ? ((await res.json().catch(() => null)) as { result?: { addressMatches?: Array<{ matchedAddress: string; coordinates: { x: number; y: number } }> } } | null) : null;
-  const match = body?.result?.addressMatches?.[0];
+  const matches = body?.result?.addressMatches;
+  const match = Array.isArray(matches) ? matches[0] : undefined;
   if (match) return { lat: match.coordinates.y, lng: match.coordinates.x, formatted: match.matchedAddress, country: "US", source: "census" };
-  return options.world ? photon(query) : null;
+  if (options.world) return photon(query);
+  // An answer with no matches means the Census doesn't know the address; anything else, that it didn't answer.
+  return Array.isArray(matches) ? "none" : "failed";
+}
+
+/** Address -> coordinates (lookUpAddress). Null when nothing matched or the geocoder didn't answer. */
+export async function geocodeAddress(address: string, options: { world?: boolean } = {}): Promise<GeocodeResult | null> {
+  const found = await lookUpAddress(address, options);
+  return typeof found === "string" ? null : found;
 }
 
 export interface PlaceSuggestion {
@@ -171,17 +173,18 @@ export async function suggestPlaces(text: string, near?: { lat: number; lng: num
 }
 
 /** OpenStreetMap search through komoot's public Photon server (fair use, no key). */
-async function photon(query: string): Promise<GeocodeResult | null> {
+async function photon(query: string): Promise<AddressLookup> {
   const res = await fetch(`https://photon.komoot.io/api/?${new URLSearchParams({ q: query, limit: "1" })}`, {
     headers: { Accept: "application/json", "User-Agent": "Crewtavo (https://github.com/jviars/crewtavo)" },
     signal: AbortSignal.timeout(10_000),
   }).catch(() => null);
-  if (!res?.ok) return null;
+  if (!res?.ok) return "failed";
   const body = (await res.json().catch(() => null)) as {
     features?: Array<{ geometry: { coordinates: [number, number] }; properties: Record<string, string | undefined> }>;
   } | null;
-  const hit = body?.features?.[0];
-  if (!hit) return null;
+  if (!Array.isArray(body?.features)) return "failed";
+  const hit = body.features[0];
+  if (!hit) return "none";
   const p = hit.properties;
   const street = [p.housenumber, p.street].filter(Boolean).join(" ");
   const formatted = [p.name && p.name !== street ? p.name : null, street || null, p.city ?? p.county, p.state, p.country].filter(Boolean).join(", ") || null;

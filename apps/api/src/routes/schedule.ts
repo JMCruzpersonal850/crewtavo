@@ -54,7 +54,7 @@ schedule.post("/jobs/:id/generate-visits", requireUser, requireCompany(DISPATCH,
  */
 schedule.post("/geocode", requireUser, requireCompany(), async (c) => {
   const body = await readJson(c, z.object({ address: z.string().trim().min(5).max(300), world: z.boolean().optional() }));
-  const result = await geocodeAddress(body.address, c.env.GOOGLE_MAPS_SERVER_KEY, { world: body.world });
+  const result = await geocodeAddress(body.address, { world: body.world });
   return c.json(result ? { found: true, ...result } : { found: false });
 });
 
