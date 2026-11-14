@@ -379,7 +379,12 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   receipts (Settings → Company → Receipts, with your own Claude key) and a receipt photo or a
   supplier's invoice fills in the expense for you to check, with its tax and lines, suggests the job
   it names and the job's materials its lines match (to log as materials used in the same save), and
-  the office can drop a stack at once to check and save one by one. Request, quote, job and invoice
+  the office can drop a stack at once to check and save one by one. A supplier's invoice logged that
+  way counts once: what's logged against the job's estimate through its line items, the rest
+  (delivery, anything not on the estimate) as an expense, and a material the crew already logged
+  isn't logged twice. A receipt that looks to be in already (the same invoice number, or the same
+  vendor, day and total) is asked about before it's saved again, and expenses saved without a job
+  are listed on Finance → Profit. Request, quote, job and invoice
   numbers can carry on from the system you're moving from (Settings → Company).
 - **Online booking:** request, estimate and booking forms to link to or embed in your website,
   with your own questions, a service area by ZIP or postal code, file and photo uploads and promo

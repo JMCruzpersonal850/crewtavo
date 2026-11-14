@@ -108,6 +108,43 @@ select t_rcr.check(t_rcr.error_of(format('select public.save_read_expense(%L, ''
   'a draft confirmed twice is refused the second time');
 commit;
 
+-- ===== Part in the job's line items, part not (20261113001670_supplier_invoices_count_once.sql) =====
+-- 44 tons the estimate covers ($4,048), logged as materials, and a $150 delivery it never had.
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub": "c0613000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
+select public.save_read_expense(
+  jsonb_build_object('company_id', :'co', 'job_id', :'job', 'vendor', 'Valley Asphalt', 'category', 'Materials', 'description', 'Invoice INV-20977', 'amount', 4198, 'tax_amount', 0,
+    'incurred_on', '2026-11-11', 'receipt_path', :'co' || '/receipts/split.pdf', 'invoice_number', ' INV-20977 ', 'in_line_amount', 4048, 'reimbursable', true,
+    'line_items', '[{"description": "Hot-mix asphalt surface", "quantity": 44, "unit": "ton", "unit_price": 92, "amount": 4048}, {"description": "Delivery", "amount": 150}]'::jsonb),
+  '[{"name": "Top coat asphalt", "unit": "ton", "quantity": 44, "ticket": "INV-20977"}]') as rest \gset
+commit;
+select t_rcr.check((select count(*) = 2 and sum(amount) = 4198 and bool_and(receipt_total = 4198 and invoice_number = 'INV-20977' and reimbursable and receipt_path = :'co' || '/receipts/split.pdf')
+  from public.expenses where company_id = :'co' and incurred_on = '2026-11-11'),
+  'an invoice that''s partly in the job''s line items is two expenses with its receipt, which come to its amount');
+select t_rcr.check((select amount = 4048 and in_line_costs and description = 'Invoice INV-20977 · materials logged on the job' and jsonb_array_length(line_items) = 2
+  from public.expenses where company_id = :'co' and incurred_on = '2026-11-11' and id <> :'rest'),
+  'the part logged against the estimate is marked as already in the line items, so it isn''t counted again');
+select t_rcr.check((select amount = 150 and not in_line_costs and description = 'Invoice INV-20977 · the rest of the invoice' from public.expenses where id = :'rest'),
+  'the rest, the delivery, counts as an expense');
+select t_rcr.check((select count(*) = 1 from public.job_materials where job_id = :'job' and ticket = 'INV-20977'), 'and its materials are logged once');
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub": "c0613000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
+-- All of it, or none of it, is one expense, as before.
+select public.save_read_expense(jsonb_build_object('company_id', :'co', 'job_id', :'job', 'amount', 300, 'incurred_on', '2026-11-12', 'in_line_amount', 300)) as whole \gset
+select public.save_read_expense(jsonb_build_object('company_id', :'co', 'job_id', :'job', 'amount', 80, 'incurred_on', '2026-11-12', 'in_line_amount', 0, 'in_line_costs', true)) as none \gset
+select public.save_read_expense(jsonb_build_object('company_id', :'co', 'job_id', :'job', 'amount', 45, 'incurred_on', '2026-11-12', 'in_line_costs', true)) as older \gset
+select t_rcr.check((select in_line_costs and receipt_total is null from public.expenses where id = :'whole') and (select not in_line_costs from public.expenses where id = :'none')
+  and (select count(*) = 3 from public.expenses where company_id = :'co' and incurred_on = '2026-11-12'),
+  'all of it in the line items, or none of it, is one expense: marked, or not');
+select t_rcr.check((select in_line_costs from public.expenses where id = :'older'), 'and an app from before this, which sends only the tick, saves as it did');
+select t_rcr.check(t_rcr.error_of(format('select public.save_read_expense(%L)', jsonb_build_object('company_id', :'co', 'job_id', :'job', 'amount', 100, 'in_line_amount', 100.01))) like '22023:%between nothing and the whole amount%'
+  and t_rcr.error_of(format('select public.save_read_expense(%L)', jsonb_build_object('company_id', :'co', 'job_id', :'job', 'amount', 100, 'in_line_amount', -1))) like '22023:%between nothing and the whole amount%'
+  and t_rcr.error_of(format('select public.save_read_expense(%L)', jsonb_build_object('company_id', :'co', 'amount', 100, 'in_line_amount', 40))) like '22023:%Pick the job%',
+  'what''s in the line items is never more than the expense, less than nothing, or without a job');
+commit;
+
 -- ===== Discarded ===============================================================================
 begin;
 set local role authenticated;

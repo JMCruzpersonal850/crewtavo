@@ -4,7 +4,10 @@
  * With the company's reading switch on (Settings → Company), a photo or PDF picked in Add expense is
  * read (receiptReading.ts) and fills in the form, marked as read, for the person to check and save.
  * A supplier's invoice also brings its lines, which the office can log as the job's materials used
- * in the same save. Several at once go in as drafts to confirm (ReceiptDrafts).
+ * in the same save: what's logged against the job's estimate counts through its line items and the
+ * rest as an expense, once each (expenseMaterials.ts has the rule). A receipt that looks to be in
+ * already is asked about before it's saved again. Several at once go in as drafts to confirm
+ * (ReceiptDrafts).
  */
 import { TRASH_DAYS } from "@crewtavo/core/drive";
 import { EXPENSE_CATEGORIES as CATEGORIES, lineAmount, type ReadField, type ReceiptLine } from "@crewtavo/core/receipts";
@@ -12,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
+import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
@@ -22,8 +26,11 @@ import { supabase, unwrap } from "@/lib/api";
 import { signedUrls, uploadFile } from "@/lib/files";
 import { formatDate, formatMoneyCents, todayIn } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
+import { everyRow } from "@/lib/paging";
 import { can, hasRole, useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
+import { CostingNote, LineAlreadyLogged } from "./expenseChecks";
+import { lookalikes, materialsPlan, sameReceiptQuestion, type KnownExpense, type LoggedBefore } from "./expenseMaterials";
 import { ReceiptDrafts, useReceiptDrafts, type ExpenseDraft } from "./ReceiptDrafts";
 import { readFieldsText, readingOn, readPickedFile, suggestedJobText, type ReadAnswer } from "./receiptReading";
 import { translateError } from "@crewtavo/core/i18n/patterns";
@@ -158,6 +165,23 @@ export function ExpensesCard({ jobId, onChanged, startAdding = false, onAddClose
   );
 }
 
+/**
+ * The expenses that might be the receipt about to be saved: the ones with its invoice number, and
+ * the ones from its vendor on its day. Read as the person saving, so only what they can see.
+ */
+async function knownExpenses(companyId: string, vendor: string | null, date: string, invoiceNumber: string | null): Promise<KnownExpense[]> {
+  const columns = "id, vendor, amount, receipt_total, incurred_on, invoice_number, receipt_path, job:jobs(number)";
+  const like = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
+  const asks = [
+    ...(invoiceNumber ? [supabase().from("expenses").select(columns).eq("company_id", companyId).ilike("invoice_number", like(invoiceNumber)).limit(20)] : []),
+    ...(vendor ? [supabase().from("expenses").select(columns).eq("company_id", companyId).eq("incurred_on", date).ilike("vendor", like(vendor)).limit(50)] : []),
+  ];
+  // The check is a courtesy: if it can't be asked (offline, an older server), the expense saves as it always did.
+  const found = await Promise.all(asks.map(async (ask) => ((await ask).data ?? []) as unknown as KnownExpense[])).catch(() => [] as KnownExpense[][]);
+  const byId = new Map(found.flat().map((e) => [e.id, e]));
+  return [...byId.values()];
+}
+
 /** What the form starts as: the expense being edited, or nothing yet. */
 const formOf = (expense: Expense | null, today: string) => ({
   vendor: expense?.vendor ?? "",
@@ -203,6 +227,8 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
   const onJobId = jobId ?? draft?.job_id ?? pickedJob?.id ?? null;
   const [choices, setChoices] = useState<number[]>([]);
   const [logMaterials, setLogMaterials] = useState(false);
+  // Lines to log although their material already has tickets on the job ("Log it too").
+  const [again, setAgain] = useState<boolean[]>([]);
 
   const set = <K extends FormKey>(k: K, v: Form[K]) => {
     typed.current.add(k);
@@ -258,24 +284,25 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
   // What the lines were matched against is the job read for: picking another job drops it.
   const readFor = jobId ?? draft?.job_id ?? answer?.job?.id ?? null;
   const candidates = answer && readFor && readFor === onJobId ? answer.candidates : [];
-  const toLog = lines.flatMap((l, i) => {
-    const c = candidates[choices[i] ?? -1];
-    return c && l.quantity !== null ? [{ service_id: c.service_id, name: c.name, unit: c.unit, quantity: l.quantity, ticket: answer?.reading.invoice_number ?? null, estimated: c.estimated }] : [];
-  });
-  // Logged against the job's own estimate, a supplier invoice's materials count there: it isn't counted again.
-  useEffect(() => {
-    if (logMaterials && toLog.length && toLog.length === lines.length && toLog.every((m) => m.estimated) && !typed.current.has("in_line_costs")) setF((prev) => ({ ...prev, in_line_costs: true }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logMaterials, toLog.length]);
 
   const amount = Number(f.amount);
   const tax = f.tax.trim() ? Number(f.tax) : null;
   // For the office with job costs, on a job: the crew adding a receipt from a visit isn't asked.
   const onJob = (onJobId !== null || Boolean(expense?.in_line_costs)) && seesCosts;
+  // What the job already has logged (the crew's tickets): a material that's there isn't logged twice.
+  const loggedBefore = useQuery({
+    queryKey: ["job", onJobId, "materials", "logged-before"],
+    enabled: onJob && onJobId !== null && lines.length > 0 && candidates.length > 0,
+    queryFn: async () => (await everyRow(() => supabase().from("job_materials").select("id, service_id, unit, quantity").eq("job_id", onJobId!))) as unknown as LoggedBefore[],
+  });
+  // What's logged and how the expense counts, worked out from the form as it stands: never a box
+  // ticked along the way and left behind (expenseMaterials.ts).
+  const plan = materialsPlan({ lines, candidates, choices, again, before: loggedBefore.data, logMaterials: logMaterials && onJob, amount, ticked: f.in_line_costs, ticket: answer?.reading.invoice_number ?? null });
+  const toLog = materialsPlan({ lines, candidates, choices, again, before: loggedBefore.data, logMaterials: true, amount, ticked: false, ticket: answer?.reading.invoice_number ?? null }).toLog;
   // A field filled in from the receipt says so until the person changes it.
   const read = (k: Exclude<ReadField, "lines">) => (answer?.fields.includes(k) && !typed.current.has(k === "date" ? "incurred_on" : k) ? t(READ_HINT) : undefined);
   const save = useMutation({
-    meta: { inline: true, success: expense ? t("Expense saved") : draft ? t("Receipt saved as an expense") : t("Expense added") },
+    meta: { inline: true, success: (saved: boolean) => (!saved ? null : expense ? t("Expense saved") : draft ? t("Receipt saved as an expense") : t("Expense added")) },
     mutationFn: async () => {
       if (!(amount > 0)) throw new Error(t("Enter an amount greater than zero."));
       if (tax !== null && !(tax >= 0 && tax <= amount)) throw new Error(t("Enter the tax as 0 or more, and no more than the amount."));
@@ -289,15 +316,30 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
       };
       const lineItems = lines.length ? lines : null;
       const job = jobId ?? draft?.job_id ?? (jobNumber ? jobLookup.data?.id : pickedJob?.id) ?? null;
-      const materials = logMaterials && onJob ? toLog.map(({ estimated: _, ...m }) => m) : [];
+      const materials = logMaterials && onJob ? plan.toLog : [];
+      const invoiceNumber = answer?.reading.invoice_number?.trim().slice(0, 60) || null;
+      // The same receipt twice: asked about before it's saved again (among the expenses this person can see).
+      if (!expense) {
+        const question = sameReceiptQuestion(lookalikes({ vendor: row.vendor, total: row.amount, date: row.incurred_on, invoice_number: invoiceNumber }, await knownExpenses(session.company.id, row.vendor, row.incurred_on, invoiceNumber)));
+        if (question && !(await confirm(question))) return false;
+      }
+      // Part of it in the job's line items (what's logged against the estimate) and part not: saved as two, so each counts once.
+      const inLines = logMaterials && onJob && !f.in_line_costs ? plan.inLineAmount : null;
       // An expense with no job (Finance → Profit lists them) can be put on one here: its Job # is asked. One opened from its job stays there.
       if (expense) unwrap(await supabase().from("expenses").update(jobId || !job ? row : { ...row, job_id: job }).eq("id", expense.id));
-      else if (draft || materials.length) {
+      else if (draft || materials.length || inLines) {
         // The expense, the materials and the draft's removal at once (save_read_expense).
-        unwrap(await supabase().rpc("save_read_expense", { p_expense: { ...row, line_items: lineItems, company_id: session.company.id, job_id: job } as never, p_materials: materials as never, p_draft: draft?.id }));
-      } else unwrap(await supabase().from("expenses").insert({ ...row, line_items: lineItems as never, company_id: session.company.id, job_id: job }));
+        unwrap(await supabase().rpc("save_read_expense", {
+          p_expense: { ...row, line_items: lineItems, company_id: session.company.id, job_id: job, invoice_number: invoiceNumber, ...(inLines === null ? {} : { in_line_amount: inLines }) } as never,
+          p_materials: materials as never,
+          p_draft: draft?.id,
+        }));
+      } else unwrap(await supabase().from("expenses").insert({ ...row, line_items: lineItems as never, company_id: session.company.id, job_id: job, invoice_number: invoiceNumber }));
+      return true;
     },
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
+      // Went back from "this looks like a receipt that's already in": the form stays as it was.
+      if (!saved) return;
       await onSaved();
       onClose();
     },
@@ -362,6 +404,7 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
                         {candidates.map((c, n) => <option key={n} value={n}>{c.name} ({c.unit}){c.estimated ? "" : t(" · price list")}</option>)}
                       </select>
                     )}
+                    {onJob && logMaterials && <LineAlreadyLogged plan={plan.lines[i]} again={Boolean(again[i])} onAgain={(on) => setAgain(lines.map((_, n) => (n === i ? on : Boolean(again[n]))))} />}
                   </div>
                 );
               })}
@@ -393,6 +436,7 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
             </span>
           </label>
         )}
+        {onJob && lines.length > 0 && <CostingNote plan={plan} logMaterials={logMaterials} ticked={f.in_line_costs} />}
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
