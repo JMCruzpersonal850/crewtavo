@@ -145,6 +145,30 @@ export function redo(h: MarkupHistory): MarkupHistory {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Leaving the editor
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * What Cancel (or Escape) asks before the editor closes. A photo being added isn't anywhere yet,
+ * so it's never dropped without a question: "Add without drawing" keeps it. A stored photo only
+ * has the new drawing to lose, and nothing to ask when nothing was drawn.
+ */
+export function leaveQuestion(editing: { adding: boolean; drawn: boolean }): "add-without-drawing" | "throw-away-drawing" | null {
+  if (editing.adding) return "add-without-drawing";
+  return editing.drawn ? "throw-away-drawing" : null;
+}
+
+/**
+ * What an answer does: the question's own button (true), its other button (false), or closed
+ * without either (null), which goes back to the photo.
+ */
+export function leaveAnswer(question: ReturnType<typeof leaveQuestion>, answer: boolean | null): "close" | "add-as-taken" | "stay" {
+  if (question === null) return "close";
+  if (question === "add-without-drawing") return answer === null ? "stay" : answer ? "add-as-taken" : "close";
+  return answer ? "close" : "stay";
+}
+
+// ---------------------------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------------------------
 

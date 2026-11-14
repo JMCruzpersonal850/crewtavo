@@ -206,6 +206,29 @@ describe("undo and redo", () => {
   });
 });
 
+describe("leaving the editor", () => {
+  it("never drops a photo that's being added without asking, drawn on or not", () => {
+    for (const drawn of [false, true]) {
+      const question = leaveQuestion({ adding: true, drawn });
+      expect(question).toBe("add-without-drawing");
+      expect(leaveAnswer(question, true)).toBe("add-as-taken");
+      expect(leaveAnswer(question, false)).toBe("close");
+      // Closed without an answer (Escape): back to the photo, nothing lost.
+      expect(leaveAnswer(question, null)).toBe("stay");
+    }
+  });
+
+  it("asks about the drawing on a stored photo, and nothing when nothing was drawn", () => {
+    expect(leaveQuestion({ adding: false, drawn: false })).toBeNull();
+    expect(leaveAnswer(null, null)).toBe("close");
+    const question = leaveQuestion({ adding: false, drawn: true });
+    expect(question).toBe("throw-away-drawing");
+    expect(leaveAnswer(question, true)).toBe("close");
+    expect(leaveAnswer(question, false)).toBe("stay");
+    expect(leaveAnswer(question, null)).toBe("stay");
+  });
+});
+
 describe("drawing", () => {
   const picture = { width: 1000, height: 750 };
 

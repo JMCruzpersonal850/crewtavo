@@ -22,6 +22,8 @@ import {
   exportSize,
   extendStroke,
   fitInside,
+  leaveAnswer,
+  leaveQuestion,
   MARKUP_COLORS,
   MARKUP_TOOLS,
   redo,
@@ -36,7 +38,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { announceTopLayer } from "@/lib/motion";
 import { errorMessage } from "@/lib/errors";
-import { confirm } from "./ui/Confirm";
+import { choose, confirm } from "./ui/Confirm";
 import { Button } from "./ui/Button";
 import { Icon, type IconName } from "./ui/Icon";
 import { t } from "@/lib/i18n";
@@ -61,6 +63,10 @@ async function openPicture(blob: Blob): Promise<Picture> {
     }
   }
 }
+/** Hands a decoded picture's memory back (a phone's photo is tens of megabytes opened up). */
+const closePicture = (p: Picture) => {
+  if ("close" in p) p.close();
+};
 const naturalSize = (p: Picture) => ("naturalWidth" in p ? { width: p.naturalWidth, height: p.naturalHeight } : { width: p.width, height: p.height });
 
 /** The photo with its marks, as a JPEG at the size it's saved at. */
@@ -128,7 +134,8 @@ export function PhotoEditor({
       try {
         const blob = typeof source === "function" ? await source() : source;
         const opened = await openPicture(blob);
-        if (!gone) setPicture(opened);
+        if (gone) closePicture(opened);
+        else setPicture(opened);
       } catch (error) {
         if (!gone) setFailed(error instanceof Error && /couldn't be opened/.test(error.message) ? t(error.message) : t("This photo can't be drawn on in this browser."));
       }
@@ -163,10 +170,21 @@ export function PhotoEditor({
   }, []);
   const shown = size && room ? fitInside(size, room) : null;
 
+  // Closed: the opened picture and the canvas give their memory back, rather than waiting for the browser to notice.
+  const drawnOn = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!picture) return;
+    return () => {
+      closePicture(picture);
+      if (drawnOn.current) drawnOn.current.width = drawnOn.current.height = 0;
+    };
+  }, [picture]);
+
   // The picture and every mark, the one being drawn last.
   useEffect(() => {
     const el = canvas.current;
     if (!el || !picture || !size) return;
+    drawnOn.current = el;
     const ctx = el.getContext("2d")!;
     ctx.clearRect(0, 0, size.width, size.height);
     ctx.drawImage(picture, 0, 0, size.width, size.height);
@@ -213,8 +231,30 @@ export function PhotoEditor({
 
   const leave = async () => {
     if (busy) return;
-    if (history.marks.length && !(await confirm({ title: t("Throw away the drawing?"), body: t("What you drew on this photo won't be saved."), confirmLabel: t("Throw it away"), cancelLabel: t("Keep drawing"), danger: true }))) return;
-    onCancel();
+    // A photo being added isn't anywhere yet: leaving asks whether it goes on as it was taken, so it's never lost quietly.
+    const question = leaveQuestion({ adding: keepsBlank, drawn: history.marks.length > 0 });
+    const answer =
+      question === "add-without-drawing"
+        ? await choose({
+            title: t("Add the photo without drawing?"),
+            body: history.marks.length ? t("What you drew won't be saved. The photo can still be added as it was taken.") : t("The photo hasn't been added yet."),
+            confirmLabel: t("Add without drawing"),
+            cancelLabel: t("Don't add it"),
+          })
+        : question === "throw-away-drawing"
+          ? await confirm({ title: t("Throw away the drawing?"), body: t("What you drew on this photo won't be saved."), confirmLabel: t("Throw it away"), cancelLabel: t("Keep drawing"), danger: true })
+          : null;
+    const next = leaveAnswer(question, answer);
+    if (next === "close") return onCancel();
+    if (next === "stay") return;
+    setBusy("save");
+    setProblem(null);
+    try {
+      await onSave(null);
+    } catch (error) {
+      setProblem(errorMessage(error));
+      setBusy(null);
+    }
   };
   const save = async () => {
     if (!picture || !size || busy) return;
@@ -255,7 +295,7 @@ export function PhotoEditor({
       className="photo-editor"
       aria-label={title ?? t("Draw on the photo")}
       onKeyDown={keys}
-      // Escape asks first when something's drawn.
+      // Escape asks first when something's drawn, or when the photo is still to be added.
       onCancel={(e) => {
         e.preventDefault();
         void leave();
