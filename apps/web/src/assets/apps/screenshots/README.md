@@ -22,3 +22,29 @@ saved as WebP by Chromium.
 The fal.ai ones are the real measuring map and Paving project page, with a demo paving business's
 takeoff of a parking lot in Radford, VA on Virginia's state imagery (VGIN), taken from a local
 instance with Playwright at 1440×900 in both themes and saved as WebP from Chromium's canvas.
+
+The Snow ones are the real Snow page (features/snow) for a made-up snow contractor in Anchorage
+(Northern Lights Snow & Lawn: six made-up customers, crews and past storms), taken from a local
+instance the morning before a real forecast storm, with the US National Weather Service as the
+forecast source and a made-up storm under way that day (four customers' visits at different
+points). Rendered at 1440×900 in light and dark with Playwright, saved as WebP with cwebp.
+
+The Open-Meteo ones are the same instance: the weather popup with Open-Meteo as the forecast source,
+and Settings → Weather rules with the Open-Meteo app added (a stand-in connection, no real key) and
+its paid service chosen. Rendered and saved the same way.
+
+The others taken from that instance (website forms, Careers, Drive, Marketing, Google Business
+Profile, Facebook and Instagram, Paving, Roofing, the five calendar apps, Claude, ChatGPT,
+QuickBooks, Zoho Books, Stripe and Twilio) are the app's real screens for the same made-up
+business, with made-up clients, requests, applicants, files, reviews, posts, projects, visits,
+invoices, payments and texts put into its database, and files drawn or printed locally. Nothing
+outside was connected: each connection is a stand-in row with no key, holding what a real sync
+would have written (reviews, calendar events, Stripe fees and deposits, assistant activity). Three
+things to know when retaking them:
+
+- The instance had no email or Twilio keys, so for the Marketing and Twilio ones the browser
+  answered /api/config as a server with email and texting set up would (and /api/social as one
+  with a public address); the screens are otherwise as served.
+- Crewtavo has no screen that shows what went to QuickBooks or Zoho Books, so theirs are the
+  invoices list and one paid invoice: what the app sends, not the sending.
+- The Claude and ChatGPT ones are each app's own page, scrolled to the connected assistants.
