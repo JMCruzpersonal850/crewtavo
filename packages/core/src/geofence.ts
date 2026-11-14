@@ -12,8 +12,10 @@
  *   Arriving   Two fixes in a row inside the radius, each sure to within the radius. Dated at the
  *              first of them. A fix that isn't one of those starts the count again.
  *   Leaving    Fixes clearly outside the radius plus a margin (and outside the radius whatever the
- *              phone's error) for a few minutes. Dated at the first fix outside. Fixes in between
- *              neither confirm nor cancel it; a fix back inside cancels it.
+ *              phone's error) for a few minutes, close together in time. Dated at the first fix
+ *              outside of that run. Fixes in between neither confirm nor cancel it; a fix back
+ *              inside cancels it; and after a gap (the phone was locked: they may have come back
+ *              and worked on) the run starts again, so a stop is never dated from an old fix.
  *   Once       Each arrival is acted on once: the next needs leaving first.
  *   Taps win   A tap the person makes on a visit while there (Start, Stop, a timer, Complete) means
  *              they're running their own clock: the geofence only asks, for that visit, until they
@@ -95,8 +97,14 @@ export interface SiteTrack {
   /** Good fixes inside in a row, and when the first of them was taken. */
   inRow: number;
   firstIn: number | null;
-  /** While inside: when the first fix clearly outside was taken. */
+  /** While inside: when the first fix clearly outside, of the run of them going on now, was taken. */
   outSince: number | null;
+  /** The latest fix clearly outside in that run. One much later starts the run again. (Not in what a phone kept from before this.) */
+  outLast?: number | null;
+  /** While inside: when they arrived, as the arrival was dated. */
+  arrivedAt?: number | null;
+  /** Arrived, but not put to the person yet: another visit's question at the same spot came first. */
+  held?: boolean;
   /** The person tapped on this visit while there (or before the phone knew where it was). */
   tapped: boolean;
 }
@@ -157,22 +165,36 @@ export function trackFix(state: GeofenceState, fix: Fix, sites: readonly Geofenc
         t.inRow += 1;
       }
       t.outSince = null;
+      t.outLast = null;
       if (t.where !== "inside" && t.inRow >= 2) {
         t.where = "inside";
-        events.push({ kind: "arrived", visitId: site.visitId, at: t.firstIn ?? fix.at, tapped: t.tapped });
+        t.arrivedAt = t.firstIn ?? fix.at;
+        t.held = false;
+        events.push({ kind: "arrived", visitId: site.visitId, at: t.arrivedAt, tapped: t.tapped });
       }
     } else {
       t.inRow = 0;
       t.firstIn = null;
       if (outside) {
         if (t.where === "inside") {
-          if (t.outSince == null) t.outSince = fix.at;
-          else if (fix.at - t.outSince >= LEAVE_AFTER_MS) {
+          const lastOut = t.outLast ?? t.outSince;
+          // The first fix outside, or the first in a while: the phone was locked in between, and
+          // they may have come back and worked on. This one starts the run, so a departure is
+          // never dated from the old fix (hours of work would come off their clock).
+          if (t.outSince == null || lastOut == null || fix.at - lastOut > IN_A_ROW_MS) {
+            t.outSince = fix.at;
+            t.outLast = fix.at;
+          } else if (fix.at - t.outSince >= LEAVE_AFTER_MS) {
             events.push({ kind: "left", visitId: site.visitId, at: t.outSince, tapped: t.tapped });
             t.where = "outside";
             t.outSince = null;
+            t.outLast = null;
+            t.arrivedAt = null;
+            t.held = false;
             // Gone: next time they come, the geofence acts again.
             t.tapped = false;
+          } else {
+            t.outLast = fix.at;
           }
         } else {
           t.where = "outside";

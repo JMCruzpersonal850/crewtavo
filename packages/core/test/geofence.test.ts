@@ -141,6 +141,51 @@ describe("leaving", () => {
     expect(run([fix(600, 10), fix(250, 11), fix(600, 14)], [OAK], 200, there()).events).toEqual([{ kind: "left", visitId: "oak", at: T0 + 10 * min, tapped: false }]);
   });
 
+  it("is never dated from an old fix outside: a run to the parts store at noon doesn't end the day's work at noon", () => {
+    // 12:00 one fix on the way out for parts, and the phone is locked. Back at 12:20, working until
+    // 15:40 with the phone in a pocket. Crewtavo is opened again after leaving, at 15:45.
+    const noon = 120;
+    const opened = noon + 225;
+    const lunch = run([fix(900, noon)], [OAK], 200, there());
+    expect(lunch.events).toEqual([]);
+    const first = run([fix(1200, opened)], [OAK], 200, lunch.state);
+    // The first fix after hours away starts the run again: nothing yet, and nothing dated at noon.
+    expect(first.events).toEqual([]);
+    expect(first.state.sites.oak!.outSince).toBe(T0 + opened * min);
+    const sure = run([fix(1500, opened + 0.5), fix(2500, opened + LEAVE_AFTER_MS / min)], [OAK], 200, first.state);
+    expect(sure.events).toEqual([{ kind: "left", visitId: "oak", at: T0 + opened * min, tapped: false }]);
+  });
+
+  it("isn't one bad fix followed, much later, by another, with only rough fixes between", () => {
+    // Indoors: a fix that jumps 600 m out, then fixes too rough to say either way, then another jump.
+    const rough = Array.from({ length: 8 }, (_, i) => fix(30, 12 + i * 4, 400));
+    const { events, state } = run([fix(600, 10), ...rough, fix(600, 45)], [OAK], 200, there());
+    expect(events).toEqual([]);
+    expect(state.sites.oak!.where).toBe("inside");
+    // The second jump is only the start of a new run, which a good fix inside then cancels.
+    expect(state.sites.oak!.outSince).toBe(T0 + 45 * min);
+    expect(run([fix(20, 46), fix(600, 49)], [OAK], 200, state).events).toEqual([]);
+  });
+
+  it("still counts fixes outside a few minutes apart as one run", () => {
+    const { events } = run([fix(600, 10), fix(700, 10 + IN_A_ROW_MS / min - 1)], [OAK], 200, there());
+    expect(events).toEqual([{ kind: "left", visitId: "oak", at: T0 + 10 * min, tapped: false }]);
+    // Just past it: a new run, confirmed only by a fix a few minutes into that one.
+    const late = run([fix(600, 10), fix(700, 10 + IN_A_ROW_MS / min + 1)], [OAK], 200, there());
+    expect(late.events).toEqual([]);
+    expect(run([fix(700, 10 + IN_A_ROW_MS / min + 1 + LEAVE_AFTER_MS / min)], [OAK], 200, late.state).events).toEqual([
+      { kind: "left", visitId: "oak", at: T0 + (10 + IN_A_ROW_MS / min + 1) * min, tapped: false },
+    ]);
+  });
+
+  it("doesn't trust an old first fix outside kept by a phone from before this", () => {
+    // What an older app saved: when the run began, and nothing about its latest fix.
+    const kept: GeofenceState = { last: T0 + 120 * min, sites: { oak: { where: "inside", inRow: 0, firstIn: null, outSince: T0 + 120 * min, tapped: false } } };
+    const { events, state } = run([fix(900, 345)], [OAK], 200, kept);
+    expect(events).toEqual([]);
+    expect(state.sites.oak!.outSince).toBe(T0 + 345 * min);
+  });
+
   it("only follows an arrival: never having been there isn't leaving", () => {
     expect(run([fix(2000, 0), fix(3000, 10), fix(4000, 20)]).events).toEqual([]);
   });
