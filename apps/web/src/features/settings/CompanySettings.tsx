@@ -1,3 +1,4 @@
+import { TIPS_LAW_NOTE } from "@crewtavo/core/autopay";
 import { LATE_FEE_LAW_NOTE, lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
 import { BREAK_PAY_HINTS, BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
 import { CLOCK_MODE_HINTS, CLOCK_MODE_LABELS, clockMode, type ClockMode } from "@crewtavo/core/clock";
@@ -248,7 +249,7 @@ export function CompanySettings() {
           Let clients add a tip when they pay online
         </label>
         {/* The one switch for tips (settings.hub_tips): the Client Hub, the receipt and the server all follow it. */}
-        <span className="muted small">Also offered on the receipt after an automatic charge. Off: no tip choice anywhere, and no tip is charged.</span>
+        <span className="muted small">Also offered on the receipt after an automatic charge. Off: no tip choice anywhere, and no tip is charged. {TIPS_LAW_NOTE}</span>
       </div>
       <div className="card card-pad stack">
         <strong>Jobs</strong>

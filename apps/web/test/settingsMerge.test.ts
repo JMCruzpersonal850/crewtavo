@@ -51,6 +51,10 @@ describe("saving company settings", () => {
     expect(code).not.toMatch(/follows federal rules/i);
   });
 
+  it("says by the tips switch that tips belong to the crew", () => {
+    expect(source("CompanySettings.tsx")).toContain("Off: no tip choice anywhere, and no tip is charged. {TIPS_LAW_NOTE}");
+  });
+
   it("says under each pay period that state daily overtime isn't worked out", () => {
     const pay = readFileSync(fileURLToPath(new URL("../src/features/timesheets/PayPeriods.tsx", import.meta.url)), "utf8");
     expect(pay).toContain("{STATE_OVERTIME_NOTE}");

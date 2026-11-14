@@ -144,6 +144,14 @@ export function autopaySettings(settings: unknown, trade?: string | null): Autop
  */
 export const tipsAllowed = (hubTips: unknown, imported: boolean) => hubTips === true && !imported;
 
+/**
+ * Said by the tips switch. A tip is paid to the business's Stripe account with the invoice and
+ * shows only as a total on Finance, so passing it on is the business's to do: "An employer may not
+ * keep tips received by its employees for any purposes" (29 U.S.C. 203(m)(2)(B)).
+ */
+export const TIPS_LAW_NOTE =
+  "Tips belong to the crew: under federal law an employer may not keep tips its employees receive. They reach your Stripe account with the invoice's payment and show as a total on Finance, so pay them out to the people who did the work.";
+
 // ---------------------------------------------------------------------------------------------
 // Saved cards and bank accounts
 // ---------------------------------------------------------------------------------------------

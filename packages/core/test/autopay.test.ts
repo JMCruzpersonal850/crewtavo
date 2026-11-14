@@ -166,6 +166,15 @@ describe("a saved card's name", () => {
   });
 });
 
+describe("what the tips switch says", () => {
+  it("says tips belong to the crew under federal law, and where the money lands", async () => {
+    const { TIPS_LAW_NOTE } = await import("../src/autopay");
+    // 29 U.S.C. 203(m)(2)(B): "An employer may not keep tips received by its employees for any purposes".
+    expect(TIPS_LAW_NOTE).toContain("Tips belong to the crew: under federal law an employer may not keep tips its employees receive.");
+    expect(TIPS_LAW_NOTE).toContain("pay them out to the people who did the work");
+  });
+});
+
 describe("what a bank account agrees to about notice", () => {
   const RIGHT = "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made.";
 

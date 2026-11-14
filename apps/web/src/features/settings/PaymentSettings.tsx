@@ -7,7 +7,7 @@
  * Tips stay one switch, in Settings → Company; this page only says where it stands. Cards brought
  * in from Stripe are listed under it (StripeCards).
  */
-import { AUTOPAY_BANK_NOTE, AUTOPAY_NO_LIMIT_NOTE, AUTOPAY_TERMS_MAX, autopayBankText, autopayCoversMonthly, autopayTimingText, starterAutopayTerms, type AutopaySettings, type AutopayTiming } from "@crewtavo/core/autopay";
+import { AUTOPAY_BANK_NOTE, AUTOPAY_NO_LIMIT_NOTE, AUTOPAY_TERMS_MAX, autopayBankText, autopayCoversMonthly, autopayTimingText, starterAutopayTerms, TIPS_LAW_NOTE, type AutopaySettings, type AutopayTiming } from "@crewtavo/core/autopay";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -258,7 +258,7 @@ export function PaymentSettings() {
         </div>
         <span className="muted small">
           {s.tips
-            ? "Clients choose a tip before they pay, and from the receipt after an automatic charge."
+            ? `Clients choose a tip before they pay, and from the receipt after an automatic charge. ${TIPS_LAW_NOTE}`
             : "Clients aren't offered a tip when they pay or on the receipt, and no tip is charged to a saved card."}
         </span>
         <Link className="small" to="/settings?tab=company" style={{ justifySelf: "start" }}>Change it in Settings → Company</Link>
