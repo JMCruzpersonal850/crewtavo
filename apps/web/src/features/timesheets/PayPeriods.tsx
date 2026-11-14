@@ -21,6 +21,7 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { addDaysIso, formatMoney, formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { owedFor, PAY_COLUMNS, payRows, pieceJobs, waitingFor, type PayPerson } from "./payCsv";
+import { inEnglish } from "@/lib/i18n";
 
 type PersonPay = PayPerson;
 interface Summary { from: string; to: string; period_id: string | null; status: string; people: PersonPay[]; hours: number; hourly_amount: number; piece_amount: number; amount: number; overtime_hours: number; overtime_note: string | null; unapproved_hours: number; running_clocks: number }
@@ -76,7 +77,7 @@ export function PayPeriods() {
   // Marking paid is refused while anyone it marks has time not approved (piece pay alone included).
   const waiting = waitingFor(unpaid);
   const piece = (d?.piece_amount ?? 0) > 0;
-  const exportCsv = () => d && downloadCsv(`pay-${d.from}-to-${d.to}.csv`, toCsv(payRows(d.people, methodLabel), [...PAY_COLUMNS]));
+  const exportCsv = () => d && downloadCsv(`pay-${d.from}-to-${d.to}.csv`, inEnglish(() => toCsv(payRows(d.people, methodLabel), [...PAY_COLUMNS])));
 
   return (
     <div className="stack">

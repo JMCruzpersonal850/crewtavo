@@ -29,7 +29,7 @@ import { entrySpan } from "./entrySpan";
 import { PayPeriods } from "./PayPeriods";
 import { loadWeek, type Entry, type TeamMember, type WeekData } from "./weekData";
 import { memberName } from "../subs/memberName";
-import { intlLocale, t } from "@/lib/i18n";
+import { inEnglish, intlLocale, t } from "@/lib/i18n";
 
 const hours = (start: string, end: string | null) => ((end ? Date.parse(end) : Date.now()) - Date.parse(start)) / 3_600_000;
 const mondayOf = (date: string) => addDaysIso(date, -((new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7));
@@ -117,10 +117,11 @@ export function TimesheetsPage() {
   const placeCell = (place: StoredPlace | null | undefined, entry: EntryPlaces | undefined) =>
     place ? `${describePlace(place, entry?.site ?? null).text}${place.lat != null ? ` (${place.lat}, ${place.lng})` : ""}` : "";
 
+  // A file for payroll: its dates, times and numbers are written the English way whatever language the screen is in.
   const exportCsv = () =>
     downloadCsv(
       `timesheets-${week}.csv`,
-      toCsv(
+      inEnglish(() => toCsv(
         rows.map((r) => ({
           person: name(r.user_id), date: dayOf(r.started_at), start: fmtTime(r.started_at), end: r.ended_at ? fmtTime(r.ended_at) : "",
           hours: r.ended_at ? hours(r.started_at, r.ended_at).toFixed(2) : "", paid_hours: r.ended_at ? paidHours(r).toFixed(2) : "", category: CATEGORY_LABELS[r.category], work: r.visit?.title ?? r.job?.title ?? "", approved: r.approved_at ? "yes" : "no",
@@ -131,7 +132,7 @@ export function TimesheetsPage() {
           { key: "person", label: t("Person") }, { key: "date", label: t("Date") }, { key: "start", label: t("Start") }, { key: "end", label: t("End") }, { key: "hours", label: t("Hours") }, { key: "paid_hours", label: t("Paid hours") }, { key: "category", label: t("Type") }, { key: "work", label: t("Visit or job") }, { key: "approved", label: t("Approved") }, { key: "by_phone", label: t("At the property") },
           ...(seesPlaces ? [{ key: "clock_in" as const, label: t("Clock-in location") }, { key: "clock_out" as const, label: t("Clock-out location") }] : []),
         ],
-      ),
+      )),
     );
 
   const tabs = seesPay && (
