@@ -143,6 +143,8 @@ function StormRow({ storm: e }: { storm: Storm }) {
       <td>
         <span className="tabular">{finished.length ? formatMoney(billed(e)) : <span className="muted">—</span>}</span>
         {finished.length > 0 && <div style={{ marginTop: 4 }}>{finished.every((v) => v.invoice_id) ? <StatusPill label="Invoiced" tone="good" /> : <StatusPill label="To invoice" tone="warning" />}</div>}
+        {/* The estimate runs low where snow is light and dry, and it sets the price: said before the invoice, not after. */}
+        {e.actual_by == null && finished.some((v) => v.price != null && !v.invoice_id) && <div className="small" style={{ color: "var(--warning)" }}>Priced on an estimate of what fell. Enter what you measured first.</div>}
       </td>
     </tr>
   );
