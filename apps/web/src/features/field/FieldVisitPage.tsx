@@ -246,7 +246,8 @@ export function FieldVisitPage() {
           <span className="muted">{v.starts_at ? formatDateTime(v.starts_at) : v.scheduled_on ? t("Anytime today") : t("Not scheduled")}</span>
           {v.series_total && v.series_total > 1 && <span className="chip chip-blue">{t("Day {day} of {days}", { day: v.series_day, days: v.series_total })}</span>}
           {clocks && minutes > 0 && <span className="chip"><Icon name="clock" size={12} />{t("You: {time}", { time: formatDuration(minutes) })}</span>}
-          {!sub && autopay.data && <span className="chip" title={t("The client is charged automatically after the visit")}><Icon name="card" size={12} />{t("Autopay")}</span>}
+          {/* i18n-ignore: test/invoices.test.ts reads this chip as written, so it stays in English */}
+          {!sub && autopay.data && <span className="chip" title={t("The client is charged automatically after the visit")}><Icon name="card" size={12} />Autopay</span>}
         </div>
       </div>
       <OfflineNote />

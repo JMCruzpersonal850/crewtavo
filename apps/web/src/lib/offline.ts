@@ -303,10 +303,10 @@ export const WAITING_CACHE = "crewtavo-waiting";
 
 type SyncRegistration = ServiceWorkerRegistration & { sync?: { register: (tag: string) => Promise<void> } };
 
-/** Everyone's waiting field actions on this phone, as the service worker counts them. */
-/** Where the worker finds its notification's words, apart from the counts (public/sw.js WORDS). */
+/** Where the worker finds its notification's words, apart from the counts (public/sw.js waitingWords). */
 const WORDS_CACHE = "crewtavo-words";
 
+/** Everyone's waiting field actions on this phone, as the service worker counts them. */
 async function waitingOnPhone(cache: Cache) {
   let total = 0;
   for (const entry of await cache.keys()) total += Number(await (await cache.match(entry))?.text()) || 0;

@@ -45,13 +45,14 @@ const reviewNotices = (session: Session) => reviewNoticesFor(session, marketingO
  */
 function topicsFor(session: Session) {
   if (isSub(session)) {
-    return NOTIFICATION_TOPICS.filter((x) => x.key === "schedule" || x.key === "jobs" || x.key === "subs" || (x.key === "time" && keepsTime(session))).map((x) =>
-      x.key === "subs" ? { ...x, label: msg("My paperwork"), hint: msg("When your insurance is about to run out") } : x,
+    // (Each topic's words are shown with t() in the table: here they're only picked.)
+    return NOTIFICATION_TOPICS.filter((t) => t.key === "schedule" || t.key === "jobs" || t.key === "subs" || (t.key === "time" && keepsTime(session))).map((t) =>
+      t.key === "subs" ? { ...t, label: msg("My paperwork"), hint: msg("When your insurance is about to run out") } : t,
     );
   }
   const reviews = reviewNotices(session);
-  return NOTIFICATION_TOPICS.filter((x) => x.key !== "jobs" && (x.key !== "chat" || chatOn(session)) && (x.key !== "hosting" || hostingWarnings(session)) && (x.key !== "subs" || managesSubs(session)) && (x.key !== "reviews" || reviews) && (x.key !== "social" || reviews)).map((x) =>
-    x.key === "hosting" && session.config.platform !== "railway" ? { ...x, ...OFF_RAILWAY_HOSTING } : x.key === "reviews" && reviews === "access" ? { ...x, hint: REVIEW_ACCESS_HINT } : x.key === "social" && reviews === "access" ? { ...x, hint: SOCIAL_ACCESS_HINT } : x,
+  return NOTIFICATION_TOPICS.filter((t) => t.key !== "jobs" && (t.key !== "chat" || chatOn(session)) && (t.key !== "hosting" || hostingWarnings(session)) && (t.key !== "subs" || managesSubs(session)) && (t.key !== "reviews" || reviews) && (t.key !== "social" || reviews)).map((t) =>
+    t.key === "hosting" && session.config.platform !== "railway" ? { ...t, ...OFF_RAILWAY_HOSTING } : t.key === "reviews" && reviews === "access" ? { ...t, hint: REVIEW_ACCESS_HINT } : t.key === "social" && reviews === "access" ? { ...t, hint: SOCIAL_ACCESS_HINT } : t,
   );
 }
 

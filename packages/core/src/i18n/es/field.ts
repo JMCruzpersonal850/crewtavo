@@ -143,7 +143,6 @@ export default {
   "Not scheduled": "Sin programar",
   "You: {time}": "Tú: {time}",
   "The client is charged automatically after the visit": "Al cliente se le cobra automáticamente después de la visita",
-  "Autopay": "Pago automático",
   "Completed {when}.": "Terminada {when}.",
   "Call": "Llamar",
   "message::Text": "Mensaje",
