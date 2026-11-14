@@ -272,6 +272,10 @@ const NOT_SIGNED_IN_ROUTES = [
   "GET /api/public/o/:token", "GET /api/public/c/:token/:n", "GET /api/calendar/:file",
   // A social post's picture, fetched by Meta and Google (routes/public.ts): a random token each, for 7 days.
   "GET /api/public/social/:file", "HEAD /api/public/social/:file",
+  // A postcard campaign's front, fetched by Lob (routes/postcards.ts): a random token each, once it's sent.
+  "GET /api/public/postcards/:file", "HEAD /api/public/postcards/:file",
+  // A published job showcase and its photos (routes/showcases.ts): by the showcase's random token, only while published.
+  "GET /api/public/showcases/:token", "GET /api/public/showcases/:token/:file", "HEAD /api/public/showcases/:token/:file",
   // The instance's own documents, AI assistants (their own tokens) and website analytics.
   "GET /.well-known/crewtavo-instance", "GET /.well-known/oauth-protected-resource", "GET /.well-known/oauth-protected-resource/mcp",
   "GET /.well-known/oauth-authorization-server", "GET /.well-known/oauth-authorization-server/auth/v1", "GET /.well-known/openid-configuration/auth/v1",
