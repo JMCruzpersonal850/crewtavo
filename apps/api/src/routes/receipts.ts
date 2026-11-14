@@ -11,7 +11,8 @@
  *                                     to check and confirm.
  *
  * Off, or when reading fails or takes too long, the form is filled in by hand as before: the web app
- * treats every refusal here that way. Each read counts as an ask of the AI (countAiAsk).
+ * treats every refusal here that way. Each read counts as an ask of the AI (countAiAsk). A draft
+ * that isn't read because reading is off isn't a failure: it's marked to fill in (status to_fill).
  */
 import { ADMINS, matchLines, OFFICE, readFields, readingProblems, suggestJob, type JobCandidate, type MaterialCandidate, type ReceiptReading } from "@crewtavo/core";
 import { Hono, type Context } from "hono";
@@ -129,7 +130,7 @@ receipts.post("/receipts/drafts/:id/read", requireUser, requireCompany(OFFICE, "
   const { data: draft, error } = await c.var.db.from("expense_drafts").select("id, job_id, receipt_path").eq("id", id).eq("company_id", c.var.companyId).maybeSingle();
   if (error) throw dbError(error);
   if (!draft) throw new HttpError(404, "This draft is gone: someone may have saved or discarded it already.");
-  const save = async (patch: { status: "read" | "failed"; read?: unknown; error?: string | null }) => {
+  const save = async (patch: { status: "read" | "failed" | "to_fill"; read?: unknown; error?: string | null }) => {
     const { data, error: saveError } = await c.var.db
       .from("expense_drafts")
       .update({ status: patch.status, read: patch.read === undefined ? null : asJson(patch.read), error: patch.error ?? null })
@@ -139,7 +140,8 @@ receipts.post("/receipts/drafts/:id/read", requireUser, requireCompany(OFFICE, "
     if (saveError) throw dbError(saveError);
     return data;
   };
-  if (!readingOn(await companySettings(c))) return c.json({ draft: await save({ status: "failed", error: OFF }) });
+  // Nothing was tried, so nothing failed: it waits to be filled in by hand.
+  if (!readingOn(await companySettings(c))) return c.json({ draft: await save({ status: "to_fill" }) });
   try {
     await countAiAsk(c.env, c.var.companyId, c.var.userId);
     // As the person: the receipts folder is theirs to read only with job costs (as the expense's is).

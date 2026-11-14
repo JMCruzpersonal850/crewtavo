@@ -65,6 +65,16 @@ select t_rcr.check(not exists (select from public.expenses where company_id = :'
 select t_rcr.check(not exists (select from private.job_cost_changes where company_id = :'co'), 'and the profit check isn''t told its job''s costs changed');
 select t_rcr.check(private.stored_path_in_use(:'co', :'path1'), 'a draft''s file is in use while it waits');
 
+-- With reading off a draft waits to be filled in (20261113001680_receipt_drafts_to_fill_in.sql).
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub": "c0613000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
+insert into public.expense_drafts (company_id, receipt_path, file_name, status) values (:'co', :'co' || '/receipts/off.jpg', 'off.jpg', 'to_fill') returning id as draft_off \gset
+select t_rcr.check((select status = 'to_fill' and error is null from public.expense_drafts where id = :'draft_off'), 'a receipt dropped in with reading off waits to be filled in, with nothing said to have failed');
+select t_rcr.check(t_rcr.error_of(format('insert into public.expense_drafts (company_id, receipt_path, status) values (%L, %L, %L)', :'co', :'co' || '/receipts/odd.jpg', 'lost')) like '23514:%', 'and a draft is only ever in a state the list knows');
+delete from public.expense_drafts where id = :'draft_off';
+commit;
+
 -- ===== Who has drafts ==========================================================================
 begin;
 set local role authenticated;

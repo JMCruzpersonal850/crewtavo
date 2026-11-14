@@ -5,8 +5,10 @@
  */
 import type { MaterialCandidate, ReadField, ReceiptReading } from "@crewtavo/core/receipts";
 import { api } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 import { base64Of, compressImage } from "@/lib/files";
 import { msg, t } from "@/lib/i18n";
+import { OLD_SERVER } from "./receiptDraftWords";
 
 /** What the server sends back for one file. */
 export interface ReadAnswer {
@@ -35,6 +37,8 @@ export async function readPickedFile(file: File, jobId: string | null): Promise<
     const slow = new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t("Reading it took too long. Fill it in by hand."))), READ_WAIT_MS));
     return await Promise.race([ask, slow]);
   } catch (error) {
+    // A server from before reading has no such address: said, rather than "Not found".
+    if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return { failed: OLD_SERVER };
     return { failed: error instanceof Error ? error.message : msg("It couldn't be read. Fill it in by hand.") };
   }
 }

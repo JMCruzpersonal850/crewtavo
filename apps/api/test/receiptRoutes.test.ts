@@ -186,6 +186,16 @@ describe("a draft dropped in with others", () => {
     expect((draft.read as Record<string, any>).job).toMatchObject({ id: "j-elm", why: "job_number" });
   });
 
+  it("waits to be filled in, and isn't called a failure, when reading is off", async () => {
+    company({}, "office");
+    const asked = anthropic(reading());
+    const res = await request("POST", `/receipts/drafts/${id}/read`);
+    expect(res.status).toBe(200);
+    expect(state.tables.expense_drafts![0]).toMatchObject({ status: "to_fill", read: null, error: null });
+    expect(asked).toEqual([]);
+    expect(state.rpcs.some((r) => r.fn === "rate_limit_hit")).toBe(false);
+  });
+
   it("is marked as not read when reading fails, to be filled in by hand", async () => {
     company({ receipt_reading: true }, "office");
     state.file = new TextEncoder().encode("not a picture");
