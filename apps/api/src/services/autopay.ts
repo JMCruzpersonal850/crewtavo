@@ -40,6 +40,7 @@ import { companyAddress } from "./automations";
 import { logoImage } from "./logo";
 import { stripeApi } from "./stripe";
 import { recipientsColumn, recipientsFor, sendToEach } from "./recipients";
+import { textWithStopLine } from "./stopLine";
 import { noteRefusedText, numberStopped } from "./textsOff";
 
 // ---------------------------------------------------------------------------------------------
@@ -641,7 +642,8 @@ export async function sendAutopayNotice(env: Env, admin: Db, chargeId: string, s
   // Never to a client whose texts are off, or a number that's stopped (and Twilio saying so is kept).
   if (client.phone && (await smsReady(env, company.id)) && !textsOff(client) && !(await numberStopped(admin, company.id, client.phone))) {
     const body = (who: Who) => `${company.name}: ${short}${invoiceLink ? ` ${invoiceLink[who]}` : ""}`;
-    const result = await sendSms(env, { to: client.phone, body: body("own"), company: company.id });
+    const to = client.phone;
+    const result = await textWithStopLine(admin, company.id, to, body("own"), (text) => sendSms(env, { to, body: text, company: company.id }));
     await noteRefusedText(admin, client, client.phone, result, company.id);
     if (!result.sent) throw new Error(result.reason ?? "The notice wasn't sent.");
     await logMessage(admin, { company_id: company.id, client_id: client.id, channel: "sms", subject: null, body: body("office"), related_type: "invoice", related_id: invoice.id, external_id: key });
@@ -699,7 +701,8 @@ export async function sendAutopayAgreed(env: Env, admin: Db, authorizationId: st
   }
   if (who.phone && (await smsReady(env, company.id)) && !textsOff(who) && !(await numberStopped(admin, company.id, who.phone))) {
     const body = (link: Who) => `${company.name}: ${intro} Not you, or changed your mind? ${links ? `Turn it off here: ${links[link]}` : "Contact us to turn it off."}`;
-    const result = await sendSms(env, { to: who.phone, body: body("own"), company: company.id });
+    const to = who.phone;
+    const result = await textWithStopLine(admin, company.id, to, body("own"), (text) => sendSms(env, { to, body: text, company: company.id }));
     await noteRefusedText(admin, who, who.phone, result, company.id);
     if (!result.sent) throw new Error(result.reason ?? "The copy of the agreement wasn't sent.");
     await logMessage(admin, { company_id: company.id, client_id: who.id, channel: "sms", subject: null, body: body("office"), related_type: "autopay", related_id: who.id, external_id: key });
@@ -837,7 +840,7 @@ export async function sendAutopayInvite(
   const sms = (url: string) => words(url).sms;
   // The button says what tapping it does here; receipts and notices keep "Manage autopay".
   const button = card ? "Confirm autopay" : "Save your card";
-  const result = input.channel === "email" ? await emailFrom(env, company, client.email!.trim(), subject, text(links.own), base, button) : await sendSms(env, { to: client.phone!, body: sms(links.own), company: input.companyId });
+  const result = input.channel === "email" ? await emailFrom(env, company, client.email!.trim(), subject, text(links.own), base, button) : await textWithStopLine(admin, input.companyId, client.phone!, sms(links.own), (text) => sendSms(env, { to: client.phone!, body: text, company: input.companyId }));
   if (input.channel === "sms") await noteRefusedText(admin, client, client.phone!, result, input.companyId);
   if (!result.sent) throw new Error(result.reason ?? "The invite wasn't sent.");
   await logMessage(admin, {

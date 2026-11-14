@@ -57,6 +57,7 @@ import { addressList, recipientsColumn, recipientsFor, sendToEach, stoppedNumber
 import { Busy, sendReviewRequest, WaitUntil } from "./reviews";
 import { isRoofWork, roofingOn, workKind, type WorkKind } from "./roofPackages";
 import { optionsFrom } from "./sales";
+import { textWithStopLine } from "./stopLine";
 import { noteRefusedText } from "./textsOff";
 
 export interface ActionResult {
@@ -723,7 +724,12 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       // As with emails: their own links to the client's own phone, the office's copies to a contact's.
       const kept = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
       const delivery = await sendToEach(people, async (person) => {
-        const result = await sendSms(env, { to: person.to, body: render(action.body, person.contact_id ? kept : ctx) }, ctx.company.id);
+        // The first text a number gets says how to stop them, and a promotional one always does (services/stopLine.ts).
+        const result = await textWithStopLine(
+          admin, ctx.company.id, person.to, render(action.body, person.contact_id ? kept : ctx),
+          (body) => sendSms(env, { to: person.to, body }, ctx.company.id),
+          { promotional: Boolean(ctx.campaign?.marketing) },
+        );
         await noteRefusedText(admin, client, person.to, result, ctx.company.id);
         return result;
       }, "The text wasn't sent.");

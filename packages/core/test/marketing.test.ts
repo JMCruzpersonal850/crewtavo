@@ -33,6 +33,8 @@ import {
   reviewSettings,
   smsKeyword,
   asksToStopTexts,
+  addStopLine,
+  smsSegments,
   textsOffWhy,
   twilioHasStop,
   textsOff,
@@ -478,6 +480,40 @@ describe("a text that asks for texts to stop without the keyword", () => {
       "Stop texting me about the invoice because I already paid it last week by check and your office confirmed it on the phone",
     ];
     for (const body of ordinary) expect(asksToStopTexts(body), String(body)).toBe(false);
+  });
+});
+
+describe("the line that says how to stop texts", () => {
+  it("counts a text's segments as phones do", () => {
+    expect(smsSegments("")).toBe(1);
+    expect(smsSegments("a".repeat(160))).toBe(1);
+    expect(smsSegments("a".repeat(161))).toBe(2);
+    expect(smsSegments("a".repeat(306))).toBe(2);
+    expect(smsSegments("a".repeat(307))).toBe(3);
+    // A bracket or a euro sign counts twice.
+    expect(smsSegments(`${"a".repeat(158)}[`)).toBe(1);
+    expect(smsSegments(`${"a".repeat(159)}[`)).toBe(2);
+    // Anything outside the phone alphabet (an emoji, a curly quote) makes it 70 to a text.
+    expect(smsSegments(`${"a".repeat(69)}’`)).toBe(1);
+    expect(smsSegments(`${"a".repeat(70)}’`)).toBe(2);
+    expect(smsSegments("See you soon 👍")).toBe(1);
+  });
+
+  it("goes on a line of its own, or straight after when that keeps the text to fewer segments", () => {
+    expect(addStopLine("Acme Lawn: your visit is tomorrow at 9.")).toBe("Acme Lawn: your visit is tomorrow at 9.\n\nReply STOP to opt out.");
+    // 137 characters: with a space it's exactly 160 and one segment, on its own line it would be two.
+    const tight = "a".repeat(137);
+    expect(addStopLine(tight)).toBe(`${tight} Reply STOP to opt out.`);
+    expect(smsSegments(addStopLine(tight))).toBe(1);
+    // Too long to stay one either way: on its own line.
+    const long = "a".repeat(150);
+    expect(addStopLine(long)).toBe(`${long}\n\nReply STOP to opt out.`);
+    expect(addStopLine("See you at 9.  \n")).toBe("See you at 9.\n\nReply STOP to opt out.");
+  });
+
+  it("is left off when the business's own words already say STOP in capitals", () => {
+    expect(addStopLine("See you at 9. Text STOP to end.")).toBe("See you at 9. Text STOP to end.");
+    expect(addStopLine("We'll stop by at 9.")).toBe("We'll stop by at 9.\n\nReply STOP to opt out.");
   });
 });
 

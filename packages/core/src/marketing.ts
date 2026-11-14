@@ -554,6 +554,44 @@ export function withStopLine(text: string): string {
   return /\bSTOP\b/.test(text) ? text : `${text.trimEnd()}\n\n${STOP_LINE}`;
 }
 
+/** The characters a text can use and still be 160 to a segment (GSM 03.38's basic set); the ones after the space count as two. */
+const GSM_BASIC = new Set("@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà");
+const GSM_EXTENDED = new Set("^{}\\[~]|€");
+
+/**
+ * How many segments a text goes as (each is billed, and long ones arrive in parts): 160 characters
+ * in one, or 153 to a part, while every character is in the phone alphabet; with anything else (an
+ * emoji, a curly quote) 70 in one, or 67 to a part.
+ */
+export function smsSegments(text: string): number {
+  let units = 0;
+  let plain = true;
+  for (const char of text) {
+    if (GSM_BASIC.has(char)) units += 1;
+    else if (GSM_EXTENDED.has(char)) units += 2;
+    else {
+      plain = false;
+      break;
+    }
+  }
+  if (plain) return units <= 160 ? 1 : Math.ceil(units / 153);
+  return text.length <= 70 ? 1 : Math.ceil(text.length / 67);
+}
+
+/**
+ * A text with STOP_LINE after it, for the first text a number gets and for promotional ones (Twilio's
+ * messaging policy: the initial message says how to opt out). On a line of its own when that fits
+ * in as many segments as joining it on with a space would take, so a short text stays one segment
+ * where it can; left alone when the business's own words already say STOP in capitals.
+ */
+export function addStopLine(text: string): string {
+  if (/\bSTOP\b/.test(text)) return text;
+  const body = text.trimEnd();
+  const tight = `${body} ${STOP_LINE}`;
+  const apart = `${body}\n\n${STOP_LINE}`;
+  return smsSegments(apart) <= smsSegments(tight) ? apart : tight;
+}
+
 /**
  * What a text from a client means: "stop" (texts off), "start" (back on) or null (an ordinary text).
  * Read as Twilio reads it: the whole message is the word, in any case, with spaces before it and

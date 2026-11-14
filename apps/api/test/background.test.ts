@@ -1595,10 +1595,12 @@ describe("the on my way text", () => {
 
   it("says when the crew should get there, and reads just as well when that isn't known", async () => {
     const soon = new Date(Date.now() + 20.5 * 60_000).toISOString();
-    expect(await textOf(soon)).toBe("Hi Pat, this is Radford Lawn Care. Our crew is on the way to 12 Oak St, Radford, VA now and should arrive in about 20 minutes.");
-    expect(await textOf(null)).toBe("Hi Pat, this is Radford Lawn Care. Our crew is on the way to 12 Oak St, Radford, VA now.");
+    // Each is the first text this number gets here, so each ends by saying how to stop them.
+    const stop = "\n\nReply STOP to opt out.";
+    expect(await textOf(soon)).toBe(`Hi Pat, this is Radford Lawn Care. Our crew is on the way to 12 Oak St, Radford, VA now and should arrive in about 20 minutes.${stop}`);
+    expect(await textOf(null)).toBe(`Hi Pat, this is Radford Lawn Care. Our crew is on the way to 12 Oak St, Radford, VA now.${stop}`);
     // A time already gone (the text waited) says nothing rather than something wrong.
-    expect(await textOf(new Date(Date.now() - 60_000).toISOString())).toBe("Hi Pat, this is Radford Lawn Care. Our crew is on the way to 12 Oak St, Radford, VA now.");
+    expect(await textOf(new Date(Date.now() - 60_000).toISOString())).toBe(`Hi Pat, this is Radford Lawn Care. Our crew is on the way to 12 Oak St, Radford, VA now.${stop}`);
   });
 });
 

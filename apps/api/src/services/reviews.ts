@@ -47,6 +47,7 @@ import { reportError } from "../lib/monitoring";
 import { emailReady, sendSms, smsReady, type SendResult } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { emailClient } from "./marketingEmail";
+import { noteTold } from "./stopLine";
 import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT, withNumberStop } from "./textsOff";
 
 /** An action that can't happen yet: the automation run waits until then, with the message saying why. */
@@ -173,6 +174,8 @@ async function deliver(
     } else {
       result = await sendSms(env, { to: d.client.phone!, body }, d.companyId);
       await noteRefusedText(admin, d.client, d.client.phone!, result, d.companyId);
+      // They've been told how to stop, so their next text from the business doesn't say it again.
+      if (result.sent) await noteTold(admin, d.companyId, d.client.phone!);
     }
     if (!result.sent) {
       // Twilio refusing a number that texted STOP is said as the app says texts off, not in Twilio's words.

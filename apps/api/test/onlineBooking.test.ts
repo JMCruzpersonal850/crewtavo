@@ -252,7 +252,7 @@ describe("a client books a time", () => {
     const body = await (await post(FORM, { ...lead, phone: "540-555-0177", starts_at: nine }, connectedFrom("203.0.113.9", texting))).json();
     expect(body.booking).toMatchObject({ emailed: true, texted: true });
     expect(db.texts()).toHaveLength(1);
-    expect(plain(db.texts()[0]!.Body)).toBe("Acme Roofing: You're booked: Assessment: Free roof inspection on Tue, Nov 3, 9:00 AM. Questions? Call 540-555-0100.");
+    expect(plain(db.texts()[0]!.Body)).toBe("Acme Roofing: You're booked: Assessment: Free roof inspection on Tue, Nov 3, 9:00 AM. Questions? Call 540-555-0100.  Reply STOP to opt out.");
     // No number given: no text, even to the number on their record.
     const quiet = database();
     expect((await (await post(FORM, { ...lead, starts_at: nine }, connectedFrom("203.0.113.9", texting))).json()).booking.texted).toBe(false);

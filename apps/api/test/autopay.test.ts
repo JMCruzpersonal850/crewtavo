@@ -153,6 +153,8 @@ function fakeDb(tables: Record<string, Row[]>) {
       maybeSingle: () => ((one = "maybe"), q),
       single: () => ((one = "single"), q),
       insert: (p: unknown) => ((op = "insert"), (payload = p), q),
+      // Numbers told how to stop texts (sms_told): kept as an insert is.
+      upsert: (p: unknown) => ((op = "insert"), (payload = p), q),
       update: (p: unknown) => ((op = "update"), (payload = p), q),
       delete: () => ((op = "delete"), q),
       then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve().then(run).then(resolve, reject),
@@ -897,7 +899,7 @@ describe("autopay invites", () => {
   it("sends by text, and never to another company's client", async () => {
     const db = world();
     expect(await invite(db, { clientId: SAM, channel: "sms" })).toEqual({ sent: true, detail: "Sent by text." });
-    expect(texts()[0]!.body).toMatch(/^Radford Lawn Care: thanks for choosing us\. We keep a card on file and charge it after each visit\. Save yours securely with Stripe: https:\/\/ops\.example\.com\/hub\/\S+\?view=autopay$/);
+    expect(texts()[0]!.body).toMatch(/^Radford Lawn Care: thanks for choosing us\. We keep a card on file and charge it after each visit\. Save yours securely with Stripe: https:\/\/ops\.example\.com\/hub\/\S+\?view=autopay\n\nReply STOP to opt out\.$/);
     expect(await payloadOf(hubLinks(db.tables.messages![0]!.body)[0]!)).toMatchObject({ t: "client", id: SAM, via: "office" });
     expect(await invite(db, { clientId: STRANGER })).toEqual({ sent: false, detail: "Client not found." });
     expect(m.sendSms).toHaveBeenCalledTimes(1);
