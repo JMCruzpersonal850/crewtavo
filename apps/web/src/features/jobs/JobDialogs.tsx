@@ -4,7 +4,7 @@ import { parseRule } from "@crewtavo/core/recurrence";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
-import { choose } from "@/components/ui/Confirm";
+import { choose, confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -13,6 +13,7 @@ import { useSession } from "@/lib/session";
 import { ClientPicker, PropertySelect, type PickedClient } from "../clients/ClientForm";
 import { CustomFieldInputs, customFieldsToSave, useCustomFields } from "../customFields/CustomFields";
 import { firstInvoiceKind, invoiceChoices, startingAmount, type InvoiceJob, type InvoiceKind } from "./invoiceChoices";
+import { billsOutsideSchedule, dropPaymentsQuestion, INSTALLMENT_COLUMNS, type InstallmentRow } from "./JobPaymentSchedule";
 import { RecurrenceEditor, type Recurrence } from "./RecurrenceEditor";
 
 export function useCrews() {
@@ -301,6 +302,17 @@ export function JobDetailsDialog({ job, onClose, onSaved }: { job: JobRecord; on
           });
           if (choice === null) return false;
           upcoming = choice;
+        }
+      }
+      // A job with a payment schedule, changed to bill visit by visit or as repeating work: the payments
+      // not invoiced yet would be billed twice, so the office is asked, by name, and they're dropped
+      // first. The database refuses the change otherwise (someone who can't see invoices gets its words).
+      if (billsOutsideSchedule(f.kind, billingFields(f.kind, billing).billing_mode) && !billsOutsideSchedule(job.kind, job.billing_mode)) {
+        const payments = unwrap(await supabase().from("job_installments").select(INSTALLMENT_COLUMNS).eq("job_id", job.id).order("position")) as unknown as InstallmentRow[];
+        const question = dropPaymentsQuestion(payments, recurring);
+        if (question) {
+          if (!(await confirm(question))) return false;
+          unwrap(await supabase().rpc("drop_unmade_installments", { p_job: job.id }));
         }
       }
       unwrap(

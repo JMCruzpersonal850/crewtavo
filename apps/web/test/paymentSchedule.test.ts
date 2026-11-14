@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { quoteDocument, quoteSchedule } from "@/features/documents/build";
-import { canInvoiceNow, installmentState } from "@/features/jobs/JobPaymentSchedule";
+import { billsOutsideSchedule, canInvoiceNow, dropPaymentsQuestion, installmentState } from "@/features/jobs/JobPaymentSchedule";
 import { shownSchedule } from "@/features/quotes/PaymentSchedule";
 import { alertAmount, quoteForm } from "@/features/settings/QuoteSettings";
 
@@ -90,6 +90,39 @@ describe("the job's payments", () => {
     expect(canInvoiceNow({ kind: "invoiced", invoice: invoice("sent") }, null)).toBe(false);
     expect(canInvoiceNow({ kind: "final", invoice: final }, final)).toBe(false);
     expect(canInvoiceNow({ kind: "voided", invoice: invoice("void") }, final)).toBe(false);
+  });
+});
+
+describe("changing a job with a payment schedule to bill visit by visit", () => {
+  const row = (position: number, amount: number, invoice: { number: number; status: string } | null) => ({
+    position, count: 3, amount, invoice: invoice ? { id: `i${position}`, total: amount, ...invoice } : null,
+  });
+
+  it("knows which ways of billing can't sit beside a schedule", () => {
+    expect(billsOutsideSchedule("one_off", "on_completion")).toBe(false);
+    expect(billsOutsideSchedule("one_off", "progress")).toBe(false);
+    expect(billsOutsideSchedule("one_off", "per_visit")).toBe(true);
+    expect(billsOutsideSchedule("recurring", "fixed_schedule")).toBe(true);
+    expect(billsOutsideSchedule("recurring", "on_completion")).toBe(true);
+  });
+
+  it("asks before dropping, naming each payment still to come and the ones that stay", () => {
+    const question = dropPaymentsQuestion([row(1, 300, { number: 12, status: "paid" }), row(2, 330, null), row(3, 440.5, { number: 14, status: "void" })], false)!;
+    expect(question.title).toBe("Drop the 2 payments still to come?");
+    expect(question.body).toContain("Saving drops them: Payment 2 of 3 ($330.00), Payment 3 of 3 ($440.50).");
+    expect(question.body).toContain("Invoicing after each visit bills the work in full");
+    expect(question.body).toContain("Already invoiced, and staying as it is: Payment 1 of 3 (invoice #12). Visit invoices won't take it off.");
+    expect(question.confirmLabel).toBe("Drop them and save");
+    const one = dropPaymentsQuestion([row(1, 300, null)], true)!;
+    expect(one.title).toBe("Drop the payment still to come?");
+    expect(one.body).toContain("Invoicing it as repeating work");
+    expect(one.body).toContain("Saving drops it: Payment 1 of 3 ($300.00).");
+    expect(one.body).not.toContain("Already invoiced");
+  });
+
+  it("asks nothing when every payment has its invoice, or the job has no schedule", () => {
+    expect(dropPaymentsQuestion([row(1, 300, { number: 12, status: "sent" })], false)).toBeNull();
+    expect(dropPaymentsQuestion([], false)).toBeNull();
   });
 });
 

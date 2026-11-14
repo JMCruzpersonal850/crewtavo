@@ -538,6 +538,57 @@ select tps.check((select send_state is null from public.job_installments where i
   'a send the server calls off is over, with nobody told');
 select tps.check(not has_function_privilege('authenticated', 'public.installment_send_called_off(uuid)', 'execute'), 'only the server calls a send off');
 
+-- ===== A job with payments to come isn't switched to visit by visit silently =====================
+-- (20261113001630_schedule_or_visit_by_visit.sql)
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+select tps.quote(:'co', :'erin', 'Fence', 900) as fence \gset
+update public.quotes set payment_schedule = '[{"kind": "amount", "value": 300, "due": "approval"}, {"kind": "amount", "value": 300, "due": "work_starts"}, {"kind": "rest", "due": "work_done"}]', status = 'approved', approved_at = now() where id = :'fence';
+select public.convert_quote_to_job(:'fence') as fjob \gset
+select public.create_invoice_for_job(:'fjob', 'deposit') as fdeposit \gset
+select tps.check(tps.error_of(format($q$update public.jobs set billing_mode = 'per_visit' where id = %L$q$, :'fjob'))
+    = '22023: This job''s payment schedule still has payments to come: Payment 2 of 3 ($300.00), Payment 3 of 3 ($300.00). Billing it after each visit would bill them twice, so drop them from the job first',
+  'a job with payments to come can''t be switched to invoicing after each visit without dropping them, and the refusal names them');
+select tps.check(tps.error_of(format($q$update public.jobs set pricing = 'per_visit', invoice_schedule = 'after_visit' where id = %L$q$, :'fjob')) like '22023: This job''s payment schedule still has payments to come:%after each visit%',
+  'however the change is written');
+select tps.check(tps.error_of(format($q$update public.jobs set kind = 'recurring', recurrence_rule = 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO', starts_on = current_date where id = %L$q$, :'fjob')) like '22023: This job''s payment schedule still has payments to come:%as repeating work%',
+  'nor made a repeating job');
+update public.jobs set billing_mode = 'progress' where id = :'fjob';
+update public.jobs set billing_mode = 'on_completion', title = 'Fence and gate' where id = :'fjob';
+select tps.check((select title = 'Fence and gate' from public.jobs where id = :'fjob'), 'anything else about the job still changes, progress billing included');
+select tps.as_user(:'cruz');
+select tps.check(tps.error_of(format('select public.drop_unmade_installments(%L)', :'fjob')) = 'P0002: Job not found', 'the crew can''t drop a job''s payments');
+select tps.as_user(:'olly');
+select tps.check(public.drop_unmade_installments(:'fjob') = 2, 'the office drops the two payments still to come');
+update public.jobs set billing_mode = 'per_visit' where id = :'fjob';
+commit;
+select tps.check(tps.rows(:'fjob') = '1:300.00:approval:deposit/300.00/draft' and (select billing_mode = 'per_visit' from public.jobs where id = :'fjob'),
+  'then the job is invoiced after each visit, and the payment already invoiced keeps its invoice');
+insert into public.visits (company_id, job_id, title, scheduled_on, status) values (:'co', :'fjob', 'Fence', private.company_today(:'co'), 'in_progress');
+select tps.check((select count(*) = 1 from public.invoices where job_id = :'fjob'), 'the work starting makes no payment''s invoice any more, so nothing is billed twice');
+-- A job that was switched before the guard (the migration marks those): nothing is made for it either way.
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+select tps.quote(:'co', :'erin', 'Old fence', 400) as oldfence \gset
+update public.quotes set payment_schedule = '[{"kind": "percent", "value": 50, "due": "work_starts"}, {"kind": "rest", "due": "work_done"}]', status = 'approved', approved_at = now() where id = :'oldfence';
+select public.convert_quote_to_job(:'oldfence') as ojob \gset
+commit;
+alter table public.jobs disable trigger keeps_schedule;
+update public.jobs set billing_mode = 'per_visit' where id = :'ojob';
+alter table public.jobs enable trigger keeps_schedule;
+insert into public.visits (company_id, job_id, title, scheduled_on, status) values (:'co', :'ojob', 'Old fence', private.company_today(:'co'), 'in_progress');
+select tps.check((select count(*) = 0 from public.invoices where job_id = :'ojob')
+  and (select made_at is not null and problem = 'Not made: this job is invoiced visit by visit now' from public.job_installments where id = tps.row_id(:'ojob', 1)),
+  'a job switched before the guard has no payment made as its work starts, and the payment says why');
+begin;
+set local role authenticated;
+select tps.as_user(:'olly');
+select tps.check(tps.error_of(format('select public.invoice_installment(%L)', tps.row_id(:'ojob', 2))) = '22023: This job is invoiced after each visit, so its payment schedule no longer applies',
+  'nor by hand');
+commit;
+
 -- Only the server runs the hourly run and the sends.
 select tps.check(not has_function_privilege('authenticated', 'public.make_due_installments()', 'execute')
   and not has_function_privilege('authenticated', 'public.claim_installment_sends(integer)', 'execute')
