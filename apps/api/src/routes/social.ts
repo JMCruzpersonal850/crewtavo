@@ -8,6 +8,7 @@
  */
 import { ADMINS, OFFICE } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
+import { reviewsFreshSince } from "@crewtavo/core/reviews";
 import {
   CANT_SHARE,
   cardDropsEmoji,
@@ -112,14 +113,14 @@ social.get("/social/photos/picked", requireUser, requireCompany(OFFICE, "marketi
 });
 
 /**
- * Reviews to post: 4 and 5 stars with words, still on Google, newest first, 25 at a time. Each says
+ * Reviews to post: 4 and 5 stars with words, still on Google (seen there lately), newest first, 25 at a time. Each says
  * whether the card can show its words (and whether it leaves emoji out), whether they name the client
  * it's matched to, and when it was posted, if it was.
  */
 social.get("/social/reviews", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
   const { before } = c.req.query();
   let query = c.var.db.from("reviews").select("id, rating, reviewer_name, reviewer_anonymous, posted_at, comment, client_id, location_id, review_id")
-    .eq("company_id", c.var.companyId).is("deleted_at", null).gte("rating", 4).not("comment", "is", null)
+    .eq("company_id", c.var.companyId).is("deleted_at", null).gt("seen_at", reviewsFreshSince()).gte("rating", 4).not("comment", "is", null)
     .order("posted_at", { ascending: false }).limit(PAGE);
   if (before) query = query.lt("posted_at", before);
   const rows = must(await query);
@@ -198,7 +199,7 @@ social.get("/social/posts", requireUser, requireCompany(OFFICE, "marketing"), as
   const reviewIds = rows.flatMap((r) => (r.source === "review" && r.review_id ? [r.review_id] : []));
   const [{ data: files }, { data: reviews }] = await Promise.all([
     first.length ? admin.from("attachments").select("id, path").eq("company_id", c.var.companyId).in("id", first) : { data: [] },
-    reviewIds.length ? admin.from("reviews").select("id, rating, reviewer_name, reviewer_anonymous, comment").eq("company_id", c.var.companyId).in("id", reviewIds) : { data: [] },
+    reviewIds.length ? admin.from("reviews").select("id, rating, reviewer_name, reviewer_anonymous, comment").eq("company_id", c.var.companyId).in("id", reviewIds).gt("seen_at", reviewsFreshSince()) : { data: [] },
   ]);
   const thumbs = new Map((files ?? []).map((f) => [f.id, f.path]));
   const reviewOf = new Map((reviews ?? []).map((r) => [r.id, { name: r.reviewer_anonymous ? null : firstNameLastInitial(r.reviewer_name), rating: r.rating, words: cardText(r.comment).slice(0, 160) }]));

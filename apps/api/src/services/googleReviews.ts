@@ -13,18 +13,25 @@
  * What's in the way is kept on the sync (review_syncs.problem) and the app (integrations.last_error):
  * Google's approval and the APIs not turned on are tried again every 6 hours, a sign-in or location
  * problem waits for someone, and anything else backs off from 30 minutes to 6 hours.
+ *
+ * What's here is a copy of what's on Google, kept and shown only while the sync keeps seeing it
+ * there (core REVIEW_FRESH_DAYS, reviews.seen_at): the daily full pass keeps every review fresh,
+ * anything that shows or reuses a review asks for fresh ones, and the review_tidy task removes the
+ * rest (tidyReviews). A review taken off Google loses its words the moment it's marked.
  */
 import type { Tables } from "@crewtavo/core";
 import { marketingOn, rescheduledReminder, reviewSettings } from "@crewtavo/core/marketing";
 import { phoneDisplay, phoneE164 } from "@crewtavo/core/phone";
 import {
   APPROVAL_MESSAGE,
+  isFresh,
   LOCATION_PROBLEMS,
   NOT_ENABLED_MESSAGE,
   OWN_APP_APPROVAL_MESSAGE,
   quoteReviews,
   REPLY_MAX,
   REVIEW_STOP_NOTE,
+  reviewsFreshSince,
   SIGNIN_MESSAGE,
   starRating,
   type LocationProblem,
@@ -491,7 +498,7 @@ export async function syncCompany(env: Env, admin: Db, companyId: string, option
       admin.from("integrations").select("status, settings").match({ company_id: companyId, provider: "google_business" }).maybeSingle(),
     ]);
     if (company.error) throw new Error(company.error.message);
-    // Uninstalled, Marketing brings nothing in. The reviews already here stay.
+    // Uninstalled, Marketing brings nothing in. The reviews already here stay while they're fresh (tidyReviews).
     if (!marketingOn(company.data?.settings as Record<string, unknown> | null)) {
       await release();
       return { result: "off" };
@@ -825,24 +832,29 @@ export interface QuoteReviews {
 /**
  * The business's Google rating and count, and up to three reviews, for a quote (core quoteReviews:
  * the office's picks, else the newest 5-star ones with words, each named by first name and initial).
- * Only Google reviews of the location being synced that are still on Google: public.reviews holds
- * nothing else. Null while it's off, while Marketing is uninstalled, or with no Google reviews.
+ * Only Google reviews of the location being synced that are still on Google, and that the sync has
+ * seen there lately (core REVIEW_FRESH_DAYS): a quote shows nothing from a copy older than that, so
+ * a business that disconnected, or whose sign-in stopped working, has no reviews block until it's
+ * syncing again. Null while it's off, while Marketing is uninstalled, or with no reviews to show.
  */
 export async function quoteReviewsFor(admin: Db, companyId: string): Promise<QuoteReviews | null> {
   const { data: company } = await admin.from("companies").select("settings").eq("id", companyId).maybeSingle();
   const settings = (company?.settings ?? {}) as Record<string, unknown>;
   const on = settings.quote_reviews as { show?: unknown; pdf?: unknown } | undefined;
   if (on?.show !== true || !marketingOn(settings)) return null;
-  const { data: sync } = await admin.from("review_syncs").select("location_id, average_rating, total_reviews").eq("company_id", companyId).maybeSingle();
+  const { data: sync } = await admin.from("review_syncs").select("location_id, average_rating, total_reviews, last_synced_at").eq("company_id", companyId).maybeSingle();
   if (!sync?.location_id) return null;
   const fields = "reviewer_name, reviewer_anonymous, rating, comment, posted_at, quote_pick, deleted_at";
-  const live = () => admin.from("reviews").select(fields).eq("company_id", companyId).eq("location_id", sync.location_id!).is("deleted_at", null);
+  const since = reviewsFreshSince();
+  const live = () => admin.from("reviews").select(fields).eq("company_id", companyId).eq("location_id", sync.location_id!).is("deleted_at", null).gt("seen_at", since);
   const [picked, newest] = await Promise.all([
     live().not("quote_pick", "is", null).order("quote_pick").limit(3),
     live().eq("rating", 5).not("comment", "is", null).order("posted_at", { ascending: false }).limit(20),
   ]);
   const reviews = quoteReviews(picked.data?.length ? picked.data : (newest.data ?? []));
-  const count = sync.total_reviews ?? null;
+  // Google's own average and count, while the sync has heard them lately.
+  const heard = isFresh(sync.last_synced_at);
+  const count = heard ? (sync.total_reviews ?? null) : null;
   if (!reviews.length && !(Number(count) > 0)) return null;
-  return { rating: sync.average_rating === null ? null : Number(sync.average_rating), count, reviews, pdf: on.pdf === true };
+  return { rating: !heard || sync.average_rating === null ? null : Number(sync.average_rating), count, reviews, pdf: on.pdf === true };
 }

@@ -12,7 +12,7 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
-import { APPROVAL_MESSAGE, NAME_FOLDS, REVIEW_STOP_NOTE, SIGNIN_MESSAGE } from "@crewtavo/core/reviews";
+import { APPROVAL_MESSAGE, NAME_FOLDS, REVIEW_FRESH_DAYS, REVIEW_STOP_NOTE, SIGNIN_MESSAGE } from "@crewtavo/core/reviews";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { encryptJson } from "../src/lib/crypto";
@@ -35,7 +35,7 @@ const notify = await import("../src/lib/notify");
 const webpush = await import("../src/lib/webpush");
 const { app } = await import("../src/app");
 const { adminClient } = await import("../src/lib/supabase");
-const { syncCompany, liftReviewStop, replyPhone } = await import("../src/services/googleReviews");
+const { syncCompany, liftReviewStop, replyPhone, quoteReviewsFor } = await import("../src/services/googleReviews");
 const { googleProblem, PROJECT_SUSPENDED } = await import("../src/integrations/googleBusiness");
 const { deliverNotifications } = await import("../src/services/delivery");
 const { signToken } = await import("../src/lib/crypto");
@@ -92,6 +92,7 @@ function matches(row: Row, params: URLSearchParams) {
     if (filter === "not.is.null" && value == null) return false;
     if (filter.startsWith("in.(") && !filter.slice(4, -1).split(",").map((v) => v.replace(/^"|"$/g, "")).includes(String(value))) return false;
     if (filter.startsWith("lt.") && !(value != null && String(value) < filter.slice(3))) return false;
+    if (filter.startsWith("gt.") && !(value != null && String(value) > filter.slice(3))) return false;
   }
   return true;
 }
@@ -1097,6 +1098,20 @@ describe("Sync now", () => {
     expect((await request("/reviews/google/sync", { method: "POST" })).status).toBe(403);
   });
 
+  it("shows the Reviews tab Google's figures and the reviews here only while the sync has seen them lately", async () => {
+    const old = new Date(Date.now() - (REVIEW_FRESH_DAYS * 24 + 1) * 3_600_000).toISOString();
+    const row = (id: string, seen_at: string) => ({ id, company_id: CO, location_id: LOCATION, review_id: id, deleted_at: null, seen_at });
+    serve({ tables: { ...(await connected({ sync: { average_rating: 4.8, total_reviews: 120, last_synced_at: now() } })), reviews: [row("a", now()), row("b", now()), row("c", old)] } });
+    expect((await (await request("/reviews/google")).json()) as Row).toMatchObject({ state: "ok", reviews: 2, google: { average_rating: 4.8, total_reviews: 120 } });
+    // A sync that has been stuck for a month: nothing it holds is shown as Google's anymore.
+    serve({ tables: { ...(await connected({ sync: { average_rating: 4.8, total_reviews: 120, last_synced_at: old, problem: "approval" } })), reviews: [row("a", old), row("b", old)] } });
+    expect((await (await request("/reviews/google")).json()) as Row).toMatchObject({ state: "approval", reviews: 0, google: { average_rating: null, total_reviews: null } });
+    // Disconnected with the reviews kept, a month ago: the tab offers to connect, as if there were none.
+    const kept = await connected({ sync: { average_rating: 4.8, total_reviews: 120, last_synced_at: old } });
+    serve({ tables: { ...kept, integrations: [], reviews: [row("a", old)] } });
+    expect((await (await request("/reviews/google")).json()) as Row).toMatchObject({ state: "not_connected", reviews: 0, google: { average_rating: null, total_reviews: null } });
+  });
+
   it("tells the Reviews tab what's in the way, for office staff who can't read Apps", async () => {
     serve({ tables: { ...(await connected({ sync: { problem: "approval" } })), memberships: [{ company_id: CO, user_id: USER, role: "office", role_id: null, subcontractor_id: null, active: true }] } });
     const state = (await (await request("/reviews/google")).json()) as Row;
@@ -1184,5 +1199,33 @@ describe("names", () => {
     for (const [letter, plain] of NAME_FOLDS.pairs) expect(migration).toContain(`'${letter}', '${plain}'`);
     expect(migration).toContain("[^abcdefghijklmnopqrstuvwxyz0123456789]+");
     expect(migration).toContain("normalize(coalesce(p_name, ''), nfc)");
+  });
+});
+
+describe("reviews on quotes", () => {
+  const old = new Date(Date.now() - (REVIEW_FRESH_DAYS * 24 + 1) * 3_600_000).toISOString();
+  const row = (id: string, over: Row = {}) => ({
+    id, company_id: CO, location_id: LOCATION, review_id: id, reviewer_name: `Reviewer ${id}`, reviewer_anonymous: false, rating: 5, comment: `Great work (${id})`,
+    posted_at: "2026-10-01T12:00:00Z", quote_pick: null, deleted_at: null, seen_at: now(), ...over,
+  });
+  const shown = async (over: { sync?: Row; reviews?: Row[]; settings?: Row } = {}) => {
+    serve({ tables: { ...(await connected({ company: { quote_reviews: { show: true, pdf: true }, ...over.settings }, sync: { average_rating: 4.8, total_reviews: 120, last_synced_at: now(), ...over.sync } })), reviews: over.reviews ?? [row("a"), row("b")] } });
+    return quoteReviewsFor(adminClient(env), CO);
+  };
+
+  it("shows Google's rating and count and the reviews the sync has seen lately", async () => {
+    expect(await shown()).toMatchObject({ rating: 4.8, count: 120, pdf: true, reviews: [{ rating: 5, date: "2026-10-01" }, { rating: 5, date: "2026-10-01" }] });
+    expect(await shown({ settings: { quote_reviews: { show: false } } })).toBeNull();
+    expect(await shown({ settings: { marketing: { enabled: false } } })).toBeNull();
+  });
+
+  it("shows nothing from a copy the sync hasn't seen on Google lately", async () => {
+    // One review has dropped out of what the sync sees; the rest are current.
+    expect((await shown({ reviews: [row("a"), row("b", { seen_at: old })] }))!.reviews).toHaveLength(1);
+    // The sync has been stuck, or the business disconnected with the reviews kept: no reviews block at all.
+    expect(await shown({ sync: { last_synced_at: old }, reviews: [row("a", { seen_at: old }), row("b", { seen_at: old, quote_pick: 1 })] })).toBeNull();
+    // Reviews seen lately, but Google's own figures not heard in that long: the reviews, without the figures.
+    expect(await shown({ sync: { last_synced_at: old } })).toMatchObject({ rating: null, count: null, reviews: [{}, {}] });
+    expect(await shown({ sync: { last_synced_at: null }, reviews: [] })).toBeNull();
   });
 });

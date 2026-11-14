@@ -20,6 +20,7 @@
  */
 import type { Tables } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
+import { reviewsFreshSince } from "@crewtavo/core/reviews";
 import {
   brandColor,
   CANT_SHARE,
@@ -307,16 +308,17 @@ export async function clientWords(admin: Db, companyId: string, clientIds: Reado
 /**
  * A review post's review: by its row, or, when that row was removed (disconnected with the reviews
  * removed, or Change location away and back) and the review came in again, by its location and
- * review ids (review_key), linking the post to it again. Null when it isn't here.
+ * review ids (review_key), linking the post to it again. Null when it isn't here, or the sync hasn't
+ * seen it on Google lately (core REVIEW_FRESH_DAYS): a copy that old isn't posted from.
  */
 export async function postReview(admin: Db, post: Pick<Post, "id" | "company_id" | "review_id" | "review_key">): Promise<Tables<"reviews"> | null> {
   if (post.review_id) {
-    const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("id", post.review_id).maybeSingle();
+    const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("id", post.review_id).gt("seen_at", reviewsFreshSince()).maybeSingle();
     if (data) return data;
   }
   const key = /^(locations\/[^/]+)\/(.+)$/.exec(post.review_key ?? "");
   if (!key) return null;
-  const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("location_id", key[1]!).eq("review_id", key[2]!).maybeSingle();
+  const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("location_id", key[1]!).eq("review_id", key[2]!).gt("seen_at", reviewsFreshSince()).maybeSingle();
   if (data && !post.review_id) await admin.from("social_posts").update({ review_id: data.id }).eq("id", post.id).is("review_id", null);
   return data ?? null;
 }
@@ -965,7 +967,7 @@ export interface PostScope {
 /** A review of the company's that can go on a card, or the reason it can't. */
 export async function postableReview(s: PostScope, id: string) {
   const admin = adminClient(s.env);
-  const { data: review } = await admin.from("reviews").select("*").eq("company_id", s.companyId).eq("id", id).is("deleted_at", null).maybeSingle();
+  const { data: review } = await admin.from("reviews").select("*").eq("company_id", s.companyId).eq("id", id).is("deleted_at", null).gt("seen_at", reviewsFreshSince()).maybeSingle();
   if (!review) throw new HttpError(404, "That review isn't here. It may have been removed from Google.");
   if ((review.rating ?? 0) < 4) throw new HttpError(400, "Only 4 and 5-star reviews can be posted.");
   if (!hasWords(review.comment)) throw new HttpError(400, "This review has no words to put on a card.");

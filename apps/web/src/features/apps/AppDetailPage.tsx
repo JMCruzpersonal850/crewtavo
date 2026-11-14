@@ -560,7 +560,7 @@ function signedInWaiting(pending: string | null): string {
   return "Signed in. Google didn't answer, so Crewtavo tries again soon.";
 }
 
-/** Uninstalling Google Business Profile: its reviews stay, unless this is ticked. */
+/** Uninstalling Google Business Profile: its reviews stay (for as long as a copy that isn't syncing is kept), unless this is ticked. */
 function UninstallReviews({ count, onChange }: { count: number; onChange: (remove: boolean) => void }) {
   const [remove, setRemove] = useState(false);
   return (
@@ -572,7 +572,7 @@ function UninstallReviews({ count, onChange }: { count: number; onChange: (remov
           <span>Also remove the {count.toLocaleString("en-US")} {count === 1 ? "review" : "reviews"} brought in (asks start again for clients they matched)</span>
         </label>
       )}
-      {count > 0 && !remove && <p className="muted small" style={{ margin: 0 }}>Kept, they still show in Marketing → Reviews and keep their clients from being asked again.</p>}
+      {count > 0 && !remove && <p className="muted small" style={{ margin: 0 }}>Kept, they show in Marketing → Reviews for up to 30 days more, and their clients still aren't asked again.</p>}
     </div>
   );
 }

@@ -697,8 +697,8 @@ describe("Google reviews on the Reviews tab", () => {
     expect(problemCopy(g({ state: "location", problem_message: "x", can_connect: false }), "UTC")!.link).toBeNull();
     // Disconnected with the reviews kept: connecting again, or who can.
     const off = g({ state: "disconnected" });
-    expect(problemCopy(off, "UTC")).toMatchObject({ link: "Connect Google Business Profile", body: "The reviews already here stay, and keep their clients from being asked again." });
-    expect(problemCopy({ ...off, can_connect: false }, "UTC")).toMatchObject({ link: null, body: "The reviews already here stay, and keep their clients from being asked again. Ask an owner or admin to connect it in Apps." });
+    expect(problemCopy(off, "UTC")).toMatchObject({ link: "Connect Google Business Profile", body: "The reviews already here show for up to 30 days after the last sync, and their clients still aren't asked again." });
+    expect(problemCopy({ ...off, can_connect: false }, "UTC")).toMatchObject({ link: null, body: "The reviews already here show for up to 30 days after the last sync, and their clients still aren't asked again. Ask an owner or admin to connect it in Apps." });
     // A Google account with no Business Profile has nothing to pick: another account signs in.
     const none = g({ state: "pick", problem_detail: "none", problem_message: "The Google account signed in doesn't manage a Business Profile." });
     expect(problemCopy(none, "UTC")).toMatchObject({ tone: "warning", body: "Sign in with the Google account that manages it, in Apps → Google Business Profile.", link: "Open in Apps" });

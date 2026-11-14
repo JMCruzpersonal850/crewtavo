@@ -15,6 +15,7 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
+import { REVIEW_FRESH_DAYS } from "@crewtavo/core/reviews";
 import { DEFAULT_REVIEW_CAPTION, postStatusOf } from "@crewtavo/core/social";
 import { encode } from "jpeg-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -923,7 +924,7 @@ describe("each network at most once", () => {
       return Promise.reject(new DOMException("timeout", "TimeoutError"));
     };
     const c = await connected();
-    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful work, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null };
+    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful work, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null, seen_at: now() };
     const w = serve({
       tables: {
         ...c.tables, reviews: [review],
@@ -1133,7 +1134,7 @@ describe("what posts is checked when it posts", () => {
   it("doesn't post a review whose words name its client's street, matched after it was scheduled", async () => {
     const f = fake();
     const c = await connected();
-    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "They redid the lawn at 14 Oak St and it looks great", reviewer_name: "Ana G.", reviewer_anonymous: false, client_id: ANA, deleted_at: null };
+    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "They redid the lawn at 14 Oak St and it looks great", reviewer_name: "Ana G.", reviewer_anonymous: false, client_id: ANA, deleted_at: null, seen_at: now() };
     const w = serve({ tables: { ...c.tables, reviews: [review], social_posts: [due({ id: "00000000-0000-4000-8000-0000000000d1", source: "review", review_id: "rev-1", review_key: "locations/9/r1", attachment_ids: [], caption: DEFAULT_REVIEW_CAPTION, automatic: true })] }, files: c.files, outside: graph(f) });
     await run(w);
     expect(net(w, "00000000-0000-4000-8000-0000000000d1", "facebook")).toMatchObject({ status: "failed", error_kind: "removed", error: "This review names the client or their street, so it wasn't posted." });
@@ -1142,7 +1143,7 @@ describe("what posts is checked when it posts", () => {
   it("posts a 5-star review as its card, to Facebook and Instagram alike", async () => {
     const f = fake();
     const c = await connected();
-    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null };
+    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null, seen_at: now() };
     const w = serve({ tables: { ...c.tables, reviews: [review], social_posts: [due({ id: "00000000-0000-4000-8000-0000000000d1", source: "review", review_id: "rev-1", review_key: "locations/9/r1", attachment_ids: [], networks: ["facebook", "instagram"] })] }, files: c.files, outside: graph(f) });
     await run(w);
     expect(w.tables.social_post_images!.map((i) => [i.variant, i.width, i.height])).toEqual([["feed", 1080, 1080]]);
@@ -1154,10 +1155,23 @@ describe("what posts is checked when it posts", () => {
     const f = fake();
     const c = await connected();
     // Disconnected with the reviews removed, then connected again: the same review, a new row.
-    const review = { id: "rev-2", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Gail Park", reviewer_anonymous: false, client_id: null, deleted_at: null };
+    const review = { id: "rev-2", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Gail Park", reviewer_anonymous: false, client_id: null, deleted_at: null, seen_at: now() };
     const w = serve({ tables: { ...c.tables, reviews: [review], social_posts: [due({ id: "00000000-0000-4000-8000-0000000000d1", source: "review", review_id: null, review_key: "locations/9/r1", attachment_ids: [], networks: ["facebook"], automatic: true, caption: DEFAULT_REVIEW_CAPTION })] }, files: c.files, outside: graph(f) });
     await run(w);
     expect(postRow(w, "00000000-0000-4000-8000-0000000000d1")).toMatchObject({ status: "posted", review_id: "rev-2" });
+  });
+
+  it("doesn't post from a copy of a review the sync hasn't seen on Google lately", async () => {
+    const f = fake();
+    const c = await connected();
+    // The sync stopped a month ago (a sign-in that expired, say), and the tidy hasn't removed the copy yet.
+    const review = { id: "rev-1", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null, seen_at: new Date(Date.now() - (REVIEW_FRESH_DAYS * 24 + 1) * 3_600_000).toISOString() };
+    const w = serve({ tables: { ...c.tables, reviews: [review], social_posts: [due({ id: "00000000-0000-4000-8000-0000000000d1", source: "review", review_id: "rev-1", review_key: "locations/9/r1", attachment_ids: [], networks: ["facebook"] })] }, files: c.files, outside: graph(f) });
+    await run(w);
+    expect(net(w, "00000000-0000-4000-8000-0000000000d1", "facebook")).toMatchObject({ status: "failed", error_kind: "removed" });
+    expect(graphCalls(w, `/${PAGE}/photos`)).toHaveLength(0);
+    // Nor is its card made for the composer.
+    expect((await request(`/social/reviews/rev-1/card.jpg`)).status).toBe(404);
   });
 
   it("says a review that isn't in Crewtavo anymore as that, not as removed from Google, and says to connect only when it isn't", async () => {
@@ -1275,7 +1289,7 @@ describe("the routes", () => {
 
   it("keeps an automatic post's review: another one is refused, not quietly dropped", async () => {
     const c = await connected();
-    const reviews = ["r1", "r2"].map((id) => ({ id: `00000000-0000-4000-8000-0000000000${id === "r1" ? "e5" : "e6"}`, company_id: CO, location_id: "locations/9", review_id: id, rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null }));
+    const reviews = ["r1", "r2"].map((id) => ({ id: `00000000-0000-4000-8000-0000000000${id === "r1" ? "e5" : "e6"}`, company_id: CO, location_id: "locations/9", review_id: id, rating: 5, comment: "Wonderful crew, very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null, seen_at: now() }));
     const w = serve({ tables: { ...c.tables, reviews, social_posts: [due({ id: "00000000-0000-4000-8000-0000000000d6", source: "review", review_id: "00000000-0000-4000-8000-0000000000e5", review_key: "locations/9/r1", attachment_ids: [], automatic: true, created_by: null, scheduled_for: new Date(Date.now() + 86_400_000).toISOString() })] }, files: c.files });
     const other = await request("/social/posts/00000000-0000-4000-8000-0000000000d6", { method: "PATCH", body: { source: "review", review_id: "00000000-0000-4000-8000-0000000000e6", caption: "Thanks!" } });
     expect(other.status).toBe(400);
@@ -1320,7 +1334,7 @@ describe("the routes", () => {
 
   it("lists posts still to go in the order they go, then drafts, and says whose review each one is", async () => {
     const c = await connected();
-    const review = { id: "00000000-0000-4000-8000-0000000000e5", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew 🌿 very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null };
+    const review = { id: "00000000-0000-4000-8000-0000000000e5", company_id: CO, location_id: "locations/9", review_id: "r1", rating: 5, comment: "Wonderful crew 🌿 very tidy", reviewer_name: "Cara Lee", reviewer_anonymous: false, client_id: null, deleted_at: null, seen_at: now() };
     const w = serve({ tables: { ...c.tables, reviews: [review], social_posts: [due({ id: "00000000-0000-4000-8000-0000000000d6", source: "review", review_id: review.id, review_key: "locations/9/r1", automatic: true, caption: DEFAULT_REVIEW_CAPTION, scheduled_for: new Date(Date.now() + 86_400_000).toISOString() })] }, files: c.files });
     const res = (await (await request("/social/posts?list=upcoming")).json()) as { posts: Row[] };
     expect(res.posts[0]).toMatchObject({ thumb_path: null, review: { name: "Cara L.", rating: 5, words: "Wonderful crew very tidy" } });
