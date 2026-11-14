@@ -306,9 +306,14 @@ values (:'co', :'social_post', 0, 'feed', :'porch', :'co' || '/social/' || :'soc
 -- (20261113001400_postcards.sql, 20261113001410_showcases.sql, 20261113001420_review_comparison.sql): the office's, never a sub's.
 insert into public.postcard_campaigns (company_id, name) values (:'co', 'Spring postcard') returning id as postcard \gset
 insert into public.postcard_recipients (company_id, campaign_id, client_id, name, address) values (:'co', :'postcard', :'c1', 'Ann', '{"line1": "1 Main St", "city": "Radford", "region": "VA", "postal_code": "24141"}');
+-- One card of it mailed to Oscar's own address first (20261113001575_postcard_proofs.sql).
+insert into public.postcard_proofs (company_id, campaign_id, mode, size, address, image_token, image_path)
+values (:'co', :'postcard', 'test', '4x6', '{"line1": "9 Shop Rd", "city": "Radford", "region": "VA", "postal_code": "24141"}', repeat('p', 32), :'co' || '/postcards/proofs/front.jpg');
 select id as roof_before from public.attachments where owner_type = 'visit' and owner_id = :'v1' and file_name = 'before.jpg' \gset
 insert into public.showcases (company_id, job_id, title) values (:'co', :'j1', 'New roof') returning id as showcase \gset
 insert into public.showcase_photos (company_id, showcase_id, attachment_id, role) values (:'co', :'showcase', :'roof_before', 'before');
+-- A copy of a showcase photo that's no longer shown, waiting for the server to delete it (20261113001580_showcases_come_down.sql).
+insert into public.stale_public_files (company_id, path) values (:'co', :'co' || '/showcases/' || :'showcase' || '/old.jpg');
 insert into public.review_comparisons (company_id, enabled) values (:'co', true);
 insert into public.review_places (company_id, place_id, name, is_own) values (:'co', 'place-1070', 'Oscar Roofing', true);
 insert into public.roof_packages (company_id, name) values (:'co', 'Good') returning id as roof_package \gset
@@ -653,8 +658,6 @@ select t1070.check(array(
   'set_visit_notices(uuid, boolean, boolean)',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',
-  -- A published job showcase, by its link's token: what anyone with the link sees, nothing of the client.
-  'showcase_view(text)',
   'sign_quote(uuid, jsonb, uuid, numeric)', 'social_photos(uuid, timestamp with time zone, uuid, integer, uuid)',
   'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
   -- Installs Paving or Roofing: owners and admins who connect apps only, never a sub.
@@ -677,6 +680,9 @@ select t1070.check(not exists (select 1 from unnest(array['public.sign_in_code_s
 select t1070.check(not exists (select 1 from unnest(array['public.storage_snapshot(uuid, uuid)', 'public.storage_set_default(uuid, bigint, text)']) as f
   where has_function_privilege('authenticated', f, 'execute') or has_function_privilege('anon', f, 'execute')),
   'the storage check before an upload, and the default limit, are the server''s alone');
+-- So is reading a published showcase for a visitor (20261113001580_showcases_come_down.sql): the server asks, with its visitor limits.
+select t1070.check(not has_function_privilege('authenticated', 'public.showcase_view(text)', 'execute') and not has_function_privilege('anon', 'public.showcase_view(text)', 'execute'),
+  'reading a showcase for a visitor is the server''s alone');
 -- And so are the referral page's lead and recording a referral ask (20261031000100_referral_credits.sql,
 -- 20261031000120_referral_asks.sql): the server checks the link, Turnstile and the 6 months first.
 select t1070.check(not exists (select 1 from unnest(array['public.record_referral(uuid, uuid, text, text, text, jsonb, text)',
