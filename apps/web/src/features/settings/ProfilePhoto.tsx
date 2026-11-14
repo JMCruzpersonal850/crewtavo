@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { base64Of, squarePhoto } from "@/lib/files";
 import { useSession } from "@/lib/session";
+import { t } from "@/lib/i18n";
 
 export function PhotoButtons({ userId, photo }: { userId: string; photo: string | null | undefined }) {
   const session = useSession();
@@ -24,7 +25,7 @@ export function PhotoButtons({ userId, photo }: { userId: string; photo: string 
   const set = useMutation({
     mutationFn: async (file: File) => {
       const square = await squarePhoto(file);
-      if (!square) throw new Error("Crewtavo can't open that picture. Try a JPEG or PNG photo.");
+      if (!square) throw new Error(t("Crewtavo can't open that picture. Try a JPEG or PNG photo."));
       return api.put<{ avatar_url: string }>(`/team/${userId}/photo`, { photo: await base64Of(square) });
     },
     onSuccess: changed,
@@ -36,9 +37,9 @@ export function PhotoButtons({ userId, photo }: { userId: string; photo: string 
   return (
     <div className="row wrap" style={{ gap: 8 }}>
       <Button size="sm" icon="camera" loading={set.isPending} slowHint={false} disabled={remove.isPending} onClick={() => input.current?.click()}>
-        {photo ? "Change photo" : "Add a photo"}
+        {photo ? t("Change photo") : t("Add a photo")}
       </Button>
-      {photo && <Button size="sm" variant="ghost" loading={remove.isPending} disabled={set.isPending} onClick={() => remove.mutate()}>Remove photo</Button>}
+      {photo && <Button size="sm" variant="ghost" loading={remove.isPending} disabled={set.isPending} onClick={() => remove.mutate()}>{t("Remove photo")}</Button>}
       <input
         ref={input}
         type="file"

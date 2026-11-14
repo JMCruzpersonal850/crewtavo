@@ -31,6 +31,9 @@ export const COVERED = [
   "apps/web/src/features/auth/LoginPage.tsx",
   "apps/web/src/features/auth/textCode.ts",
   "apps/web/src/features/settings/Language.tsx",
+  // Their own profile and notifications, and timesheets.
+  ...["NotificationSettings.tsx", "ProfileSettings.tsx", "SpareKeysCard.tsx", "CalendarFeedCard.tsx", "ProfilePhoto.tsx"].map((f) => `apps/web/src/features/settings/${f}`),
+  ...["TimesheetsPage.tsx", "clockPlace.ts", "weekData.ts"].map((f) => `apps/web/src/features/timesheets/${f}`),
   // The field app.
   "apps/web/src/features/field",
   // What the field app opens: receipts, materials, equipment hours, plans, paperwork, sending an invoice.

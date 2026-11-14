@@ -18,6 +18,7 @@ import { NotificationSettings } from "./NotificationSettings";
 import { PhotoButtons } from "./ProfilePhoto";
 import { SignatureCard } from "./SignatureCard";
 import { SpareKeysCard } from "./SpareKeysCard";
+import { msg, t } from "@/lib/i18n";
 
 const COLORS = ["#0f2a35", "#3b7d23", "#3474d4", "#c9852a", "#d2445c", "#8b5cf6", "#0e7490", "#57534e"];
 
@@ -49,8 +50,8 @@ export function ProfileSettings() {
   const changePassword = useMutation({
     meta: { inline: true },
     mutationFn: async () => {
-      if (password.length < 8) throw new Error("Use at least 8 characters.");
-      if (password !== confirmPw) throw new Error("The passwords don't match.");
+      if (password.length < 8) throw new Error(t("Use at least 8 characters."));
+      if (password !== confirmPw) throw new Error(t("The passwords don't match."));
       // Checked against the current one on the server (apps/api/src/routes/account.ts).
       await api.post("/account/password", { current: current || undefined, password });
     },
@@ -69,28 +70,28 @@ export function ProfileSettings() {
           <span className="avatar" style={{ width: 72, height: 72, fontSize: 24, background: color }}><Face name={name || email} photo={session.profile.avatar_url} /></span>
           <div className="stack-sm" style={{ gap: 8 }}>
             <div>
-              <strong style={{ fontSize: 16 }}>{name || "Your name"}</strong>
+              <strong style={{ fontSize: 16 }}>{name || t("Your name")}</strong>
               {email && <div className="muted small">{email}</div>}
             </div>
             <PhotoButtons userId={session.userId} photo={session.profile.avatar_url} />
           </div>
         </div>
         <div className="form-grid">
-          <Field label="Full name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} autoComplete="name" /></Field>
-          <Field label="Mobile phone" optional hint={madeForSub ? `Texts about your jobs go here. Leave it empty to get them at the number ${session.company.name} has for you.` : undefined}>
+          <Field label={t("Full name")}><input className="input" value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} autoComplete="name" /></Field>
+          <Field label={t("Mobile phone")} optional hint={madeForSub ? t("Texts about your jobs go here. Leave it empty to get them at the number {company} has for you.", { company: session.company.name }) : undefined}>
             <input className="input" type="tel" value={phone} onChange={(e) => setPhone(formatPhoneTyping(e.target.value))} maxLength={40} autoComplete="tel" />
           </Field>
         </div>
         {!sub && <div className="field">
-          <span>Color on the schedule</span>
+          <span>{t("Color on the schedule")}</span>
           <div className="row wrap" style={{ gap: 8 }}>
             {COLORS.map((c) => (
-              <button key={c} type="button" aria-label={`Color ${c}`} aria-pressed={color === c} onClick={() => setColor(c)} style={{ width: 32, height: 32, borderRadius: "50%", background: c, border: color === c ? "3px solid var(--surface)" : "0", boxShadow: color === c ? `0 0 0 2px ${c}` : "none", cursor: "pointer", transition: "box-shadow 150ms" }} />
+              <button key={c} type="button" aria-label={t("Color {color}", { color: c })} aria-pressed={color === c} onClick={() => setColor(c)} style={{ width: 32, height: 32, borderRadius: "50%", background: c, border: color === c ? "3px solid var(--surface)" : "0", boxShadow: color === c ? `0 0 0 2px ${c}` : "none", cursor: "pointer", transition: "box-shadow 150ms" }} />
             ))}
           </div>
         </div>}
         <FormError error={save.error} />
-        <div className="form-actions"><FormChecks /><Button type="submit" variant="primary" loading={save.isPending} done={saved}>Save profile</Button></div>
+        <div className="form-actions"><FormChecks /><Button type="submit" variant="primary" loading={save.isPending} done={saved}>{t("Save profile")}</Button></div>
       </form>
       <div className="narrow stack">
       {signs && <SignatureCard />}
@@ -103,17 +104,17 @@ export function ProfileSettings() {
       <SpareKeysCard />
       {madeForSub && (
         <div className="card card-pad stack-sm">
-          <strong>Signing in</strong>
+          <strong>{t("Signing in")}</strong>
           <span className="muted small">{signingInNote(session.company.name, subCodeWays(session.config.features, session.subcontractor))}</span>
         </div>
       )}
       {!madeForSub && <form className="card card-pad stack-sm" onSubmit={(e: FormEvent) => { e.preventDefault(); changePassword.mutate(); }}>
-        <strong>Change password</strong>
-        <Field label="Current password" hint="Leave it empty if you don't have one yet."><input className="input" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" /></Field>
-        <Field label="New password" hint="At least 8 characters."><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required minLength={8} /></Field>
-        <Field label="Confirm new password" error={confirmPw && password !== confirmPw ? "The passwords don't match." : null}><input className="input" type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" required /></Field>
+        <strong>{t("Change password")}</strong>
+        <Field label={t("Current password")} hint={t("Leave it empty if you don't have one yet.")}><input className="input" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" /></Field>
+        <Field label={t("New password")} hint={t("At least 8 characters.")}><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required minLength={8} /></Field>
+        <Field label={t("Confirm new password")} error={confirmPw && password !== confirmPw ? "The passwords don't match." : null}><input className="input" type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" required /></Field>
         <FormError error={changePassword.error} />
-        <Button type="submit" loading={changePassword.isPending} done={changed} doneLabel="Password changed" style={{ justifySelf: "start" }}>Change password</Button>
+        <Button type="submit" loading={changePassword.isPending} done={changed} doneLabel={t("Password changed")} style={{ justifySelf: "start" }}>{t("Change password")}</Button>
       </form>}
       </div>
     </div>
@@ -121,9 +122,9 @@ export function ProfileSettings() {
 }
 
 const THEMES: Array<{ value: ThemeChoice; label: string; icon: IconName }> = [
-  { value: "light", label: "Light", icon: "sun" },
-  { value: "dark", label: "Dark", icon: "moon" },
-  { value: "system", label: "System", icon: "monitor" },
+  { value: "light", label: msg("Light"), icon: "sun" },
+  { value: "dark", label: msg("Dark"), icon: "moon" },
+  { value: "system", label: msg("System"), icon: "monitor" },
 ];
 
 /** Light, dark or the device's setting. Applies right away and is remembered on this device. */
@@ -131,16 +132,16 @@ function Appearance() {
   const theme = useTheme();
   return (
     <div className="card card-pad stack-sm">
-      <strong id="appearance-title">Appearance</strong>
+      <strong id="appearance-title">{t("Appearance")}</strong>
       <div className="segmented" role="group" aria-labelledby="appearance-title" style={{ justifySelf: "start" }}>
-        {THEMES.map((t) => (
-          <button key={t.value} type="button" aria-pressed={theme === t.value} onClick={() => setTheme(t.value)}>
-            <Icon name={t.icon} size={14} />
-            {t.label}
+        {THEMES.map((choice) => (
+          <button key={choice.value} type="button" aria-pressed={theme === choice.value} onClick={() => setTheme(choice.value)}>
+            <Icon name={choice.icon} size={14} />
+            {t(choice.label)}
           </button>
         ))}
       </div>
-      <span className="muted small">System follows your device's light or dark setting. Saved on this device.</span>
+      <span className="muted small">{t("System follows your device's light or dark setting. Saved on this device.")}</span>
     </div>
   );
 }
