@@ -2,6 +2,7 @@
  * What a postcard campaign's page (PostcardPage.tsx) works out before it draws anything, kept apart
  * from the page so it can be tested: where the preview draws Lob's address block.
  */
+import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
 import { addressBlock, addressLine, BLEED_IN, LEFT_OUT_WORDS, LOB_PROOF_DAYS, POSTCARD_KEEP_DAYS, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
 
 /**
@@ -79,6 +80,25 @@ export function duplicateQuestion(c: { status: string; mode: string | null; made
     title: "Copy this campaign?",
     body: `The copy is a new draft with the same card and the same audience. ${mailed}Sending the copy mails everyone in the audience again, those already mailed too: narrow who it goes to first if that isn't what you want. Nothing is mailed until the copy is sent.`,
   };
+}
+
+/**
+ * Whether Send has to wait for the draft to be saved. The page saves a little after each change;
+ * Send mails what's saved, so until the change on screen is saved (or if saving it failed) Send
+ * would mail the card as it was before. `problem` says so when the save failed; while a save is
+ * only pending, Send just waits.
+ */
+export function waitForSave(status: "idle" | "edited" | "saving" | "saved" | "error"): { blocked: boolean; problem: string | null } {
+  if (status === "error") return { blocked: true, problem: "Your last changes couldn't be saved, so sending now would mail the card as it was before them. Check your connection, then change something to save again." };
+  return { blocked: status === "edited" || status === "saving", problem: null };
+}
+
+/**
+ * The card and audience as the page shows them, in the shape they're saved in, sent along with
+ * Send: the server mails nothing when this isn't what's saved.
+ */
+export function draftAsSaved(d: { message: string; size: string; front_attachment_id: string | null; front_marked: boolean; front_path: string | null; audience: CampaignAudience }) {
+  return { message: d.message, size: d.size, front_attachment_id: d.front_attachment_id, front_marked: d.front_marked, front_path: d.front_path, audience: audienceKeys(d.audience) as Record<string, unknown> };
 }
 
 const DAY = 86_400_000;

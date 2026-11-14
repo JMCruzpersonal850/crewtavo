@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ONE_PER_ADDRESS } from "@crewtavo/core/postcards";
-import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, duplicateQuestion, leftOutWords, needsAdmin, pickablePhotos, proofLink, type AudienceRow } from "../src/features/marketing/postcardForm";
+import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, leftOutWords, needsAdmin, pickablePhotos, proofLink, waitForSave, type AudienceRow } from "../src/features/marketing/postcardForm";
 import { toCsv } from "../src/lib/csv";
 
 describe("the photos offered for a postcard's front", () => {
@@ -57,6 +57,26 @@ describe("who gets a card, in full", () => {
   it("is read a page at a time, so a list past 1,000 clients is whole", () => {
     const dialog = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardAudience.tsx", import.meta.url)), "utf8");
     expect(dialog).toMatch(/everyRow<AudienceRow>\(\(\) => supabase\(\)\.rpc\("postcard_audience"/);
+  });
+});
+
+describe("Send waits for the draft to be saved", () => {
+  it("is held back while a change is waiting to save or saving, and says why when the save failed", () => {
+    expect(waitForSave("idle")).toEqual({ blocked: false, problem: null });
+    expect(waitForSave("saved")).toEqual({ blocked: false, problem: null });
+    expect(waitForSave("edited")).toEqual({ blocked: true, problem: null });
+    expect(waitForSave("saving")).toEqual({ blocked: true, problem: null });
+    const failed = waitForSave("error");
+    expect(failed.blocked).toBe(true);
+    expect(failed.problem).toMatch(/couldn't be saved, so sending now would mail the card as it was before/);
+  });
+
+  it("tells the server what the page shows, in the shape it's saved in, so the server can refuse a stale card", () => {
+    const shown = draftAsSaved({ message: "Hi {{client.first_name}}", size: "6x9", front_attachment_id: null, front_marked: true, front_path: "co/postcards/c1/a.jpg", audience: { tags_any: ["vip"], cities: [], recurring: "any" as never } });
+    expect(shown).toEqual({ message: "Hi {{client.first_name}}", size: "6x9", front_attachment_id: null, front_marked: true, front_path: "co/postcards/c1/a.jpg", audience: { tags_any: ["vip"] } });
+    const page = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardPage.tsx", import.meta.url)), "utf8");
+    expect(page).toContain("draft: draftAsSaved(draft)");
+    expect(page).toMatch(/disabled=\{[^}]*unsaved\.blocked\}/);
   });
 });
 

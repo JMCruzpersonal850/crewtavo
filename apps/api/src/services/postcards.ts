@@ -21,6 +21,7 @@
  *                 (a phone photo's location would say where the client lives), at an address that
  *                 names nothing. So this server's address has to be public, as for social posts.
  */
+import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { CANT_SHARE, type CantShare } from "@crewtavo/core/social";
 import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type AddressProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
@@ -236,7 +237,46 @@ export interface SendAsk {
   shown?: LobMode | null;
   /** Whether the person asking may spend with a live key: an owner or admin. */
   sendLive?: boolean;
+  /** The card and audience as the page showed them when Send was pressed: nothing goes if that isn't what's saved. */
+  draft?: SavedDraft | null;
 }
+
+/** What's on a draft's card and who it goes to. */
+export interface SavedDraft {
+  message: string;
+  size: string;
+  front_attachment_id: string | null;
+  front_marked: boolean;
+  front_path: string | null;
+  audience: unknown;
+}
+
+/** JSON with every object's keys in order, so two audiences that say the same compare the same. */
+const stable = (value: unknown): string =>
+  Array.isArray(value)
+    ? `[${value.map(stable).join(",")}]`
+    : value && typeof value === "object"
+      ? `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`).join(",")}}`
+      : JSON.stringify(value ?? null);
+
+/**
+ * Whether the draft the page showed is the one that's saved. The page saves a little after each
+ * change; if that save failed, or hasn't happened yet, Send would mail the version before it.
+ */
+export function sameDraft(saved: SavedDraft, shown: SavedDraft): boolean {
+  return (
+    saved.message === shown.message &&
+    saved.size === shown.size &&
+    (saved.front_attachment_id ?? null) === (shown.front_attachment_id ?? null) &&
+    (saved.front_path ?? null) === (shown.front_path ?? null) &&
+    // Which copy of a photo only matters when the front is a photo.
+    (!saved.front_attachment_id || saved.front_marked === shown.front_marked) &&
+    // Read the way the page writes it (empty filters left out), so an audience saved another way isn't taken for a change.
+    stable(audienceKeys(saved.audience as CampaignAudience)) === stable(audienceKeys(shown.audience as CampaignAudience))
+  );
+}
+
+export const NOT_SAVED = "The last changes on this page weren't saved, so nothing was sent. Wait until it says Saved, check the card, then send again.";
 
 /**
  * What both Send and "Mail one to us first" check before anything is made: the draft, Marketing,
@@ -251,6 +291,7 @@ async function readyToMail(env: Env, db: Db, companyId: string, id: string, ask:
     "Campaign not found.",
   );
   if (campaign.status !== "draft") throw new HttpError(409, "This campaign has already been sent.");
+  if (ask.draft && !sameDraft(campaign, ask.draft)) throw new HttpError(409, NOT_SAVED);
   const company = must(await admin.from("companies").select("name, phone, website, address, slug, settings").eq("id", companyId).maybeSingle()) as Company;
   const lob = await companyLob(env, admin, companyId);
   const size = campaign.size as PostcardSize;
@@ -517,17 +558,67 @@ export async function checkMailedCards(env: Env) {
   return counts;
 }
 
+const UNKNOWN_CARD = "It isn't known whether this card was made. Look for it in your Lob dashboard before mailing this client again.";
+/** As the database gives up on a claim in a campaign still being mailed (claim_postcard_recipients). */
+const GIVE_UP_MS = 12 * 3_600_000;
+
 /**
- * The postcards task, every minute: the next cards of the campaigns being mailed, then what Lob did
- * with the cards it accepted (each campaign once an hour). The second never holds up the first.
+ * Cards left half-made in a stopped campaign (the worker making one died, or couldn't record it):
+ * nothing claims a stopped campaign's recipients again, so each is settled here by asking Lob
+ * whether it has the card, found by the campaign and recipient kept with every card.
+ *
+ *   Lob has it        made, with Lob's id (or failed, with Lob's reason, if Lob failed it);
+ *   Lob doesn't       skipped, as the rest of a stopped campaign is: only when Lob's list was read
+ *                     to its end, so a card isn't called unmade because a page was missed;
+ *   can't be told     (Lob disconnected, a key of the other kind, a list cut short) left for the
+ *                     next run, and after 12 hours failed, saying to look in Lob first.
+ */
+export async function settleStoppedCards(env: Env) {
+  const admin = adminClient(env);
+  const { data: stuck, error } = await admin.rpc("stuck_postcard_recipients", { p_limit: 100 });
+  if (error) throw new Error(error.message);
+  const counts = { settled: 0 };
+  const campaigns = new Map<string, NonNullable<typeof stuck>>();
+  for (const row of stuck ?? []) campaigns.set(row.campaign_id, [...(campaigns.get(row.campaign_id) ?? []), row]);
+  for (const [campaignId, rows] of campaigns) {
+    const lob = await companyLob(env, admin, rows[0]!.company_id).catch(() => null);
+    const listing = lob && lob.mode === rows[0]!.mode ? await listCards(lob.key, { campaign: campaignId }).catch(() => null) : null;
+    const cards = new Map((listing?.cards ?? []).filter((c) => c.metadata.crewtavo_campaign === campaignId && c.metadata.crewtavo_recipient).map((c) => [c.metadata.crewtavo_recipient!, c]));
+    for (const row of rows) {
+      const card = cards.get(String(row.id));
+      const waitedOut = !row.claimed_at || Date.now() - Date.parse(row.claimed_at) > GIVE_UP_MS;
+      const outcome = card
+        ? card.status === "failed"
+          ? { p_status: "failed", p_error: `Lob couldn't print this card after accepting it${card.failure ? `: ${card.failure}` : "."}`, p_lob_id: card.id }
+          : { p_status: "made", p_lob_id: card.id, p_proof_url: card.url ?? undefined }
+        : listing?.complete
+          ? { p_status: "skipped", p_error: "Campaign stopped" }
+          : waitedOut
+            ? { p_status: "failed", p_error: UNKNOWN_CARD }
+            : null;
+      if (!outcome) continue;
+      const { data: done } = await admin.rpc("settle_postcard_recipient", { p_id: row.id, ...outcome });
+      if (done) counts.settled++;
+    }
+  }
+  return counts;
+}
+
+/**
+ * The postcards task, every minute: the next cards of the campaigns being mailed, then cards left
+ * half-made in a stopped campaign, then what Lob did with the cards it accepted (each campaign
+ * once an hour). The later steps never hold up the first.
  */
 export async function postcardsTask(env: Env) {
   const made = await processPostcards(env);
-  const checked = await checkMailedCards(env).catch((error: unknown) => {
-    reportError(error, { feature: "postcards" });
-    return { checked: 0, lob_failed: 0 };
-  });
-  return { ...made, ...checked };
+  const quietly = <T,>(work: Promise<T>, otherwise: T) =>
+    work.catch((error: unknown) => {
+      reportError(error, { feature: "postcards" });
+      return otherwise;
+    });
+  const settled = await quietly(settleStoppedCards(env), { settled: 0 });
+  const checked = await quietly(checkMailedCards(env), { checked: 0, lob_failed: 0 });
+  return { ...made, ...settled, ...checked };
 }
 
 /** The front picture's public copy, for Lob to fetch: by its token alone, while the campaign is mailed or kept. */

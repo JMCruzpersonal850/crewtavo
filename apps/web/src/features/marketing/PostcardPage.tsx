@@ -35,7 +35,7 @@ import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
 import { PostcardAudienceDialog } from "./PostcardAudience";
-import { ASK_ADMIN_WORDS, blockStyle, deletableFrom, duplicateQuestion, needsAdmin, pickablePhotos, proofLink } from "./postcardForm";
+import { ASK_ADMIN_WORDS, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, needsAdmin, pickablePhotos, proofLink, waitForSave } from "./postcardForm";
 import { LobMode } from "../apps/LobPanel";
 
 interface Draft {
@@ -152,7 +152,8 @@ function PostcardScreen() {
   const send = useMutation({
     meta: { success: (r: { recipients: number; mode: string }) => (r.mode === "live" ? `Mailing ${r.recipients.toLocaleString("en-US")} postcards` : `Making ${r.recipients.toLocaleString("en-US")} test postcards`) },
     // `mode` is the kind of key this page said it is: the server sends nothing if the key on file is the other kind.
-    mutationFn: (sent: { count: number; mode: "test" | "live" }) => api.post<{ recipients: number; mode: string }>(`/postcards/${id}/send`, { confirm: sent.count, mode: sent.mode }),
+    // `draft` is the card as this page shows it: the server sends nothing if that isn't what's saved.
+    mutationFn: (sent: { count: number; mode: "test" | "live"; draft: ReturnType<typeof draftAsSaved> }) => api.post<{ recipients: number; mode: string }>(`/postcards/${id}/send`, { confirm: sent.count, mode: sent.mode, draft: sent.draft }),
     onSuccess: refresh,
   });
   const stop = useMutation({
@@ -200,6 +201,8 @@ function PostcardScreen() {
   };
   const message = postcardMessage(shown.message, vars);
   const fit = backFit(shown.size, message);
+  // Send mails what's saved: it waits for the save of what's on screen.
+  const unsaved = waitForSave(saving.status);
   const problems = [
     !s?.lob && "Lob isn't connected.",
     s?.lob?.problem,
@@ -208,6 +211,7 @@ function PostcardScreen() {
     !draft.front_attachment_id && !draft.front_path && "Pick a picture for the front.",
     messageProblem(message, draft.size),
     editable && summary.data && !count && "No one in this audience has a complete mailing address.",
+    editable && unsaved.problem,
   ].filter(Boolean) as string[];
   const mode = c.status === "draft" ? s?.lob?.mode : (c.mode as "test" | "live");
   // A live key spends the company's money: an owner or admin sends. The office gets the campaign ready.
@@ -230,7 +234,7 @@ function PostcardScreen() {
           typeToConfirm: String(count),
         })
       : await confirm({ title: `Make ${n} test ${cards}?`, body: "This is a test key: Lob makes each card so you can see it in your Lob dashboard, but nothing is printed or mailed, and nothing is charged.", confirmLabel: `Make ${n} test ${cards}` });
-    if (ok && mode) send.mutate({ count, mode });
+    if (ok && mode) send.mutate({ count, mode, draft: draftAsSaved(draft) });
   };
 
   return (
@@ -241,7 +245,7 @@ function PostcardScreen() {
         documentTitle={c.name}
         actions={
           <>
-            {editable && !askAdmin && <Button variant="primary" icon="send" loading={send.isPending} disabled={problems.length > 0 || summary.isFetching || !count} onClick={askToSend}>{mode === "test" ? "Make test cards" : "Send"}</Button>}
+            {editable && !askAdmin && <Button variant="primary" icon="send" loading={send.isPending} disabled={problems.length > 0 || summary.isFetching || !count || unsaved.blocked} onClick={askToSend}>{mode === "test" ? "Make test cards" : "Send"}</Button>}
             {c.status === "sending" && <Button variant="danger" icon="x" loading={stop.isPending} onClick={async () => (await confirm({ title: "Stop mailing?", body: "Cards Lob has already made are still mailed. Lob can cancel them for a short while from your Lob dashboard.", confirmLabel: "Stop", danger: true })) && stop.mutate()}>Stop</Button>}
             <Menu
               items={[

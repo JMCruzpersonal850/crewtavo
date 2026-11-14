@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
-import { checkMailedCards, processPostcards, returnAddressProblem, sendProblem, startPostcards } from "../src/services/postcards";
+import { checkMailedCards, processPostcards, returnAddressProblem, sameDraft, sendProblem, settleStoppedCards, startPostcards } from "../src/services/postcards";
 import { backFit } from "@crewtavo/core/postcards";
 
 const current = vi.hoisted(() => ({ db: null as unknown, key: "test_0123456789abcdef0123" as string | null }));
@@ -59,6 +59,16 @@ function memoryDb(tables: Record<string, Row[]>) {
       for (const c of tables.postcard_campaigns!) if (c.id === p_campaign && c.status === "sending") Object.assign(c, { status: "cancelled", stopped_reason: p_reason });
       for (const r of recipients()) if (r.campaign_id === p_campaign && r.status === "pending") Object.assign(r, { status: "skipped", error: p_reason });
       return null;
+    },
+    // Recipients still being made in a stopped campaign, and what became of one.
+    stuck_postcard_recipients: () =>
+      recipients()
+        .filter((r) => r.status === "sending" && tables.postcard_campaigns!.some((c) => c.id === r.campaign_id && c.status === "cancelled"))
+        .map((r) => ({ id: r.id, campaign_id: r.campaign_id, company_id: CO, mode: tables.postcard_campaigns!.find((c) => c.id === r.campaign_id)!.mode, claimed_at: r.claimed_at ?? null })),
+    settle_postcard_recipient: ({ p_id, p_status, p_error, p_lob_id, p_proof_url }) => {
+      const r = recipients().find((x) => x.id === p_id && x.status === "sending");
+      if (r) Object.assign(r, { status: p_status, error: p_error ?? null, lob_id: p_lob_id ?? null, proof_url: p_proof_url ?? null, claim_token: null });
+      return Boolean(r);
     },
     // The campaigns whose cards Lob is asked about: here, every one that's been sent.
     claim_postcard_checks: () => tables.postcard_campaigns!.filter((c) => c.status !== "draft").map((c) => ({ id: c.id, company_id: c.company_id, mode: c.mode })),
@@ -389,6 +399,49 @@ describe("after Lob has accepted a card", () => {
     await expect(checkMailedCards(env)).resolves.toEqual({ checked: 1, lob_failed: 0 });
   });
 
+  describe("a card left half-made when the campaign was stopped", () => {
+    // Stopped while Ann's card was being made (the worker died) and Bob's hadn't been started on.
+    const stopped = () => {
+      const tables = world("live");
+      current.key = "live_0123456789abcdef0123";
+      tables.postcard_campaigns[0]!.status = "cancelled";
+      tables.postcard_recipients = tables.postcard_recipients.slice(0, 2);
+      Object.assign(tables.postcard_recipients[0]!, { status: "sending", claim_token: "dead", claimed_at: new Date(Date.now() - 3_600_000).toISOString() });
+      Object.assign(tables.postcard_recipients[1]!, { status: "sending", claim_token: "dead", claimed_at: new Date(Date.now() - 3_600_000).toISOString() });
+      return tables;
+    };
+
+    it("is recorded as made when Lob has it, and as not mailed when Lob's whole list doesn't", async () => {
+      const tables = stopped();
+      current.db = memoryDb(tables);
+      // Lob made Ann's card before the worker died. Another campaign's card for a recipient numbered 2 isn't Bob's.
+      listed.cards = [
+        { id: "psc_ann", status: "rendered", url: "https://lob-assets.com/postcards/psc_ann.pdf", metadata: { crewtavo_campaign: CAMPAIGN, crewtavo_recipient: "1" } },
+        { id: "psc_other", status: "rendered", metadata: { crewtavo_campaign: "another", crewtavo_recipient: "2" } },
+      ];
+      await expect(settleStoppedCards(env)).resolves.toEqual({ settled: 2 });
+      expect(Object.fromEntries(listed.asked[0]!.url.searchParams)).toMatchObject({ "metadata[crewtavo_campaign]": CAMPAIGN });
+      expect(listed.asked[0]!.url.searchParams.has("status")).toBe(false);
+      expect(tables.postcard_recipients[0]).toMatchObject({ status: "made", lob_id: "psc_ann", proof_url: "https://lob-assets.com/postcards/psc_ann.pdf" });
+      expect(tables.postcard_recipients[1]).toMatchObject({ status: "skipped", error: "Campaign stopped" });
+      // No card is asked for: a stopped campaign makes none.
+      expect(sent).toHaveLength(0);
+    });
+
+    it("waits when Lob can't be asked, and after 12 hours says it isn't known rather than guess", async () => {
+      const tables = stopped();
+      tables.integrations[0]!.status = "disconnected";
+      current.db = memoryDb(tables);
+      await expect(settleStoppedCards(env)).resolves.toEqual({ settled: 0 });
+      expect(tables.postcard_recipients.map((r) => r.status)).toEqual(["sending", "sending"]);
+      for (const r of tables.postcard_recipients) r.claimed_at = new Date(Date.now() - 13 * 3_600_000).toISOString();
+      await expect(settleStoppedCards(env)).resolves.toEqual({ settled: 2 });
+      expect(tables.postcard_recipients[0]).toMatchObject({ status: "failed" });
+      expect(tables.postcard_recipients[0]!.error).toMatch(/isn't known whether this card was made.*Lob dashboard/);
+      expect(listed.asked).toHaveLength(0);
+    });
+  });
+
   it("doesn't ask about a live campaign's cards with a test key, which can't see them", async () => {
     const tables = world("live");
     tables.postcard_campaigns[0]!.status = "sent";
@@ -491,6 +544,22 @@ describe("Send", () => {
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "live", sendLive: true })).rejects.toThrow(/Confirm that number/);
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 2, shown: "live", sendLive: true })).rejects.toThrow(/Confirm that number/);
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, shown: "live", sendLive: true })).resolves.toMatchObject({ mode: "live", recipients: 3 });
+  });
+
+  it("sends nothing when what the page showed isn't what's saved (the last change didn't save)", async () => {
+    const tables = draft();
+    current.db = memoryDb(tables);
+    const saved = tables.postcard_campaigns[0]!;
+    const shown = { message: saved.message, size: "4x6", front_attachment_id: null, front_marked: true, front_path: saved.front_path as string, audience: {} };
+    // The page shows a message that never reached the database.
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", draft: { ...shown, message: `${saved.message} Call today.` } })).rejects.toThrow(/last changes on this page weren't saved, so nothing was sent/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", draft: { ...shown, audience: { tags_any: ["vip"] } } })).rejects.toMatchObject({ status: 409 });
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", draft: { ...shown, size: "6x9" } })).rejects.toMatchObject({ status: 409 });
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
+    // The same card and audience, however the audience's keys are ordered or its empty filters written, goes.
+    expect(sameDraft({ ...shown, audience: { tags_any: ["a"], statuses: ["active"], cities: [] } }, { ...shown, audience: { statuses: ["active"], tags_any: ["a"] } })).toBe(true);
+    expect(sameDraft({ ...shown, audience: { tags_any: ["a", "b"] } }, { ...shown, audience: { tags_any: ["b", "a"] } })).toBe(false);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", draft: shown })).resolves.toMatchObject({ status: "sending" });
   });
 
   it("leaves mailing with a live key to an owner or admin: the office is told to ask one, however they confirm", async () => {

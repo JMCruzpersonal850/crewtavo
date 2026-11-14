@@ -163,6 +163,48 @@ select tmkpf.check((select client_id is null from public.postcard_recipients whe
 update public.postcard_recipients set made_at = now() - interval '9 days' where campaign_id in (:'pc_m', :'pc_b');
 
 \o
+\echo 'A card left half-made in a stopped campaign'
+\o /dev/null
+insert into public.clients (company_id, display_name, status, billing_address, tags) values
+  (:'co', 'Sam Oak', 'active', '{"line1": "1 Stuck St", "city": "Springfield", "region": "IL", "postal_code": "62706"}', '{stuck}'),
+  (:'co', 'Sue Oak', 'active', '{"line1": "2 Stuck St", "city": "Springfield", "region": "IL", "postal_code": "62706"}', '{stuck}'),
+  (:'co', 'Syd Oak', 'active', '{"line1": "3 Stuck St", "city": "Springfield", "region": "IL", "postal_code": "62706"}', '{stuck}');
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Stuck', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["stuck"]}') returning id as pc_s \gset
+set local role service_role;
+select tmkpf.as_nobody();
+select public.start_postcard_campaign(:'pc_s', 'live', repeat('s', 32), 'x');
+select min(claim_token::text) as stok from public.claim_postcard_recipients(:'pc_s', 2) \gset
+select id as r_sam from public.postcard_recipients where campaign_id = :'pc_s' and name = 'Sam Oak' \gset
+select id as r_sue from public.postcard_recipients where campaign_id = :'pc_s' and name = 'Sue Oak' \gset
+select id as r_syd from public.postcard_recipients where campaign_id = :'pc_s' and name = 'Syd Oak' \gset
+select public.renew_postcard_recipient(:r_sam, :'stok'), public.renew_postcard_recipient(:r_sue, :'stok');
+-- Stopped while Sam's and Sue's cards were being made; the worker never came back.
+select public.stop_postcard_campaign(:'pc_s', 'Stopped');
+select tmkpf.check((select status = 'skipped' from public.postcard_recipients where id = :r_syd) and (select count(*) = 2 from public.postcard_recipients where campaign_id = :'pc_s' and status = 'sending'),
+  'Stop skips who was waiting, and leaves the two being made to their worker');
+select tmkpf.check(tmkpf.count_of('select 1 from public.stuck_postcard_recipients(100)') = 0, 'a card still within its worker''s time isn''t called stuck');
+select tmkpf.check(not public.settle_postcard_recipient(:r_sam, 'skipped', 'Campaign stopped'), 'nor settled from under it');
+update public.postcard_recipients set locked_until = now() - interval '11 minutes' where campaign_id = :'pc_s' and status = 'sending';
+select tmkpf.check((select count(*) = 2 and min(mode) = 'live' from public.stuck_postcard_recipients(100) where campaign_id = :'pc_s'), 'ten minutes after its claim ran out it is, with the kind of key to ask Lob with');
+select tmkpf.check(public.settle_postcard_recipient(:r_sam, 'made', null, 'psc_sam', 'https://lob-assets.com/postcards/psc_sam.pdf'), 'Lob has Sam''s card: it''s recorded made');
+select tmkpf.check((select status = 'made' and lob_id = 'psc_sam' and made_at is not null and proof_url like 'https://%' and claim_token is null from public.postcard_recipients where id = :r_sam), 'with Lob''s id and its proof');
+select tmkpf.check(public.settle_postcard_recipient(:r_sue, 'skipped', 'Campaign stopped'), 'Lob has no card for Sue: she wasn''t mailed');
+select tmkpf.check((select made_count = 1 and status = 'cancelled' from public.postcard_campaigns where id = :'pc_s'), 'and the campaign counts the card that was made');
+select tmkpf.check(tmkpf.count_of('select 1 from public.stuck_postcard_recipients(100)') = 0 and not public.settle_postcard_recipient(:r_sam, 'skipped'), 'nothing is left waiting, and a settled card isn''t settled again');
+-- In a campaign still being mailed, a claim that ran out is the next run's to pick up, not this.
+update public.postcard_campaigns set status = 'sending' where id = :'pc_s';
+update public.postcard_recipients set status = 'sending', locked_until = now() - interval '1 hour' where id = :r_sue;
+select tmkpf.check(tmkpf.count_of('select 1 from public.stuck_postcard_recipients(100)') = 0 and not public.settle_postcard_recipient(:r_sue, 'skipped'), 'a campaign being mailed isn''t touched');
+update public.postcard_recipients set status = 'skipped', made_at = null where campaign_id = :'pc_s';
+update public.postcard_campaigns set status = 'cancelled' where id = :'pc_s';
+reset role;
+set local role authenticated;
+select tmkpf.as_user(:'olive');
+select tmkpf.check(tmkpf.error_of('select * from public.stuck_postcard_recipients(10)') like '42501:%' and tmkpf.error_of(format('select public.settle_postcard_recipient(%s, %L)', :r_sue, 'made')) like '42501:%',
+  'the office can''t settle a card from the browser');
+reset role;
+
+\o
 \echo 'After Lob has accepted the cards'
 \o /dev/null
 insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Spring', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["mail"]}') returning id as pc \gset

@@ -47,11 +47,25 @@ postcards.get("/postcards/setup", requireUser, requireCompany(OFFICE, "marketing
   });
 });
 
-/** Send: for a live key, `confirm` is the number of cards the office was asked to confirm. */
+/** The card and audience as the page showed them: the server sends nothing when that isn't what's saved. */
+const DRAFT = z.object({
+  message: z.string().max(4000),
+  size: z.string().max(10),
+  front_attachment_id: z.string().max(64).nullable(),
+  front_marked: z.boolean(),
+  front_path: z.string().max(600).nullable(),
+  audience: z.record(z.string(), z.unknown()),
+});
+const ASK = z.object({ confirm: z.number().int().min(0).nullable().optional(), mode: z.enum(["test", "live"]).optional(), draft: DRAFT.optional() });
+
+/**
+ * Send: for a live key, `confirm` is the number of cards the office was asked to confirm, and only
+ * an owner or admin may; `mode` is the kind of key the page said it is; `draft` is what the page showed.
+ */
 postcards.post("/postcards/:id/send", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
-  const body = await readJson(c, z.object({ confirm: z.number().int().min(0).nullable().optional(), mode: z.enum(["test", "live"]).optional() }));
+  const body = await readJson(c, ASK);
   const id = param(c, "id");
-  const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, { confirm: body.confirm ?? null, shown: body.mode ?? null, sendLive: ADMINS.includes(c.var.role) });
+  const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, { confirm: body.confirm ?? null, shown: body.mode ?? null, sendLive: ADMINS.includes(c.var.role), draft: body.draft ?? null });
   kickPostcards(c, id);
   return c.json(result);
 });
