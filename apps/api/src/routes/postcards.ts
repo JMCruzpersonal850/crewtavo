@@ -15,7 +15,7 @@ import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
 import { clientIp } from "../lib/visitor";
 import { isJpeg } from "../services/photos";
-import { bookingLink, companyLob, frontImage, keyLabelProblem, returnAddress, startPostcards, stopPostcards } from "../services/postcards";
+import { bookingLink, companyLob, frontImage, keyLabelProblem, returnAddress, returnAddressProblem, startPostcards, stopPostcards } from "../services/postcards";
 import { imagesPublic } from "../services/social";
 
 export const postcards = new Hono<AppEnv>();
@@ -36,6 +36,8 @@ postcards.get("/postcards/setup", requireUser, requireCompany(OFFICE, "marketing
     lob: lob ? { mode: lob.mode, problem: keyLabelProblem(lob) } : null,
     public_address: imagesPublic(c.env),
     return_address: from ? addressLine(from) : null,
+    // What Lob would refuse about it (a state it can't read, say), or null.
+    return_address_problem: company.data ? returnAddressProblem(company.data) : null,
     link: company.data ? await bookingLink(c.env, admin, c.var.companyId, company.data) : "",
     can_connect: ADMINS.includes(c.var.role) && c.var.permissions.includes("apps"),
     // Lob's API doesn't say what a card costs: that's in the business's own Lob account.

@@ -13,6 +13,7 @@ import {
   messageProblem,
   POSTCARD_SIZE_INFO,
   postcardMessage,
+  usStateCode,
 } from "../src/postcards";
 
 describe("where a postcard goes", () => {
@@ -29,6 +30,39 @@ describe("where a postcard goes", () => {
     expect(mailable(null)).toBe("no_address");
     expect(mailable({ line1: "1 King St", city: "Toronto", region: "ON", postal_code: "M5H 1A1", country: "CA" })).toBe("outside_us");
     expect(mailable({ line1: "1 King St", city: "Toronto", region: "ON", postal_code: "M5H 1A1" })).toBe("outside_us");
+  });
+
+  it("gives Lob the state as two letters and the ZIP with its hyphen, however they were typed", () => {
+    // Lob's own patterns for a card's address (docs.lob.com, Postcards → Create).
+    const LOB_STATE = /^[a-zA-Z]{2}$/;
+    const LOB_ZIP = /^\d{5}(-\d{4})?$/;
+    const typed = [
+      { region: "Illinois", postal_code: "627011234" },
+      { region: " new  york ", postal_code: "10001 1234" },
+      { region: "il", postal_code: "62701-1234" },
+      { region: "D.C.", postal_code: "20001" },
+      { state: "Puerto Rico", zip: "00901" },
+    ];
+    for (const part of typed) {
+      const found = mailable({ line1: "12 Oak St", city: "Springfield", ...part });
+      expect(typeof found).toBe("object");
+      const address = found as Exclude<typeof found, string>;
+      expect(address.region).toMatch(LOB_STATE);
+      expect(address.postal_code).toMatch(LOB_ZIP);
+    }
+    expect(mailable({ line1: "12 Oak St", city: "Springfield", region: "Illinois", postal_code: "627011234" })).toMatchObject({ region: "IL", postal_code: "62701-1234" });
+    expect(usStateCode("West Virginia")).toBe("WV");
+    expect(usStateCode("Ontario")).toBeNull();
+  });
+
+  it("leaves out what Lob would refuse, saying why: a state that isn't one, a line too long", () => {
+    expect(mailable({ line1: "12 Oak St", city: "Springfield", region: "Ill.", postal_code: "62701" })).toBe("bad_state");
+    expect(mailable({ line1: "x".repeat(65), city: "Springfield", region: "IL", postal_code: "62701" })).toBe("too_long");
+    expect(mailable({ line1: "12 Oak St", line2: "x".repeat(65), city: "Springfield", region: "IL", postal_code: "62701" })).toBe("too_long");
+    expect(mailable({ line1: "x".repeat(64), city: "Springfield", region: "IL", postal_code: "62701" })).toMatchObject({ region: "IL" });
+    // The address worth fixing is the one named when none can be mailed to.
+    expect(mailingAddress({ line1: "12 Oak St", city: "Springfield", region: "Ill.", postal_code: "62701" }, [{ line1: "no city" }])).toBe("bad_state");
+    expect(leftOutLine({ bad_state: 2, too_long: 1 })).toBe("3 left out: 2 with a state that isn't a US state, 1 with an address line too long to mail");
   });
 
   it("uses the billing address when it's complete, else the first property that is, and says why when none is", () => {

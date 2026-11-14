@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
-import { processPostcards, sendProblem, startPostcards } from "../src/services/postcards";
+import { processPostcards, returnAddressProblem, sendProblem, startPostcards } from "../src/services/postcards";
 import { backFit } from "@crewtavo/core/postcards";
 
 const current = vi.hoisted(() => ({ db: null as unknown, key: "test_0123456789abcdef0123" as string | null }));
@@ -385,13 +385,15 @@ describe("Send", () => {
 });
 
 describe("what Send needs first", () => {
-  const ready = { marketing: true, lob: true, publicAddress: true, returnAddress: true, front: true, message: "Hi there, book your spring visit.", size: "4x6" as const };
+  const ready = { marketing: true, lob: true, publicAddress: true, returnAddressProblem: null as string | null, front: true, message: "Hi there, book your spring visit.", size: "4x6" as const };
   it("says the first thing in the way, in the order it's fixed", () => {
     expect(sendProblem(ready)).toBeNull();
     expect(sendProblem({ ...ready, marketing: false, lob: false })).toMatch(/Marketing is off/);
     expect(sendProblem({ ...ready, lob: false })).toMatch(/Lob isn't connected/);
     expect(sendProblem({ ...ready, publicAddress: false })).toMatch(/isn't public/);
-    expect(sendProblem({ ...ready, returnAddress: false })).toMatch(/return address/);
+    expect(sendProblem({ ...ready, returnAddressProblem: returnAddressProblem({ address: { line1: "1 Main St", city: "Springfield", region: "Ill.", postal_code: "62701" } }) })).toMatch(/state in your company.s address .* isn.t one Lob can read/);
+    expect(returnAddressProblem({ address: { line1: "1 Main St", city: "Springfield", region: "Illinois", postal_code: "62701" } })).toBeNull();
+    expect(returnAddressProblem({ address: { line1: "1 Main St" } })).toMatch(/return address/);
     expect(sendProblem({ ...ready, front: false })).toMatch(/picture for the front/);
     expect(sendProblem({ ...ready, message: "word ".repeat(400) })).toMatch(/lines too long for the back of a 4 × 6 in card/);
   });

@@ -22,7 +22,7 @@
  *                 names nothing. So this server's address has to be public, as for social posts.
  */
 import { marketingOn } from "@crewtavo/core/marketing";
-import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
+import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type AddressProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
 import type { Env } from "../env";
 import { createPostcard, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
 import { loadSecret } from "../integrations/tokens";
@@ -84,10 +84,23 @@ export function keyLabelProblem(lob: Pick<CompanyLob, "mode" | "labelled">): str
 
 type Company = { name: string; phone: string | null; website: string | null; address: unknown; slug: string | null; settings: unknown };
 
-/** The company's return address as Lob takes it, or null when it isn't complete. */
+/** The company's return address as Lob takes it, or null when Lob wouldn't take it. Read as a client's is (mailable). */
 export function returnAddress(company: Pick<Company, "name" | "address">): MailingAddress | null {
   const found = mailable(company.address as Record<string, unknown> | null);
   return typeof found === "object" ? found : null;
+}
+
+const RETURN_ADDRESS_WORDS: Record<AddressProblem, string> = {
+  no_address: "Add your company's full address in Settings → Company first: Lob prints it on each card as the return address.",
+  outside_us: "Your company's address in Settings → Company has to be in the US, with a ZIP code: Lob prints it on each card as the return address.",
+  bad_state: "The state in your company's address (Settings → Company) isn't one Lob can read. Type the state's name or its two letters, like IL.",
+  too_long: "A line of your company's address (Settings → Company) is longer than the 64 characters Lob takes. Shorten it.",
+};
+
+/** What's wrong with the company's own address as a return address, or null: every card would be refused over it. */
+export function returnAddressProblem(company: Pick<Company, "address">): string | null {
+  const found = mailable(company.address as Record<string, unknown> | null);
+  return typeof found === "object" ? null : RETURN_ADDRESS_WORDS[found];
 }
 
 /**
@@ -149,11 +162,11 @@ async function makeFront(admin: Db, companyId: string, campaign: { id: string; f
  * What stands in the way of mailing a draft, in the order someone would fix it, or null. `lob` is
  * the company's connection; the counting is the database's (at Send).
  */
-export function sendProblem(input: { marketing: boolean; lob: boolean; publicAddress: boolean; returnAddress: boolean; front: boolean; message: string; size: PostcardSize }): string | null {
+export function sendProblem(input: { marketing: boolean; lob: boolean; publicAddress: boolean; returnAddressProblem: string | null; front: boolean; message: string; size: PostcardSize }): string | null {
   if (!input.marketing) return MARKETING_OFF;
   if (!input.lob) return LOB_NOT_CONNECTED;
   if (!input.publicAddress) return PRIVATE_ADDRESS_POSTCARDS;
-  if (!input.returnAddress) return "Add your company's full address in Settings → Company first: it's the card's return address.";
+  if (input.returnAddressProblem) return input.returnAddressProblem;
   if (!input.front) return "Pick a picture for the front of the card.";
   return messageProblem(input.message, input.size);
 }
@@ -212,7 +225,7 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
     marketing: marketingOn(company.settings as Record<string, unknown> | null),
     lob: Boolean(lob),
     publicAddress: imagesPublic(env),
-    returnAddress: Boolean(returnAddress(company)),
+    returnAddressProblem: returnAddressProblem(company),
     front: Boolean(campaign.front_attachment_id || campaign.front_path),
     // As the page previews it; each client's own card is measured below.
     message: postcardMessage(campaign.message, postcardVars(company, SAMPLE_NAME, link)),

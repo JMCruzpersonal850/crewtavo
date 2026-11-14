@@ -52,6 +52,8 @@ interface Setup {
   lob: { mode: "test" | "live"; problem?: string | null } | null;
   public_address: boolean;
   return_address: string | null;
+  /** What Lob would refuse about the company's address, or null. */
+  return_address_problem?: string | null;
   /** What {{link}} prints. */
   link: string;
   can_connect: boolean;
@@ -198,7 +200,7 @@ function PostcardScreen() {
     !s?.lob && "Lob isn't connected.",
     s?.lob?.problem,
     s && !s.public_address && "Crewtavo's address isn't public, so Lob can't fetch the front picture.",
-    s && !s.return_address && "Add your company's full address in Settings → Company. It's the card's return address.",
+    s && !s.return_address && (s.return_address_problem ?? "Add your company's full address in Settings → Company. Lob prints it on each card as the return address."),
     !draft.front_attachment_id && !draft.front_path && "Pick a picture for the front.",
     messageProblem(message, draft.size),
     editable && summary.data && !count && "No one in this audience has a complete mailing address.",

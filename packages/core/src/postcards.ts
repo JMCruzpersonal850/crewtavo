@@ -215,42 +215,92 @@ type LooseAddress = { line1?: unknown; line2?: unknown; city?: unknown; region?:
 
 const text = (value: unknown) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "");
 const US = new Set(["", "us", "usa", "u.s.", "u.s.a.", "united states", "united states of america"]);
-/** A US ZIP code, five digits or ZIP+4. */
-export const ZIP = /^\d{5}(-?\d{4})?$/;
+/** A US ZIP code, five digits or ZIP+4, however the last four are joined on ("62701-1234", "627011234", "62701 1234"). */
+export const ZIP = /^(\d{5})(?:[- ]?(\d{4}))?$/;
 
 /**
- * Why an address can't be mailed to ("no_address", "outside_us"), or the address. Complete is a
- * street, a city, a state and a US ZIP code; a blank country is the US, as everywhere in the app.
+ * The two-letter codes the US Postal Service uses, with each one's name: the states, the District
+ * of Columbia, the territories, and the three for armed forces mail. Lob takes a state only as two
+ * letters (docs.lob.com, Postcards → Create: address_state is ^[a-zA-Z]{2}$), and the app's State
+ * box takes anything, so "Illinois" has to become "IL" before a card is counted as mailable.
+ * private.us_state_code (20261113001550_postcard_addresses.sql) has the same list.
  */
-export function mailable(address: LooseAddress): MailingAddress | "no_address" | "outside_us" {
-  const line1 = text(address?.line1);
-  const city = text(address?.city);
-  const region = text(address?.region) || text(address?.state);
-  const zip = text(address?.postal_code) || text(address?.zip);
-  if (!line1 || !city || !region || !zip) return "no_address";
-  if (!US.has(text(address?.country).toLowerCase()) || !ZIP.test(zip)) return "outside_us";
-  return { line1, line2: text(address?.line2) || null, city, region, postal_code: zip, country: "US" };
+// prettier-ignore
+export const US_STATES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut", DE: "Delaware",
+  DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island",
+  SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  AS: "American Samoa", GU: "Guam", MP: "Northern Mariana Islands", PR: "Puerto Rico", VI: "Virgin Islands",
+  AA: "Armed Forces Americas", AE: "Armed Forces Europe", AP: "Armed Forces Pacific",
+};
+/** Other ways the same places are written. */
+const STATE_ALIASES: Record<string, string> = { "washington dc": "DC", "washington, dc": "DC", "us virgin islands": "VI", "u s virgin islands": "VI" };
+const STATE_BY_NAME = new Map<string, string>([...Object.entries(US_STATES).map(([code, name]) => [name.toLowerCase(), code] as const), ...Object.entries(STATE_ALIASES)]);
+
+/** A state as typed ("IL", "il", "Illinois", "D.C.") as its two-letter code, or null when it isn't a US state. */
+export function usStateCode(value: unknown): string | null {
+  const typed = text(value).replace(/\./g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!typed) return null;
+  if (typed.length === 2 && typed.toUpperCase() in US_STATES) return typed.toUpperCase();
+  return STATE_BY_NAME.get(typed) ?? null;
 }
 
+/** Lob's limits on what it takes for a street line and a city (docs.lob.com, Postcards → Create). */
+const MAX_LINE = 64;
+const MAX_CITY = 200;
+
+/** Why an address can't be mailed to. */
+export type AddressProblem = "no_address" | "outside_us" | "bad_state" | "too_long";
+
+/**
+ * Why an address can't be mailed to, or the address as Lob takes it. Complete is a street, a city,
+ * a state and a US ZIP code; a blank country is the US, as everywhere in the app. The state comes
+ * back as its two-letter code whether it was typed that way or in full, and the ZIP as 12345 or
+ * 12345-6789. A state that isn't a US state ("bad_state") or a line longer than Lob takes
+ * ("too_long") isn't mailable: Lob would refuse the card, so it isn't counted as one that goes.
+ */
+export function mailable(address: LooseAddress): MailingAddress | AddressProblem {
+  const line1 = text(address?.line1);
+  const line2 = text(address?.line2);
+  const city = text(address?.city);
+  const region = text(address?.region) || text(address?.state);
+  const zip = ZIP.exec(text(address?.postal_code) || text(address?.zip));
+  if (!line1 || !city || !region || !(text(address?.postal_code) || text(address?.zip))) return "no_address";
+  if (!US.has(text(address?.country).toLowerCase()) || !zip) return "outside_us";
+  const state = usStateCode(region);
+  if (!state) return "bad_state";
+  if (line1.length > MAX_LINE || line2.length > MAX_LINE || city.length > MAX_CITY) return "too_long";
+  return { line1, line2: line2 || null, city, region: state, postal_code: zip[2] ? `${zip[1]}-${zip[2]}` : zip[1]!, country: "US" };
+}
+
+/** Which problem to show when none of a client's addresses can be mailed to: the one most worth fixing. */
+const PROBLEM_RANK: Record<AddressProblem, number> = { bad_state: 3, too_long: 2, outside_us: 1, no_address: 0 };
+
 /** Where a client's card goes: their billing address when it's complete, else their first property's that is. */
-export function mailingAddress(billing: LooseAddress, properties: ReadonlyArray<LooseAddress>): MailingAddress | "no_address" | "outside_us" {
-  let problem: "no_address" | "outside_us" = "no_address";
+export function mailingAddress(billing: LooseAddress, properties: ReadonlyArray<LooseAddress>): MailingAddress | AddressProblem {
+  let problem: AddressProblem = "no_address";
   for (const address of [billing, ...properties]) {
     const found = mailable(address);
     if (typeof found === "object") return found;
-    if (found === "outside_us") problem = found;
+    if (PROBLEM_RANK[found] > PROBLEM_RANK[problem]) problem = found;
   }
   return problem;
 }
 
 /** Why a client in the segment doesn't get a card, in the order they're counted. */
-export const LEFT_OUT = ["archived", "opted_out", "no_address", "outside_us"] as const;
+export const LEFT_OUT = ["archived", "opted_out", "no_address", "outside_us", "bad_state", "too_long"] as const;
 export type LeftOut = (typeof LEFT_OUT)[number];
 export const LEFT_OUT_WORDS: Record<LeftOut, string> = {
   archived: "archived",
   opted_out: "opted out of marketing",
   no_address: "no complete mailing address",
   outside_us: "an address outside the US",
+  bad_state: "a state that isn't a US state",
+  too_long: "an address line too long to mail",
 };
 
 /** "12 left out: 8 with no complete mailing address, 3 opted out of marketing, 1 archived", or null with none. */
