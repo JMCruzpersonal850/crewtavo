@@ -80,7 +80,7 @@ export function readyDraft<T extends { status: string; drafted?: unknown }>(quot
 export function draftedWords(d: Drafted, checkNames: readonly string[]): string[] {
   const from = d.request_number ? `request #${d.request_number}` : "the request";
   // A draft that came with no lines isn't said to be drafted: its note says why, and to add them.
-  const out = [d.lines === 0 ? `Started from ${from}.` : d.by === "claude" ? `Claude drafted this from ${from} and your price list. Look it over before you send it.` : `Drafted from ${from} and your price list. Look it over before you send it.`];
+  const out = [d.lines === 0 ? `Started from ${from}.` : d.by === "claude" ? `Written by AI: Claude drafted this from ${from} and your price list. It can be wrong, so check every line, quantity and price before you send it.` : `Drafted from ${from} and your price list. Look it over before you send it.`];
   if (checkNames.length) out.push(`Check the quantity on ${checkNames.join(", ")}: the request didn't say, so it's 1.`);
   if (d.note) out.push(d.note);
   const cut = cutListWords(d);

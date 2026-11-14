@@ -43,7 +43,8 @@ describe("a drafted quote", () => {
 
   it("says who drafted it and what to check", () => {
     expect(draftedWords({ by: "claude", request_number: 12 }, ["Mowing", "Edging"])).toEqual([
-      "Claude drafted this from request #12 and your price list. Look it over before you send it.",
+      // Said to whoever opens the draft, who may not be the one who turned drafting on: it's AI's, and to check it.
+      "Written by AI: Claude drafted this from request #12 and your price list. It can be wrong, so check every line, quantity and price before you send it.",
       "Check the quantity on Mowing, Edging: the request didn't say, so it's 1.",
     ]);
     expect(draftedWords({ by: "price_list", note: "Claude couldn't draft this one (busy), so it was drafted from your price list." }, [])).toEqual([

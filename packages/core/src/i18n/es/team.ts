@@ -233,6 +233,7 @@ export default {
   "Search guides": "Buscar guías",
   "Ask": "Preguntar",
   "Answer from your guides": "Respuesta de tus guías",
+  "Written by AI from your guides. It can be wrong: check the guide before you rely on it.": "Escrita por IA a partir de tus guías. Puede estar equivocada: revisa la guía antes de confiar en ella.",
   "Thinking": "Pensando",
   "Sources": "Fuentes",
   "Required reading": "Lectura obligatoria",

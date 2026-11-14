@@ -64,6 +64,8 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
   const [picks, setPicks] = useState<Pick[]>([]);
   const [onlyVisit, setOnlyVisit] = useState(Boolean(visitId));
   const [loaded, setLoaded] = useState(!showcaseId);
+  // The title and write-up on screen came from "Write it with AI": said under them until the dialog closes.
+  const [aiWrote, setAiWrote] = useState(false);
 
   // The showcase as kept: one being changed, or the one this made once it's saved.
   const existing = useQuery({
@@ -156,6 +158,7 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
     onSuccess: (d) => {
       setTitle(d.title);
       setDescription(d.description);
+      setAiWrote(true);
     },
   });
 
@@ -229,7 +232,11 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
             <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} disabled={published} style={{ minHeight: 110 }} />
           </Field>
           {session.config.features.ai && !published && (
-            <div><Button size="sm" variant="ghost" icon="sparkle" loading={draft.isPending} onClick={() => draft.mutate()}>Write it with AI</Button><FormError error={draft.error} /></div>
+            <div className="stack-sm">
+              <div><Button size="sm" variant="ghost" icon="sparkle" loading={draft.isPending} onClick={() => draft.mutate()}>Write it with AI</Button><FormError error={draft.error} /></div>
+              {/* The words above came from AI: said to whoever publishes them. */}
+              {aiWrote && <span className="muted small" role="status">Written by AI from the job's services. It can be wrong: check it says what you did before you publish.</span>}
+            </div>
           )}
           <label className="check-row">
             <input type="checkbox" checked={showTown} disabled={published || !town} onChange={(e) => setShowTown(e.target.checked)} />

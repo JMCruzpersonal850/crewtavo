@@ -152,6 +152,8 @@ export function KnowledgeBasePage() {
           <div className="row" style={{ gap: 8 }}><span className="kb-answer-icon"><Icon name="sparkle" size={14} /></span><strong>{t("Answer from your guides")}</strong></div>
           {ask.isPending && <Loading label={t("Thinking")}><div className="stack-sm"><Skeleton width="92%" /><Skeleton width="85%" /><Skeleton width="60%" /></div></Loading>}
           {ask.data && <div className="pre-wrap" style={{ lineHeight: 1.6 }}>{ask.data.answer}</div>}
+          {/* Whoever asks didn't set this up: they're told it's a machine's answer, and where the facts are. */}
+          {ask.data && <p className="muted small" style={{ margin: 0 }}>{t("Written by AI from your guides. It can be wrong: check the guide before you rely on it.")}</p>}
           {ask.data && ask.data.sources.length > 0 && (
             <div className="row wrap" style={{ gap: 6 }}>
               <span className="muted small">{t("Sources")}</span>

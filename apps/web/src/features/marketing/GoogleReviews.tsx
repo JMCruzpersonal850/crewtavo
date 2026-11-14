@@ -459,6 +459,8 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
   }, [open]);
   const reviewer = reviewerName(r);
   const aiOn = session.config.features.ai;
+  // The reply in the box came from "Suggest a reply": said under it until it's posted or put away.
+  const [suggested, setSuggested] = useState(false);
   const post = useMutation({
     meta: { inline: true },
     mutationFn: (comment: string) => api.put(`/reviews/${r.id}/reply`, { comment }),
@@ -479,7 +481,10 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
   const suggest = useMutation({
     meta: { inline: true },
     mutationFn: () => api.post<{ text: string }>(`/reviews/${r.id}/suggest`, text.trim() ? { draft: text.trim() } : {}),
-    onSuccess: (res) => setText(res.text),
+    onSuccess: (res) => {
+      setText(res.text);
+      setSuggested(true);
+    },
   });
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -531,6 +536,8 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
           {canAddKey ? <><Link to="/apps/anthropic">Add a Claude key in Apps</Link> to draft replies.</> : "An admin can add a Claude key on the Apps page to draft replies."}
         </span>
       )}
+      {/* The words above came from AI: said to whoever posts them. */}
+      {suggested && <span className="muted small" role="status">Written by AI from their review. It can be wrong: read it and make it yours before you post it.</span>}
       <FormError error={post.error ?? suggest.error} />
     </form>
   );
