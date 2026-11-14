@@ -764,7 +764,8 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       // old news by then isn't texted: the rule's email has it, or its words go by email instead.
       if (quietTexts(ctx) === "stale") {
         const why = "Not texted: it's quiet hours (9pm to 8am) and the visit is before 8am";
-        if (ctx.emailsToo) return new Skip(`${why}. This rule's email tells them`);
+        // The rule's own email tells them, when there's an address for it to go to.
+        if (ctx.emailsToo) return new Skip((await peopleFor(admin, ctx, client, "email")).length ? `${why}. This rule's email tells them` : `${why}, and ${client.display_name} has no email address to tell them by instead`);
         try {
           const emailed = await performAction(env, admin, ctx, { type: "send_email", subject: NOTICE_SUBJECTS[ctx.trigger ?? ""] ?? "About your visit with {{company.name}}", body: action.body }, ruleName, baseUrl);
           return emailed instanceof Skip ? emailed : `${emailed} instead of texting: it's quiet hours (9pm to 8am) and the visit is before 8am`;

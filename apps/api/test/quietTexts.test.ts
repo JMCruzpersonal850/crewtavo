@@ -200,6 +200,16 @@ describe("a rule that texts a client at 10:40pm", () => {
     ]);
   });
 
+  it("says so when the rule's email couldn't tell them either, for want of an address", async () => {
+    const calls = engine(rule({ actions: [email, text] }), { visits: [early], clients: [{ ...ANA, email: null }] });
+    expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("failed");
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(finished(calls)[0].p_result).toEqual([
+      { type: "send_email", ok: false, detail: "Ana Smith has no email address." },
+      { type: "send_sms", ok: true, skipped: true, detail: "Not texted: it's quiet hours (9pm to 8am) and the visit is before 8am, and Ana Smith has no email address to tell them by instead" },
+    ]);
+  });
+
   it("sends the text's words by email instead when the rule only texts", async () => {
     const calls = engine(rule(), { visits: [early] });
     expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("done");
