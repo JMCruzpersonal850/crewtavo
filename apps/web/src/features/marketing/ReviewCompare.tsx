@@ -44,6 +44,7 @@ import {
   loadComparison,
   noteCompared,
   notYetAdded,
+  providersOn,
   removePlace,
   roomLeft,
   runComparison,
@@ -60,7 +61,7 @@ import {
   type Readings,
   type SavedPlace,
 } from "./reviewCompareState";
-import { comparisonKey, PLACE_GONE, PlacesProblem, readPlace, searchPlaces, type FoundPlace } from "./reviewPlaces";
+import { comparisonKey, PLACE_GONE, PlacesProblem, readPlace, searchPlaces, type FoundPlace, type Provider } from "./reviewPlaces";
 
 const stars = (rating: number | null) => (rating == null ? "—" : `${rating.toFixed(1)} ★`);
 const TRY_AGAIN = "Something went wrong. Try again.";
@@ -229,7 +230,7 @@ const NoKey = () => (
  */
 export function CompareTable({ rows, running, removing, onRemove }: { rows: CompareRow[]; running: boolean; removing: boolean; onRemove: (id: string) => void }) {
   return (
-    <GoogleBox notice={showsGoogle(rows) ? <GoogleNotice /> : null}>
+    <GoogleBox notice={showsGoogle(rows) ? <GoogleNotice providers={providersOn(rows)} /> : null}>
       <div style={{ overflowX: "auto" }}>
         <table className="table">
           <thead><tr><th>Business</th><th style={{ textAlign: "right" }}>Rating</th><th style={{ textAlign: "right" }}>Reviews</th><th aria-label="Remove" /></tr></thead>
@@ -283,17 +284,30 @@ export function GoogleBox({ notice, children }: { notice: ReactNode; children: R
   );
 }
 
-/** The words "Google Maps", never translated, wrapped onto two lines, restyled or hidden (.google-attribution in features.css). */
-export const GoogleAttribution = () => <span className="google-attribution" translate="no">{GOOGLE_ATTRIBUTION}</span>;
+/**
+ * The words "Google Maps", never translated, wrapped onto two lines, restyled or hidden
+ * (.google-attribution in features.css). When Google names other data providers for what's shown
+ * (a place's `attributions`), they follow it: "Google Maps" alone "is not proper attribution" then.
+ */
+export function GoogleAttribution({ providers }: { providers: Provider[] }) {
+  return (
+    <span>
+      <span className="google-attribution" translate="no">{GOOGLE_ATTRIBUTION}</span>
+      {providers.map((p) => (
+        <span key={p.name} className="google-attribution" translate="no">, {p.url ? <a href={p.url} target="_blank" rel="noreferrer">{p.name}</a> : p.name}</span>
+      ))}
+    </span>
+  );
+}
 
 /**
  * With ratings and review counts: the attribution, and Google's notice that reviews aren't
  * verified, with the link to its policy on them ("Reviews and average rating").
  */
-export function GoogleNotice() {
+export function GoogleNotice({ providers }: { providers: Provider[] }) {
   return (
     <div className="google-notice">
-      <GoogleAttribution />
+      <GoogleAttribution providers={providers} />
       <span className="muted small">
         {GOOGLE_REVIEW_NOTICE} <a href={GOOGLE_REVIEW_POLICY_URL} target="_blank" rel="noreferrer">{GOOGLE_REVIEW_POLICY_LABEL}</a>
       </span>
@@ -302,10 +316,10 @@ export function GoogleNotice() {
 }
 
 /** With search results: the attribution, and what decides their order, in Google's words ("Place search results"). */
-export function SearchNotice() {
+export function SearchNotice({ providers }: { providers: Provider[] }) {
   return (
     <div className="google-notice">
-      <GoogleAttribution />
+      <GoogleAttribution providers={providers} />
       <span className="muted small">
         {GOOGLE_SEARCH_NOTICE} <a href={GOOGLE_SEARCH_NOTICE_URL} target="_blank" rel="noreferrer">{GOOGLE_SEARCH_NOTICE_LABEL}</a>
       </span>
@@ -318,7 +332,7 @@ export function FoundList({ results, places, busy, onPick }: { results: FoundPla
   const { hasOwn, full } = roomLeft(places);
   const have = new Set(places.map((p) => p.place_id));
   return (
-    <GoogleBox notice={<SearchNotice />}>
+    <GoogleBox notice={<SearchNotice providers={providersOn(results)} />}>
       {results.map((p) => (
         <div key={p.place_id} className="card-row">
           <div className="grow" style={{ minWidth: 0 }}>

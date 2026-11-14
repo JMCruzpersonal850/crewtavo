@@ -35,6 +35,7 @@ import {
   NO_KEY,
   noteCompared,
   notYetAdded,
+  providersOn,
   removePlace,
   roomLeft,
   runComparison,
@@ -64,7 +65,7 @@ const own: SavedPlace = { id: "row-own", place_id: "ChIJ-own", is_own: true };
 const a: SavedPlace = { id: "row-a", place_id: "ChIJ_a", is_own: false };
 const b: SavedPlace = { id: "row-b", place_id: "ChIJ_b", is_own: false };
 const c: SavedPlace = { id: "row-c", place_id: "ChIJ_c", is_own: false };
-const live = (place_id: string, name: string, rating: number | null, ratings_total: number | null, closed = false): LivePlace => ({ place_id, name, rating, ratings_total, maps_url: `https://maps.google.com/?cid=${place_id}`, closed });
+const live = (place_id: string, name: string, rating: number | null, ratings_total: number | null, closed = false): LivePlace => ({ place_id, name, rating, ratings_total, maps_url: `https://maps.google.com/?cid=${place_id}`, closed, providers: [] });
 const answers: Record<string, LivePlace> = {
   "ChIJ-own": live("ChIJ-own", "Sketchy Gutters", 4.6, 80),
   ChIJ_a: live("ChIJ_a", "Acme Gutters", 4.2, 300),
@@ -176,6 +177,19 @@ describe("Compare now", () => {
     expect(table).not.toMatch(/Since|Change|last week/);
   });
 
+  it("names the other data providers Google says must be shown with a place, beside its own name", async () => {
+    const acme = { name: "Acme Listings", url: "https://acme.example/listing" };
+    const { readings } = await runComparison([own, a, b], async (id) => ({ ...answers[id]!, providers: id === "ChIJ-own" ? [] : id === "ChIJ_a" ? [acme, { name: "Plain Data", url: null }] : [acme] }));
+    const rows = compareRows([own, a, b], readings);
+    expect(providersOn(rows)).toEqual([acme, { name: "Plain Data", url: null }]);
+    const table = html(createElement(CompareTable, { rows, running: false, removing: false, onRemove: () => undefined }));
+    expect(table).toContain(
+      '<span class="google-attribution" translate="no">Google Maps</span><span class="google-attribution" translate="no">, <a href="https://acme.example/listing" target="_blank" rel="noreferrer">Acme Listings</a></span><span class="google-attribution" translate="no">, Plain Data</span>',
+    );
+    const list = html(createElement(FoundList, { results: [{ place_id: "ChIJ_n", name: "New Gutters", address: null, maps_url: null, providers: [{ name: "Plain Data", url: null }] }], places: [], busy: false, onPick: () => undefined }));
+    expect(list).toContain('<span class="google-attribution" translate="no">Google Maps</span><span class="google-attribution" translate="no">, Plain Data</span>');
+  });
+
   it("marks a place Google no longer lists, with Remove, and still reads the rest", async () => {
     const result = await runComparison([own, a, b], async (id) => {
       if (id === "ChIJ_a") throw new PlacesProblem(PLACE_GONE, 404, true);
@@ -214,7 +228,10 @@ describe("Compare now", () => {
     const seen: Readings[] = [];
     await runComparison([own, a], async (id) => ({ ...answers[id]!, ratings_total: 999 }), first.readings, (r) => seen.push(r));
     // Names stay while it runs; the old ratings and counts don't.
-    expect(seen[0]).toEqual({ "ChIJ-own": { status: "named", name: "Sketchy Gutters", maps_url: "https://maps.google.com/?cid=ChIJ-own" }, ChIJ_a: { status: "named", name: "Acme Gutters", maps_url: "https://maps.google.com/?cid=ChIJ_a" } });
+    expect(seen[0]).toEqual({
+      "ChIJ-own": { status: "named", name: "Sketchy Gutters", maps_url: "https://maps.google.com/?cid=ChIJ-own", providers: [] },
+      ChIJ_a: { status: "named", name: "Acme Gutters", maps_url: "https://maps.google.com/?cid=ChIJ_a", providers: [] },
+    });
     expect(compareRows([own, a], seen[0]!).map((r) => [r.label, r.rating, r.ratings_total])).toEqual([["Sketchy Gutters", null, null], ["Acme Gutters", null, null]]);
   });
 
@@ -268,8 +285,8 @@ describe("adding a business", () => {
 
   it("shows each result's name and address live, in Google's box with its attribution and what orders the results", () => {
     const results = [
-      { place_id: "ChIJ_a", name: "Acme Gutters", address: "1 Elm St, Springfield, IL", maps_url: "https://maps.google.com/?cid=1" },
-      { place_id: "ChIJ_n", name: "New Gutters", address: null, maps_url: null },
+      { place_id: "ChIJ_a", name: "Acme Gutters", address: "1 Elm St, Springfield, IL", maps_url: "https://maps.google.com/?cid=1", providers: [] },
+      { place_id: "ChIJ_n", name: "New Gutters", address: null, maps_url: null, providers: [] },
     ];
     const list = html(createElement(FoundList, { results, places: [a], busy: false, onPick: () => undefined }));
     expect(list.startsWith('<div class="google-box">')).toBe(true);
@@ -288,14 +305,14 @@ describe("adding a business", () => {
     const five = [1, 2, 3, 4, 5].map((n): SavedPlace => ({ id: `r${n}`, place_id: `ChIJ${n}`, is_own: false }));
     expect(roomLeft(five)).toEqual({ hasOwn: false, full: true });
     expect(roomLeft([own, a])).toEqual({ hasOwn: true, full: false });
-    const full = html(createElement(FoundList, { results: [{ place_id: "ChIJ_n", name: "New Gutters", address: null, maps_url: null }], places: [...five, own], busy: false, onPick: () => undefined }));
+    const full = html(createElement(FoundList, { results: [{ place_id: "ChIJ_n", name: "New Gutters", address: null, maps_url: null, providers: [] }], places: [...five, own], busy: false, onPick: () => undefined }));
     expect(full).toMatch(/<button[^>]*disabled=""[^>]*>(<[^>]+>)*Add/);
     expect(full).not.toContain("This is us");
-    expect(notYetAdded([{ place_id: "ChIJ_a", name: "Acme", address: null, maps_url: null }, { place_id: "ChIJ_n", name: "New", address: null, maps_url: null }], [a]).map((p) => p.place_id)).toEqual(["ChIJ_n"]);
+    expect(notYetAdded([{ place_id: "ChIJ_a", name: "Acme", address: null, maps_url: null, providers: [] }, { place_id: "ChIJ_n", name: "New", address: null, maps_url: null, providers: [] }], [a]).map((p) => p.place_id)).toEqual(["ChIJ_n"]);
   });
 
   it("shows the name of a place just picked, until Compare now reads its figures", () => {
-    const readings = withFound({}, { place_id: "ChIJ_a", name: "Acme Gutters", maps_url: null });
+    const readings = withFound({}, { place_id: "ChIJ_a", name: "Acme Gutters", maps_url: null, providers: [] });
     expect(compareRows([a], readings)[0]).toMatchObject({ label: "Acme Gutters", status: "named", fromGoogle: true, rating: null });
     // What's known about a place goes when the place is removed.
     expect(forSaved(readings, [])).toEqual({});

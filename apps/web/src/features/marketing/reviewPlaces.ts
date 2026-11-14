@@ -18,6 +18,8 @@
  *   a search        the name, address and Maps link: Text Search Pro.
  *   a place         the rating and review count put it in Place Details Enterprise; the name, Maps
  *                   link and business status are in the tier below, so they add nothing.
+ * Both also ask for `attributions`, which is in the uncharged tier: the names of any other data
+ * providers Google says "must be shown with this result", which the card shows beside "Google Maps".
  */
 import { PLACE_ID } from "@crewtavo/core/reviewCompare";
 import { mapKeys } from "@/features/measure/imagery";
@@ -26,8 +28,8 @@ const PLACES = "https://places.googleapis.com/v1";
 const TIMEOUT_MS = 10_000;
 
 export const KEY_CHECK_FIELDS = "places.id";
-export const SEARCH_FIELDS = "places.id,places.displayName,places.formattedAddress,places.googleMapsUri";
-export const DETAIL_FIELDS = "id,displayName,rating,userRatingCount,googleMapsUri,businessStatus";
+export const SEARCH_FIELDS = "places.id,places.displayName,places.formattedAddress,places.googleMapsUri,places.attributions";
+export const DETAIL_FIELDS = "id,displayName,rating,userRatingCount,googleMapsUri,businessStatus,attributions";
 
 /** The Google key this browser asks with, picked as the measuring map picks its own; null with none. */
 export const comparisonKey = (settings: Record<string, unknown> | null | undefined, deploymentGoogleKey: string | null): string | null => mapKeys(settings ?? {}, deploymentGoogleKey).google_key ?? null;
@@ -90,9 +92,25 @@ async function ask<T>(key: string, path: string, fields: string, body?: unknown)
   return answer;
 }
 
-type GooglePlace = { id?: string; displayName?: { text?: string }; formattedAddress?: string; rating?: number; userRatingCount?: number; googleMapsUri?: string; businessStatus?: string };
+type GooglePlace = {
+  id?: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  rating?: number;
+  userRatingCount?: number;
+  googleMapsUri?: string;
+  businessStatus?: string;
+  attributions?: Array<{ provider?: string; providerUri?: string }>;
+};
 
 const mapsLink = (uri: string | undefined) => (uri?.startsWith("https://") ? uri : null);
+
+/** Someone besides Google whose data a result carries, to be named with it. */
+export interface Provider {
+  name: string;
+  url: string | null;
+}
+const providersOf = (p: GooglePlace): Provider[] => (p.attributions ?? []).flatMap((a) => (a.provider?.trim() ? [{ name: a.provider.trim(), url: mapsLink(a.providerUri) }] : []));
 
 /** A search result: enough to tell which business it is. Its ID is the only part that's ever saved. */
 export interface FoundPlace {
@@ -100,13 +118,14 @@ export interface FoundPlace {
   name: string;
   address: string | null;
   maps_url: string | null;
+  providers: Provider[];
 }
 
 /** Places matching `query` ("Acme Paving near Springfield, IL"): one Text Search, up to ten results. */
 export async function searchPlaces(key: string, query: string): Promise<FoundPlace[]> {
   const body = await ask<{ places?: GooglePlace[] }>(key, "/places:searchText", SEARCH_FIELDS, { textQuery: query.slice(0, 200), pageSize: 10 });
   return (body.places ?? []).flatMap((p): FoundPlace[] =>
-    p.id && PLACE_ID.test(p.id) && p.displayName?.text ? [{ place_id: p.id, name: p.displayName.text, address: p.formattedAddress ?? null, maps_url: mapsLink(p.googleMapsUri) }] : [],
+    p.id && PLACE_ID.test(p.id) && p.displayName?.text ? [{ place_id: p.id, name: p.displayName.text, address: p.formattedAddress ?? null, maps_url: mapsLink(p.googleMapsUri), providers: providersOf(p) }] : [],
   );
 }
 
@@ -119,11 +138,12 @@ export interface LivePlace {
   maps_url: string | null;
   /** Google marks it permanently closed. */
   closed: boolean;
+  providers: Provider[];
 }
 
 /**
- * One place's name, rating, review count and Maps link: one Place Details call, with only those
- * fields. A place Google no longer has (its listing was removed, or merged into another) throws a
+ * One place's name, rating, review count and Maps link: one Place Details call, with only the
+ * fields shown. A place Google no longer has (its listing was removed, or merged into another) throws a
  * PlacesProblem with `place` set, so the card can say so and go on to the rest.
  */
 export async function readPlace(key: string, placeId: string): Promise<LivePlace> {
@@ -144,6 +164,7 @@ export async function readPlace(key: string, placeId: string): Promise<LivePlace
     ratings_total: typeof raw.userRatingCount === "number" ? raw.userRatingCount : null,
     maps_url: mapsLink(raw.googleMapsUri),
     closed: raw.businessStatus === "CLOSED_PERMANENTLY",
+    providers: providersOf(raw),
   };
 }
 

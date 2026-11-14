@@ -16,7 +16,7 @@
  */
 import { MAX_COMPETITORS, ranked, standing, type ComparedPlace, type Standing } from "@crewtavo/core/reviewCompare";
 import { api, ApiError } from "@/lib/api";
-import { checkPlacesKey, PlacesProblem, type FoundPlace, type LivePlace } from "./reviewPlaces";
+import { checkPlacesKey, PlacesProblem, type FoundPlace, type LivePlace, type Provider } from "./reviewPlaces";
 
 /** A place on the card as Crewtavo keeps it: Google's ID for it, and whether it's the business itself. */
 export interface SavedPlace {
@@ -66,14 +66,14 @@ export async function turnOn(key: string | null, companyName: string): Promise<C
  *   gone    Google no longer lists it.
  */
 export type Reading =
-  | { status: "read"; name: string; maps_url: string | null; rating: number | null; ratings_total: number | null; closed: boolean }
-  | { status: "named"; name: string; maps_url: string | null }
+  | { status: "read"; name: string; maps_url: string | null; providers: Provider[]; rating: number | null; ratings_total: number | null; closed: boolean }
+  | { status: "named"; name: string; maps_url: string | null; providers: Provider[] }
   | { status: "gone" };
 export type Readings = Readonly<Record<string, Reading>>;
 
 /** A place just picked from a search: its name shows at once, its figures at the next Compare now. */
-export const withFound = (readings: Readings, found: Pick<FoundPlace, "place_id" | "name" | "maps_url">): Readings =>
-  readings[found.place_id]?.status === "read" ? readings : { ...readings, [found.place_id]: { status: "named", name: found.name, maps_url: found.maps_url } };
+export const withFound = (readings: Readings, found: Pick<FoundPlace, "place_id" | "name" | "maps_url" | "providers">): Readings =>
+  readings[found.place_id]?.status === "read" ? readings : { ...readings, [found.place_id]: { status: "named", name: found.name, maps_url: found.maps_url, providers: found.providers } };
 
 /** Only the places still on the card: what was read about one that's been removed is dropped. */
 export const forSaved = (readings: Readings, places: readonly SavedPlace[]): Readings =>
@@ -81,7 +81,7 @@ export const forSaved = (readings: Readings, places: readonly SavedPlace[]): Rea
 
 /** As a Compare now starts: figures from the time before go, so the table never mixes two readings. */
 const withoutFigures = (readings: Readings): Readings =>
-  Object.fromEntries(Object.entries(readings).flatMap(([id, r]) => (r.status === "gone" ? [] : [[id, { status: "named" as const, name: r.name, maps_url: r.maps_url }]])));
+  Object.fromEntries(Object.entries(readings).flatMap(([id, r]) => (r.status === "gone" ? [] : [[id, { status: "named" as const, name: r.name, maps_url: r.maps_url, providers: r.providers }]])));
 
 export interface ComparisonRun {
   readings: Readings;
@@ -108,7 +108,7 @@ export async function runComparison(
   for (const place of places) {
     try {
       const live = await read(place.place_id);
-      readings = { ...readings, [place.place_id]: { status: "read", name: live.name, maps_url: live.maps_url, rating: live.rating, ratings_total: live.ratings_total, closed: live.closed } };
+      readings = { ...readings, [place.place_id]: { status: "read", name: live.name, maps_url: live.maps_url, providers: live.providers, rating: live.rating, ratings_total: live.ratings_total, closed: live.closed } };
     } catch (failure) {
       if (!(failure instanceof PlacesProblem)) throw failure;
       if (!failure.place) return { readings, answered, problem: failure.message };
@@ -134,6 +134,8 @@ export interface CompareRow {
   /** The label is Google's name, so it's shown as Google's content. */
   fromGoogle: boolean;
   maps_url: string | null;
+  /** Other data providers Google names for this place, to be shown with it. */
+  providers: Provider[];
   rating: number | null;
   ratings_total: number | null;
   closed: boolean;
@@ -157,6 +159,7 @@ export function compareRows(places: readonly SavedPlace[], readings: Readings): 
       label: known?.name ?? fallback,
       fromGoogle: Boolean(known),
       maps_url: known?.maps_url ?? null,
+      providers: known?.providers ?? [],
       rating: r?.status === "read" ? r.rating : null,
       ratings_total: r?.status === "read" ? r.ratings_total : null,
       closed: r?.status === "read" && r.closed,
@@ -169,6 +172,9 @@ export function compareRows(places: readonly SavedPlace[], readings: Readings): 
 
 /** Whether anything of Google's is on the screen, which is when its attribution and notice must be too. */
 export const showsGoogle = (rows: readonly CompareRow[]) => rows.some((r) => r.fromGoogle);
+
+/** Every other data provider Google names for what's on the screen, once each, to go beside "Google Maps". */
+export const providersOn = (shown: ReadonlyArray<{ providers: readonly Provider[] }>): Provider[] => [...new Map(shown.flatMap((s) => s.providers).map((p) => [p.name, p])).values()];
 
 /** Where the business stands among the places just read. One Google marks closed for good isn't competition. */
 export function standingOf(rows: readonly CompareRow[]): Standing | null {

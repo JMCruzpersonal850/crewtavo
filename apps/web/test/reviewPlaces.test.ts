@@ -51,8 +51,8 @@ describe("what each request asks for", () => {
   it("names the tiers Google bills by: IDs only for the check, no ratings in a search, and a place's rating with its name, link and status", () => {
     // From Google's "FieldMask" lists (place-details and text-search, read 2026-11-14).
     expect(KEY_CHECK_FIELDS).toBe("places.id");
-    expect(SEARCH_FIELDS).toBe("places.id,places.displayName,places.formattedAddress,places.googleMapsUri");
-    expect(DETAIL_FIELDS).toBe("id,displayName,rating,userRatingCount,googleMapsUri,businessStatus");
+    expect(SEARCH_FIELDS).toBe("places.id,places.displayName,places.formattedAddress,places.googleMapsUri,places.attributions");
+    expect(DETAIL_FIELDS).toBe("id,displayName,rating,userRatingCount,googleMapsUri,businessStatus,attributions");
     // Nothing the card doesn't show: no reviews, photos, phone numbers, hours or coordinates.
     for (const fields of [SEARCH_FIELDS, DETAIL_FIELDS]) expect(fields).not.toMatch(/reviews|photos|phone|hours|location|\*/i);
   });
@@ -71,8 +71,8 @@ describe("a search", () => {
       }),
     );
     expect(await searchPlaces("AIzaBrowser", "Rival Gutters near Springfield, IL")).toEqual([
-      { place_id: "ChIJ_rival", name: "Rival Gutters", address: "1 Elm St, Springfield, IL", maps_url: "https://maps.google.com/?cid=1" },
-      { place_id: "ChIJ_other", name: "Other Gutters", address: null, maps_url: null },
+      { place_id: "ChIJ_rival", name: "Rival Gutters", address: "1 Elm St, Springfield, IL", maps_url: "https://maps.google.com/?cid=1", providers: [] },
+      { place_id: "ChIJ_other", name: "Other Gutters", address: null, maps_url: null, providers: [] },
     ]);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.url).toBe("https://places.googleapis.com/v1/places:searchText");
@@ -86,7 +86,7 @@ describe("a search", () => {
 describe("reading a place", () => {
   it("is one Place Details call for its name, rating, review count, Maps link and whether it's closed", async () => {
     const sent = google(() => Response.json({ id: "ChIJ_rival", displayName: { text: "Rival Gutters" }, rating: 4.4, userRatingCount: 51, googleMapsUri: "https://maps.google.com/?cid=1", businessStatus: "OPERATIONAL" }));
-    expect(await readPlace("AIzaBrowser", "ChIJ_rival")).toEqual({ place_id: "ChIJ_rival", name: "Rival Gutters", rating: 4.4, ratings_total: 51, maps_url: "https://maps.google.com/?cid=1", closed: false });
+    expect(await readPlace("AIzaBrowser", "ChIJ_rival")).toEqual({ place_id: "ChIJ_rival", name: "Rival Gutters", rating: 4.4, ratings_total: 51, maps_url: "https://maps.google.com/?cid=1", closed: false, providers: [] });
     expect(sent).toHaveLength(1);
     expect(sent[0]!.url).toBe("https://places.googleapis.com/v1/places/ChIJ_rival");
     expect(sent[0]!.init.method).toBe("GET");
@@ -96,7 +96,17 @@ describe("reading a place", () => {
 
   it("says when Google marks it permanently closed, and shows a place with no reviews yet as having none to show", async () => {
     google(() => Response.json({ id: "p", displayName: { text: "Shut Gutters" }, businessStatus: "CLOSED_PERMANENTLY" }));
-    expect(await readPlace("k", "p")).toEqual({ place_id: "p", name: "Shut Gutters", rating: null, ratings_total: null, maps_url: null, closed: true });
+    expect(await readPlace("k", "p")).toEqual({ place_id: "p", name: "Shut Gutters", rating: null, ratings_total: null, maps_url: null, closed: true, providers: [] });
+  });
+
+  it("reads who else's data Google says must be named with the place", async () => {
+    google((call) => {
+      const place = { id: "p", displayName: { text: "Rival Gutters" }, attributions: [{ provider: " Acme Listings ", providerUri: "https://acme.example/listing" }, { provider: "Plain Data", providerUri: "javascript:alert(1)" }, { providerUri: "https://nameless.example" }] };
+      return call.url.endsWith(":searchText") ? Response.json({ places: [place] }) : Response.json(place);
+    });
+    const providers = [{ name: "Acme Listings", url: "https://acme.example/listing" }, { name: "Plain Data", url: null }];
+    expect((await readPlace("k", "p")).providers).toEqual(providers);
+    expect((await searchPlaces("k", "Rival Gutters"))[0]!.providers).toEqual(providers);
   });
 
   it("tells a place Google no longer lists from trouble with the key", async () => {
