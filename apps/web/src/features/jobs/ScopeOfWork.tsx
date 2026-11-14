@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { supabase, unwrap } from "@/lib/api";
 import { pendingJobLines, waitingScopeLine } from "../field/fieldActions";
+import { t } from "@/lib/i18n";
 
 const qty = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
 
@@ -23,7 +24,7 @@ export function useJobScope(jobId: string | null | undefined) {
   });
 }
 
-export function ScopeOfWork({ jobId, title = "Scope of work", bare = false }: { jobId: string; title?: string; bare?: boolean }) {
+export function ScopeOfWork({ jobId, title = t("Scope of work"), bare = false }: { jobId: string; title?: string; bare?: boolean }) {
   const scope = useJobScope(jobId);
   if (scope.isPending) return <Skeleton height={48} radius={8} />;
   if (!scope.data?.length) return null;

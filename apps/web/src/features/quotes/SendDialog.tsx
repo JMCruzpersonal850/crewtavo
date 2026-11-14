@@ -15,6 +15,8 @@ import { copyText } from "@/lib/clipboard";
 import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { listWords, ownChoices, sendList, sendListProblem, sendPayload, type SendChannel, type SendChoices } from "./sendRecipients";
+import { translateError } from "@crewtavo/core/i18n/patterns";
+import { getLocale, t } from "@/lib/i18n";
 
 type Channel = SendChannel | "link";
 
@@ -49,7 +51,7 @@ export function SendDialog({
 }) {
   const { company, config } = useSession();
   const [channel, setChannel] = useState<Channel>(email ? "email" : phone && !textsOffSince ? "sms" : "link");
-  const label = `${kind === "quote" ? "Quote" : "Invoice"} #${number ?? ""}`.trim();
+  const label = (kind === "quote" ? t("Quote #{number}", { number: number ?? "" }) : t("Invoice #{number}", { number: number ?? "" })).trim();
   const [subject, setSubject] = useState(`${label} from ${company.name}`);
   const [message, setMessage] = useState("");
   // The client and their contacts, from the server. Until it answers (or if it can't: offline, or
@@ -92,31 +94,31 @@ export function SendDialog({
   const contactsHeld = !offered.contacts_on && people.some((p) => p.contact_id);
 
   return (
-    <Dialog open onClose={onClose} title={done ? (done.sent ? "Sent" : "Link ready") : `Send ${kind}`} description={done ? undefined : `${label} for your client to ${kind === "quote" ? "review and approve" : "view and pay"} online.`}>
+    <Dialog open onClose={onClose} title={done ? (done.sent ? t("Sent") : t("Link ready")) : kind === "quote" ? t("Send quote") : t("Send invoice")} description={done ? undefined : kind === "quote" ? t("{label} for your client to review and approve online.", { label }) : t("{label} for your client to view and pay online.", { label })}>
       {done ? (
         <div className="dialog-body">
           {done.sent ? (
             <div className="stack-sm" style={{ justifyItems: "center", textAlign: "center", padding: "8px 0" }}>
               <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
-              <strong style={{ fontSize: 16 }}>{channel === "email" ? `Emailed to ${listWords(reached)}` : `Texted to ${listWords(reached)}`}</strong>
-              {config.features.devMail && <span className="muted small">Development mode: it's in the local Mailpit inbox.</span>}
+              <strong style={{ fontSize: 16 }}>{channel === "email" ? t("Emailed to {who}", { who: listWords(reached) }) : t("Texted to {who}", { who: listWords(reached) })}</strong>
+              {config.features.devMail && <span className="muted small">{t("Development mode: it's in the local Mailpit inbox.")}</span>}
             </div>
           ) : (
-            done.reason && done.reason !== "Link only" && <div className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">{done.reason} Copy the link and send it yourself.</div></div>
+            done.reason && done.reason !== "Link only" && <div className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">{translateError(getLocale(), done.reason)} {t("Copy the link and send it yourself.")}</div></div>
           )}
           {done.not_sent?.map((missed) => (
-            <div key={missed.to} className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">It didn't reach {missed.to}. <span style={{ fontWeight: 400 }}>{missed.reason}</span></div></div>
+            <div key={missed.to} className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">{t("It didn't reach {who}.", { who: missed.to })} <span style={{ fontWeight: 400 }}>{translateError(getLocale(), missed.reason)}</span></div></div>
           ))}
           <div className="field">
-            <span>Client link</span>
+            <span>{t("Client link")}</span>
             <div className="row">
               <input className="input" readOnly value={done.link} onFocus={(e) => e.target.select()} />
-              <Button icon="copy" onClick={() => copyText(done.link, "Link copied")}>Copy</Button>
+              <Button icon="copy" onClick={() => copyText(done.link, "Link copied")}>{t("Copy")}</Button>
             </div>
           </div>
           <div className="form-actions">
-            <a className="btn" href={done.link} target="_blank" rel="noreferrer"><Icon name="external" size={16} />Preview</a>
-            <Button variant="primary" onClick={onClose}>Done</Button>
+            <a className="btn" href={done.link} target="_blank" rel="noreferrer"><Icon name="external" size={16} />{t("Preview")}</a>
+            <Button variant="primary" onClick={onClose}>{t("Done")}</Button>
           </div>
         </div>
       ) : (
@@ -127,41 +129,41 @@ export function SendDialog({
             if (!problem) send.mutate();
           }}
         >
-          <div className="segmented" role="group" aria-label="How to send">
+          <div className="segmented" role="group" aria-label={t("How to send")}>
             <button type="button" aria-pressed={channel === "email"} onClick={() => setChannel("email")}>Email</button>
-            <button type="button" aria-pressed={channel === "sms"} onClick={() => setChannel("sms")}>Text</button>
-            <button type="button" aria-pressed={channel === "link"} onClick={() => setChannel("link")}>Copy link</button>
+            <button type="button" aria-pressed={channel === "sms"} onClick={() => setChannel("sms")}>{t("Text")}</button>
+            <button type="button" aria-pressed={channel === "link"} onClick={() => setChannel("link")}>{t("Copy link")}</button>
           </div>
-          {textsOffSince && <p className="muted small" style={{ margin: 0 }}>They texted STOP, so their own number can't be texted. You can text a different one.</p>}
+          {textsOffSince && <p className="muted small" style={{ margin: 0 }}>{t("They texted STOP, so their own number can't be texted. You can text a different one.")}</p>}
           {unavailable && (
             <div className="callout callout-info">
               <Icon name="info" size={20} />
-              <div className="grow">{channel === "email" ? "Email" : "Texting"} isn't turned on yet. Use “Copy link” and send it yourself.</div>
+              <div className="grow">{channel === "email" ? t("Email isn't turned on yet. Use “Copy link” and send it yourself.") : t("Texting isn't turned on yet. Use “Copy link” and send it yourself.")}</div>
             </div>
           )}
           {channel !== "link" && people.length > 0 && (
             <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0, gap: 6 }}>
-              <legend className="strong small" style={{ padding: 0, marginBottom: 4 }}>Send to</legend>
+              <legend className="strong small" style={{ padding: 0, marginBottom: 4 }}>{t("Send to")}</legend>
               {people.map((p) => (
                 <label key={p.to} className="checkbox" style={{ alignItems: "flex-start" }}>
                   <input type="checkbox" checked={!p.blocked && ticked.includes(p.to)} disabled={Boolean(p.blocked)} onChange={(e) => toggle(p.to, e.target.checked)} />
                   <span style={{ minWidth: 0 }}>
                     {p.name}
                     <span className="muted small" style={{ display: "block", overflowWrap: "anywhere" }}>
-                      {p.to}{p.contact_id ? " · Contact" : ""}{p.blocked ? ` · ${p.blocked}, so they can't be texted` : ""}
+                      {p.to}{p.contact_id ? t(" · Contact") : ""}{p.blocked ? ` · ${t("{reason}, so they can't be texted", { reason: translateError(getLocale(), p.blocked) })}` : ""}
                     </span>
                   </span>
                 </label>
               ))}
-              {contactsHeld && <span className="muted small">Contacts aren't ticked to start with. Tick anyone this should go to.</span>}
+              {contactsHeld && <span className="muted small">{t("Contacts aren't ticked to start with. Tick anyone this should go to.")}</span>}
             </fieldset>
           )}
           {channel !== "link" && (
             <Field
-              label={people.length ? (channel === "email" ? "Another address" : "Another number") : channel === "email" ? "To" : "Mobile number"}
+              label={people.length ? (channel === "email" ? t("Another address") : t("Another number")) : channel === "email" ? t("To") : t("Mobile number")}
               optional={people.length > 0}
-              hint={channel === "email" && people.length > 0 ? "For more than one, put a comma between them." : undefined}
-              requiredMessage={channel === "email" ? "Add the email to send it to." : "Add the number to text it to."}
+              hint={channel === "email" && people.length > 0 ? t("For more than one, put a comma between them.") : undefined}
+              requiredMessage={channel === "email" ? t("Add the email to send it to.") : t("Add the number to text it to.")}
             >
               <input
                 className="input"
@@ -175,19 +177,19 @@ export function SendDialog({
             </Field>
           )}
           {channel !== "link" && tried && problem && <span className="field-error" role="alert">{problem}</span>}
-          {channel === "email" && <Field label="Subject"><input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} required /></Field>}
+          {channel === "email" && <Field label={t("Subject")}><input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} required /></Field>}
           {channel !== "link" && (
-            <Field label="Message" optional hint="The link is added automatically.">
-              <textarea className="textarea" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={channel === "sms" ? 400 : 4000} placeholder={kind === "quote" ? "Thanks for having us out. Here's what we recommend…" : "Thanks for your business."} />
+            <Field label={t("Message")} optional hint={t("The link is added automatically.")}>
+              <textarea className="textarea" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={channel === "sms" ? 400 : 4000} placeholder={kind === "quote" ? t("Thanks for having us out. Here's what we recommend…") : t("Thanks for your business.")} />
             </Field>
           )}
-          {channel === "link" && <p className="muted" style={{ margin: 0 }}>Copies a link you can paste into any message, and marks the {kind} as sent.</p>}
+          {channel === "link" && <p className="muted" style={{ margin: 0 }}>{kind === "quote" ? t("Copies a link you can paste into any message, and marks the quote as sent.") : t("Copies a link you can paste into any message, and marks the invoice as sent.")}</p>}
           <FormError error={send.error} />
           <div className="form-actions">
             <FormChecks />
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t("Cancel")}</Button>
             <Button type="submit" variant="primary" icon={channel === "link" ? "copy" : "send"} loading={send.isPending} disabled={unavailable}>
-              {channel === "link" ? "Copy link" : channel === "email" ? (list.length > 1 ? `Send ${list.length} emails` : "Send email") : list.length > 1 ? `Send ${list.length} texts` : "Send text"}
+              {channel === "link" ? t("Copy link") : channel === "email" ? (list.length > 1 ? t("Send {count} emails", { count: list.length }) : t("Send email")) : list.length > 1 ? t("Send {count} texts", { count: list.length }) : t("Send text")}
             </Button>
           </div>
         </form>

@@ -15,6 +15,7 @@ import {
 } from "@crewtavo/core/subs";
 import type { Tone } from "@/components/ui/StatusPill";
 import { formatDate } from "@/lib/format";
+import { msg, t } from "@/lib/i18n";
 
 /** One required piece of paperwork's status: a public.sub_paperwork row or a paperworkStatus() entry. */
 export interface PaperworkRow {
@@ -32,14 +33,14 @@ export interface PaperworkRow {
 
 /** The chip for one requirement: "OK", "Expires in 12 days", "Expired", "Missing" or "Not verified yet". */
 export function paperworkChip(s: Pick<PaperworkRow, "state" | "days_left" | "verified" | "waiting">): { label: string; tone: Tone } {
-  if (s.state === "missing" || !s.state) return { label: "Missing", tone: "danger" };
+  if (s.state === "missing" || !s.state) return { label: t("Missing"), tone: "danger" };
   // Sent in by the sub: on file, but someone should look at it (and it may be the new one).
-  if (s.waiting) return { label: "Not verified yet", tone: "info" };
-  if (s.state === "expired") return { label: "Expired", tone: "danger" };
-  if (s.verified === false) return { label: "Not verified yet", tone: "info" };
+  if (s.waiting) return { label: t("Not verified yet"), tone: "info" };
+  if (s.state === "expired") return { label: t("Expired"), tone: "danger" };
+  if (s.verified === false) return { label: t("Not verified yet"), tone: "info" };
   if (s.state === "expiring") {
     const days = s.days_left ?? 0;
-    return { label: days <= 0 ? "Expires today" : days === 1 ? "Expires tomorrow" : `Expires in ${days} days`, tone: "warning" };
+    return { label: days <= 0 ? t("Expires today") : days === 1 ? t("Expires tomorrow") : t("Expires in {count} days", { count: days }), tone: "warning" };
   }
   return { label: "OK", tone: "good" };
 }
@@ -99,8 +100,8 @@ export const documentTitle = (d: { kind: string; title: string | null }) => (d.k
 
 /** "Ends Nov 10, 2026", "Ended Oct 1, 2026", "No end date". */
 export function endsText(expiresOn: string | null, today: string): string {
-  if (!expiresOn) return "No end date";
-  return `${expiresOn < today ? "Ended" : "Ends"} ${formatDate(expiresOn)}`;
+  if (!expiresOn) return t("No end date");
+  return expiresOn < today ? t("Ended {date}", { date: formatDate(expiresOn) }) : t("Ends {date}", { date: formatDate(expiresOn) });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -119,7 +120,7 @@ const FILE_TYPES: Record<string, string> = {
 };
 /** The file picker's filter: PDFs and pictures, which on a phone also offers the camera. */
 export const UPLOAD_ACCEPT = "application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.heic,.heif,.webp";
-export const WRONG_TYPE = "Send a PDF or a photo (JPG, PNG or HEIC).";
+export const WRONG_TYPE = msg("Send a PDF or a photo (JPG, PNG or HEIC).");
 
 const extensionOf = (name: string) => name.match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() ?? "";
 
@@ -129,11 +130,11 @@ export const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))
 /** Why a picked file can't be sent, in words the sub understands, or null when it can. */
 export function uploadProblem(file: { name: string; size: number; type?: string }, maxBytes: number): string | null {
   const type = FILE_TYPES[extensionOf(file.name)];
-  if (!type) return WRONG_TYPE;
+  if (!type) return t(WRONG_TYPE);
   // A phone may name a picture .jpg but say it's something else; the server checks the two agree.
-  if (file.type && file.type !== type && !(type.startsWith("image/hei") && file.type.startsWith("image/hei")) && !(type === "image/jpeg" && file.type === "image/jpg")) return WRONG_TYPE;
-  if (file.size <= 0) return "That file is empty. Pick it again, or take a new photo.";
-  if (file.size > maxBytes) return `That file is bigger than ${megabytes(maxBytes)}. Send a smaller one, or a photo of the page.`;
+  if (file.type && file.type !== type && !(type.startsWith("image/hei") && file.type.startsWith("image/hei")) && !(type === "image/jpeg" && file.type === "image/jpg")) return t(WRONG_TYPE);
+  if (file.size <= 0) return t("That file is empty. Pick it again, or take a new photo.");
+  if (file.size > maxBytes) return t("That file is bigger than {size}. Send a smaller one, or a photo of the page.", { size: megabytes(maxBytes) });
   return null;
 }
 
@@ -151,13 +152,13 @@ export function withType(file: File): File {
 export { endDateProblem } from "@crewtavo/core/subs";
 
 /** "Hi Apex Roofing, Uniform Roofing needs these from you:" */
-export const greeting = (sub: string, company: string) => `Hi ${sub}, ${company} needs these from you:`;
+export const greeting = (sub: string, company: string) => t("Hi {sub}, {company} needs these from you:", { sub, company });
 
 /** Under each item on the sub's page: why it's asked for. */
 export function neededWhy(item: { state: string; expires_on: string | null }): string {
-  if (item.state === "expired" && item.expires_on) return `The one we have ran out ${formatDate(item.expires_on)}.`;
-  if (item.state === "expiring" && item.expires_on) return `The one we have ends ${formatDate(item.expires_on)}.`;
-  return "We don't have one on file yet.";
+  if (item.state === "expired" && item.expires_on) return t("The one we have ran out {date}.", { date: formatDate(item.expires_on) });
+  if (item.state === "expiring" && item.expires_on) return t("The one we have ends {date}.", { date: formatDate(item.expires_on) });
+  return t("We don't have one on file yet.");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -193,23 +194,25 @@ export function myPaperwork(rows: readonly PaperworkRow[]): MyPaperworkItem[] {
     const base = { requirement, label };
     const state = r.state ?? "missing";
     // The view's `waiting` counts the one on file too, when it's theirs and unchecked.
-    const unchecked = r.verified === false ? " The office is still checking the one you sent." : "";
-    if (state === "missing") return { ...base, state: "needed", status: "Needed", tone: "danger", detail: "We don't have one on file yet." };
-    if (r.waiting && r.verified !== false) return { ...base, state: "waiting", status: "Waiting to be checked", tone: "info", detail: "You sent a new one. The office will check it." };
-    if (state === "expired") return { ...base, state: "needed", status: "Expired", tone: "danger", detail: `${neededWhy({ state, expires_on: r.expires_on })} Send the new one.${unchecked}` };
+    const unchecked = r.verified === false ? ` ${t("The office is still checking the one you sent.")}` : "";
+    if (state === "missing") return { ...base, state: "needed", status: t("Needed"), tone: "danger", detail: t("We don't have one on file yet.") };
+    if (r.waiting && r.verified !== false) return { ...base, state: "waiting", status: t("Waiting to be checked"), tone: "info", detail: t("You sent a new one. The office will check it.") };
+    if (state === "expired") return { ...base, state: "needed", status: t("Expired"), tone: "danger", detail: `${neededWhy({ state, expires_on: r.expires_on })} ${t("Send the new one.")}${unchecked}` };
     if (state === "expiring") {
-      return { ...base, state: "needed", status: paperworkChip({ ...r, verified: true, waiting: false }).label.replace(/^Expires/, "Ends"), tone: "warning", detail: `${neededWhy({ state, expires_on: r.expires_on })} Send the new one when you get it.${unchecked}` };
+      const days = r.days_left ?? 0;
+      const status = days <= 0 ? t("Ends today") : days === 1 ? t("Ends tomorrow") : t("Ends in {count} days", { count: days });
+      return { ...base, state: "needed", status, tone: "warning", detail: `${neededWhy({ state, expires_on: r.expires_on })} ${t("Send the new one when you get it.")}${unchecked}` };
     }
-    if (r.verified === false) return { ...base, state: "waiting", status: "Waiting to be checked", tone: "info", detail: "On file. The office will check it." };
-    return { ...base, state: "ok", status: "OK", tone: "good", detail: r.expires_on ? `Good until ${formatDate(r.expires_on)}.` : "On file." };
+    if (r.verified === false) return { ...base, state: "waiting", status: t("Waiting to be checked"), tone: "info", detail: t("On file. The office will check it.") };
+    return { ...base, state: "ok", status: t("OK"), tone: "good", detail: r.expires_on ? t("Good until {date}.", { date: formatDate(r.expires_on) }) : t("On file.") };
   });
 }
 
 /** The line at the top: "You're all set", "1 thing needed", "2 things needed". */
 export function myPaperworkSummary(items: readonly Pick<MyPaperworkItem, "state">[]): string {
   const needed = items.filter((i) => i.state === "needed").length;
-  if (!needed) return items.some((i) => i.state === "waiting") ? "Nothing needed. The office is checking what you sent." : "You're all set";
-  return needed === 1 ? "1 thing needed" : `${needed} things needed`;
+  if (!needed) return items.some((i) => i.state === "waiting") ? t("Nothing needed. The office is checking what you sent.") : t("You're all set");
+  return t.plural(needed, { one: "{count} thing needed", other: "{count} things needed" });
 }
 
 /**

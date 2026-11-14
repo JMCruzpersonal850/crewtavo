@@ -7,19 +7,20 @@
 import { greetingName } from "./automations";
 import { isCallingCode } from "./phone";
 import { addDays } from "./time";
+import { msg } from "./i18n";
 
 export const SUB_DOCUMENT_KINDS = [
   { key: "w9", label: "W-9" },
-  { key: "liability", label: "Liability insurance" },
-  { key: "workers_comp", label: "Workers' comp certificate" },
-  { key: "wc_exemption", label: "Workers' comp exemption" },
-  { key: "license", label: "License" },
-  { key: "other", label: "Other" },
+  { key: "liability", label: msg("Liability insurance") },
+  { key: "workers_comp", label: msg("Workers' comp certificate") },
+  { key: "wc_exemption", label: msg("Workers' comp exemption") },
+  { key: "license", label: msg("License") },
+  { key: "other", label: msg("Other") },
 ] as const;
 export type SubDocumentKind = (typeof SUB_DOCUMENT_KINDS)[number]["key"];
 
 export const isSubDocumentKind = (value: unknown): value is SubDocumentKind => SUB_DOCUMENT_KINDS.some((k) => k.key === value);
-export const subDocumentLabel = (kind: string) => SUB_DOCUMENT_KINDS.find((k) => k.key === kind)?.label ?? "Document";
+export const subDocumentLabel = (kind: string) => SUB_DOCUMENT_KINDS.find((k) => k.key === kind)?.label ?? msg("Document");
 
 /** Kinds that carry an end date. A W-9 never runs out. */
 export const SUB_DOCUMENT_EXPIRES: Record<SubDocumentKind, boolean> = {
@@ -49,8 +50,8 @@ export const isCorporation = (key: string | null | undefined) => (CORPORATE_CLAS
  */
 export const PAPERWORK_REQUIREMENTS = [
   { key: "w9", label: "W-9", kinds: ["w9"] },
-  { key: "liability", label: "Liability insurance", kinds: ["liability"] },
-  { key: "workers_comp", label: "Workers' comp", kinds: ["workers_comp", "wc_exemption"] },
+  { key: "liability", label: msg("Liability insurance"), kinds: ["liability"] },
+  { key: "workers_comp", label: msg("Workers' comp"), kinds: ["workers_comp", "wc_exemption"] },
 ] as const satisfies ReadonlyArray<{ key: string; label: string; kinds: readonly SubDocumentKind[] }>;
 export type PaperworkRequirement = (typeof PAPERWORK_REQUIREMENTS)[number]["key"];
 

@@ -22,9 +22,10 @@ import { useListAnimation } from "@/lib/motion";
 import { hasRole, useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 import { LOGGED_MATERIALS_RULE } from "./jobCosts";
+import { intlLocale, t } from "@/lib/i18n";
 
 const UNITS = ["ton", "yd³", "gal", "load", "bag", "ea", "lf", "sq yd"];
-const qty = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(n);
+const qty = (n: number) => new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 3 }).format(n);
 
 const materialsKey = (jobId: string) => ["job", jobId, "materials"];
 
@@ -66,7 +67,7 @@ export function MaterialsCard({ jobId, visitId, showCosts, use, compact = false,
   const removeEntry = (m: Material) => {
     const key = materialsKey(jobId);
     undoable({
-      title: "Material removed",
+      title: t("Material removed"),
       tone: "job",
       hide: () => {
         void queryClient.cancelQueries({ queryKey: key });
@@ -94,32 +95,32 @@ export function MaterialsCard({ jobId, visitId, showCosts, use, compact = false,
   return (
     <section className={compact ? "card card-pad stack-sm" : "stack"}>
       <div className={compact ? "row-between" : "section-head"}>
-        {compact ? <strong>Materials used</strong> : <h2 className="section-title">Materials used</h2>}
-        <Button size="sm" icon="plus" onClick={() => setLogging(true)}>Log material</Button>
+        {compact ? <strong>{t("Materials used")}</strong> : <h2 className="section-title">{t("Materials used")}</h2>}
+        <Button size="sm" icon="plus" onClick={() => setLogging(true)}>{t("Log material")}</Button>
       </div>
       <div className={compact ? undefined : "card"} ref={listRef}>
         {materials.isPending && <div className="card-row"><Skeleton width="50%" /></div>}
         {materials.data && rows.length === 0 && (
-          <EmptyState inline title={visitId ? "Nothing logged yet" : "No materials logged yet"}>
-            {visitId ? "Log tons, gallons or loads as they come in, with the ticket number." : null}
+          <EmptyState inline title={visitId ? t("Nothing logged yet") : t("No materials logged yet")}>
+            {visitId ? t("Log tons, gallons or loads as they come in, with the ticket number.") : null}
           </EmptyState>
         )}
         {rows.map((m) => (
           <div key={m.id} className="card-row" style={compact ? { paddingLeft: 0, paddingRight: 0 } : undefined}>
             {m.photo_url ? (
-              <a href={m.photo_url} target="_blank" rel="noreferrer" className="thumb" style={{ width: 38, height: 38, flex: "none" }} aria-label="Open ticket photo"><img src={m.photo_url} alt="" /></a>
+              <a href={m.photo_url} target="_blank" rel="noreferrer" className="thumb" style={{ width: 38, height: 38, flex: "none" }} aria-label={t("Open ticket photo")}><img src={m.photo_url} alt="" /></a>
             ) : (
               <span style={{ width: 38, height: 38, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--fill-2)", color: "var(--text-3)", flex: "none" }}><Icon name="truck" size={16} /></span>
             )}
             <span className="grow" style={{ minWidth: 0 }}>
               <strong>{qty(Number(m.quantity))} {m.unit} · {m.name}</strong>
-              <span className="muted small" style={{ display: "block" }}>{[m.ticket && `Ticket ${m.ticket}`, m.supplier, formatDate(m.logged_at)].filter(Boolean).join(" · ")}</span>
+              <span className="muted small" style={{ display: "block" }}>{[m.ticket && t("Ticket {ticket}", { ticket: m.ticket }), m.supplier, formatDate(m.logged_at)].filter(Boolean).join(" · ")}</span>
             </span>
-            {canFix(m) && <Button size="sm" variant="ghost" icon="trash" aria-label={`Remove ${m.name}`} onClick={() => removeEntry(m)} />}
+            {canFix(m) && <Button size="sm" variant="ghost" icon="trash" aria-label={t("Remove {tag}", { tag: m.name })} onClick={() => removeEntry(m)} />}
           </div>
         ))}
         {!visitId && totals.length > 1 && (
-          <div className="list-foot"><span className="muted small">Totals: {totals.map((t) => `${qty(t.quantity)} ${t.unit} ${t.name}`).join(" · ")}</span></div>
+          <div className="list-foot"><span className="muted small">{t("Totals: {list}", { list: totals.map((x) => `${qty(x.quantity)} ${x.unit} ${x.name}`).join(" · ") })}</span></div>
         )}
       </div>
       {showCosts && !!use?.length && <EstimatedAndUsed use={use} priceList={costs.data ?? []} />}
@@ -140,18 +141,18 @@ function EstimatedAndUsed({ use, priceList }: { use: readonly MaterialUse[]; pri
   const listCost = (r: MaterialUse) => priceList.find((c) => c.name === r.name && c.unit === r.unit && c.unit_cost != null)?.cost ?? null;
   return (
     <div className="card card-pad stack-sm">
-      <strong>Estimated and used</strong>
+      <strong>{t("Estimated and used")}</strong>
       {compared.map((r) => {
         const over = Math.round((r.used - r.estimated!) * 1000) / 1000;
         return (
           <div key={`${r.name}|${r.unit}`} className="row-between" style={{ alignItems: "flex-start", gap: 12 }}>
             <span>
               {r.name}
-              <span className="muted small" style={{ display: "block" }}>Estimated {qty(r.estimated!)} {r.unit} · {formatMoneyCents(r.estimated_cost!)}</span>
+              <span className="muted small" style={{ display: "block" }}>{t("Estimated {quantity} {unit} · {cost}", { quantity: qty(r.estimated!), unit: r.unit, cost: formatMoneyCents(r.estimated_cost!) })}</span>
             </span>
             <span style={{ textAlign: "right" }}>
               <strong className="tabular">{qty(r.used)} {r.unit} · {formatMoneyCents(r.actual_cost!)}</strong>
-              <span className="muted small" style={{ display: "block" }}>{over === 0 ? "As estimated" : `${qty(Math.abs(over))} ${r.unit} ${over > 0 ? "over" : "under"}`}</span>
+              <span className="muted small" style={{ display: "block" }}>{over === 0 ? t("As estimated") : over > 0 ? t("{quantity} {unit} over", { quantity: qty(Math.abs(over)), unit: r.unit }) : t("{quantity} {unit} under", { quantity: qty(Math.abs(over)), unit: r.unit })}</span>
             </span>
           </div>
         );
@@ -162,15 +163,15 @@ function EstimatedAndUsed({ use, priceList }: { use: readonly MaterialUse[]; pri
           <div key={`${r.name}|${r.unit}`} className="row-between" style={{ alignItems: "flex-start", gap: 12 }}>
             <span>
               {r.name}
-              <span className="muted small" style={{ display: "block" }}>Not on this job's line items</span>
+              <span className="muted small" style={{ display: "block" }}>{t("Not on this job's line items")}</span>
             </span>
-            <span className="muted tabular" style={{ textAlign: "right" }}>{qty(r.used)} {r.unit}{cost != null ? ` · ${formatMoneyCents(Number(cost))} at price list cost` : ""}</span>
+            <span className="muted tabular" style={{ textAlign: "right" }}>{qty(r.used)} {r.unit}{cost != null ? ` · ${t("{cost} at price list cost", { cost: formatMoneyCents(Number(cost)) })}` : ""}</span>
           </div>
         );
       })}
       <span className="muted small">
         {LOGGED_MATERIALS_RULE}
-        {others.length > 0 && " A material that isn't on the line items is listed, not counted: a line's cost may already cover it."}
+        {others.length > 0 && t(" A material that isn't on the line items is listed, not counted: a line's cost may already cover it.")}
       </span>
     </div>
   );
@@ -214,10 +215,10 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
     }
   };
   const save = useMutation({
-    meta: { inline: true, success: "Material logged" },
+    meta: { inline: true, success: t("Material logged") },
     mutationFn: async () => {
-      if (!(amount > 0)) throw new Error("Enter how much was used.");
-      if (!name.trim()) throw new Error("Say what material it was.");
+      if (!(amount > 0)) throw new Error(t("Enter how much was used."));
+      if (!name.trim()) throw new Error(t("Say what material it was."));
       const photo_path = file ? await uploadFile(session.company.id, `tickets/${jobId}`, file) : null;
       unwrap(
         await supabase().from("job_materials").insert({
@@ -233,47 +234,47 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
     },
   });
   return (
-    <Dialog open onClose={onClose} title="Log material">
+    <Dialog open onClose={onClose} title={t("Log material")}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
-        <Field label="Material">
+        <Field label={t("Material")}>
           {choices.isPending ? <Skeleton height={38} radius={8} /> : (
             <select className="select" value={choice} onChange={(e) => pick(e.target.value)}>
-              <option value="">Something else (type it below)</option>
+              <option value="">{t("Something else (type it below)")}</option>
               {!!onJob.data?.length && (
-                <optgroup label="On this job">
+                <optgroup label={t("On this job")}>
                   {onJob.data.map((c, i) => <option key={`job:${i}`} value={`job:${i}`}>{c.name} ({c.unit})</option>)}
                 </optgroup>
               )}
               {onJob.data?.length ? (
-                <optgroup label="Price list">
+                <optgroup label={t("Price list")}>
                   {choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
                 </optgroup>
               ) : choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
             </select>
           )}
         </Field>
-        {!choice && <Field label="What was it" requiredMessage="Say what material it was."><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder="Surface mix, #57 stone, sealer…" required /></Field>}
+        {!choice && <Field label={t("What was it")} requiredMessage={t("Say what material it was.")}><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder={t("Surface mix, #57 stone, sealer…")} required /></Field>}
         <div className="form-grid">
-          <Field label="How much" requiredMessage="Enter how much was used."><input className="input" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.]/g, ""))} required autoFocus /></Field>
-          <Field label="Unit">
+          <Field label={t("How much")} requiredMessage={t("Enter how much was used.")}><input className="input" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.]/g, ""))} required autoFocus /></Field>
+          <Field label={t("Unit")}>
             <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
               {[...new Set([unit, ...UNITS])].map((u) => <option key={u}>{u}</option>)}
             </select>
           </Field>
-          <Field label="Ticket number" optional><input className="input" value={ticket} onChange={(e) => setTicket(e.target.value)} maxLength={60} /></Field>
-          <Field label="Supplier or plant" optional><input className="input" value={supplier} onChange={(e) => setSupplier(e.target.value)} maxLength={120} /></Field>
+          <Field label={t("Ticket number")} optional><input className="input" value={ticket} onChange={(e) => setTicket(e.target.value)} maxLength={60} /></Field>
+          <Field label={t("Supplier or plant")} optional><input className="input" value={supplier} onChange={(e) => setSupplier(e.target.value)} maxLength={120} /></Field>
         </div>
         <label className="dropzone" style={{ padding: 14 }}>
           <Icon name="camera" size={20} />
-          <span className="small strong">{file ? file.name : "Add a photo of the ticket"}</span>
+          <span className="small strong">{file ? file.name : t("Add a photo of the ticket")}</span>
           <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </label>
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           {/* With a ticket photo it uploads, which is slow anyway. */}
-          <Button type="submit" variant="primary" loading={save.isPending} slowHint={file ? false : undefined}>Log it</Button>
+          <Button type="submit" variant="primary" loading={save.isPending} slowHint={file ? false : undefined}>{t("Log it")}</Button>
         </div>
       </form>
     </Dialog>

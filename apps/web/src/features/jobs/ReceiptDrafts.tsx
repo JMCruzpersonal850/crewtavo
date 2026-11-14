@@ -19,6 +19,7 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { ExpenseDialog } from "./ExpensesCard";
 import type { ReadAnswer } from "./receiptReading";
+import { t } from "@/lib/i18n";
 
 export interface ExpenseDraft {
   id: string;
@@ -85,10 +86,10 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
     };
     const queue = [...list];
     await Promise.all([0, 1].map(async () => { for (let f = queue.shift(); f; f = queue.shift()) await one(f); }));
-    if (failed.length) toast.error(failed.length === 1 ? "A file couldn't be added" : `${failed.length} files couldn't be added`, { description: failed.join("\n") });
+    if (failed.length) toast.error(failed.length === 1 ? t("A file couldn't be added") : t("{count} files couldn't be added", { count: failed.length }), { description: failed.join("\n") });
   };
   const discard = useMutation({
-    meta: { success: "Receipt discarded" },
+    meta: { success: t("Receipt discarded") },
     mutationFn: async (id: string) => unwrap(await supabase().from("expense_drafts").delete().eq("id", id)),
     onSettled: refresh,
   });
@@ -99,7 +100,7 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
     <div className="stack-sm">
       {rows.length > 0 && (
         <div className="card">
-          <div className="card-row"><strong className="grow small">Receipts to check and save</strong><span className="muted small">{rows.length}</span></div>
+          <div className="card-row"><strong className="grow small">{t("Receipts to check and save")}</strong><span className="muted small">{rows.length}</span></div>
           {rows.map((d) => {
             const r = d.read?.reading;
             const stuck = d.status === "reading" && Date.now() - Date.parse(d.created_at) >= STUCK_MS;
@@ -108,20 +109,20 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
               <div key={d.id} className="card-row">
                 <span className="n-icon" style={{ width: 36, height: 36, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--fill-2)", color: "var(--text-3)", flex: "none" }}><Icon name="receipt" size={18} /></span>
                 <span className="grow">
-                  <strong>{r?.vendor || d.file_name || "Receipt"}</strong>
+                  <strong>{r?.vendor || d.file_name || t("Receipt")}</strong>
                   <span className="muted small" style={{ display: "block" }}>
-                    {d.status === "reading" && !stuck ? "Reading…"
-                      : d.status === "failed" || stuck ? "Couldn't be read: fill it in"
+                    {d.status === "reading" && !stuck ? t("Reading…")
+                      : d.status === "failed" || stuck ? t("Couldn't be read: fill it in")
                         : [r?.total != null ? formatMoneyCents(r.total) : null, r?.date ? formatDate(r.date) : null, !jobId && job ? `Job #${job.number}${d.job ? "" : " (suggested)"}` : null, d.read?.problems.length ? `${d.read.problems.length} to check` : null].filter(Boolean).join(" · ")}
                   </span>
                 </span>
-                <Button size="sm" disabled={d.status === "reading" && !stuck} onClick={() => setChecking(d)}>Check and save</Button>
+                <Button size="sm" disabled={d.status === "reading" && !stuck} onClick={() => setChecking(d)}>{t("Check and save")}</Button>
                 <Menu
                   triggerClassName="btn btn-sm btn-ghost btn-icon"
-                  label="Receipt actions"
+                  label={t("Receipt actions")}
                   items={[
-                    { label: "Read again", icon: "refresh", hidden: !(d.status === "failed" || stuck), onSelect: () => void read(d.id) },
-                    { label: "Discard", icon: "trash", danger: true, onSelect: () => discard.mutate(d.id) },
+                    { label: t("Read again"), icon: "refresh", hidden: !(d.status === "failed" || stuck), onSelect: () => void read(d.id) },
+                    { label: t("Discard"), icon: "trash", danger: true, onSelect: () => discard.mutate(d.id) },
                   ]}
                 />
               </div>
@@ -138,8 +139,8 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
         onDrop={(e) => { e.preventDefault(); setOver(false); void add(e.dataTransfer.files); }}
       >
         <Icon name="upload" size={18} />
-        <span className="small strong">{adding > 0 ? `Adding ${adding}…` : "Drop several receipts or supplier invoices here, or click to choose"}</span>
-        <span className="small muted">Photos or PDFs. Each waits here to be checked and saved: none counts in job costing until it is.</span>
+        <span className="small strong">{adding > 0 ? t("Adding {count}…", { count: adding }) : t("Drop several receipts or supplier invoices here, or click to choose")}</span>
+        <span className="small muted">{t("Photos or PDFs. Each waits here to be checked and saved: none counts in job costing until it is.")}</span>
         <input type="file" multiple accept="image/*,application/pdf" className="sr-only" onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
       </label>
       {checking && (

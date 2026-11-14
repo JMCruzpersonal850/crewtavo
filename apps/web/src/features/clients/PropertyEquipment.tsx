@@ -17,6 +17,7 @@ import { signedUrls, uploadFile } from "@/lib/files";
 import { formatDate, todayIn } from "@/lib/format";
 import { hasRole, useSession } from "@/lib/session";
 import { ASSET_FIELDS, ASSET_NAMES, assetDetails, byNewest, warrantyNote, type PropertyAsset, type ServiceVisit } from "./propertyAssets";
+import { t } from "@/lib/i18n";
 
 const assetsKey = (propertyId: string) => ["property-assets", propertyId];
 
@@ -64,8 +65,8 @@ export function PropertyEquipment({ propertyId, visitId, inCard }: { propertyId:
   const body = (
     <>
       <div className="row-between">
-        <strong className={inCard ? "small" : undefined}>Equipment at this property</strong>
-        {canAdd && <Button size="sm" variant="ghost" icon="plus" onClick={() => setOpen("new")}>Add equipment</Button>}
+        <strong className={inCard ? "small" : undefined}>{t("Equipment at this property")}</strong>
+        {canAdd && <Button size="sm" variant="ghost" icon="plus" onClick={() => setOpen("new")}>{t("Add equipment")}</Button>}
       </div>
       {list.isPending && <Skeleton width="60%" />}
       {items.map((a) => {
@@ -74,13 +75,13 @@ export function PropertyEquipment({ propertyId, visitId, inCard }: { propertyId:
           <div key={a.id} className="row" style={{ alignItems: "flex-start", gap: 10 }}>
             <button type="button" className="link-btn grow" style={{ textAlign: "left", minWidth: 0 }} onClick={() => setOpen(a)}>
               <span className={a.status === "retired" ? "muted" : "strong"}>{a.name}</span>
-              {a.status === "retired" && <span className="chip" style={{ marginLeft: 6 }}>Retired</span>}
+              {a.status === "retired" && <span className="chip" style={{ marginLeft: 6 }}>{t("Retired")}</span>}
               {line && <span className="muted small" style={{ display: "block" }}>{line}</span>}
             </button>
             {visitId && (
               <label className="checkbox small">
                 <input type="checkbox" checked={ticked.data?.has(a.id) ?? false} disabled={ticked.isPending || tick.isPending} onChange={(e) => tick.mutate({ asset: a, on: e.target.checked })} />
-                <span>Serviced</span>
+                <span>{t("Serviced")}</span>
               </label>
             )}
           </div>
@@ -121,7 +122,7 @@ function AssetDialog({ propertyId, asset, isOffice, visitId, onClose }: { proper
   });
 
   const save = useMutation({
-    meta: { inline: true, success: asset ? "Equipment saved" : "Equipment added" },
+    meta: { inline: true, success: asset ? t("Equipment saved") : t("Equipment added") },
     mutationFn: async () => {
       if (locked) return unwrap(await supabase().from("property_assets").update({ notes: f.notes.trim() || null }).eq("id", asset!.id));
       const row = {
@@ -149,36 +150,36 @@ function AssetDialog({ propertyId, asset, isOffice, visitId, onClose }: { proper
   });
 
   return (
-    <Dialog open onClose={onClose} title={asset ? asset.name : "Add equipment"} size="lg">
+    <Dialog open onClose={onClose} title={asset ? asset.name : t("Add equipment")} size="lg">
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
-        <Field label="What it is" hint={asset ? undefined : "Water heater, AC unit, pool pump…"}>
+        <Field label={t("What it is")} hint={asset ? undefined : t("Water heater, AC unit, pool pump…")}>
           <input className="input" list={names} value={f.name} onChange={set("name")} required maxLength={120} disabled={locked} autoFocus={!asset} />
         </Field>
         <datalist id={names}>{ASSET_NAMES.map((n) => <option key={n} value={n} />)}</datalist>
         <div className="form-grid-3">
-          <Field label="Make" optional><input className="input" value={f.make} onChange={set("make")} maxLength={80} disabled={locked} placeholder="Rheem, Carrier, Pentair" /></Field>
-          <Field label="Model" optional><input className="input" value={f.model} onChange={set("model")} maxLength={80} disabled={locked} /></Field>
-          <Field label="Serial number" optional><input className="input" value={f.serial} onChange={set("serial")} maxLength={80} disabled={locked} /></Field>
+          <Field label={t("Make")} optional><input className="input" value={f.make} onChange={set("make")} maxLength={80} disabled={locked} placeholder={t("Rheem, Carrier, Pentair")} /></Field>
+          <Field label={t("Model")} optional><input className="input" value={f.model} onChange={set("model")} maxLength={80} disabled={locked} /></Field>
+          <Field label={t("Serial number")} optional><input className="input" value={f.serial} onChange={set("serial")} maxLength={80} disabled={locked} /></Field>
         </div>
         <div className="form-grid-3">
-          <Field label="Installed" optional><input className="input" type="date" value={f.installed_on} onChange={set("installed_on")} disabled={locked} /></Field>
-          <Field label="Warranty until" optional><input className="input" type="date" value={f.warranty_until} onChange={set("warranty_until")} disabled={locked} /></Field>
-          <Field label="Where it is" optional><input className="input" value={f.location} onChange={set("location")} maxLength={120} disabled={locked} placeholder="Basement, attic, side yard" /></Field>
+          <Field label={t("Installed")} optional><input className="input" type="date" value={f.installed_on} onChange={set("installed_on")} disabled={locked} /></Field>
+          <Field label={t("Warranty until")} optional><input className="input" type="date" value={f.warranty_until} onChange={set("warranty_until")} disabled={locked} /></Field>
+          <Field label={t("Where it is")} optional><input className="input" value={f.location} onChange={set("location")} maxLength={120} disabled={locked} placeholder={t("Basement, attic, side yard")} /></Field>
         </div>
         {asset && isOffice && (
-          <Field label="Status">
+          <Field label={t("Status")}>
             <select className="select" value={f.status} onChange={set("status")}>
-              <option value="active">In use</option>
-              <option value="retired">Retired (removed or replaced)</option>
+              <option value="active">{t("In use")}</option>
+              <option value="retired">{t("Retired (removed or replaced)")}</option>
             </select>
           </Field>
         )}
-        <Field label="Notes" optional hint="Filter size, refrigerant, quirks."><textarea className="textarea" value={f.notes} onChange={set("notes")} maxLength={4000} rows={3} /></Field>
+        <Field label={t("Notes")} optional hint={t("Filter size, refrigerant, quirks.")}><textarea className="textarea" value={f.notes} onChange={set("notes")} maxLength={4000} rows={3} /></Field>
         {photoUrl.data && <a href={photoUrl.data} target="_blank" rel="noreferrer"><img src={photoUrl.data} alt={asset?.name} style={{ maxWidth: 240, borderRadius: 8, display: "block" }} /></a>}
         {!locked && (
           <label className="dropzone" style={{ padding: 14 }}>
             <Icon name="camera" size={20} />
-            <span className="small strong">{photo ? photo.name : asset?.photo_path ? "Replace the photo" : "Add a photo of its label"}</span>
+            <span className="small strong">{photo ? photo.name : asset?.photo_path ? t("Replace the photo") : t("Add a photo of its label")}</span>
             <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
           </label>
         )}
@@ -186,8 +187,8 @@ function AssetDialog({ propertyId, asset, isOffice, visitId, onClose }: { proper
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={save.isPending} slowHint={photo ? false : undefined}>{asset ? "Save" : "Add equipment"}</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" loading={save.isPending} slowHint={photo ? false : undefined}>{asset ? t("Save") : t("Add equipment")}</Button>
         </div>
       </form>
     </Dialog>
@@ -215,9 +216,9 @@ function ServiceHistory({ assetId }: { assetId: string }) {
   });
   return (
     <div className="form-section">
-      <h3>Service history</h3>
+      <h3>{t("Service history")}</h3>
       {history.isPending && <Skeleton width="50%" />}
-      {history.data?.length === 0 && <span className="muted small">No visits yet. A crew ticks Serviced on the visit.</span>}
+      {history.data?.length === 0 && <span className="muted small">{t("No visits yet. A crew ticks Serviced on the visit.")}</span>}
       {history.data?.map((v) => (
         <div key={v.id} className="small">
           <strong>{formatDate(v.completed_at ?? v.scheduled_on)}</strong> · {v.title}

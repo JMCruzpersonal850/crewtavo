@@ -27,6 +27,7 @@ import { uploadFile } from "@/lib/files";
 import { formatDate, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { refreshEquipment, seesEquipmentCosts, type DueRow, type Equipment, type PaperRow } from "./equipmentData";
+import { msg, t } from "@/lib/i18n";
 
 /** Digits and at most one decimal point. */
 const decimal = (value: string) => value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
@@ -378,17 +379,17 @@ function CostFields({ cost, onChange }: { cost: Cost; onChange: (cost: Cost) => 
   const amount = toNumber(cost.amount);
   return (
     <details className="more-options">
-      <summary>Add what it cost</summary>
+      <summary>{t("Add what it cost")}</summary>
       <div className="form-grid">
-        <Field label="Cost" error={amount == null || amount > 0 ? null : "Enter an amount like 86.40."}><span className="input-group"><span className="addon">$</span><input className="input" inputMode="decimal" style={{ paddingLeft: 22 }} value={cost.amount} onChange={(e) => onChange({ ...cost, amount: decimal(e.target.value) })} /></span></Field>
-        <Field label="Where" optional><input className="input" value={cost.vendor} onChange={(e) => onChange({ ...cost, vendor: e.target.value })} maxLength={120} placeholder="Dealer, parts store" /></Field>
+        <Field label={t("Cost")} error={amount == null || amount > 0 ? null : t("Enter an amount like 86.40.")}><span className="input-group"><span className="addon">$</span><input className="input" inputMode="decimal" style={{ paddingLeft: 22 }} value={cost.amount} onChange={(e) => onChange({ ...cost, amount: decimal(e.target.value) })} /></span></Field>
+        <Field label={t("Where")} optional><input className="input" value={cost.vendor} onChange={(e) => onChange({ ...cost, vendor: e.target.value })} maxLength={120} placeholder={t("Dealer, parts store")} /></Field>
       </div>
       <label className="dropzone" style={{ padding: 12 }}>
         <Icon name="camera" size={20} />
-        <span className="small strong">{cost.receipt ? cost.receipt.name : "Add a receipt photo"}</span>
+        <span className="small strong">{cost.receipt ? cost.receipt.name : t("Add a receipt photo")}</span>
         <input type="file" accept="image/*,application/pdf" capture="environment" className="sr-only" onChange={(e) => onChange({ ...cost, receipt: e.target.files?.[0] ?? null })} />
       </label>
-      <label className="checkbox"><input type="checkbox" checked={cost.reimbursable} onChange={(e) => onChange({ ...cost, reimbursable: e.target.checked })} /> I paid with my own money (reimburse me)</label>
+      <label className="checkbox"><input type="checkbox" checked={cost.reimbursable} onChange={(e) => onChange({ ...cost, reimbursable: e.target.checked })} /> {t("I paid with my own money (reimburse me)")}</label>
     </details>
   );
 }
@@ -418,7 +419,7 @@ async function saveCost(companyId: string, equipment: Pick<Equipment, "id" | "na
 }
 
 export type LogKind = "service" | "repair" | "reading" | "note";
-const LOG_TITLES: Record<LogKind, string> = { service: "Log maintenance", repair: "Log a repair", reading: "Update the reading", note: "Add a note" };
+const LOG_TITLES: Record<LogKind, string> = { service: msg("Log maintenance"), repair: msg("Log a repair"), reading: msg("Update the reading"), note: msg("Add a note") };
 
 /** Mark maintenance done, record a repair, update the hour meter or odometer, or leave a note. */
 export function LogDialog({
@@ -460,10 +461,10 @@ export function LogDialog({
     (amount == null || amount > 0);
 
   const save = useMutation({
-    meta: { inline: true, success: kind === "service" ? "Maintenance logged" : kind === "repair" ? "Repair logged" : kind === "reading" ? "Reading saved" : "Note added" },
+    meta: { inline: true, success: kind === "service" ? t("Maintenance logged") : kind === "repair" ? t("Repair logged") : kind === "reading" ? t("Reading saved") : t("Note added") },
     mutationFn: async () => {
       // The browser checks what's required; this catches what it can't (a cost of 0, a name of only spaces).
-      if (!valid) throw new Error(amount != null && !(amount > 0) ? "Enter a cost above zero, or leave it empty." : "Say what was done first.");
+      if (!valid) throw new Error(amount != null && !(amount > 0) ? t("Enter a cost above zero, or leave it empty.") : t("Say what was done first."));
       const expense_id = kind === "service" || kind === "repair" ? await saveCost(session.company.id, equipment, cost, title, f.done_on) : null;
       unwrap(
         await supabase().from("equipment_logs").insert({
@@ -487,38 +488,38 @@ export function LogDialog({
   });
 
   return (
-    <Dialog open onClose={onClose} title={LOG_TITLES[kind]} description={equipment.name}>
+    <Dialog open onClose={onClose} title={t(LOG_TITLES[kind])} description={equipment.name}>
       <form
         onSubmit={async (e: FormEvent) => {
           e.preventDefault();
-          if (lower && !(await confirm({ title: `That's lower than the last reading (${formatMeter(current, equipment.meter)})`, body: "Save it anyway? Only if the meter was replaced or the last reading was wrong.", confirmLabel: "Save anyway" }))) return;
+          if (lower && !(await confirm({ title: t("That's lower than the last reading ({reading})", { reading: formatMeter(current, equipment.meter) }), body: t("Save it anyway? Only if the meter was replaced or the last reading was wrong."), confirmLabel: t("Save anyway") }))) return;
           save.mutate();
         }}
       >
-        <div className="segmented" role="group" aria-label="What happened" style={{ justifySelf: "start" }}>
+        <div className="segmented" role="group" aria-label={t("What happened")} style={{ justifySelf: "start" }}>
           {(["service", "repair", ...(usesMeter ? ["reading"] : []), "note"] as LogKind[]).map((k) => (
-            <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{{ service: "Maintenance", repair: "Repair", reading: usesMeter && equipment.meter === "miles" ? "Miles" : "Hours", note: "Note" }[k]}</button>
+            <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{{ service: t("Maintenance"), repair: t("Repair"), reading: usesMeter && equipment.meter === "miles" ? t("Miles") : t("Hours"), note: t("Note") }[k]}</button>
           ))}
         </div>
         {kind === "service" && (
           plans.length > 0 ? (
-            <Field label="What was done">
+            <Field label={t("What was done")}>
               <select className="select" value={f.plan_id} onChange={(e) => setF({ ...f, plan_id: e.target.value })}>
                 {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>{p.name}</option>)}
-                <option value="">Something else</option>
+                <option value="">{t("Something else")}</option>
               </select>
             </Field>
           ) : null
         )}
         {(kind === "repair" || (kind === "service" && !plan)) && (
-          <Field label={kind === "repair" ? "What was fixed" : "What was done"}>
-            <input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={120} required placeholder={kind === "repair" ? "Replaced deck belt" : "Changed spark plug"} autoFocus />
+          <Field label={kind === "repair" ? t("What was fixed") : t("What was done")}>
+            <input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={120} required placeholder={kind === "repair" ? t("Replaced deck belt") : t("Changed spark plug")} autoFocus />
           </Field>
         )}
         <div className="form-grid">
-          <Field label="Date" className={kind === "reading" ? "order-last" : undefined}><input className="input" type="date" value={f.done_on} onChange={(e) => setF({ ...f, done_on: e.target.value })} max={todayIn(session.company.timezone)} required /></Field>
+          <Field label={t("Date")} className={kind === "reading" ? "order-last" : undefined}><input className="input" type="date" value={f.done_on} onChange={(e) => setF({ ...f, done_on: e.target.value })} max={todayIn(session.company.timezone)} required /></Field>
           {usesMeter && kind !== "note" && (
-            <Field label={equipment.meter === "miles" ? "Odometer" : "Hour meter"} optional={kind !== "reading"} hint={lower ? <span className="text-danger">Lower than the last reading ({formatMeter(current, equipment.meter)}).</span> : current != null && kind === "reading" ? `Last: ${formatMeter(current, equipment.meter)}` : undefined}>
+            <Field label={equipment.meter === "miles" ? t("Odometer") : t("Hour meter")} optional={kind !== "reading"} hint={lower ? <span className="text-danger">{t("Lower than the last reading ({reading}).", { reading: formatMeter(current, equipment.meter) })}</span> : current != null && kind === "reading" ? t("Last: {reading}", { reading: formatMeter(current, equipment.meter) }) : undefined}>
               <span className="input-group">
                 <input className="input" inputMode="decimal" value={f.meter_reading} onChange={(e) => setF({ ...f, meter_reading: decimal(e.target.value) })} required={kind === "reading"} autoFocus={kind === "reading"} />
                 <span className="addon addon-right addon-unit">{meterUnit(equipment.meter)}</span>
@@ -526,15 +527,15 @@ export function LogDialog({
             </Field>
           )}
         </div>
-        <Field label="Notes" optional={kind !== "note"}>
-          <textarea className="textarea" rows={kind === "note" ? 4 : 2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} maxLength={4000} required={kind === "note"} autoFocus={kind === "note"} placeholder={kind === "note" ? "Pulls left, check tire pressure" : undefined} />
+        <Field label={t("Notes")} optional={kind !== "note"}>
+          <textarea className="textarea" rows={kind === "note" ? 4 : 2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} maxLength={4000} required={kind === "note"} autoFocus={kind === "note"} placeholder={kind === "note" ? t("Pulls left, check tire pressure") : undefined} />
         </Field>
         {(kind === "service" || kind === "repair") && <CostFields cost={cost} onChange={setCost} />}
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" icon="check" loading={save.isPending} slowHint={cost.receipt ? false : undefined}>{kind === "service" ? "Mark done" : "Save"}</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" icon="check" loading={save.isPending} slowHint={cost.receipt ? false : undefined}>{kind === "service" ? t("Mark done") : t("Save")}</Button>
         </div>
       </form>
     </Dialog>

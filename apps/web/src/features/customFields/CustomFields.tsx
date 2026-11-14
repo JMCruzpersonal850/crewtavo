@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
+import { t } from "@/lib/i18n";
 
 export interface CustomFieldRow {
   id: string;
@@ -68,7 +69,7 @@ export function CustomFieldInputs({ fields, current, draft, onChange }: { fields
           <Field key={f.key} label={f.label} optional>
             {f.type === "choice" || f.type === "yes_no" ? (
               <select className="select" value={value} onChange={set}>
-                <option value="">Not set</option>
+                <option value="">{t("Not set")}</option>
                 {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                 {/* A choice since taken off the field stays until it's changed. */}
                 {value && !options.some(([v]) => v === value) && <option value={value}>{value}</option>}
@@ -117,10 +118,10 @@ export function CustomFieldsCard({ record, values, editable, onSave }: { record:
   return (
     <div className="card card-pad stack-sm">
       <div className="row-between">
-        <strong>Details</strong>
-        {editable && <Button size="sm" variant="ghost" icon="edit" onClick={() => setEditing(true)}>Edit</Button>}
+        <strong>{t("Details")}</strong>
+        {editable && <Button size="sm" variant="ghost" icon="edit" onClick={() => setEditing(true)}>{t("Edit")}</Button>}
       </div>
-      {shown.length ? <dl className="kv"><CustomFieldList fields={fields} values={values} /></dl> : <span className="muted small">Nothing filled in yet.</span>}
+      {shown.length ? <dl className="kv"><CustomFieldList fields={fields} values={values} /></dl> : <span className="muted small">{t("Nothing filled in yet.")}</span>}
       {editing && <CustomFieldsDialog fields={fields} current={values} onSave={onSave} onClose={() => setEditing(false)} />}
     </div>
   );
@@ -129,19 +130,19 @@ export function CustomFieldsCard({ record, values, editable, onSave }: { record:
 function CustomFieldsDialog({ fields, current, onSave, onClose }: { fields: readonly CustomFieldRow[]; current: unknown; onSave: (values: Record<string, CustomValue>) => Promise<unknown>; onClose: () => void }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const save = useMutation({
-    meta: { inline: true, success: "Details saved" },
+    meta: { inline: true, success: t("Details saved") },
     mutationFn: () => onSave(customFieldsToSave(fields, current, draft)),
     onSuccess: onClose,
   });
   return (
-    <Dialog open onClose={onClose} title="Details">
+    <Dialog open onClose={onClose} title={t("Details")}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <CustomFieldInputs fields={fields} current={current} draft={draft} onChange={setDraft} />
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={save.isPending}>Save</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" loading={save.isPending}>{t("Save")}</Button>
         </div>
       </form>
     </Dialog>

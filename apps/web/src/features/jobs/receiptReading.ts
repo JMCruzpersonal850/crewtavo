@@ -6,6 +6,7 @@
 import type { MaterialCandidate, ReadField, ReceiptReading } from "@crewtavo/core/receipts";
 import { api } from "@/lib/api";
 import { base64Of, compressImage } from "@/lib/files";
+import { msg, t } from "@/lib/i18n";
 
 /** What the server sends back for one file. */
 export interface ReadAnswer {
@@ -31,20 +32,20 @@ export async function readPickedFile(file: File, jobId: string | null): Promise<
     // A phone photo shrunk as it would be uploaded: Claude reads it as well, and it travels faster.
     const body = file.type.startsWith("image/") ? await compressImage(file, 2000, 0.85) : file;
     const ask = api.post<ReadAnswer>("/receipts/read", { file: await base64Of(body), job_id: jobId });
-    const slow = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Reading it took too long. Fill it in by hand.")), READ_WAIT_MS));
+    const slow = new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t("Reading it took too long. Fill it in by hand."))), READ_WAIT_MS));
     return await Promise.race([ask, slow]);
   } catch (error) {
-    return { failed: error instanceof Error ? error.message : "It couldn't be read. Fill it in by hand." };
+    return { failed: error instanceof Error ? error.message : msg("It couldn't be read. Fill it in by hand.") };
   }
 }
 
-const NAMES: Record<ReadField, string> = { vendor: "vendor", date: "date", amount: "total", tax: "tax", category: "category", lines: "line items" };
+const NAMES: Record<ReadField, string> = { vendor: msg("vendor"), date: msg("date"), amount: msg("total"), tax: msg("tax"), category: msg("category"), lines: msg("line items") };
 /** "vendor, date, total and tax" */
 export function readFieldsText(fields: readonly ReadField[]): string {
-  const names = fields.map((f) => NAMES[f]);
-  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? "";
+  const names = fields.map((f) => t(NAMES[f]));
+  return names.length > 1 ? t("{list} and {last}", { list: names.slice(0, -1).join(", "), last: names.at(-1) }) : names[0] ?? "";
 }
 
-const WHY: Record<NonNullable<ReadAnswer["job"]>["why"], string> = { job_number: "its job number", po_number: "its PO number", address: "its address" };
+const WHY: Record<NonNullable<ReadAnswer["job"]>["why"], string> = { job_number: msg("Job #{number} {title} (by its job number)"), po_number: msg("Job #{number} {title} (by its PO number)"), address: msg("Job #{number} {title} (by its address)") };
 /** "Job #1042 Birch drive (by its address)" */
-export const suggestedJobText = (job: NonNullable<ReadAnswer["job"]>) => `Job #${job.number ?? "?"} ${job.title} (by ${WHY[job.why]})`;
+export const suggestedJobText = (job: NonNullable<ReadAnswer["job"]>) => t(WHY[job.why], { number: job.number ?? "?", title: job.title });

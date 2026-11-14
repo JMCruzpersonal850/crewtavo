@@ -33,6 +33,8 @@ export const COVERED = [
   "apps/web/src/features/settings/Language.tsx",
   // The field app.
   "apps/web/src/features/field",
+  // What the field app opens: receipts, materials, equipment hours, plans, paperwork, sending an invoice.
+  ...["jobs/ExpensesCard.tsx", "jobs/ReceiptDrafts.tsx", "jobs/receiptReading.ts", "jobs/JobMaterials.tsx", "jobs/ScopeOfWork.tsx", "plans/FieldPlans.tsx", "clients/PropertyEquipment.tsx", "customFields/CustomFields.tsx", "equipment/CrewEquipmentCard.tsx", "subs/paperwork.ts", "public/PaperworkPage.tsx", "quotes/SendDialog.tsx"].map((f) => `apps/web/src/features/${f}`),
   ...["api.ts", "clipboard.ts", "errors.ts", "files.ts", "offline.ts", "offlinePhotos.ts", "photoMarkup.ts", "push.ts", "queryClient.ts", "resumable.ts", "session.tsx", "undo.ts"].map((f) => `apps/web/src/lib/${f}`),
 ];
 
@@ -306,7 +308,8 @@ export function rawStrings(file) {
     for (const leaf of leaves(expr)) {
       if (insideTranslate(leaf)) continue;
       if (ts.isTemplateExpression(leaf)) {
-        if (/[A-Za-z]{2,}/.test(leaf.getText(sf).replace(/\$\{[^}]*\}/g, ""))) add(leaf, leaf.getText(sf), `${kind} (built with \${})`);
+        const words = [leaf.head.text, ...leaf.templateSpans.map((s) => s.literal.text)].join(" ");
+        if (/[A-Za-z]{2,}/.test(words)) add(leaf, leaf.getText(sf), `${kind} (built with \${})`);
       } else if (readable(leaf.text)) add(leaf, leaf.text, kind, wrapLiteral(leaf));
     }
   };
@@ -345,8 +348,9 @@ export function rawStrings(file) {
 }
 
 /** Applies rawStrings' fixes to a file and adds the import; returns what's left for a person. */
-export function wrapFile(file) {
-  const items = rawStrings(file);
+export function wrapFile(file, lines = null) {
+  // file.tsx:120-240 wraps only what's on those lines (one component of a shared file).
+  const items = rawStrings(file).filter((i) => !lines || (i.line >= lines[0] && i.line <= lines[1]));
   const fixes = items.filter((i) => i.fix).map((i) => i.fix).sort((a, b) => b[0] - a[0]);
   let text = fs.readFileSync(path.join(ROOT, file), "utf8");
   for (const [start, end, replacement] of fixes) text = text.slice(0, start) + replacement + text.slice(end);
@@ -402,8 +406,9 @@ function main() {
     }
     console.log(`\n// ${seen.size} without Spanish`);
   } else if (command === "wrap") {
-    for (const file of args) {
-      const left = wrapFile(file);
+    for (const arg of args) {
+      const [file, range] = arg.split(":");
+      const left = wrapFile(file, range ? range.split("-").map(Number) : null);
       if (left.length) console.log(`\n${file} (${left.length} left)`);
       for (const i of left) console.log(`  ${i.line}: [${i.kind}] ${i.text}`);
     }

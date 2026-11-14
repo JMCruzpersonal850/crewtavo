@@ -77,7 +77,7 @@ function MyPaperwork({ sub }: { sub: SubLogin }) {
                     <div key={item.requirement} className="card-row wrap" style={{ alignItems: "flex-start" }}>
                       <span className="grow stack-sm" style={{ minWidth: 200, gap: 4 }}>
                         <span className="row wrap" style={{ gap: 8 }}>
-                          <strong>{item.label}</strong>
+                          <strong>{t(item.label)}</strong>
                           <StatusPill label={item.status} tone={item.tone} />
                         </span>
                         <span className="muted small">{item.detail}</span>
@@ -111,7 +111,7 @@ function MyPaperwork({ sub }: { sub: SubLogin }) {
               <div key={d.id} className="card-row" style={{ alignItems: "flex-start" }}>
                 <Icon name={d.content_type?.startsWith("image/") ? "image" : "file"} size={16} />
                 <span className="grow" style={{ minWidth: 0 }}>
-                  {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="strong" style={{ overflowWrap: "anywhere" }}>{documentTitle(d)}</a> : <strong>{documentTitle(d)}</strong>}
+                  {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="strong" style={{ overflowWrap: "anywhere" }}>{t(documentTitle(d))}</a> : <strong>{t(documentTitle(d))}</strong>}
                   <span className="muted small" style={{ display: "block" }}>
                     {[d.uploaded_via === "office" ? t("Added by the office") : t("Sent {date}", { date: formatDate(d.created_at) }), d.expires_on && t("Ends {date}", { date: formatDate(d.expires_on) })].filter(Boolean).join(" · ")}
                   </span>
