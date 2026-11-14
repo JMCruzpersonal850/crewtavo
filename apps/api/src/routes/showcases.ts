@@ -49,11 +49,25 @@ async function requireMarketing(c: Ctx) {
   if (!marketingOn(company.settings as Record<string, unknown> | null)) throw new HttpError(409, "Marketing is off, so showcases can't be published. An owner or admin can install it again in Apps.");
 }
 
-/** A write-up from Claude, from the job's title and services (never the client's name or address). */
+/**
+ * What the write-up is drafted from: the business, the job's services by their line items' names,
+ * and what the office typed for it. Never the job's title, which is often the client's name
+ * ("Smith driveway"), nor the client or the address: none of that is sent to the AI at all.
+ */
+export function showcaseDraftPrompt(input: { company: { name: string; trade_preset: string }; services: readonly string[]; notes?: string | null }): string {
+  return (
+    `Business: ${input.company.name} (${input.company.trade_preset.replace(/_/g, " ")}).\n` +
+    (input.services.length ? `Work done: ${input.services.join(", ")}\n` : "") +
+    (input.notes ? `Notes from the office: ${input.notes}\n` : "")
+  );
+}
+
+/** A write-up from Claude, from the job's services and the office's notes (showcaseDraftPrompt: never the job's title, the client's name or the address). */
 showcases.post("/showcases/draft", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
   const body = await readJson(c, z.object({ job_id: uuid, notes: z.string().trim().max(600).optional() }));
   const admin = adminClient(c.env);
-  const job = must(await c.var.db.from("jobs").select("title, client_id").eq("company_id", c.var.companyId).eq("id", body.job_id).maybeSingle(), "Job not found.");
+  // The job is read for whose words to keep out of the draft, not for anything to send.
+  const job = must(await c.var.db.from("jobs").select("client_id").eq("company_id", c.var.companyId).eq("id", body.job_id).maybeSingle(), "Job not found.");
   await countAiAsk(c.env, c.var.companyId, c.var.userId);
   const [company, services, words] = await Promise.all([
     must(await c.var.db.from("companies").select("name, trade_preset").eq("id", c.var.companyId).maybeSingle()),
@@ -67,7 +81,7 @@ showcases.post("/showcases/draft", requireUser, requireCompany(OFFICE, "marketin
       "Write plainly, like the owner would: what the problem was, what the crew did and how it turned out, in two or three short sentences, with no hype, no emoji, no prices and no placeholders. " +
       "Never name the client or their street, and don't guess at details you weren't given. " +
       'Reply with JSON only: {"title": "...", "description": "..."}. The title is under 60 characters, like "Driveway resealed in Oak Ridge" without a place name unless given.',
-    prompt: `Business: ${company.name} (${company.trade_preset.replace(/_/g, " ")}).\nJob: ${job.title}\n${services.length ? `Work done: ${services.join(", ")}\n` : ""}${body.notes ? `Notes from the office: ${body.notes}\n` : ""}`,
+    prompt: showcaseDraftPrompt({ company, services, notes: body.notes }),
     effort: "low",
     maxTokens: 800,
   });

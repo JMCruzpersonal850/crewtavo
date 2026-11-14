@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 import type { Env } from "../src/env";
+import { showcaseDraftPrompt } from "../src/routes/showcases";
 import { tidyShowcaseCopies } from "../src/services/showcases";
 
 const current = vi.hoisted(() => ({ db: null as unknown, files: {} as Record<string, Uint8Array> }));
@@ -91,6 +92,23 @@ describe("a showcase's public page", () => {
   it("has no Get a quote without a booking form", async () => {
     fakeDb(published, { companies: { name: "Sketchy Gutters", phone: null, website: null, slug: "sketchy", settings: {} }, intake_forms: null });
     expect(((await (await get(`/public/showcases/${TOKEN}`)).json()) as { book_url: string | null }).book_url).toBeNull();
+  });
+});
+
+describe("\"Write it with AI\" for a showcase", () => {
+  it("sends the business, the services and the office's notes, and never the job's title", async () => {
+    const prompt = showcaseDraftPrompt({ company: { name: "Sketchy Gutters", trade_preset: "roofing_exteriors" }, services: ["Gutter cleaning", "Downspout repair"], notes: "Clogged since the storm" });
+    expect(prompt).toBe("Business: Sketchy Gutters (roofing exteriors).\nWork done: Gutter cleaning, Downspout repair\nNotes from the office: Clogged since the storm\n");
+    expect(showcaseDraftPrompt({ company: { name: "Sketchy Gutters", trade_preset: "general" }, services: [] })).toBe("Business: Sketchy Gutters (general).\n");
+    // A job's title is often the client's name ("Whitfield gutters"): the route doesn't even read it.
+    const { readFileSync } = await import("node:fs");
+    const route = readFileSync(new URL("../src/routes/showcases.ts", import.meta.url), "utf8");
+    const draft = route.slice(route.indexOf('showcases.post("/showcases/draft"'), route.indexOf("/** The page's copy of one photo"));
+    expect(draft).toContain('.from("jobs").select("client_id")');
+    expect(draft).not.toMatch(/job\.title|select\("title/);
+    expect(draft).toContain("prompt: showcaseDraftPrompt({ company, services, notes: body.notes })");
+    // And a draft that names the client anyway is still refused.
+    expect(draft).toContain("The AI's draft named the client. Try again, or write it yourself.");
   });
 });
 
