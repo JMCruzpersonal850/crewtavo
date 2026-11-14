@@ -28,7 +28,7 @@
  * as it is: it is never matched against sentences. A notification whose title or body isn't a
  * shape its kind writes stays in English whole, rather than half translated.
  */
-import { translator, type Locale } from "./index";
+import { oneOClock, translator, type Locale } from "./index";
 
 export type PatternTable = ReadonlyArray<readonly [english: string, translation: string]>;
 
@@ -160,9 +160,6 @@ function apply(locale: Locale, text: string, compiled: Compiled[]): string | nul
   }
   return null;
 }
-
-/** Spanish says "a la 1:15" and "desde la 1:15" for one o'clock, and "las" for every other hour. */
-export const oneOClock = (text: string) => (text.includes("as 1:") ? text.replace(/\b([Ll])as (1:\d{2})(?!\d)/g, "$1a $2") : text);
 
 /** The translation with each {capture} in, rewritten as its name says (see the top of this file). */
 function fillCaptures(translation: string, groups: Record<string, string>, locale: Locale, words: Record<string, string>): string {

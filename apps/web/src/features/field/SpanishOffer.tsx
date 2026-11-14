@@ -1,39 +1,26 @@
 /**
  * My day asks once, in both languages, whether to use Crewtavo in Spanish: for someone who hasn't
- * chosen a language yet whose phone is set to Spanish (or who chose Spanish on this phone before
- * signing in). Either answer is saved with them (profiles.locale), so it isn't asked again on any
- * phone; Settings → Profile → Language changes it later. A server older than the language choice
- * sends no locale at all, and then nothing is asked.
+ * chosen a language yet whose phone is set to Spanish. (Someone who picks a language on the sign-in
+ * page has it saved with them as they sign in, and isn't asked.) Either answer is saved with them
+ * (profiles.locale), so it isn't asked again on any phone; Settings → Profile → Language changes it
+ * later. A server older than the language choice sends no locale at all, and then nothing is asked.
  */
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
-import { deviceLocale, phoneSpeaksSpanish, type Locale } from "@/lib/i18n";
+import { askedHere, deviceLocale, noteAsked, phoneSpeaksSpanish, type Locale } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { saveLanguage } from "../settings/Language";
 
-const ASKED = "crewtavo.locale-asked";
-
-const askedHere = () => {
-  try {
-    return localStorage.getItem(ASKED) === "1";
-  } catch {
-    return false;
-  }
-};
-
 export function SpanishOffer() {
   const session = useSession();
-  const [hidden, setHidden] = useState(askedHere);
+  // Noted for this person only, and taken off the phone when they sign out: the next person is asked for themselves.
+  const [hidden, setHidden] = useState(() => askedHere(session.userId));
   const answer = useMutation({
     meta: { inline: true },
     mutationFn: async (locale: Locale) => {
-      try {
-        localStorage.setItem(ASKED, "1");
-      } catch {
-        // Private mode: saved with them all the same.
-      }
+      noteAsked(session.userId);
       await saveLanguage(session, locale);
     },
     onSuccess: () => setHidden(true),

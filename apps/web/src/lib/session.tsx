@@ -20,7 +20,7 @@ import { TermsPage } from "@/features/legal/License";
 import { RailwaySetupPage } from "@/features/setup/RailwaySetupPage";
 import { api, ApiError, companyFeatures, loadConfig, setActiveCompany, supabase, type AppConfig } from "./api";
 import { setCurrency } from "./format";
-import { followProfile } from "./i18n";
+import { followProfile, forgetLanguageAtSignOut } from "./i18n";
 import { forgetOfflineCache, keepQueuedFieldActions, keepsDayOffline, pendingFieldActions, signOutWarning, startOfflineCache } from "./offline";
 import { photosNotSent } from "./offlinePhotos";
 import { setRecentsPerson } from "./recent";
@@ -213,6 +213,8 @@ export function SessionProvider({ children, requireCompany = true }: { children:
         signingOut.current = false;
         lastUser = null;
         queryClient.clear();
+        // Their language leaves with them: the next person to sign in here never gets it unasked (lib/i18n.tsx).
+        forgetLanguageAtSignOut();
       }
     });
     return () => data.subscription.unsubscribe();
@@ -254,12 +256,19 @@ export function SessionProvider({ children, requireCompany = true }: { children:
   setRecentsPerson(auth?.user.id ?? null);
   setCurrency(membership?.company.currency);
 
-  // Their own language, once known: the app reloads into it when this device was in another (lib/i18n.tsx).
+  // Their own language, once known: the app reloads into it when this device was in another, and a
+  // language picked on the sign-in page is saved with them, so their notifications come in it too
+  // (lib/i18n.tsx). Never the language someone else left on the device.
   const hasMe = Boolean(me.data);
   const profileLocale = me.data?.profile.locale;
+  const refetchMe = me.refetch;
   useEffect(() => {
-    if (hasMe) followProfile(profileLocale);
-  }, [hasMe, profileLocale]);
+    if (!hasMe) return;
+    void followProfile(profileLocale, async (locale) => {
+      await api.patch("/me", { locale });
+      await refetchMe();
+    });
+  }, [hasMe, profileLocale, refetchMe]);
 
   // Crews and subs keep their day on the phone; queued field actions survive closing the app (lib/offline.ts).
   const userId = auth?.user.id;

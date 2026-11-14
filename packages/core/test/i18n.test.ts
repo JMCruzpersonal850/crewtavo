@@ -63,6 +63,16 @@ describe("t", () => {
     expect(msg("Schedule")).toBe("Schedule");
   });
 
+  it("says one o'clock as Spanish does: \"a la 1:15\", and \"a las\" for every other hour", () => {
+    addCatalog("es", { "Test: Starts at {time}": "Test: Empieza a las {time}", "Test: Since {time}, {count} visits": { one: "Test: Desde las {time}, {count} visita", other: "Test: Desde las {time}, {count} visitas" } });
+    const es = translator("es");
+    expect(es("Test: Starts at {time}", { time: "1:15 p.m." })).toBe("Test: Empieza a la 1:15 p.m.");
+    expect(es("Test: Starts at {time}", { time: "1:00 a.m." })).toBe("Test: Empieza a la 1:00 a.m.");
+    for (const time of ["2:15 p.m.", "10:15 a.m.", "11:00 a.m.", "12:30 p.m."]) expect(es("Test: Starts at {time}", { time })).toBe(`Test: Empieza a las ${time}`);
+    expect(es.plural(2, { one: "Test: Since {time}, {count} visit", other: "Test: Since {time}, {count} visits" }, { time: "1:05 p.m." })).toBe("Test: Desde la 1:05 p.m., 2 visitas");
+    expect(translator("en")("Test: Starts at {time}", { time: "1:15 PM" })).toBe("Test: Starts at 1:15 PM");
+  });
+
   it("takes a translator per person, whatever the app's language", () => {
     expect(translator("es")("Test: Clock in")).toBe("Test: Marcar entrada");
     expect(translator(null)("Test: Clock in")).toBe("Test: Clock in");

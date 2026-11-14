@@ -11,7 +11,7 @@ import { formatPhoneTyping } from "@/lib/validate";
 import styles from "./auth.module.css";
 import { BrandLockup } from "@/components/shell/BrandMark";
 import { afterAsking, ASK_THE_OFFICE, askFor, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
-import { LOCALE_NAMES, T, getLocale, switchLocale, t } from "@/lib/i18n";
+import { LOCALE_NAMES, T, getLocale, pickAtSignIn, t } from "@/lib/i18n";
 import { LOCALES } from "@crewtavo/core/i18n";
 import { translateError } from "@crewtavo/core/i18n/patterns";
 
@@ -68,7 +68,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
   );
 }
 
-/** English · Español under the sign-in screens: kept on this phone, and the page reloads in it. */
+/** English · Español under the sign-in screens: the page reloads in it, and it's saved with whoever then signs in (never left for the next person). */
 function LanguageSwitch() {
   const current = getLocale();
   return (
@@ -77,7 +77,7 @@ function LanguageSwitch() {
         locale === current ? (
           <strong key={locale} lang={locale} aria-current="true">{LOCALE_NAMES[locale]}</strong>
         ) : (
-          <button key={locale} type="button" className="link-btn" lang={locale} onClick={() => switchLocale(locale)}>{LOCALE_NAMES[locale]}</button>
+          <button key={locale} type="button" className="link-btn" lang={locale} onClick={() => pickAtSignIn(locale)}>{LOCALE_NAMES[locale]}</button>
         ),
       )}
     </nav>

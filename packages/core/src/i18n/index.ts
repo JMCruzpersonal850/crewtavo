@@ -75,6 +75,12 @@ export function fill(text: string, params?: Params): string {
   return text.replace(/\{(\w+)\}/g, (whole, name: string) => (name !== "context" && name in params ? String(params[name] ?? "") : whole));
 }
 
+/**
+ * Spanish says "a la 1:15" and "desde la 1:15" for one o'clock, and "las" for every other hour. A
+ * line is written with "las {time}", and put right here once the time is in.
+ */
+export const oneOClock = (text: string) => (text.includes("as 1:") ? text.replace(/\b([Ll])as (1:\d{2})(?!\d)/g, "$1a $2") : text);
+
 /** The text and context of a key: msg("Open", "verb") travels as "verb\u0004Open". */
 function split(text: string, context?: string): { english: string; key: string } {
   const mark = text.indexOf(CONTEXT_MARK);
@@ -91,7 +97,8 @@ function translate(locale: Locale, text: string, params?: Params): string {
   const { english, key } = split(String(text), params?.context);
   if (locale === "en") return fill(english, params);
   const line = catalogs[locale]?.[key];
-  return fill(typeof line === "string" ? line : english, params);
+  const filled = fill(typeof line === "string" ? line : english, params);
+  return locale === "es" && params ? oneOClock(filled) : filled;
 }
 
 function plural(locale: Locale, count: number, forms: PluralForms, params?: Params): string {
@@ -102,7 +109,7 @@ function plural(locale: Locale, count: number, forms: PluralForms, params?: Para
   const line = catalogs[locale]?.[key];
   if (!line || typeof line === "string") return fill(english, values);
   const form = pluralRule(locale, count);
-  return fill(line[form as keyof PluralForms] ?? line.other, values);
+  return oneOClock(fill(line[form as keyof PluralForms] ?? line.other, values));
 }
 
 /** A translator for one language, for a server answering a person in theirs. */
