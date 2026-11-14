@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoDue, changeWords, countChange, nextHandCheck, ranked, standing, standingWords, type ComparedPlace } from "../src/reviewCompare";
+import { autoDue, changesSince, changeWords, countChange, nextHandCheck, ranked, standing, standingWords, type ComparedPlace } from "../src/reviewCompare";
 
 const place = (id: string, rating: number | null, total: number | null, previous: number | null = null, own = false): ComparedPlace => ({
   id, name: id, is_own: own, rating, ratings_total: total, previous_total: previous, checked_at: "2026-11-13T10:00:00Z", previous_checked_at: previous == null ? null : "2026-11-06T10:00:00Z",
@@ -15,6 +15,14 @@ describe("how the counts changed", () => {
     expect(changeWords(0)).toBe("No change");
     expect(changeWords(1234)).toBe("+1,234");
     expect(changeWords(null)).toBe("");
+  });
+
+  it("says the day the changes are counted from, the earliest among the places that have one", () => {
+    expect(changesSince([place("a", 4.5, 120, 117), place("b", 4.1, 50, 50)])).toBe("2026-11-06T10:00:00Z");
+    expect(changesSince([{ ...place("a", 4.5, 120, 117), previous_checked_at: "2026-11-01T10:00:00Z" }, place("b", 4.1, 50, 50)])).toBe("2026-11-01T10:00:00Z");
+    // A place just added has nothing from before, and doesn't decide it.
+    expect(changesSince([place("new", 4.5, 120)])).toBeNull();
+    expect(changesSince([])).toBeNull();
   });
 });
 

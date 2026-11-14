@@ -30,8 +30,23 @@ export function placesKey(env: Env, settings: unknown): PlacesKey | null {
   return own ? { key: own, referer: env.APP_URL ? `${env.APP_URL.replace(/\/$/, "")}/` : null, source: "company" } : null;
 }
 
-/** What Google said, in words that say what to fix. */
-export class PlacesProblem extends Error {}
+/**
+ * What Google said, in words that say what to fix. `place`: the trouble is with one place (Google
+ * doesn't list it anymore), not with the key, so the next place is still worth asking about.
+ */
+export class PlacesProblem extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null = null,
+    readonly place = false,
+  ) {
+    super(message);
+  }
+}
+
+const NOT_ANSWERING = "Google Places isn't answering right now. Try again later.";
+export const PLACE_GONE = "Google doesn't list this place anymore.";
+export const PLACE_CLOSED = "Google says this place is permanently closed.";
 
 type GoogleError = { error?: { message?: string; status?: string; details?: Array<{ reason?: string }> } };
 
@@ -44,7 +59,7 @@ export function placesProblem(status: number, error?: GoogleError["error"]): str
   if (/billing/i.test(text)) return "Google needs a billing account on the key's project before it answers Places requests.";
   if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(text)) return "The Google key has used up its Places quota for now. Try again later.";
   if (status === 403) return "Google refused the key for Places. Check that Places API (New) is allowed for it.";
-  return "Google Places isn't answering right now. Try again later.";
+  return NOT_ANSWERING;
 }
 
 async function ask<T>(key: PlacesKey, path: string, fields: string, init: { method?: string; body?: unknown } = {}, fetcher: FetchLike = fetch): Promise<T> {
@@ -61,7 +76,7 @@ async function ask<T>(key: PlacesKey, path: string, fields: string, init: { meth
   }).catch(() => null);
   if (!res) throw new PlacesProblem("Couldn't reach Google. Try again in a minute.");
   const body = (await res.json().catch(() => ({}))) as T & GoogleError;
-  if (!res.ok || body.error) throw new PlacesProblem(placesProblem(res.status, body.error));
+  if (!res.ok || body.error) throw new PlacesProblem(placesProblem(res.status, body.error), res.status);
   return body;
 }
 
@@ -89,7 +104,9 @@ const toResult = (p: GooglePlace): PlaceResult | null =>
     : null;
 
 const SEARCH_FIELDS = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri";
-const DETAIL_FIELDS = "id,displayName,rating,userRatingCount,googleMapsUri";
+// businessStatus says when a place has closed for good. Asking for it costs nothing more: the rating
+// already puts the call in the tier above it.
+const DETAIL_FIELDS = "id,displayName,rating,userRatingCount,googleMapsUri,businessStatus";
 /** Within about 30 miles. */
 const NEAR_METERS = 50_000;
 
@@ -113,12 +130,25 @@ export async function textSearch(key: PlacesKey, query: string, near: { lat: num
   return (body.places ?? []).map(toResult).filter((p): p is PlaceResult => p !== null);
 }
 
-/** One place's name, rating, review count and Maps link: one Place Details call, with only those fields. */
-export async function placeDetails(key: PlacesKey, placeId: string, fetcher: FetchLike = fetch): Promise<PlaceResult> {
+/**
+ * One place's name, rating, review count and Maps link: one Place Details call, with only those
+ * fields. A place Google no longer has (its listing was removed, or merged into another) throws a
+ * PlacesProblem with `place` set, so a check can name it and go on to the rest; `closed` says Google
+ * marks it permanently closed.
+ */
+export async function placeDetails(key: PlacesKey, placeId: string, fetcher: FetchLike = fetch): Promise<PlaceResult & { closed: boolean }> {
   if (!/^[A-Za-z0-9_-]{1,300}$/.test(placeId)) throw new PlacesProblem("That isn't a Google place.");
-  const place = toResult(await ask<GooglePlace>(key, `/places/${placeId}`, DETAIL_FIELDS, {}, fetcher));
-  if (!place) throw new PlacesProblem("Google didn't say what that place is.");
-  return place;
+  let raw: GooglePlace & { businessStatus?: string };
+  try {
+    raw = await ask<GooglePlace & { businessStatus?: string }>(key, `/places/${placeId}`, DETAIL_FIELDS, {}, fetcher);
+  } catch (error) {
+    // Not found, or an id Google no longer takes; a refused key has its own words (placesProblem) and isn't this.
+    if (error instanceof PlacesProblem && (error.status === 404 || (error.status === 400 && error.message === NOT_ANSWERING))) throw new PlacesProblem(PLACE_GONE, error.status, true);
+    throw error;
+  }
+  const place = toResult(raw);
+  if (!place) throw new PlacesProblem(PLACE_GONE, 200, true);
+  return { ...place, closed: raw.businessStatus === "CLOSED_PERMANENTLY" };
 }
 
 /**

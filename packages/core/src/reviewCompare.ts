@@ -31,12 +31,26 @@ export interface ComparedPlace {
   previous_total: number | null;
   checked_at: string | null;
   previous_checked_at: string | null;
+  /** Why the last check skipped this place (Google no longer lists it, or says it's closed), when it did. */
+  problem?: string | null;
 }
 
-/** How many reviews a place gained (or lost) since the check before, or null when there's nothing to compare. */
+/**
+ * How many reviews a place gained (or lost) since the count kept from before, or null when there's
+ * nothing to compare. The count from before is one from at least six days back (the database keeps
+ * it so: record_review_place), so a second check soon after the first doesn't make this zero.
+ */
 export function countChange(p: Pick<ComparedPlace, "ratings_total" | "previous_total">): number | null {
   if (p.ratings_total == null || p.previous_total == null) return null;
   return p.ratings_total - p.previous_total;
+}
+
+/**
+ * The earliest day the places' changes are counted from, for the card to say "since Nov 6": the
+ * changes are since each place's own earlier check, which for places checked together is one day.
+ */
+export function changesSince(places: ReadonlyArray<Pick<ComparedPlace, "ratings_total" | "previous_total" | "previous_checked_at">>): string | null {
+  return places.filter((p) => countChange(p) != null && p.previous_checked_at).map((p) => p.previous_checked_at!).sort()[0] ?? null;
 }
 
 /** "+3", "−1", "No change", or "" with nothing to compare. */

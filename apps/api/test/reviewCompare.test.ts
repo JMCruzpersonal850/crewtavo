@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { checkPlacesKey, placeDetails, placesKey, textSearch } from "../src/integrations/places";
-import { refreshComparison, setComparison } from "../src/services/reviewCompare";
+import { addPlace, refreshComparison, refreshDueComparisons, setComparison, skippedWords } from "../src/services/reviewCompare";
 
 const current = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("../src/lib/supabase", async (original) => ({ ...(await original<typeof import("../src/lib/supabase")>()), adminClient: () => current.db }));
@@ -64,7 +64,7 @@ describe("asking Google", () => {
     const g = google(() => answer(200, { id: "p1", displayName: { text: "Rival" }, rating: 4.1, userRatingCount: 9 }));
     expect(await placeDetails(key, "p1", g.fetcher)).toMatchObject({ place_id: "p1", rating: 4.1, ratings_total: 9 });
     expect(g.calls[0]!.url).toBe("https://places.googleapis.com/v1/places/p1");
-    expect(g.calls[0]!.headers["X-Goog-FieldMask"]).toBe("id,displayName,rating,userRatingCount,googleMapsUri");
+    expect(g.calls[0]!.headers["X-Goog-FieldMask"]).toBe("id,displayName,rating,userRatingCount,googleMapsUri,businessStatus");
     await expect(placeDetails(key, "../admin", g.fetcher)).rejects.toThrow(/isn't a Google place/);
     expect(g.calls).toHaveLength(1);
   });
@@ -105,14 +105,22 @@ function memoryDb(tables: Record<string, Row[]>) {
     };
     return q;
   };
-  return {
+  const calls: string[] = [];
+  const db = {
     recorded,
+    calls,
+    /** The limiter says no. */
+    limited: false,
     from: query,
     rpc: async (name: string, args: Row) => {
+      calls.push(name);
       if (name === "record_review_place") recorded.push(args);
-      return { data: name === "rate_limit_hit" ? true : null, error: null };
+      // Every company with the comparison on is due, and claimed.
+      if (name === "claim_review_comparisons") return { data: (tables.review_comparisons ?? []).filter((r) => r.enabled).map((r) => ({ company_id: r.company_id })), error: null };
+      return { data: name === "rate_limit_hit" ? !db.limited : null, error: null };
     },
   };
+  return db;
 }
 
 describe("a check", () => {
@@ -141,6 +149,101 @@ describe("a check", () => {
     vi.stubGlobal("fetch", g.fetcher);
     await expect(refreshComparison(env, db as never, CO, true)).rejects.toThrow(/check again tomorrow/);
     expect(g.calls).toHaveLength(0);
+  });
+
+  it("names a place Google no longer lists, or says is closed, skips it and still reads the rest", async () => {
+    const tables = world(null);
+    Object.assign(tables.review_places[0]!, { name: "Gone Gutters" });
+    Object.assign(tables.review_places[1]!, { name: "Shut Gutters" });
+    const db = memoryDb(tables);
+    current.db = db;
+    const g = google((call) => {
+      const id = call.url.split("/").pop();
+      if (id === "pa") return answer(404, { error: { status: "NOT_FOUND", message: "Place not found." } });
+      if (id === "pb") return answer(200, { id, displayName: { text: "Shut Gutters" }, rating: 4.1, userRatingCount: 30, businessStatus: "CLOSED_PERMANENTLY" });
+      return answer(200, { id, displayName: { text: "Open Gutters" }, rating: 4.5, userRatingCount: 10, businessStatus: "OPERATIONAL" });
+    });
+    vi.stubGlobal("fetch", g.fetcher);
+    const result = await refreshComparison(env, db as never, CO, true);
+    // The first place being gone doesn't stop the others being asked about.
+    expect(g.calls.map((c) => c.url.split("/").pop())).toEqual(["pa", "pb", "pc"]);
+    expect(db.recorded.map((r) => r.p_id)).toEqual(["c"]);
+    expect(result).toEqual({ checked: 1, problem: "Google doesn't list Gone Gutters anymore, and says Shut Gutters is permanently closed, so they were skipped. Remove them from the list to compare with someone else." });
+    expect(tables.review_comparisons[0]).toMatchObject({ last_error: result.problem });
+    expect(tables.review_comparisons[0]!.checked_at).toBeTruthy();
+    expect(tables.review_places.map((p: Row) => p.problem ?? null)).toEqual(["Google doesn't list this place anymore.", "Google says this place is permanently closed.", null]);
+    expect(skippedWords(["Gone Gutters"], [])).toBe("Google doesn't list Gone Gutters anymore, so it was skipped. Remove it from the list to compare with someone else.");
+    expect(skippedWords([], [])).toBeNull();
+  });
+
+  it("stops at once when it's the key Google refuses, and a check that failed doesn't make the next one wait a day", async () => {
+    const tables = world(null);
+    const db = memoryDb(tables);
+    current.db = db;
+    const refused = google(() => answer(403, { error: { status: "PERMISSION_DENIED", message: "Places API (New) has not been used in project 1 before or it is disabled." } }));
+    vi.stubGlobal("fetch", refused.fetcher);
+    await expect(refreshComparison(env, db as never, CO, true)).rejects.toThrow(/enable Places API \(New\)/);
+    // One call, not one per place: the others would be refused the same way.
+    expect(refused.calls).toHaveLength(1);
+    expect(tables.review_comparisons[0]).toMatchObject({ checked_at: null });
+    expect(tables.review_comparisons[0]!.last_error).toMatch(/enable Places API/);
+    // The key's project is fixed: "Check now" works straight away.
+    const fixed = google((call) => answer(200, { id: call.url.split("/").pop(), displayName: { text: "X" }, rating: 4.5, userRatingCount: 10 }));
+    vi.stubGlobal("fetch", fixed.fetcher);
+    await expect(refreshComparison(env, db as never, CO, true)).resolves.toMatchObject({ checked: 3, problem: null });
+    expect(tables.review_comparisons[0]!.checked_at).toBeTruthy();
+    expect(tables.review_comparisons[0]!.last_error).toBeNull();
+  });
+
+  it("takes each company's weekly check by claiming it, and leaves a failed one to be tried tomorrow", async () => {
+    const tables = world(new Date(Date.now() - 8 * 86_400_000).toISOString());
+    const db = memoryDb(tables);
+    current.db = db;
+    const lastWorked = tables.review_comparisons[0]!.checked_at;
+    vi.stubGlobal("fetch", google(() => answer(503, {})).fetcher);
+    await expect(refreshDueComparisons(env, db as never)).resolves.toEqual({ companies: 1, checked: 0, failed: 1 });
+    expect(db.calls).toContain("claim_review_comparisons");
+    expect(db.calls).not.toContain("review_comparisons_due");
+    // When it last worked hasn't moved, so the card's "Check now" isn't locked out either.
+    expect(tables.review_comparisons[0]).toMatchObject({ checked_at: lastWorked });
+    expect(tables.review_comparisons[0]!.last_error).toMatch(/isn't answering/);
+  });
+});
+
+describe("adding a place", () => {
+  const world = () => ({
+    companies: [{ id: CO, name: "Sketchy Gutters", address: {}, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
+    review_comparisons: [{ company_id: CO, enabled: true, checked_at: null, lat: null, lng: null }],
+    review_places: Array.from({ length: 5 }, (_, i) => ({ id: `r${i}`, company_id: CO, place_id: `p${i}`, is_own: false })) as Row[],
+  });
+
+  it("turns down a sixth competitor before Google is asked anything", async () => {
+    const db = memoryDb(world());
+    current.db = db;
+    const g = google(() => answer(200, { id: "p9", displayName: { text: "Sixth" }, rating: 4, userRatingCount: 1 }));
+    vi.stubGlobal("fetch", g.fetcher);
+    await expect(addPlace(env, db as never, CO, "p9", false)).rejects.toThrow(/up to five competitors/);
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it("is limited to so many an hour, so a loop of adds can't run up the key's bill", async () => {
+    const tables = world();
+    tables.review_places = [];
+    const db = memoryDb(tables);
+    db.limited = true;
+    current.db = db;
+    const g = google(() => answer(200, { id: "p9", displayName: { text: "One" }, rating: 4, userRatingCount: 1 }));
+    vi.stubGlobal("fetch", g.fetcher);
+    await expect(addPlace(env, db as never, CO, "p9", false)).rejects.toThrow(/a lot of places for one hour/);
+    expect(g.calls).toHaveLength(0);
+  });
+});
+
+describe("the switch", () => {
+  const world = (checkedAt: string | null) => ({
+    companies: [{ id: CO, name: "Sketchy Gutters", address: {}, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
+    review_comparisons: [{ company_id: CO, enabled: true, checked_at: checkedAt, lat: null, lng: null }],
+    review_places: [{ id: "a", company_id: CO, place_id: "pa" }, { id: "b", company_id: CO, place_id: "pb" }, { id: "c", company_id: CO, place_id: "pc" }],
   });
 
   it("turns on only once Google answers the key, and says what to fix when it doesn't", async () => {

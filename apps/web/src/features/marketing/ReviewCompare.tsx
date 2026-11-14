@@ -6,7 +6,7 @@
  * nearest of its trade. Checked weekly by itself, by hand at most once a day; what's shown is the
  * last check, so the card loads at once. The data is Google's, and says so.
  */
-import { changeWords, countChange, MAX_COMPETITORS, ranked, standing, standingWords, type ComparedPlace } from "@crewtavo/core/reviewCompare";
+import { changesSince, changeWords, countChange, MAX_COMPETITORS, ranked, standing, standingWords, type ComparedPlace } from "@crewtavo/core/reviewCompare";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -68,6 +68,8 @@ export function ReviewCompare() {
   const places = [...s.places.filter((p) => p.is_own), ...ranked(s.places.filter((p) => !p.is_own))];
   const competitors = s.places.filter((p) => !p.is_own).length;
   const where = standing(s.places);
+  // The day the changes are counted from: a check at least six days before the latest one.
+  const since = changesSince(s.places);
   const lastRead = s.places.map((p) => p.checked_at).filter((d): d is string => Boolean(d)).sort().at(-1) ?? null;
 
   return (
@@ -93,13 +95,13 @@ export function ReviewCompare() {
         </div>
       ) : (
         <>
-          {s.last_error && <div className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">The last check didn't work: {s.last_error}</div></div>}
+          {s.last_error && <div className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">{s.last_error}</div></div>}
           {!places.length ? (
             <EmptyState icon="star" title="Pick who to compare with">Add your own business and up to five competitors from Google.</EmptyState>
           ) : (
             <div style={{ overflowX: "auto", margin: "0 -20px" }}>
               <table className="table">
-                <thead><tr><th>Business</th><th style={{ textAlign: "right" }}>Rating</th><th style={{ textAlign: "right" }}>Reviews</th><th style={{ textAlign: "right" }}>Since last check</th><th aria-label="Remove" /></tr></thead>
+                <thead><tr><th>Business</th><th style={{ textAlign: "right" }}>Rating</th><th style={{ textAlign: "right" }}>Reviews</th><th style={{ textAlign: "right" }}>{since ? `Since ${formatDate(since)}` : "Change"}</th><th aria-label="Remove" /></tr></thead>
                 <tbody>
                   {places.map((p) => {
                     const change = countChange(p);
@@ -108,6 +110,7 @@ export function ReviewCompare() {
                         <td>
                           {p.maps_url ? <a href={p.maps_url} target="_blank" rel="noreferrer">{p.name}</a> : p.name}
                           {p.is_own && <span className="chip chip-green" style={{ marginLeft: 6 }}>You</span>}
+                          {p.problem && <span className="small" style={{ display: "block", fontWeight: 400, color: "var(--warning)" }}>{p.problem} These numbers are from {p.checked_at ? formatDate(p.checked_at) : "before"}.</span>}
                         </td>
                         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{stars(p.rating)}</td>
                         <td style={{ textAlign: "right" }}>{p.ratings_total == null ? "—" : p.ratings_total.toLocaleString("en-US")}</td>
@@ -125,7 +128,7 @@ export function ReviewCompare() {
               <strong>{standingWords(where)}</strong>
               {where.ratingVsAverage != null && ` · ${where.ratingVsAverage === 0 ? "the same rating as" : `${Math.abs(where.ratingVsAverage).toFixed(1)} ${where.ratingVsAverage > 0 ? "above" : "below"}`} the others' average`}
               {where.reviewsVsAverage != null && ` · ${Math.abs(where.reviewsVsAverage).toLocaleString("en-US")} ${where.reviewsVsAverage >= 0 ? "more" : "fewer"} reviews than their average`}
-              {where.gained != null && where.averageGained != null && ` · you gained ${where.gained}, they gained ${where.averageGained} on average since the last check`}
+              {where.gained != null && where.averageGained != null && ` · you gained ${where.gained}, they gained ${where.averageGained} on average${since ? ` since ${formatDate(since)}` : ""}`}
             </p>
           )}
           {!s.places.some((p) => p.is_own) && places.length > 0 && <span className="muted small">Add your own business too, to see how you stand.</span>}
@@ -135,7 +138,7 @@ export function ReviewCompare() {
           </div>
           <FormError error={refresh.error ?? remove.error ?? toggle.error} />
           <span className="muted small">
-            {lastRead ? `Last checked ${formatDate(lastRead)}. ` : ""}Checked again every week{s.next_check ? `; by hand again after ${formatDate(s.next_check)}` : ""}. Ratings and reviews from Google Maps.
+            {lastRead ? `Last checked ${formatDate(lastRead)}. ` : ""}Checked again every week{s.next_check ? `; by hand again after ${formatDate(s.next_check)}` : ""}. Changes are counted from a check at least six days earlier, so checking twice doesn't reset them. Ratings and reviews from Google Maps.
           </span>
         </>
       )}

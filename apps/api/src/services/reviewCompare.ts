@@ -16,7 +16,7 @@
 import { MAX_COMPETITORS, nextHandCheck } from "@crewtavo/core/reviewCompare";
 import { marketingOn } from "@crewtavo/core/marketing";
 import type { Env } from "../env";
-import { checkPlacesKey, placeDetails, placesKey, PlacesProblem, textSearch, type PlaceResult, type PlacesKey } from "../integrations/places";
+import { checkPlacesKey, PLACE_CLOSED, PLACE_GONE, placeDetails, placesKey, PlacesProblem, textSearch, type PlaceResult, type PlacesKey } from "../integrations/places";
 import { companyAddress } from "../lib/email";
 import { dbError, HttpError } from "../lib/http";
 import { allow } from "../lib/limit";
@@ -26,6 +26,10 @@ import { geocodeAddress } from "./external";
 
 /** Searches a company may make an hour: plenty for picking five, few enough to keep the bill small. */
 const SEARCHES_PER_HOUR = 30;
+/** Places a company may add an hour that Google has to be asked about: plenty for picking five. */
+const ADDS_PER_HOUR = 20;
+/** Checks by hand a company may try an hour, while one hasn't worked yet. Each asks Google about every place. */
+const HAND_TRIES_PER_HOUR = 6;
 /** What a search said about each place, kept a while so adding one doesn't ask Google again. */
 const SEEN_MS = 60 * 60_000;
 const seen = new Map<string, { at: number; place: PlaceResult }>();
@@ -59,7 +63,7 @@ export async function comparisonState(env: Env, admin: Db, companyId: string) {
   const [company, row, places] = await Promise.all([
     companyOf(admin, companyId),
     comparison(admin, companyId),
-    admin.from("review_places").select("id, place_id, name, address, maps_url, is_own, rating, ratings_total, previous_total, checked_at, previous_checked_at").eq("company_id", companyId).order("created_at"),
+    admin.from("review_places").select("id, place_id, name, address, maps_url, is_own, rating, ratings_total, previous_total, checked_at, previous_checked_at, problem").eq("company_id", companyId).order("created_at"),
   ]);
   if (places.error) throw dbError(places.error);
   const next = nextHandCheck(row?.checked_at);
@@ -147,14 +151,17 @@ export async function suggestPlaces(env: Env, admin: Db, companyId: string) {
  */
 export async function addPlace(env: Env, admin: Db, companyId: string, placeId: string, own: boolean, known?: PlaceResult) {
   const { key } = await readyKey(env, admin, companyId);
-  const cached = known ?? seen.get(`${companyId}:${placeId}`)?.place;
-  const place = cached ?? (await placeDetails(key, placeId).catch(asHttp));
+  // The cap and the pace are checked before Google is asked anything: a sixth competitor, or a
+  // loop of adds, costs the key's account nothing.
   if (!own) {
-    const { count } = await admin.from("review_places").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("is_own", false);
-    if ((count ?? 0) >= MAX_COMPETITORS) throw new HttpError(400, "Compare with up to five competitors. Remove one first.");
-  } else {
-    await admin.from("review_places").update({ is_own: false }).eq("company_id", companyId).eq("is_own", true);
+    const { data: have } = await admin.from("review_places").select("place_id, is_own").eq("company_id", companyId);
+    const competitors = (have ?? []).filter((p) => !p.is_own && p.place_id !== placeId).length;
+    if (competitors >= MAX_COMPETITORS) throw new HttpError(400, "Compare with up to five competitors. Remove one first.");
   }
+  const cached = known ?? seen.get(`${companyId}:${placeId}`)?.place;
+  if (!cached && !(await allow(env, `places-add:${companyId}`, ADDS_PER_HOUR, 3600))) throw new HttpError(429, "That's a lot of places for one hour. Try again later.");
+  const place = cached ?? (await placeDetails(key, placeId).catch(asHttp));
+  if (own) await admin.from("review_places").update({ is_own: false }).eq("company_id", companyId).eq("is_own", true);
   const { data, error } = await admin
     .from("review_places")
     .upsert({ company_id: companyId, place_id: place.place_id, name: place.name.slice(0, 300), address: place.address?.slice(0, 500) ?? null, maps_url: place.maps_url, is_own: own }, { onConflict: "company_id,place_id" })
@@ -167,40 +174,76 @@ export async function addPlace(env: Env, admin: Db, companyId: string, placeId: 
   return data.id as string;
 }
 
+/** "Acme Paving", "Acme Paving and Best Roofing", "Acme Paving, Best Roofing and Top Lawn". */
+const named = (names: readonly string[]) => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+/** What a check skipped, in a sentence that names each place and says what to do. */
+export function skippedWords(gone: readonly string[], closed: readonly string[]): string | null {
+  const parts = [
+    gone.length ? `Google doesn't list ${named(gone)} anymore` : "",
+    closed.length ? `${gone.length ? "and says " : "Google says "}${named(closed)} ${closed.length === 1 ? "is" : "are"} permanently closed` : "",
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  const n = gone.length + closed.length;
+  return `${parts.join(", ")}, so ${n === 1 ? "it was" : "they were"} skipped. Remove ${n === 1 ? "it" : "them"} from the list to compare with someone else.`;
+}
+
 /**
- * A check: one Place Details call for each place, with only the fields shown; the count before is
- * kept, to say how it changed. `byHand`: at most once a day (the weekly check counts).
+ * A check: one Place Details call for each place, with only the fields shown; the count from a week
+ * back is kept, to say how it changed (record_review_place). `byHand`: at most once a day after a
+ * check that worked (the weekly one counts), and a few tries an hour when one didn't.
+ *
+ * One place Google no longer lists, or marks permanently closed, is named and skipped, and the rest
+ * are still read. Trouble with the key itself stops the check where it is: the next place would
+ * get the same answer. `checked_at` moves only when at least one place was read, so a check that
+ * failed outright can be tried again as soon as what's wrong is fixed.
  */
 export async function refreshComparison(env: Env, admin: Db, companyId: string, byHand: boolean) {
   const { key, row } = await readyKey(env, admin, companyId);
   if (byHand && nextHandCheck(row.checked_at)) throw new HttpError(429, "Checked in the last day. You can check again tomorrow.");
-  const { data: places, error } = await admin.from("review_places").select("id, place_id").eq("company_id", companyId);
+  if (byHand && !(await allow(env, `compare-check:${companyId}`, HAND_TRIES_PER_HOUR, 3600))) throw new HttpError(429, "That's a lot of checks for one hour. Try again later.");
+  const { data: places, error } = await admin.from("review_places").select("id, place_id, name").eq("company_id", companyId).order("created_at");
   if (error) throw dbError(error);
-  let problem: string | null = null;
+  let keyProblem: string | null = null;
   let checked = 0;
+  const gone: string[] = [];
+  const closed: string[] = [];
   for (const place of places ?? []) {
     try {
       const found = await placeDetails(key, place.place_id);
+      if (found.closed) {
+        closed.push(found.name);
+        await admin.from("review_places").update({ problem: PLACE_CLOSED }).eq("id", place.id);
+        continue;
+      }
       await admin.rpc("record_review_place", { p_id: place.id, p_name: found.name, p_rating: found.rating ?? 0, p_total: found.ratings_total ?? 0, p_maps_url: found.maps_url ?? undefined });
       checked++;
     } catch (failure) {
       if (!(failure instanceof PlacesProblem)) throw failure;
-      problem = failure.message;
-      // The key itself is refused: the rest would be too.
-      if (!checked) break;
+      if (failure.place) {
+        gone.push(place.name ?? "a place");
+        await admin.from("review_places").update({ problem: PLACE_GONE }).eq("id", place.id);
+        continue;
+      }
+      // The key, its project or Google itself: the rest would get the same answer.
+      keyProblem = failure.message;
+      break;
     }
   }
-  // The next check waits its turn even when this one failed, so a refused key isn't asked again
-  // every hour; each place keeps the date it was last read (review_places.checked_at).
+  const problem = keyProblem ?? skippedWords(gone, closed);
   const now = new Date().toISOString();
-  await admin.from("review_comparisons").update({ checked_at: now, ...(byHand ? { checked_by_hand_at: now } : {}), last_error: problem }).eq("company_id", companyId);
-  if (problem && !checked && byHand) throw new HttpError(502, problem);
+  await admin.from("review_comparisons").update({ ...(checked ? { checked_at: now, ...(byHand ? { checked_by_hand_at: now } : {}) } : {}), last_error: problem }).eq("company_id", companyId);
+  if (keyProblem && !checked && byHand) throw new HttpError(502, keyProblem);
   return { checked, problem };
 }
 
-/** The review_compare task: each company whose weekly check is due. */
+/**
+ * The review_compare task: each company whose weekly check is due, claimed as it's taken
+ * (claim_review_comparisons), so two servers running the task in the same minute don't both ask
+ * Google. A company whose check fails is claimed again the next day.
+ */
 export async function refreshDueComparisons(env: Env, admin: Db) {
-  const { data: due, error } = await admin.rpc("review_comparisons_due", { p_limit: 20 });
+  const { data: due, error } = await admin.rpc("claim_review_comparisons", { p_limit: 20 });
   if (error) throw new Error(error.message);
   let checked = 0;
   let failed = 0;
@@ -212,8 +255,8 @@ export async function refreshDueComparisons(env: Env, admin: Db) {
     } catch (error) {
       failed++;
       if (!(error instanceof HttpError)) reportError(error, { feature: "review_compare" });
-      // No key anymore, say: kept for the card to say, and not tried again until next week.
-      else await admin.from("review_comparisons").update({ checked_at: new Date().toISOString(), last_error: error.message }).eq("company_id", company_id);
+      // No key anymore, say: kept for the card to say. When it last worked is left alone, so it's tried again tomorrow.
+      else await admin.from("review_comparisons").update({ last_error: error.message }).eq("company_id", company_id);
     }
   }
   return { companies: due?.length ?? 0, checked, failed };

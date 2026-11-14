@@ -67,6 +67,29 @@ select tmkrc.check((select rating = 4.4 and ratings_total = 50 and previous_tota
 select public.record_review_place(:'p1', 'Rival One', 4.5, 53, 'javascript:alert(1)');
 select tmkrc.check((select ratings_total = 53 and previous_total = 50 and previous_checked_at is not null and maps_url = 'https://maps.google.com/?cid=1' from public.review_places where id = :'p1'),
   'the next keeps the count before, and only an https Maps link');
+
+\o
+\echo 'The count before is from at least six days back'
+\o /dev/null
+-- The first two checks were a week ago and two weeks ago.
+update public.review_places set checked_at = now() - interval '7 days', previous_checked_at = now() - interval '14 days' where id = :'p1';
+-- This week's check, by two servers in the same minute.
+select public.record_review_place(:'p1', 'Rival One', 4.5, 58);
+select tmkrc.check((select ratings_total = 58 and previous_total = 53 and previous_checked_at < now() - interval '6 days' from public.review_places where id = :'p1'), 'the weekly check compares with last week''s count');
+select public.record_review_place(:'p1', 'Rival One', 4.5, 58);
+select tmkrc.check((select ratings_total = 58 and previous_total = 53 from public.review_places where id = :'p1'), 'a second server checking in the same minute doesn''t wipe the change: still +5, not "No change"');
+-- "Check now" the day after.
+update public.review_places set checked_at = now() - interval '1 day' where id = :'p1';
+select public.record_review_place(:'p1', 'Rival One', 4.6, 59);
+select tmkrc.check((select ratings_total = 59 and rating = 4.6 and previous_total = 53 and previous_checked_at < now() - interval '6 days' from public.review_places where id = :'p1'),
+  'a check by hand the day after shows the new count against last week''s, not against yesterday''s');
+-- Next week's check: the count from six days back or more is the hand check's.
+update public.review_places set checked_at = now() - interval '6 days 1 hour' where id = :'p1';
+select public.record_review_place(:'p1', 'Rival One', 4.6, 64);
+select tmkrc.check((select ratings_total = 64 and previous_total = 59 from public.review_places where id = :'p1'), 'next week it moves on to the latest count that''s six days old');
+update public.review_places set problem = 'Google doesn''t list this place anymore.' where id = :'p1';
+select public.record_review_place(:'p1', 'Rival One', 4.6, 64);
+select tmkrc.check((select problem is null from public.review_places where id = :'p1'), 'a place that''s read again has nothing wrong with it');
 reset role;
 
 \o
@@ -97,6 +120,23 @@ update public.review_comparisons set checked_at = now() - interval '8 days' wher
 select tmkrc.check((select count(*) = 1 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'due again after it');
 update public.review_comparisons set enabled = false where company_id = :'co';
 select tmkrc.check((select count(*) = 0 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'never while it''s off');
+
+\o
+\echo 'Claimed, so two servers don''t both ask Google'
+\o /dev/null
+update public.review_comparisons set enabled = true, checked_at = now() - interval '8 days', tried_at = null where company_id = :'co';
+select tmkrc.check((select count(*) = 1 from public.claim_review_comparisons(20) d where d.company_id = :'co'), 'the first server to look takes the company');
+select tmkrc.check((select count(*) = 0 from public.claim_review_comparisons(20) d where d.company_id = :'co'), 'the second finds it taken');
+-- The check failed (checked_at didn't move): it isn't tried again within the hour, but is the next day.
+select tmkrc.check((select tried_at is not null and checked_at < now() - interval '7 days' from public.review_comparisons where company_id = :'co'), 'a check that didn''t work leaves when it last worked alone');
+update public.review_comparisons set tried_at = now() - interval '25 hours' where company_id = :'co';
+select tmkrc.check((select count(*) = 1 from public.claim_review_comparisons(20) d where d.company_id = :'co'), 'a failed check is tried again the next day');
+update public.review_comparisons set checked_at = now(), tried_at = now() - interval '25 hours' where company_id = :'co';
+select tmkrc.check((select count(*) = 0 from public.claim_review_comparisons(20) d where d.company_id = :'co'), 'and once it has worked, not for a week');
+reset role;
+set local role authenticated;
+select tmkrc.as_user(:'olive');
+select tmkrc.check(tmkrc.error_of('select * from public.claim_review_comparisons(20)') like '42501:%', 'the office can''t claim the check');
 reset role;
 
 rollback;
