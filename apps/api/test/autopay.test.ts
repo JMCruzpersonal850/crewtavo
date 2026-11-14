@@ -961,6 +961,9 @@ describe("the Client Hub's autopay", () => {
       terms: TERMS,
       terms_version: "2026-10-31T14:05:09",
       timing: "at the end of the day of each visit",
+      // What a bank account agrees to about notice, from the business's $500 limit (core autopayBankText).
+      bank_terms:
+        "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made. By agreeing, you choose to be told ahead only when a charge is more than $500.00, and we'll send you its amount and date at least 10 days before we make it. Charges of $500.00 or less are made without notice ahead of time.",
       next_charge: "2026-11-08T05:00:00Z",
       per_visit: 45,
       per_visit_taxed: false,
@@ -968,6 +971,9 @@ describe("the Client Hub's autopay", () => {
       available: true,
       card_required: false,
     });
+    // With no limit there's no range to name, and the words say so.
+    db.tables.companies![0]!.settings = { autopay: autopaySetting({ max_amount: null }) };
+    expect((await hubAutopay(env, db.db, CO, PAT))!.bank_terms).toContain("By agreeing, you choose not to be told ahead");
     // A business that needs a card on file says so on the client's page.
     db.tables.companies![0]!.settings = { autopay: autopaySetting({ card_required: true }) };
     expect((await hubAutopay(env, db.db, CO, PAT))!.card_required).toBe(true);

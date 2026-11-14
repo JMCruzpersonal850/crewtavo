@@ -18,7 +18,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { STRIPE_KEY_PERMISSIONS, STRIPE_NEW_KEY } from "../src/features/apps/catalog";
 import { agreedText, AutopayCard, clientAutopayOf, type AutopayAgreement, type AutopayMethod, type ClientAutopay } from "../src/features/clients/AutopayCard";
-import { autopayBody, paymentForm, PaymentSettings, type AutopayStatus } from "../src/features/settings/PaymentSettings";
+import { autopayBody, bankLimit, paymentForm, PaymentSettings, type AutopayStatus } from "../src/features/settings/PaymentSettings";
 import { settingsGroups } from "../src/features/settings/sections";
 import { StripeCards, stripeCardRows, type StripeCardRow } from "../src/features/settings/StripeCards";
 
@@ -72,7 +72,7 @@ function render(element: ReactElement, seed: (client: QueryClient) => void) {
 const SETTINGS: AutopaySettings = {
   enabled: false,
   terms: starterAutopayTerms("lawn_exterior"),
-  terms_version: "starter-lawn_exterior-1",
+  terms_version: "starter-lawn_exterior-2",
   timing: "end_of_day",
   days: null,
   max_amount: 500,
@@ -197,6 +197,9 @@ describe("Settings → Payments", () => {
       'Clients read: "We charge at the end of the day of each visit."',
       "Most to charge without asking",
       "Over this, the charge waits for your OK. Leave it blank for no limit.",
+      // What a bank account agrees to about notice, written from the limit, and why.
+      'After your terms and when you charge, clients also read: "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it\'s made.',
+      "federal rules (Regulation E) call for the amount and date of each charge 10 days ahead, unless they agreed to a range",
       "Email a receipt after each charge",
       "Turn on autopay for new recurring jobs of clients on autopay",
       "Require a card on file",
@@ -206,6 +209,25 @@ describe("Settings → Payments", () => {
     // The starter wording is what's there, so there's nothing to reset.
     expect(page).not.toContain("Use the suggested wording");
     expect(page).not.toContain("Overdue");
+  });
+
+  it("tells a business with no limit that the bank account terms then name no range", () => {
+    as("owner", []);
+    const page = paymentsPage({ settings: { ...SETTINGS, max_amount: null } });
+    expect(page).toContain("By agreeing, you choose not to be told ahead: each charge is for the invoice it pays, whatever its amount.");
+    expect(page).toContain("Set a limit if you take bank payments.");
+    expect(page).not.toContain("The terms name this limit as that range");
+    // The words follow what's typed, as the database will write them once it's saved.
+    expect(bankLimit("")).toBeNull();
+    expect(bankLimit("0")).toBeNull();
+    expect(bankLimit("250")).toBe(250);
+    expect(bankLimit("99.999")).toBe(100);
+  });
+
+  it("reminds the office, where it OKs a charge over the limit from a bank account, of the notice the terms promise", () => {
+    const invoice = readFileSync(new URL("../src/features/invoices/InvoicePage.tsx", import.meta.url), "utf8");
+    expect(invoice).toContain('charge.method?.type === "us_bank_account"');
+    expect(invoice).toContain("your autopay terms promise them the amount and date at least 10 days before a charge over the limit: send them that before you OK it.");
   });
 
   it("says where tips stand and links to the one switch, in Settings → Company", () => {
@@ -299,7 +321,7 @@ describe("cards brought in from Stripe", () => {
 
   it("asks to turn autopay on first", () => {
     as("owner", []);
-    const page = text(render(createElement(StripeCards, { enabled: false, termsVersion: "starter-lawn_exterior-1" }), (client) => client.setQueryData(["company", COMPANY, "payments", "stripe-cards"], cards)));
+    const page = text(render(createElement(StripeCards, { enabled: false, termsVersion: "starter-lawn_exterior-2" }), (client) => client.setQueryData(["company", COMPANY, "payments", "stripe-cards"], cards)));
     expect(page).toContain("Turn on autopay above and save first.");
   });
 

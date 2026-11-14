@@ -198,6 +198,8 @@ export function AutopayView({ token, data, hubFetch, back, onChanged }: { token:
     <blockquote className="hub-terms">
       <p className="pre-wrap">{autopay.terms}</p>
       <p>We charge {autopay.timing}.</p>
+      {/* What a bank account agrees to about notice of each charge: part of what's agreed to and kept. */}
+      {autopay.bank_terms && <p>{autopay.bank_terms}</p>}
     </blockquote>
   );
   const agreeBox = (

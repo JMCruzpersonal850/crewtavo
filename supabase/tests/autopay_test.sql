@@ -253,7 +253,7 @@ select tautopay.check((:'saved'::jsonb) ->> 'terms_version' ~ '^\d{4}-\d\d-\d\dT
   and (:'saved'::jsonb) -> 'enabled' = 'true' and (:'saved'::jsonb) -> 'max_amount' = 'null' and (:'saved'::jsonb) -> 'days' = 'null'
   and (:'saved'::jsonb) -> 'card_required' = 'false',
   'an admin with the invoices area turns it on: every key saved, with a version for the terms, who and when');
-select tautopay.check(private.autopay_terms_shown(:'co') = :'terms' || E'\n\nWe charge at the end of the day of each visit.',
+select tautopay.check(private.autopay_terms_shown(:'co') = :'terms' || E'\n\nWe charge at the end of the day of each visit.' || E'\n\n' || private.autopay_bank_text((select private.autopay_of(c.settings) from public.companies c where c.id = :'co')),
   'what the client agrees to is the terms, then when they''re charged');
 
 -- What changes the version: the words or when charges go, not saving them again.
@@ -267,7 +267,8 @@ select tautopay.old_version(:'co');
 begin;
 set local role authenticated;
 select tautopay.as_user(:'ada');
-select public.autopay_set_settings(:'co', tautopay.settings()) ->> 'terms_version' as v_same \gset
+-- The same as was saved above, with no limit (a new limit is a new version: autopay_bank_terms_test.sql).
+select public.autopay_set_settings(:'co', tautopay.settings(p_max => null)) ->> 'terms_version' as v_same \gset
 select public.autopay_set_settings(:'co', tautopay.settings(p_terms => 'We charge your card after each visit.')) ->> 'terms_version' as v_words \gset
 commit;
 select tautopay.old_version(:'co');
@@ -338,7 +339,7 @@ select tautopay.check(tautopay.error_of(format('select public.autopay_record_aut
 select tautopay.check(tautopay.error_of(format('select public.autopay_record_authorization(%L, %L, %L, %L, %L)', :'co', :'c_sam', :'pm_pat', 'hub', :'ver')) = 'P0002: That card isn''t saved anymore',
   'and so is agreeing with someone else''s card');
 select public.autopay_record_authorization(:'co', :'c_pat', :'pm_pat', 'hub', :'ver', '203.0.113.9', 'Mozilla/5.0 (iPhone)', 'quote', 'client') as auth_pat \gset
-select tautopay.check((select terms = :'terms' || E'\n\nWe charge at the end of the day of each visit.' and terms_version = :'ver' and ip = '203.0.113.9'
+select tautopay.check((select terms = :'terms' || E'\n\nWe charge at the end of the day of each visit.' || E'\n\n' || private.autopay_bank_text((select private.autopay_of(c.settings) from public.companies c where c.id = :'co')) and terms_version = :'ver' and ip = '203.0.113.9'
     and user_agent = 'Mozilla/5.0 (iPhone)' and source = 'hub' and link_kind = 'quote' and link_via = 'client' and payment_method_id = :'pm_pat'
     from public.autopay_authorizations where id = :'auth_pat'),
   'the agreement keeps the whole text as shown, its version, the IP, the browser and the link it was agreed on');

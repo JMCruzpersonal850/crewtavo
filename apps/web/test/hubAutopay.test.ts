@@ -337,6 +337,20 @@ describe("the autopay page", () => {
     expect(html).toContain("call us at 555-0142");
   });
 
+  it("shows what a bank account agrees to about notice as the last paragraph of the terms, above the box they tick", () => {
+    const bank = "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made. By agreeing, you choose to be told ahead only when a charge is more than $500.00, and we'll send you its amount and date at least 10 days before we make it. Charges of $500.00 or less are made without notice ahead of time.";
+    const html = text(view({ ...active, status: "off", method: null, since: null, bank_terms: bank }));
+    expect(html).toContain(bank);
+    // After the business's words and when charges go, as the agreement keeps them.
+    expect(html.indexOf("We charge at the end of the day of each visit.")).toBeLessThan(html.indexOf(bank));
+    // And on the step where they tick the box, for a card or bank account already saved.
+    const agreeing = text(view({ ...active, status: "agree", since: null, bank_terms: bank }));
+    expect(agreeing.indexOf(bank)).toBeGreaterThan(-1);
+    expect(agreeing.indexOf(bank)).toBeLessThan(agreeing.lastIndexOf("I agree to these terms"));
+    // A server from before it sends none, and nothing is made up in its place.
+    expect(text(view({ ...active, status: "off", method: null, since: null }))).not.toContain("If you pay from a bank account");
+  });
+
   it("goes straight to agreeing for a card they have on file, with the box unticked", () => {
     const html = view({ ...active, status: "agree", imported: true, since: null });
     expect(text(html)).toContain("Agree and finish");

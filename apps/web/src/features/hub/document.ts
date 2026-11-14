@@ -246,6 +246,8 @@ export interface HubAutopay {
   terms_version: string;
   /** "at the end of the day of each visit" (core autopayTimingText). */
   timing: string;
+  /** What paying from a bank account means for notice, the last paragraph they agree to. A server from before it sends none. */
+  bank_terms?: string;
   /** When the next charge goes, if one is waiting. */
   next_charge: string | null;
   /** What each visit costs, when they have one recurring job on autopay. */

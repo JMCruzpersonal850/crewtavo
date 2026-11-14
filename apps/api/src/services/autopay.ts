@@ -13,7 +13,7 @@
  *   - what Settings → Payments shows (autopayStatus).
  * Uses the admin client, and every lookup filters by company. Crews never reach any of it.
  */
-import { autopayCoversMonthly, autopaySettings, autopayTimingText, methodExpiry, methodLabel, tipsAllowed, type AutopaySettings } from "@crewtavo/core/autopay";
+import { autopayBankText, autopayCoversMonthly, autopaySettings, autopayTimingText, methodExpiry, methodLabel, tipsAllowed, type AutopaySettings } from "@crewtavo/core/autopay";
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { textsOff, textsOffReason } from "@crewtavo/core/marketing";
 import type { Env } from "../env";
@@ -69,6 +69,8 @@ export interface HubAutopay {
   terms_version: string;
   /** "at the end of the day of each visit" (core autopayTimingText). */
   timing: string;
+  /** What paying from a bank account means for notice (core autopayBankText): the last paragraph they agree to. */
+  bank_terms: string;
   /** When the charge waiting for the next finished visit goes. */
   next_charge: string | null;
   /** The price of a visit on the client's one recurring job that autopay charges, if just one. */
@@ -942,6 +944,7 @@ export async function hubAutopay(env: Env, admin: Db, companyId: string, clientI
     terms: settings.terms,
     terms_version: settings.terms_version,
     timing: autopayTimingText(settings),
+    bank_terms: autopayBankText(settings),
     next_charge: due,
     per_visit: perVisit,
     per_visit_taxed: perVisit !== null && taxed,

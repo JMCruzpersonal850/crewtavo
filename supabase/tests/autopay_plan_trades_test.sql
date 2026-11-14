@@ -21,13 +21,13 @@ grant execute on all functions in schema apt to authenticated, service_role;
 -- Plans billed by the month too (20261104000900_monthly_plan_autopay.sql).
 \set monthly ', or once a month for a monthly plan'
 
-select apt.check(private.autopay_starter_terms('cleaning') = 'We charge the card on file after each cleaning' || :'monthly' || :'tail', 'cleaning: after each cleaning');
-select apt.check(private.autopay_starter_terms('pool_service') = 'We charge the card on file after each pool service visit' || :'monthly' || :'tail', 'pool service: after each pool service visit');
-select apt.check(private.autopay_starter_terms('pest_control') = 'We charge the card on file after each treatment' || :'monthly' || :'tail', 'pest control: after each treatment');
-select apt.check(private.autopay_starter_terms('lawn_exterior') = 'We charge the card on file after each visit is done' || :'monthly' || :'tail', 'lawn care keeps its words');
-select apt.check(private.autopay_starter_terms('paving') like 'We charge the card on file when the work on your job is done, %'
+select apt.check(private.autopay_starter_terms('cleaning') = 'We charge the card or bank account on file after each cleaning' || :'monthly' || :'tail', 'cleaning: after each cleaning');
+select apt.check(private.autopay_starter_terms('pool_service') = 'We charge the card or bank account on file after each pool service visit' || :'monthly' || :'tail', 'pool service: after each pool service visit');
+select apt.check(private.autopay_starter_terms('pest_control') = 'We charge the card or bank account on file after each treatment' || :'monthly' || :'tail', 'pest control: after each treatment');
+select apt.check(private.autopay_starter_terms('lawn_exterior') = 'We charge the card or bank account on file after each visit is done' || :'monthly' || :'tail', 'lawn care keeps its words');
+select apt.check(private.autopay_starter_terms('paving') like 'We charge the card or bank account on file when the work on your job is done, %'
     and private.autopay_starter_terms('roofing_exteriors') = private.autopay_starter_terms('paving'), 'paving and roofing keep theirs');
-select apt.check((select bool_and(private.autopay_starter_terms(t) = 'We charge the card on file when each visit or job is done' || :'monthly' || :'tail')
+select apt.check((select bool_and(private.autopay_starter_terms(t) = 'We charge the card or bank account on file when each visit or job is done' || :'monthly' || :'tail')
     from unnest(array['general', 'plumbing', 'hvac', 'electrical', 'handyman', 'landscaping', 'snow']) t), 'the other trades get the general words');
 
 -- Sky owns Sky Clean, which never saved terms of its own.
@@ -38,8 +38,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub": "ab670000-0000-0000-0000-000000000001", "role": "authenticated"}', true);
 select public.create_company('Sky Clean', 'cleaning') as co \gset
 commit;
-select apt.check(private.autopay_terms_shown(:'co') = private.autopay_starter_terms('cleaning') || E'\n\nWe charge at the end of the day of each visit.',
+select apt.check(private.autopay_terms_shown(:'co') = private.autopay_starter_terms('cleaning') || E'\n\nWe charge at the end of the day of each visit.' || E'\n\n' || private.autopay_bank_text((select private.autopay_of(c.settings) from public.companies c where c.id = :'co')),
   'a cleaning company''s clients agree to its own starter words');
-select apt.check(private.autopay_terms_version(:'co') = 'starter-cleaning-1', 'under its own starter version');
+select apt.check(private.autopay_terms_version(:'co') = 'starter-cleaning-2', 'under its own starter version');
 
 \echo 'All autopay plan trade tests passed.'

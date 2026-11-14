@@ -647,9 +647,13 @@ const limitText = (amount: number) => (Number.isInteger(amount) ? formatMoney(am
  * ("Includes visits from before autopay started"); and when it's over the company's limit, with no
  * reason given.
  */
-function approvalText(charge: { last_error: string | null }, balance: number, cap: number | null): string {
+function approvalText(charge: { last_error: string | null; method?: { type: string } | null }, balance: number, cap: number | null): string {
   if (charge.last_error) return `${clause(charge.last_error).replace(/^Includes /, "It includes ")}, so it waits for your OK.`;
-  if (cap != null && balance > cap) return `${formatMoneyCents(balance)} is over your ${limitText(cap)} limit, so it waits for your OK.`;
+  if (cap != null && balance > cap) {
+    // A bank account agreed to the limit as the most charged without notice (core autopayBankText).
+    const bank = charge.method?.type === "us_bank_account" ? " They pay from a bank account, and your autopay terms promise them the amount and date at least 10 days before a charge over the limit: send them that before you OK it." : "";
+    return `${formatMoneyCents(balance)} is over your ${limitText(cap)} limit, so it waits for your OK.${bank}`;
+  }
   return "It waits for your OK before it's charged.";
 }
 
