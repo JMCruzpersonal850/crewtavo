@@ -7,7 +7,7 @@ import { costJobRows } from "@crewtavo/core";
 import { describe, expect, it } from "vitest";
 import type { Db } from "../src/lib/supabase";
 import { timeRates } from "../src/services/payRates";
-import { checkJobProfits, costJobs } from "../src/services/profitAlerts";
+import { checkJobProfits, costJobs, keptMargin } from "../src/services/profitAlerts";
 
 type Row = Record<string, unknown>;
 const CO = "00000000-0000-4000-8000-0000000000c1";
@@ -15,6 +15,8 @@ const CO = "00000000-0000-4000-8000-0000000000c1";
 function fakeDb(tables: Record<string, Row[]>, companies: Row[], jobs: Row[]) {
   const recorded: Array<{ args: Row }> = [];
   const swept: string[] = [];
+  /** Each answer a function gave that was a list: one a page. */
+  const pages: string[] = [];
   const from = (table: string) => {
     const filters: Array<(row: Row) => boolean> = [];
     const rows = () => (tables[table] ?? []).filter((row) => filters.every((keep) => keep(row)));
@@ -28,7 +30,7 @@ function fakeDb(tables: Record<string, Row[]>, companies: Row[], jobs: Row[]) {
     };
     return builder;
   };
-  const rpc = async (fn: string, args: Row) => {
+  const answer = async (fn: string, args: Row) => {
     if (fn === "profit_alert_companies") return { data: companies, error: null };
     if (fn === "profit_alert_jobs") return { data: jobs, error: null };
     // The database's one sum of a job's sub and crew pay (job_pay_cost_rows), as it answers the check.
@@ -43,7 +45,25 @@ function fakeDb(tables: Record<string, Row[]>, companies: Row[], jobs: Row[]) {
     }
     throw new Error(`unexpected ${fn}`);
   };
-  return { db: { from, rpc } as unknown as Db, recorded, swept };
+  // As PostgREST answers a function: all at once, or (ordered and cut to a range) a page of at most 1,000 rows.
+  const rpc = (fn: string, args: Row) => {
+    let cut: [number, number] | null = null;
+    const call: Record<string, unknown> = {
+      order: () => call,
+      range: (f: number, t: number) => ((cut = [f, t]), call),
+      then: (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) =>
+        answer(fn, args)
+          .then((r) => {
+            if (!Array.isArray(r.data)) return r;
+            pages.push(fn);
+            const [f, t] = cut ?? [0, 999];
+            return { ...r, data: (r.data as Row[]).slice(f, Math.min(t + 1, f + 1000)) };
+          })
+          .then(resolve, reject),
+    };
+    return call;
+  };
+  return { db: { from, rpc } as unknown as Db, recorded, swept, pages };
 }
 
 // Job #12 for Maria Lopez: $1,000, its line costs $300 to make, 10 hours at $50 and $120 of dump fees: 8% profit.
@@ -144,6 +164,31 @@ describe("the hourly job profit check", () => {
     expect(await checkJobProfits(db)).toMatchObject({ told: 0, listed: 1 });
     expect((recorded[0]!.args.p_checks as Row[])[0]).toMatchObject({ below: true, tell: false });
     expect(swept).toEqual([CO]);
+  });
+
+  it("looks at every job of a first look, past the 1,000 one request brings", async () => {
+    // 2,300 open jobs when the margin is set: none with anything spent, so none below.
+    const many = Array.from({ length: 2300 }, (_, i) => ({ job_id: `j${String(i).padStart(4, "0")}`, changed_at: null }));
+    const t = tables();
+    t.jobs = many.map((j, i) => ({ id: j.job_id, company_id: CO, number: 100 + i, kind: "one_off", status: "active", client: null, financials: { contract_total: 500 }, lines: [] }));
+    const { db, recorded, pages } = fakeDb(t, [{ company_id: CO, line: 20, sweep: true }], many);
+    expect(await checkJobProfits(db)).toMatchObject({ checked: 2300, told: 0, failed: 0 });
+    // Three pages of jobs (1,000, 1,000 and 300), each job recorded once.
+    expect(pages.filter((p) => p === "profit_alert_jobs")).toHaveLength(3);
+    const checked = recorded.flatMap((r) => (r.args.p_checks as Row[]).map((c) => c.job_id));
+    expect(checked).toHaveLength(2300);
+    expect(new Set(checked).size).toBe(2300);
+  });
+
+  it("keeps a margin too large to store as the nearest one that fits, so the company's check doesn't stall", async () => {
+    // A job priced at a cent with $1,920 of costs: about nineteen million percent under.
+    const t = tables();
+    (t.jobs![0] as Row).financials = { contract_total: "0.01" };
+    t.expenses!.push({ company_id: CO, job_id: "j12", amount: "1000.00", in_line_costs: false });
+    const { db, recorded } = fakeDb(t, [{ company_id: CO, line: 20, sweep: false }], [{ job_id: "j12", changed_at: "2026-11-13T10:00:00Z" }]);
+    expect(await checkJobProfits(db)).toMatchObject({ checked: 1, failed: 0 });
+    expect((recorded[0]!.args.p_checks as Row[])[0]).toMatchObject({ job_id: "j12", below: true, margin: -9_999_999.9 });
+    expect([keptMargin(null), keptMargin(8), keptMargin(1e12), keptMargin(-1e12)]).toEqual([null, 8, 9_999_999.9, -9_999_999.9]);
   });
 
   it("clears the notes of jobs that are gone", async () => {

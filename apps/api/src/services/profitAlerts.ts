@@ -18,6 +18,11 @@ import { timeRates } from "./payRates";
 /** Jobs a request: keeps the address short enough (and the rates' lookup to one page or two). */
 const JOBS_AT_ONCE = 200;
 
+/** The margins a job's standing can keep: one decimal, to ±9,999,999.9% (job_profit_alerts.margin). */
+export const MARGIN_KEPT = 9_999_999.9;
+/** A margin as it's kept: a job priced at a cent with real costs is millions of percent under, which the column can't hold. */
+export const keptMargin = (margin: number | null) => (margin === null ? null : Math.max(-MARGIN_KEPT, Math.min(MARGIN_KEPT, margin)));
+
 interface Job {
   id: string;
   number: number | null;
@@ -85,16 +90,18 @@ export async function costJobs(admin: Db, companyId: string, ids: readonly strin
 
 /** One company's check: the jobs whose costs changed, or (`sweep`, after its line changed) every open one-off job, quietly. */
 async function checkCompany(admin: Db, company: { company_id: string; line: number; sweep: boolean }) {
-  const { data, error } = await admin.rpc("profit_alert_jobs", { p_company: company.company_id, p_sweep: company.sweep });
-  if (error) throw new Error(error.message);
+  // Every job to look at, a page at a time: a company's first look after setting its margin can be
+  // more than the 1,000 rows one request brings, and the ones left out would never be listed.
+  const jobs = await everyPage<{ job_id: string; changed_at: string | null }>((f, t) =>
+    admin.rpc("profit_alert_jobs", { p_company: company.company_id, p_sweep: company.sweep }).order("job_id").range(f, t),
+  );
   const seen = new Map<string, string | null>();
-  for (const r of data ?? []) if (!seen.has(r.job_id) || r.changed_at) seen.set(r.job_id, r.changed_at);
+  for (const r of jobs) if (!seen.has(r.job_id) || r.changed_at) seen.set(r.job_id, r.changed_at);
   const ids = [...seen.keys()];
-  const { data: before, error: beforeError } = ids.length
-    ? await admin.from("job_profit_alerts").select("job_id, below").eq("company_id", company.company_id).eq("below", true)
-    : { data: [], error: null };
-  if (beforeError) throw new Error(beforeError.message);
-  const wasBelow = new Set((before ?? []).map((r) => r.job_id));
+  const before = ids.length
+    ? await everyPage<{ job_id: string }>((f, t) => admin.from("job_profit_alerts").select("job_id, below").eq("company_id", company.company_id).eq("below", true).order("job_id").range(f, t))
+    : [];
+  const wasBelow = new Set(before.map((r) => r.job_id));
   let told = 0;
   for (let i = 0; i < ids.length; i += JOBS_AT_ONCE) {
     const lot = ids.slice(i, i + JOBS_AT_ONCE);
@@ -108,7 +115,7 @@ async function checkCompany(admin: Db, company: { company_id: string; line: numb
         changed_at: seen.get(job.id) ?? null,
         below: decision.below,
         tell: decision.tell,
-        margin: cost.margin,
+        margin: keptMargin(cost.margin),
         title: cost.margin === null ? null : profitAlertText({ number: job.number, client: job.client?.display_name ?? null }, cost.margin, company.line),
       };
     });

@@ -3,6 +3,9 @@
 --     pay, read by the job page (job_pay_costs) and by the check (job_pay_costs_for_check) alike.
 --   20261113001688_first_profit_look_is_quiet.sql   a job's first look after the margin is set or
 --     changed only lists it, whatever brought it in (a timesheet approval too); a later fall tells.
+--   20261113001689_profit_check_loose_ends.sql   a margin too large to keep is kept as the nearest
+--     that fits, a job's standing is made and locked before it's read, and a changed pay rate notes
+--     the jobs it re-costs.
 -- Run with scripts/test-db.sh (plain Postgres + prelude.sql). Any failed check stops with an error.
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -148,6 +151,38 @@ select t_jpc.check(public.record_profit_checks(:'co', 30, jsonb_build_array(json
   'and a job last looked at under the old margin is first listed under the new one');
 reset role;
 select t_jpc.check(t_jpc.told(:'job2') = 2 and t_jpc.told(:'job3') = 2, 'so nobody heard anything more');
+
+-- ===== Loose ends (20261113001689_profit_check_loose_ends.sql) ================================
+-- A job priced at a cent with real costs: millions of percent under. It's kept, not an error that
+-- undoes the whole company's check.
+set role service_role;
+select t_jpc.check(t_jpc.error_of(format('select public.record_profit_checks(%L, 30, %L)', :'co',
+    jsonb_build_array(jsonb_build_object('job_id', :'job', 'below', true, 'margin', -11199900, 'tell', false), jsonb_build_object('job_id', :'job2', 'below', false, 'margin', 99999999999, 'tell', false)))) is null,
+  'a margin past what can be kept doesn''t stop the check');
+reset role;
+select t_jpc.check((select margin = -9999999.9 from public.job_profit_alerts where job_id = :'job') and (select margin = 9999999.9 from public.job_profit_alerts where job_id = :'job2'),
+  'it''s kept as the nearest margin that fits');
+-- A new job's standing is made (and locked) before it's read, so a second check at the same moment
+-- waits for the first and finds the job already told about.
+insert into public.jobs (company_id, client_id, title) values (:'co', :'client', 'Maple steps') returning id as job4 \gset
+set role service_role;
+select t_jpc.check(public.record_profit_checks(:'co', 30, jsonb_build_array(jsonb_build_object('job_id', :'job4', 'below', true, 'margin', 2, 'tell', true, 'title', 'Job is at 2% profit, below your 30%'))) = 1,
+  'a new job found below is told about');
+select t_jpc.check(public.record_profit_checks(:'co', 30, jsonb_build_array(jsonb_build_object('job_id', :'job4', 'below', true, 'margin', 2, 'tell', true, 'title', 'Job is at 2% profit, below your 30%'))) = 0,
+  'and the check that comes second, having decided the same from the same reading, tells nobody again');
+reset role;
+select t_jpc.check(t_jpc.told(:'job4') = 2 and (select count(*) = 1 and bool_and(below and line = 30 and told_at is not null) from public.job_profit_alerts where job_id = :'job4'),
+  'one notice each for the owner and the office, and one standing');
+-- A pay rate changes: the jobs with that person's time not approved yet cost something else now.
+insert into public.time_entries (company_id, job_id, user_id, started_at, ended_at) values (:'co', :'job', :'moe', now() - interval '5 hours', now() - interval '1 hour');
+delete from private.job_cost_changes where company_id = :'co';
+update public.memberships set labor_rate = 42 where company_id = :'co' and user_id = :'moe';
+select t_jpc.check((select string_agg(case job_id when :'job' then 'lot' when :'job2' then 'drive' else 'other' end, ',') from private.job_cost_changes where company_id = :'co') = 'lot',
+  'a changed pay rate notes the job with that person''s unapproved time, and not the one whose time was approved at its own rate');
+delete from private.job_cost_changes where company_id = :'co';
+update public.memberships set labor_rate = 42 where company_id = :'co' and user_id = :'moe';
+update public.memberships set labor_rate = 55 where company_id = :'co' and user_id = :'mara';
+select t_jpc.check(not exists (select from private.job_cost_changes where company_id = :'co'), 'a rate saved unchanged, or someone else''s, notes nothing');
 
 \o
 select format('All %s job-profit-check checks passed.', last_value) from t_jpc.passed \gset
