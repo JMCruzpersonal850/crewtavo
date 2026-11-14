@@ -6,7 +6,7 @@
  * nearest of its trade. Checked weekly by itself, by hand at most once a day; what's shown is the
  * last check, so the card loads at once. The data is Google's, and says so.
  */
-import { changesSince, changeWords, countChange, MAX_COMPETITORS, ranked, standing, standingWords, type ComparedPlace } from "@crewtavo/core/reviewCompare";
+import { changesSince, changeWords, countChange, GOOGLE_ATTRIBUTION, GOOGLE_REVIEW_NOTICE, GOOGLE_REVIEW_POLICY_LABEL, GOOGLE_REVIEW_POLICY_URL, MAX_COMPETITORS, ranked, standing, standingWords, type ComparedPlace } from "@crewtavo/core/reviewCompare";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -138,12 +138,31 @@ export function ReviewCompare() {
           </div>
           <FormError error={refresh.error ?? remove.error ?? toggle.error} />
           <span className="muted small">
-            {lastRead ? `Last checked ${formatDate(lastRead)}. ` : ""}Checked again every week{s.next_check ? `; by hand again after ${formatDate(s.next_check)}` : ""}. Changes are counted from a check at least six days earlier, so checking twice doesn't reset them. Ratings and reviews from Google Maps.
+            {lastRead ? `Last checked ${formatDate(lastRead)}. ` : ""}Checked again every week{s.next_check ? `; by hand again after ${formatDate(s.next_check)}` : ""}. Changes are counted from a check at least six days earlier, so checking twice doesn't reset them.
           </span>
+          <GoogleNotice />
         </>
       )}
       {adding && <AddPlaceDialog hasOwn={s.places.some((p) => p.is_own)} full={competitors >= MAX_COMPETITORS} onClose={() => setAdding(false)} onAdded={(next) => { set(next); setAdding(false); }} />}
     </section>
+  );
+}
+
+/**
+ * What Google asks to be shown wherever its ratings are (its Places API policies, the attribution
+ * requirements for content shown without a map and "Displaying reviews"): the words "Google Maps"
+ * as the attribution, in the same box as the ratings, never translated, wrapped onto two lines,
+ * restyled or hidden (.google-attribution in features.css keeps to its type and colours); and its
+ * notice that reviews aren't verified, with the link to its policy on them.
+ */
+function GoogleNotice() {
+  return (
+    <div className="google-notice">
+      <span className="google-attribution" translate="no">{GOOGLE_ATTRIBUTION}</span>
+      <span className="muted small">
+        {GOOGLE_REVIEW_NOTICE} <a href={GOOGLE_REVIEW_POLICY_URL} target="_blank" rel="noreferrer">{GOOGLE_REVIEW_POLICY_LABEL}</a>
+      </span>
+    </div>
   );
 }
 
@@ -180,7 +199,7 @@ function AddPlaceDialog({ hasOwn, full, onClose, onAdded }: { hasOwn: boolean; f
           )
         )}
         {full && <span className="muted small">You're comparing with five competitors already. Remove one to add another.</span>}
-        <span className="muted small">Results from Google Maps.</span>
+        <GoogleNotice />
       </div>
     </Dialog>
   );

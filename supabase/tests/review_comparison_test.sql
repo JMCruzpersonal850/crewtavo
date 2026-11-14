@@ -122,6 +122,25 @@ update public.review_comparisons set enabled = false where company_id = :'co';
 select tmkrc.check((select count(*) = 0 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'never while it''s off');
 
 \o
+\echo 'Where nearby is, for 30 days'
+\o /dev/null
+update public.review_comparisons set lat = 39.78, lng = -89.65, located_at = now() - interval '29 days' where company_id = :'co';
+select tmkrc.check(public.expire_review_locations() = 0 and (select lat = 39.78 from public.review_comparisons where company_id = :'co'), 'a point found 29 days ago is kept');
+update public.review_comparisons set located_at = now() - interval '31 days' where company_id = :'co';
+select tmkrc.check(public.expire_review_locations() = 1, 'after 30 days it''s forgotten');
+select tmkrc.check((select lat is null and lng is null and located_at is null from public.review_comparisons where company_id = :'co'), 'the point and its date are gone');
+update public.review_comparisons set lat = 39.78, lng = -89.65, located_at = null where company_id = :'co';
+select tmkrc.check(public.expire_review_locations() = 1, 'and so is one with no date to go by');
+select tmkrc.check((select lat is null from public.review_comparisons where company_id = :'co'), 'gone too');
+reset role;
+set local role authenticated;
+select tmkrc.as_user(:'olive');
+select tmkrc.check(tmkrc.error_of('select public.expire_review_locations()') like '42501:%', 'only the server forgets them');
+select tmkrc.as_nobody();
+reset role;
+set local role service_role;
+
+\o
 \echo 'Claimed, so two servers don''t both ask Google'
 \o /dev/null
 update public.review_comparisons set enabled = true, checked_at = now() - interval '8 days', tried_at = null where company_id = :'co';

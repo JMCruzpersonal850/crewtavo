@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { checkPlacesKey, placeDetails, placesKey, textSearch } from "../src/integrations/places";
-import { addPlace, refreshComparison, refreshDueComparisons, setComparison, skippedWords } from "../src/services/reviewCompare";
+import { addPlace, LOCATION_DAYS, refreshComparison, refreshDueComparisons, searchPlaces, setComparison, skippedWords } from "../src/services/reviewCompare";
 
 const current = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("../src/lib/supabase", async (original) => ({ ...(await original<typeof import("../src/lib/supabase")>()), adminClient: () => current.db }));
@@ -186,13 +186,13 @@ describe("a check", () => {
     // One call, not one per place: the others would be refused the same way.
     expect(refused.calls).toHaveLength(1);
     expect(tables.review_comparisons[0]).toMatchObject({ checked_at: null });
-    expect(tables.review_comparisons[0]!.last_error).toMatch(/enable Places API/);
+    expect((tables.review_comparisons[0] as Row).last_error).toMatch(/enable Places API/);
     // The key's project is fixed: "Check now" works straight away.
     const fixed = google((call) => answer(200, { id: call.url.split("/").pop(), displayName: { text: "X" }, rating: 4.5, userRatingCount: 10 }));
     vi.stubGlobal("fetch", fixed.fetcher);
     await expect(refreshComparison(env, db as never, CO, true)).resolves.toMatchObject({ checked: 3, problem: null });
     expect(tables.review_comparisons[0]!.checked_at).toBeTruthy();
-    expect(tables.review_comparisons[0]!.last_error).toBeNull();
+    expect((tables.review_comparisons[0] as Row).last_error).toBeNull();
   });
 
   it("takes each company's weekly check by claiming it, and leaves a failed one to be tried tomorrow", async () => {
@@ -206,7 +206,7 @@ describe("a check", () => {
     expect(db.calls).not.toContain("review_comparisons_due");
     // When it last worked hasn't moved, so the card's "Check now" isn't locked out either.
     expect(tables.review_comparisons[0]).toMatchObject({ checked_at: lastWorked });
-    expect(tables.review_comparisons[0]!.last_error).toMatch(/isn't answering/);
+    expect((tables.review_comparisons[0] as Row).last_error).toMatch(/isn't answering/);
   });
 });
 
@@ -236,6 +236,58 @@ describe("adding a place", () => {
     vi.stubGlobal("fetch", g.fetcher);
     await expect(addPlace(env, db as never, CO, "p9", false)).rejects.toThrow(/a lot of places for one hour/);
     expect(g.calls).toHaveLength(0);
+  });
+});
+
+describe("where nearby is", () => {
+  const world = (locatedAt: string | null) => ({
+    companies: [{ id: CO, name: "Sketchy Gutters", address: { line1: "1 Main St", city: "Springfield", region: "IL", postal_code: "62701" }, trade_preset: "general", settings: { marketing: { enabled: true }, maps: { google_key: "own-key" } } }],
+    review_comparisons: [{ company_id: CO, enabled: true, checked_at: null, lat: 39.78, lng: -89.65, located_at: locatedAt }] as Row[],
+    review_places: [] as Row[],
+  });
+  const days = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+  /** Google's search answers; the address lookup finds the address somewhere else now. */
+  const web = () =>
+    google((call) =>
+      call.url.includes("geocoding.geo.census.gov")
+        ? answer(200, { result: { addressMatches: [{ matchedAddress: "1 MAIN ST, SPRINGFIELD, IL", coordinates: { x: -89.6, y: 39.8 } }] } })
+        : answer(200, { places: [] }),
+    );
+
+  it("is used for a search while it's under 30 days old", async () => {
+    const tables = world(days(29));
+    current.db = memoryDb(tables);
+    const g = web();
+    vi.stubGlobal("fetch", g.fetcher);
+    await searchPlaces(env, current.db as never, CO, "Rival");
+    expect(g.calls).toHaveLength(1);
+    expect(g.calls[0]!.body.locationBias.circle.center).toEqual({ latitude: 39.78, longitude: -89.65 });
+  });
+
+  it("isn't used once it's 30 days old: the address is looked up again, and the new point kept from today", async () => {
+    const tables = world(days(31));
+    current.db = memoryDb(tables);
+    const g = web();
+    vi.stubGlobal("fetch", g.fetcher);
+    await searchPlaces(env, current.db as never, CO, "Rival");
+    const search = g.calls.find((c) => c.url.includes("places:searchText"))!;
+    expect(search.body.locationBias.circle.center).toEqual({ latitude: 39.8, longitude: -89.6 });
+    expect(tables.review_comparisons[0]).toMatchObject({ lat: 39.8, lng: -89.6 });
+    expect(Date.now() - Date.parse(tables.review_comparisons[0]!.located_at)).toBeLessThan(60_000);
+    // One with no date at all (kept before dates were) is treated the same.
+    const undated = world(null);
+    current.db = memoryDb(undated);
+    await searchPlaces(env, current.db as never, CO, "Rival");
+    expect(undated.review_comparisons[0]!.located_at).toBeTruthy();
+    expect(LOCATION_DAYS).toBe(30);
+  });
+
+  it("is forgotten by the hourly task once it's too old", async () => {
+    const db = memoryDb(world(days(31)));
+    current.db = db;
+    vi.stubGlobal("fetch", web().fetcher);
+    await refreshDueComparisons(env, db as never);
+    expect(db.calls[0]).toBe("expire_review_locations");
   });
 });
 

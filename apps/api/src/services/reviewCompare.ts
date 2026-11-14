@@ -1,4 +1,31 @@
 /**
+ * GOOGLE'S TERMS, AND WHAT IS KEPT HERE. Everything this keeps about a place is Google Maps
+ * Content, and Google's Places API policies say what may be kept and for how long
+ * (developers.google.com/maps/documentation/places/web-service/policies, "Pre-fetching, caching, or
+ * storage of content"; read 2026-11-14). Each stored field falls under one of three rules:
+ *
+ *   review_places.place_id                     A place ID: exempt from the caching restrictions,
+ *                                              may be kept indefinitely. Fine as it is.
+ *   review_comparisons.lat, lng, located_at    Coordinates: may be cached "for up to 30 consecutive
+ *                                              calendar days", then must be deleted. They are:
+ *                                              expire_review_locations forgets them after 30 days
+ *                                              (20261113001590_review_comparison_location.sql), and
+ *                                              they're found again when someone next searches.
+ *   review_places.name, address, maps_url,     Everything else: "Cache or store Google Maps Content
+ *     rating, ratings_total, previous_total,   only as expressly permitted", and the page names
+ *     checked_at, previous_checked_at          copying and saving "business names, addresses, or
+ *                                              user reviews" as not allowed. These ARE kept, for
+ *                                              good, so the card shows at once and can say how a
+ *                                              count changed since last week. Whether to go on
+ *                                              keeping them is the owner's decision and hasn't been
+ *                                              made. To stop: keep place_id and is_own only, read
+ *                                              each place from Google when the card is opened
+ *                                              (comparisonState), and drop record_review_place and
+ *                                              the week-on-week change, which needs last week's count.
+ *
+ * The card also shows Google's attribution and its notice about reviews, as the same page asks
+ * (apps/web/src/features/marketing/ReviewCompare.tsx).
+ *
  * How you compare (Marketing → Reviews; supabase/migrations/20261113001420_review_comparison.sql):
  * the business's Google rating and review count next to up to five competitors', through Google
  * Places (integrations/places.ts) on the server's Google key or the company's own.
@@ -108,9 +135,7 @@ export async function setComparison(env: Env, admin: Db, companyId: string, user
   if (!key) throw new HttpError(400, NO_KEY);
   const problem = await checkPlacesKey(key, company.name);
   if (problem) throw new HttpError(400, problem);
-  const address = companyAddress(company.address as Record<string, string> | null);
-  const spot = address ? await geocodeAddress(address, env.GOOGLE_MAPS_SERVER_KEY).catch(() => null) : null;
-  const { error } = await admin.from("review_comparisons").upsert({ company_id: companyId, enabled: true, enabled_by: userId, lat: spot?.lat ?? null, lng: spot?.lng ?? null, last_error: null });
+  const { error } = await admin.from("review_comparisons").upsert({ company_id: companyId, enabled: true, enabled_by: userId, ...(await locate(env, company)), last_error: null });
   if (error) throw dbError(error);
   // The business itself, when Google Business Profile knows which place it is.
   const { data: own } = await admin.from("review_places").select("id").eq("company_id", companyId).eq("is_own", true).maybeSingle();
@@ -124,11 +149,34 @@ export async function setComparison(env: Env, admin: Db, companyId: string, user
   }
 }
 
+/** How long where "nearby" is may be kept: Google's limit for coordinates (see the top of this file). */
+export const LOCATION_DAYS = 30;
+
+/** The company's address as a point on the map, with when it was found; nulls when it can't be found. */
+async function locate(env: Env, company: Company): Promise<{ lat: number | null; lng: number | null; located_at: string | null }> {
+  const address = companyAddress(company.address as Record<string, string> | null);
+  const spot = address ? await geocodeAddress(address, env.GOOGLE_MAPS_SERVER_KEY).catch(() => null) : null;
+  return spot ? { lat: spot.lat, lng: spot.lng, located_at: new Date().toISOString() } : { lat: null, lng: null, located_at: null };
+}
+
+/**
+ * Where "nearby" is, for a search: the point kept, while it's under 30 days old; otherwise it's
+ * found again from the company's address and kept for another 30. A point older than that is never
+ * used, whether or not the hourly task has forgotten it yet.
+ */
+export async function nearby(env: Env, admin: Db, companyId: string, row: { lat: number | null; lng: number | null; located_at?: string | null }, company: Company): Promise<{ lat: number; lng: number } | null> {
+  const fresh = row.located_at != null && Date.now() - Date.parse(row.located_at) < LOCATION_DAYS * 86_400_000;
+  if (fresh && row.lat != null && row.lng != null) return { lat: row.lat, lng: row.lng };
+  const spot = await locate(env, company);
+  await admin.from("review_comparisons").update(spot).eq("company_id", companyId);
+  return spot.lat != null && spot.lng != null ? { lat: spot.lat, lng: spot.lng } : null;
+}
+
 /** Places by name near the business. */
 export async function searchPlaces(env: Env, admin: Db, companyId: string, query: string) {
-  const { key, row } = await readyKey(env, admin, companyId);
+  const { key, row, company } = await readyKey(env, admin, companyId);
   if (!(await allow(env, `places-search:${companyId}`, SEARCHES_PER_HOUR, 3600))) throw new HttpError(429, "That's a lot of searches for one hour. Try again later.");
-  const near = row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null;
+  const near = await nearby(env, admin, companyId, row, company);
   return remember(companyId, await textSearch(key, query, near).catch(asHttp));
 }
 
@@ -136,7 +184,7 @@ export async function searchPlaces(env: Env, admin: Db, companyId: string, query
 export async function suggestPlaces(env: Env, admin: Db, companyId: string) {
   const { key, row, company } = await readyKey(env, admin, companyId);
   if (!(await allow(env, `places-search:${companyId}`, SEARCHES_PER_HOUR, 3600))) throw new HttpError(429, "That's a lot of searches for one hour. Try again later.");
-  const near = row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null;
+  const near = await nearby(env, admin, companyId, row, company);
   if (!near) throw new HttpError(400, "Add your company's address in Settings → Company, so Crewtavo knows what's nearby. You can still search by name.");
   const trade = company.trade_preset === "general" ? "contractor" : company.trade_preset.replace(/_/g, " ");
   const { data: have } = await admin.from("review_places").select("place_id").eq("company_id", companyId);
@@ -243,6 +291,9 @@ export async function refreshComparison(env: Env, admin: Db, companyId: string, 
  * Google. A company whose check fails is claimed again the next day.
  */
 export async function refreshDueComparisons(env: Env, admin: Db) {
+  // Where "nearby" is, forgotten 30 days after it was found (Google's limit for coordinates).
+  const { error: kept } = await admin.rpc("expire_review_locations");
+  if (kept) reportError(new Error(`Couldn't forget old review comparison locations: ${kept.message}`), { feature: "review_compare" });
   const { data: due, error } = await admin.rpc("claim_review_comparisons", { p_limit: 20 });
   if (error) throw new Error(error.message);
   let checked = 0;

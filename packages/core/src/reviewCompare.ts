@@ -4,6 +4,18 @@
  * the API and the card: when a check is due, how a count changed, and where the business stands.
  */
 
+/**
+ * What Google's Places API policies ask to be shown with its ratings, in its own words
+ * (developers.google.com/maps/documentation/places/web-service/policies, read 2026-11-14): the
+ * attribution "Google Maps" where its content is shown without a map, and, with reviews and
+ * average ratings, its notice about them and a link to its policy with this label. Not to be
+ * reworded, translated or re-capitalised.
+ */
+export const GOOGLE_ATTRIBUTION = "Google Maps";
+export const GOOGLE_REVIEW_NOTICE = "Reviews aren't verified by Google, but Google checks for and removes fake content when it's identified.";
+export const GOOGLE_REVIEW_POLICY_LABEL = "Learn more about Google Maps user-generated content policy";
+export const GOOGLE_REVIEW_POLICY_URL = "https://support.google.com/contributionpolicy/answer/7422880";
+
 export const MAX_COMPETITORS = 5;
 /** The background task checks each company this often. */
 export const AUTO_DAYS = 7;
