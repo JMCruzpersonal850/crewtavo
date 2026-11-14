@@ -295,6 +295,18 @@ describe("a quote as a document", () => {
     expect(invoiceDocument(invoice, { timeZone: "UTC" })).not.toHaveProperty("facts");
   });
 
+  it("prints an invoice's late fee line as the last paragraph of its notes, on the page the client gets", () => {
+    const invoice = { number: 5, issued_on: "2026-10-01", due_on: "2026-10-31", subject: "Roof", notes: "Thank you.", subtotal: 0, discount_amount: 0, tax_amount: 0, total: 0, retainage_amount: 0, balance_due: 0, lines: [], payments: [] };
+    const line = "A late fee of $25.00 is added once if this invoice is still unpaid 7 days after its due date.";
+    const doc = invoiceDocument(invoice, { timeZone: "UTC", lateFeeNote: line });
+    expect(doc.notes).toBe(`Thank you.\n\n${line}`);
+    expect(page({}, doc)).toContain(line);
+    expect(invoiceDocument({ ...invoice, notes: null }, { timeZone: "UTC", lateFeeNote: line }).notes).toBe(line);
+    // Nothing to say (late fees off, or none could go on this invoice): the notes are as written.
+    expect(invoiceDocument(invoice, { timeZone: "UTC", lateFeeNote: null }).notes).toBe("Thank you.");
+    expect(invoiceDocument({ ...invoice, notes: null }, { timeZone: "UTC" }).notes).toBeNull();
+  });
+
   it("says Tax exempt for a tax-exempt client charged no tax, with their certificate number", () => {
     const invoice = { number: 5, issued_on: "2026-10-01", due_on: null, subject: "Roof", notes: null, subtotal: 100, discount_amount: 0, tax_amount: 0, total: 100, retainage_amount: 0, balance_due: 100, lines: [], payments: [] };
     const exempt = invoiceDocument({ ...invoice, client: { display_name: "Grace Church", tax_exempt: true, tax_exempt_note: "E-4410" } }, { timeZone: "UTC" });

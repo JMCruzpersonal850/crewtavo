@@ -125,6 +125,24 @@ describe("the Client Hub's documents", () => {
     });
   });
 
+  it("prints the late fee the server says could still go on an invoice, after the invoice's own notes", () => {
+    const view = (over: Partial<InvoiceView> = {}, notes: string | null = null): InvoiceView => ({
+      kind: "invoice", home: null, company, can_pay: true, tips: false, ...over,
+      invoice: {
+        id: "i1", number: 78, status: "sent", subject: "Gutter repair", notes, issued_on: "2026-10-01", due_on: "2026-10-31",
+        subtotal: 400, discount_amount: 0, tax_amount: 0, total: 400, retainage_amount: 0, amount_paid: 0, balance_due: 400, promo: null,
+        client: { display_name: "Dana Whitfield" }, lines: [{ name: "Gutters", description: null, quantity: 1, unit: "ea", unit_price: 400 }], payments: [],
+      },
+    });
+    const line = "A late fee of $25.00 is added once if this invoice is still unpaid 7 days after its due date.";
+    expect(invoiceDocument(view({ late_fee: { type: "flat", amount: 25, grace_days: 7 } })).notes).toBe(line);
+    expect(invoiceDocument(view({ late_fee: { type: "flat", amount: 25, grace_days: 7 } }, "Thank you for your business.")).notes).toBe(`Thank you for your business.\n\n${line}`);
+    expect(invoiceDocument(view({ late_fee: { type: "percent", amount: 1.5, grace_days: 0 } })).notes).toBe("A late fee of 1.5% of the unpaid balance is added once if this invoice is still unpaid after its due date.");
+    // No fee could go on it, or a server from before this: nothing is said.
+    expect(invoiceDocument(view({ late_fee: null }, "Thank you.")).notes).toBe("Thank you.");
+    expect(invoiceDocument(view()).notes).toBeNull();
+  });
+
   it("uses the business's letterhead and template, with the defaults for anything missing", () => {
     expect(hubLetterhead(company)).toEqual({
       name: "Summit Roofing", phone: "555-0100", email: "office@summit.example", website: "summit.example",

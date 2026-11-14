@@ -647,8 +647,10 @@ function invoiceCredits(credits: ReadonlyArray<{ amount: Amount; note: string }>
 /**
  * An invoice as its template document: what was billed, what's been paid and refunded (on the
  * business's calendar, `timeZone`), and what's left, with its contract sections after its notes.
+ * `lateFeeNote` (core lateFeeNotice, where a late fee could still go on it) is printed as the last
+ * paragraph of its notes, so the client is told about the fee before one is added.
  */
-export function invoiceDocument(inv: DocumentInvoice, extras: { timeZone: string; contract?: DocumentContract | null }): DocumentData {
+export function invoiceDocument(inv: DocumentInvoice, extras: { timeZone: string; contract?: DocumentContract | null; lateFeeNote?: string | null }): DocumentData {
   // Printed as deductions from the total ("−$500.00"); a refund's negative amount adds back. A
   // payment that was only a tip doesn't change what's owed, so it isn't among them.
   const payments = inv.payments
@@ -674,7 +676,7 @@ export function invoiceDocument(inv: DocumentInvoice, extras: { timeZone: string
     total: Number(inv.total),
     payments,
     balanceDue: Number(inv.balance_due),
-    notes: inv.notes?.trim() || null,
+    notes: [inv.notes?.trim(), extras.lateFeeNote?.trim()].filter(Boolean).join("\n\n") || null,
     ...(extras.contract || inv.checklists?.length ? { contract: { sections: [...(extras.contract?.sections ?? []), ...checklistSections(inv.checklists)] } } : {}),
   };
 }

@@ -313,6 +313,19 @@ describe("contractStarters", () => {
     expect(titles("lawn_exterior")).toEqual(["Access and pets", "Weather"]);
   });
 
+  it("says the late fee in the Payment section for a business that charges one, and nothing about one otherwise", () => {
+    const line = "An invoice still unpaid 7 days after its due date gets a late fee of $25.00, added once.";
+    const payment = (options?: { lateFeeLine?: string | null }) => contractStarters("general", options).find((s) => s.title === "Payment")!.body;
+    expect(payment({ lateFeeLine: line })).toContain(`<li>The rest is due when the work is done.</li><li>${line}</li>`);
+    expect(payment()).not.toMatch(/late fee/i);
+    expect(payment({ lateFeeLine: null })).toBe(payment());
+    // Whatever the line says goes in as words: no markup, and nothing that reads as a fill-in.
+    expect(payment({ lateFeeLine: "A fee of <b>{Total}</b> & more" })).toContain("<li>A fee of &lt;b&gt;Total&lt;/b&gt; &amp; more</li>");
+    // Only the Payment section changes.
+    const others = (options?: { lateFeeLine?: string | null }) => contractStarters("roofing_exteriors", options).filter((s) => s.title !== "Payment");
+    expect(others({ lateFeeLine: line })).toEqual(others());
+  });
+
   it("asks for initials on the right to cancel, above the signatures", () => {
     for (const trade of ["general", "roofing_exteriors", "paving", "lawn_exterior"]) {
       const starters = contractStarters(trade);

@@ -4,6 +4,7 @@
  * or form, and responses include only client-facing fields (never costs or internal notes).
  */
 import { autopaySettings, methodLabel, tipsAllowed } from "@crewtavo/core/autopay";
+import { lateFeeCouldApply, lateFeeSettings } from "@crewtavo/core/billing";
 import { contractValues, fillIn } from "@crewtavo/core/contracts";
 import { shownCustomFields } from "@crewtavo/core/customFields";
 import { pickTemplate, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
@@ -601,7 +602,7 @@ publicRoutes.get("/hub/:token", async (c) => {
     await admin
       .from("invoices")
       .select(
-        "id, number, status, subject, notes, issued_on, due_on, subtotal, discount_amount, credit_amount, tax_amount, total, retainage_amount, amount_paid, balance_due, client_id, job_id, billing_month, promo:promo_codes(code, kind, value, description), credits:referral_credits(amount, note, created_at), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), job:jobs(property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, roof_package_id, option:quote_options!quotes_option_fkey(name, warranty))), lines:invoice_line_items(name, description, quantity, unit, unit_price, sort, discount_quote_id), payments(amount, tip_amount, received_at), custom_fields",
+        "id, number, kind, status, subject, notes, issued_on, due_on, late_fee_at, no_late_fee, subtotal, discount_amount, credit_amount, tax_amount, total, retainage_amount, amount_paid, balance_due, client_id, job_id, billing_month, promo:promo_codes(code, kind, value, description), credits:referral_credits(amount, note, created_at), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), job:jobs(property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, roof_package_id, option:quote_options!quotes_option_fkey(name, warranty))), lines:invoice_line_items(name, description, quantity, unit, unit_price, sort, discount_quote_id), payments(amount, tip_amount, received_at), custom_fields",
       )
       .eq("company_id", l.c)
       .eq("id", l.id)
@@ -613,13 +614,19 @@ publicRoutes.get("/hub/:token", async (c) => {
   // The Hub lists what was paid and refunded against the total. A payment that was only a tip (or
   // the refund of one) doesn't change what's owed, so it isn't among them.
   invoice.payments = invoice.payments.filter((p) => Number(p.amount) !== 0);
-  const [online, template, drawings, fields, checklists] = await Promise.all([
+  const [online, template, drawings, fields, checklists, feeSetting] = await Promise.all([
     hubPayment(c.env, admin, l.c, invoice.id),
     hubTemplate(admin, l.c, null, trade),
     hubDrawings(admin, l.c, "invoice_id", invoice.id),
     hubFields(admin, l.c, "invoice", invoice.custom_fields),
     invoiceChecklists(admin, l.c, invoice),
+    admin.from("companies").select("settings->late_fee").eq("id", l.c).maybeSingle(),
   ]);
+  // The late fee that could still go on this invoice (core lateFeeCouldApply, as add_late_fees
+  // decides it), so the client is told about it before one is added. Read fresh: a business that
+  // turns late fees off stops saying so at once.
+  const fee = lateFeeSettings({ late_fee: (feeSetting.data as { late_fee?: unknown } | null)?.late_fee });
+  const lateFee = lateFeeCouldApply(invoice, fee, online.imported) ? fee : null;
   // The one rule for tips (core tipsAllowed): the business has them on, and the invoice wasn't made
   // in Stripe (those are paid exactly as Stripe billed them).
   const tips = tipsAllowed((company as { hub_tips?: unknown }).hub_tips, online.imported);
@@ -639,7 +646,7 @@ publicRoutes.get("/hub/:token", async (c) => {
   // billing address and the job's address only go into the words, never out on their own). Its
   // {Option} and {Warranty} are those of the estimate the job came from (contracts.ts invoiceFill).
   // Its custom fields go only as hubFields shows them.
-  const { client, job, lines: lineRows, custom_fields: _values, job_id: _job, billing_month: _month, ...billed } = invoice;
+  const { client, job, lines: lineRows, custom_fields: _values, job_id: _job, billing_month: _month, kind: _kind, late_fee_at: _feeAt, no_late_fee: _noFee, ...billed } = invoice;
   const fill = await invoiceFill(admin, l.c, job?.quote);
   const facts = invoiceInput(invoice, client, job?.property ?? null, company, template, fill);
   const contract = await invoiceContract(admin, l.c, template, facts);
@@ -654,6 +661,7 @@ publicRoutes.get("/hub/:token", async (c) => {
     can_pay: !l.pv && online.enabled && !online.processing && Number(invoice.balance_due) > 0 && invoice.status !== "written_off" && auto.autopay?.status !== "charging",
     processing: online.processing,
     from_stripe: online.imported,
+    late_fee: lateFee,
     // "Paid automatically with Visa ending 4242", "Paid. Pay automatically next time?", and the tip after an automatic charge.
     autopay: auto.autopay,
     save_card: !l.pv && auto.save_card,

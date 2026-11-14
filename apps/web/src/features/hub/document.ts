@@ -6,6 +6,7 @@
  * agreement, sign), the contract filled in for the option picked, and the words the price range
  * page shows. No React here, so it's tested on its own.
  */
+import { lateFeeNotice, type LateFee } from "@crewtavo/core/billing";
 import { depositFor, type ContractInput, type LibrarySection } from "@crewtavo/core/contracts";
 import { documentColor, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import type { ClientChecklist } from "@crewtavo/core/forms";
@@ -290,6 +291,8 @@ export interface InvoiceView {
   promo_line?: boolean;
   /** Whether a tip can be added (the business has tips on, and the invoice wasn't made in Stripe). Off, no tip choice is shown anywhere. */
   tips: boolean;
+  /** The late fee that could still go on this invoice, so it's said before one is added. Null, or left out by an older server: none is said. */
+  late_fee?: LateFee | null;
   /** Servers that don't send these have no autopay: none of it shows. */
   autopay?: HubInvoiceAutopay | null;
   /** Offer "Paid. Pay automatically next time?" once it's paid. */
@@ -562,7 +565,7 @@ export function hubInvoiceContract(view: InvoiceView): QuoteContract | null {
 export function invoiceDocument(view: InvoiceView): DocumentData {
   const tz = view.company.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const invoice = view.invoice.status === "written_off" ? { ...view.invoice, balance_due: 0 } : view.invoice;
-  return buildInvoiceDocument(invoice, { timeZone: tz, contract: hubInvoiceContract(view) });
+  return buildInvoiceDocument(invoice, { timeZone: tz, contract: hubInvoiceContract(view), lateFeeNote: view.late_fee ? lateFeeNotice(view.late_fee, formatMoneyCents) : null });
 }
 
 // ---------------------------------------------------------------------------------------------

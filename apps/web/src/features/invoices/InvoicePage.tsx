@@ -1,5 +1,5 @@
 import { autopayDueText, autopaySettings, methodLabel } from "@crewtavo/core/autopay";
-import { lateFeeAmount, lateFeeOn, lateFeeSettings } from "@crewtavo/core/billing";
+import { lateFeeAmount, lateFeeCouldApply, lateFeeNotice, lateFeeOn, lateFeeSettings } from "@crewtavo/core/billing";
 import { shownCustomFields } from "@crewtavo/core/customFields";
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
@@ -557,7 +557,8 @@ function InvoicePageScreen() {
               })}
             </div>
           </section>
-          <InvoicePaper invoice={inv} />
+          {/* What the client's copy says about a late fee, where one could still go on this invoice. */}
+          <InvoicePaper invoice={inv} lateFeeNote={lateFeeCouldApply(inv, lateFee, fromStripe) ? lateFeeNotice(lateFee, formatMoneyCents) : null} />
         </div>
         <aside className="narrow stack">
           <div className="card card-pad totals">
@@ -675,7 +676,7 @@ function needsClientReason(charge: { source: string; failures: number; last_erro
  * template (its default, as the link uses), with the template's terms and its invoice sections filled
  * in for this invoice. It follows the edits above as they're saved.
  */
-function InvoicePaper({ invoice }: { invoice: DocumentInvoice & { custom_fields: unknown } & { client: { display_name: string; billing_address: unknown } | null; job: { property: unknown; quote?: InvoiceQuote | null } | null } }) {
+function InvoicePaper({ invoice, lateFeeNote }: { invoice: DocumentInvoice & { custom_fields: unknown } & { client: { display_name: string; billing_address: unknown } | null; job: { property: unknown; quote?: InvoiceQuote | null } | null }; lateFeeNote: string | null }) {
   const session = useSession();
   const id = useId();
   const { template, isPending } = useDocumentTemplate(null);
@@ -704,7 +705,7 @@ function InvoicePaper({ invoice }: { invoice: DocumentInvoice & { custom_fields:
           <DocumentSheet
             template={contractTemplate(template, contract)}
             company={letterhead.data ?? documentCompany(session.company)}
-            data={invoiceDocument({ ...invoice, pdf_fields: shownCustomFields(fields, invoice.custom_fields, "pdf") }, { timeZone: session.company.timezone, contract })}
+            data={invoiceDocument({ ...invoice, pdf_fields: shownCustomFields(fields, invoice.custom_fields, "pdf") }, { timeZone: session.company.timezone, contract, lateFeeNote })}
           />
         </>
       ) : (

@@ -38,6 +38,41 @@ export function lateFeeAmount(balance: Amount, fee: LateFee): number {
 }
 
 /**
+ * Whether a late fee could still go on an invoice: the business charges them, and this invoice
+ * isn't one that never gets one (a deposit, made in Stripe, late fees turned off for it, it has had
+ * its fee already, it has no due date, or it's paid, void or written off). A draft counts: it says
+ * what it will say once it's sent.
+ */
+export function lateFeeCouldApply(
+  invoice: { kind: string; status: string; due_on: string | null; late_fee_at?: string | null; no_late_fee?: boolean | null },
+  fee: LateFee | null,
+  fromStripe = false,
+): fee is LateFee {
+  return Boolean(fee) && !fromStripe && invoice.kind !== "deposit" && !invoice.late_fee_at && !invoice.no_late_fee && Boolean(invoice.due_on) && !["paid", "void", "written_off"].includes(invoice.status);
+}
+
+/**
+ * The line an invoice carries, on paper and in the Client Hub, so the client is told about the fee
+ * before one is added: how much, and when. `money` writes an amount in the business's currency.
+ */
+export function lateFeeNotice(fee: LateFee, money: (amount: number) => string): string {
+  const what = fee.type === "flat" ? money(fee.amount) : `${fee.amount}% of the unpaid balance`;
+  const when = fee.grace_days > 0 ? `${fee.grace_days} ${fee.grace_days === 1 ? "day" : "days"} after its due date` : "after its due date";
+  return `A late fee of ${what} is added once if this invoice is still unpaid ${when}.`;
+}
+
+/** The same, as a line of a contract's Payment section (the example section says it when late fees are on). */
+export function lateFeeTerm(fee: LateFee, money: (amount: number) => string): string {
+  const what = fee.type === "flat" ? money(fee.amount) : `${fee.amount}% of the unpaid balance`;
+  const when = fee.grace_days > 0 ? `${fee.grace_days} ${fee.grace_days === 1 ? "day" : "days"} after its due date` : "after its due date";
+  return `An invoice still unpaid ${when} gets a late fee of ${what}, added once.`;
+}
+
+/** Said under the setting: the fee is the business's to check against its state's rules. */
+export const LATE_FEE_LAW_NOTE =
+  "States limit late fees: check your state's rules before you set one. With late fees on, each invoice says the fee and when it applies, on paper and in the Client Hub, so clients are told before one is added. If your contract terms have a Payment section, say it there too.";
+
+/**
  * The day an invoice's late fee goes on (the first day past its grace days), or null when it
  * never will: it has its fee already (an invoice gets one, once), late fees are off for it
  * (no_late_fee), nothing is owed, it isn't due, or it's a draft, paid, void or written off, or a

@@ -309,6 +309,8 @@ export type ContractStarter = Omit<ContractSection, "id">;
 export const STARTER_NOTE = "Example wording to start from — have your attorney review it before you use it.";
 
 const terms = (title: string, body: string): ContractStarter => ({ title, body, place: "terms", initials: false });
+/** Plain words as they go into a section's HTML, with nothing read as a fill-in. */
+const escapeText = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/[{}]/g, "");
 
 const TRADE_STARTERS: Record<string, ContractStarter[]> = {
   roofing_exteriors: [
@@ -432,8 +434,11 @@ const TRADE_STARTERS: Record<string, ContractStarter[]> = {
  * Example sections for a new library, in plain words: the ones every business needs (payment,
  * changes, warranty, the right to cancel and so on) with a few for the trade. They're a start to
  * edit, not finished legal terms, which is what STARTER_NOTE tells the business.
+ *
+ * `lateFeeLine`: for a business that charges late fees, the sentence saying so (core billing
+ * lateFeeTerm), which goes in the Payment section so the fee is agreed to before one is charged.
  */
-export function contractStarters(trade: string | null | undefined): ContractStarter[] {
+export function contractStarters(trade: string | null | undefined, { lateFeeLine }: { lateFeeLine?: string | null } = {}): ContractStarter[] {
   const cleanup =
     "<p>We keep the work area tidy as we go and haul away our debris when the job is done.</p>" +
     (trade === "roofing_exteriors" ? "<p>We run a magnet over the yard and driveway for stray nails. Keep an eye out for any we missed for a few days.</p>" : "");
@@ -443,6 +448,7 @@ export function contractStarters(trade: string | null | undefined): ContractStar
       "<p>The price for this work is {Total}, as shown on the estimate.</p>" +
         "<ul><li>Any deposit on the estimate is due when you sign, to hold your place on our schedule.</li>" +
         "<li>The rest is due when the work is done.</li>" +
+        (lateFeeLine ? `<li>${escapeText(lateFeeLine)}</li>` : "") +
         "<li>Please make checks out to {Business name}.</li></ul>",
     ),
     terms(

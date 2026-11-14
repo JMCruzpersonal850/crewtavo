@@ -21,6 +21,7 @@ import {
   type ContractPlace,
   type LibrarySection,
 } from "@crewtavo/core/contracts";
+import { lateFeeSettings, lateFeeTerm } from "@crewtavo/core/billing";
 import { templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useId, useRef, useState, type FormEvent } from "react";
@@ -35,6 +36,7 @@ import { CardSkeleton, Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
+import { formatMoneyCents } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
@@ -151,13 +153,24 @@ export function packagesInOrder(packages: ReadonlyArray<{ id: string; section_id
   });
 }
 
-/** The example sections for the business's trade (core contractStarters), as rows to add after `from`. */
-export const starterRows = (trade: string | null | undefined, companyId: string, from: number) =>
-  contractStarters(trade).map((s, i) => ({ company_id: companyId, title: s.title, body: s.body, place: s.place, initials: s.initials, sort: from + i }));
+/**
+ * The example sections for the business's trade (core contractStarters), as rows to add after
+ * `from`. `lateFeeLine`: what the Payment section says about the business's late fee, when it
+ * charges one (lateFeeLineOf).
+ */
+export const starterRows = (trade: string | null | undefined, companyId: string, from: number, lateFeeLine?: string | null) =>
+  contractStarters(trade, { lateFeeLine }).map((s, i) => ({ company_id: companyId, title: s.title, body: s.body, place: s.place, initials: s.initials, sort: from + i }));
+
+/** The business's late fee as its Payment section says it, or null when it charges none (Settings → Company). */
+export const lateFeeLineOf = (settings: Record<string, unknown> | null | undefined): string | null => {
+  const fee = lateFeeSettings(settings);
+  return fee ? lateFeeTerm(fee, formatMoneyCents) : null;
+};
 
 /** The sections whose words are still an example's, word for word: the ones STARTER_NOTE is about. */
-export function exampleIds(rows: ReadonlyArray<{ id: string; body: string }>, trade: string | null | undefined): Set<string> {
-  const examples = new Set(contractStarters(trade).map((s) => s.body));
+export function exampleIds(rows: ReadonlyArray<{ id: string; body: string }>, trade: string | null | undefined, lateFeeLine?: string | null): Set<string> {
+  // With the late fee said or not: the business may have turned late fees on or off since adding them.
+  const examples = new Set([...contractStarters(trade), ...contractStarters(trade, { lateFeeLine })].map((s) => s.body));
   return new Set(rows.filter((r) => examples.has(r.body)).map((r) => r.id));
 }
 
@@ -262,7 +275,7 @@ export function ContractSettings() {
   }, [sections.data]);
 
   const addStarters = useMutation({
-    mutationFn: async () => unwrap(await supabase().from("contract_sections").insert(starterRows(company.trade_preset, company.id, nextSort(sections.data ?? [])))),
+    mutationFn: async () => unwrap(await supabase().from("contract_sections").insert(starterRows(company.trade_preset, company.id, nextSort(sections.data ?? []), lateFeeLineOf(company.settings)))),
     onSuccess: () => {
       toast.success("Example sections added", { description: "Change them to fit your business." });
       return refresh();
@@ -320,7 +333,7 @@ export function ContractSettings() {
   }
   if (sections.error) return <div className="card"><ErrorState error={sections.error} onRetry={() => sections.refetch()} /></div>;
   const rows = sections.data;
-  const examples = exampleIds(rows, company.trade_preset);
+  const examples = exampleIds(rows, company.trade_preset, lateFeeLineOf(company.settings));
 
   const moveRow = (id: string, by: -1 | 1) => {
     const changes = moveSection(rows, id, by);

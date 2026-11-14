@@ -1084,6 +1084,35 @@ describe("an invoice in the Client Hub", () => {
     expect(body.promo_line).toBe(false);
   });
 
+  it("says the late fee that could still go on it, and nothing once it can't or with late fees off", async () => {
+    withOptions();
+    const invoice = (over: Row = {}): Row => ({
+      id: INVOICE, company_id: ROOFER, number: 80, kind: "standard", status: "sent", subject: "Gutter repair", notes: "Thank you.", issued_on: "2026-10-01", due_on: "2026-10-31",
+      late_fee_at: null, no_late_fee: false, subtotal: 400, discount_amount: 0, tax_amount: 0, total: 400, retainage_amount: 0, amount_paid: 0, balance_due: 400, client_id: CLIENT, promo: null,
+      client: { display_name: "Dana Whitfield", billing_address: null }, job: { property: null }, lines: [], payments: [], credit_amount: 0, credits: [], ...over,
+    });
+    const view = async (over: Row = {}) => {
+      state.tables.invoices = [invoice(over)];
+      return (await hub({ t: "invoice", id: INVOICE })).json();
+    };
+    // Late fees off (nothing saved): nothing is said.
+    expect((await view()).late_fee).toBeNull();
+    const company = state.tables.companies![0]!;
+    company.settings = { ...(company.settings as Row), late_fee: { type: "flat", amount: 25, grace_days: 7 } };
+    const body = await view();
+    expect(body.late_fee).toEqual({ type: "flat", amount: 25, grace_days: 7 });
+    // What decides it stays on the server: the page gets the fee to say, not the invoice's switches.
+    for (const hidden of ["late_fee_at", "no_late_fee", "kind"]) expect(body.invoice).not.toHaveProperty(hidden);
+    // An invoice that never gets one says nothing: a deposit, late fees turned off for it, one that has had its fee, a paid one.
+    expect((await view({ kind: "deposit" })).late_fee).toBeNull();
+    expect((await view({ no_late_fee: true })).late_fee).toBeNull();
+    expect((await view({ late_fee_at: "2026-11-08T12:00:00Z" })).late_fee).toBeNull();
+    expect((await view({ status: "paid", balance_due: 0 })).late_fee).toBeNull();
+    // A percent, with no grace days saved.
+    company.settings = { ...(company.settings as Row), late_fee: { type: "percent", amount: 1.5 } };
+    expect((await view()).late_fee).toEqual({ type: "percent", amount: 1.5, grace_days: 0 });
+  });
+
   it("says when its job's promo code is on a line, so no other code goes on it, without sending the line's key", async () => {
     withOptions();
     state.tables.invoices = [{
