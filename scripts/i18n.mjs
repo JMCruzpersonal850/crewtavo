@@ -453,6 +453,28 @@ function looseStrings(sf, found, add) {
   visit(sf);
 }
 
+const MIGRATIONS = "supabase/migrations";
+const migrationText = new Map();
+
+/**
+ * A database function's text as it's defined last: in the newest migration that creates or
+ * replaces it, with doubled quotes read as one. For the test that holds the notification tables
+ * (packages/core/src/i18n/es/notices.ts) against what the database writes today.
+ */
+export function sqlFunction(name) {
+  const defined = new RegExp(`create (?:or replace )?function ${name.replace(".", "\\.")}\\(`, "g");
+  const files = fs.readdirSync(path.join(ROOT, MIGRATIONS)).filter((f) => f.endsWith(".sql")).sort().reverse();
+  for (const file of files) {
+    if (!migrationText.has(file)) migrationText.set(file, fs.readFileSync(path.join(ROOT, MIGRATIONS, file), "utf8"));
+    const text = migrationText.get(file);
+    const start = [...text.matchAll(defined)].at(-1)?.index;
+    if (start == null) continue;
+    const open = text.indexOf("$$", start);
+    return text.slice(start, text.indexOf("$$", open + 2)).replace(/''/g, "'");
+  }
+  throw new Error(`No migration defines ${name}`);
+}
+
 /** Applies rawStrings' fixes to a file and adds the import; returns what's left for a person. */
 export function wrapFile(file, lines = null) {
   // file.tsx:120-240 wraps only what's on those lines (one component of a shared file).

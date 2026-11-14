@@ -3,9 +3,8 @@
  * es-US formatting, notifications and errors read by their shape, and the catalog check: every
  * t()/msg()/<T> text in the code has its Spanish line, and every Spanish line is still used.
  */
-import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { catalogProblems } from "../../../scripts/i18n.mjs";
+import { catalogProblems, sqlFunction } from "../../../scripts/i18n.mjs";
 import { addCatalog, english, getLocale, intlLocaleOf, LOCALES, msg, setLocale, t, translator } from "../src/i18n";
 import { installSpanish } from "../src/i18n/es";
 import { NOTICES } from "../src/i18n/es/notices";
@@ -169,25 +168,8 @@ describe("text written in English, read by its shape", () => {
 // The database's own words: what its functions write today, read out of supabase/migrations
 // ---------------------------------------------------------------------------------------------
 
-const MIGRATIONS = new URL("../../../supabase/migrations/", import.meta.url);
-const MIGRATION_FILES = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
-const migration = (() => {
-  const read = new Map<string, string>();
-  return (file: string) => read.get(file) ?? (read.set(file, readFileSync(new URL(file, MIGRATIONS), "utf8")), read.get(file)!);
-})();
-
 /** A function's text as it's defined last (the newest migration that creates or replaces it), quotes as they're read. */
-function sqlOf(fn: string): string {
-  const defined = new RegExp(`create (?:or replace )?function ${fn.replace(".", "\\.")}\\(`, "g");
-  for (const file of [...MIGRATION_FILES].reverse()) {
-    const text = migration(file);
-    const start = [...text.matchAll(defined)].at(-1)?.index;
-    if (start == null) continue;
-    const open = text.indexOf("$$", start);
-    return text.slice(start, text.indexOf("$$", open + 2)).replace(/''/g, "'");
-  }
-  throw new Error(`No migration defines ${fn}`);
-}
+const sqlOf = sqlFunction;
 
 /** Sentences the database puts together from parts: the parts to find in its text. */
 const ASSEMBLED: Record<string, string[]> = {
