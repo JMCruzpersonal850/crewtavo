@@ -8,6 +8,7 @@ import type { Database } from "@crewtavo/core/database";
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, friendlyDbError, isRestarting, OFFLINE, SESSION_EXPIRED } from "./errors";
 import { startMonitoring, type MonitoringConfig } from "./monitoring";
+import { t } from "@/lib/i18n";
 
 export { ApiError } from "./errors";
 
@@ -154,7 +155,7 @@ export function refreshSignIn(): Promise<"ok" | "offline" | "expired"> {
 
 /** The Supabase client. Available once loadConfig() has resolved (SessionProvider waits for it). */
 export function supabase(): SupabaseClient<Database> {
-  if (!client) throw new Error("Still loading. Try again in a moment.");
+  if (!client) throw new Error(t("Still loading. Try again in a moment."));
   return client;
 }
 

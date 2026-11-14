@@ -8,8 +8,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, unwrap } from "@/lib/api";
 import { pendingVisitExtras, type JobLineAdd } from "./fieldActions";
+import { intlLocale, t } from "@/lib/i18n";
 
-const qty = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
+const qty = (n: number) => new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 2 }).format(n);
 
 export interface ExtraScopeLine {
   id: string;
@@ -46,7 +47,7 @@ export function useVisitExtraScope(visitId: string, enabled = true) {
 }
 
 /** "Extra work on this visit", or nothing when there's none. */
-export function VisitExtraScope({ visitId, title = "Extra work on this visit" }: { visitId: string; title?: string }) {
+export function VisitExtraScope({ visitId, title = t("Extra work on this visit") }: { visitId: string; title?: string }) {
   const extras = useVisitExtraScope(visitId);
   if (!extras.data?.length) return null;
   return (
@@ -57,7 +58,7 @@ export function VisitExtraScope({ visitId, title = "Extra work on this visit" }:
           <li key={l.id}>
             <strong>{l.name}</strong>
             {Number(l.quantity) !== 1 || l.unit !== "ea" ? <span className="tabular"> · {qty(Number(l.quantity))} {l.unit}</span> : null}
-            {l.waiting && <span className="muted small"> · sends when you have signal</span>}
+            {l.waiting && <span className="muted small"> · {t("sends when you have signal")}</span>}
             {l.description && <span className="muted pre-wrap" style={{ display: "block" }}>{l.description}</span>}
           </li>
         ))}

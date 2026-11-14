@@ -58,6 +58,7 @@ import { AddWork, VisitInvoice } from "./FieldBilling";
 import { addsToVisit, addsWork, fieldInvoiceKind, takesMoney, takesWork } from "./fieldMoney";
 import { VisitExtraScope } from "./FieldExtras";
 import { YourPrice } from "./YourPrice";
+import { t, T } from "@/lib/i18n";
 
 interface ChecklistItem { key: string; label: string; type: "check" | "number" | "text" | "choice" | "photo" | "signature"; required: boolean; options?: string[]; sop_page_id?: string }
 
@@ -103,7 +104,7 @@ export function FieldVisitPage() {
     },
   });
   const v = visit.data;
-  useDocumentTitle(v?.title ?? "Visit");
+  useDocumentTitle(v?.title ?? t("Visit"));
   // The job's and property's own fields, to read (a sub reads none: they're the business's).
   const jobFields = useCustomFields("job");
   const propertyFields = useCustomFields("property");
@@ -147,7 +148,7 @@ export function FieldVisitPage() {
     scope: FIELD_SCOPE,
     meta: { success: statusSaved },
     onMutate: (change: VisitStatusChange) => {
-      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
+      if (!onlineManager.isOnline()) toast.info(t("Saved on this phone"), { description: t("It sends when you have signal.") });
       showVisitStatus(queryClient, change);
     },
     onSettled: refresh,
@@ -187,7 +188,7 @@ export function FieldVisitPage() {
   if (visit.error || !v) {
     return (
       <div className="field-app">
-        <PageError error={visit.error} onRetry={() => visit.refetch()} back={<BackLink to="/field">My day</BackLink>} />
+        <PageError error={visit.error} onRetry={() => visit.refetch()} back={<BackLink to="/field">{t("My day")}</BackLink>} />
       </div>
     );
   }
@@ -207,7 +208,7 @@ export function FieldVisitPage() {
         return checklist.current?.showMissing();
       }
       const names = progress.missing.map((m) => m.label).join(", ");
-      const anyway = await confirm({ title: "The checklist isn't done", body: `Still needed: ${names}. The office will see the checklist is unfinished.`, confirmLabel: "Complete anyway", cancelLabel: "Keep working" });
+      const anyway = await confirm({ title: t("The checklist isn't done"), body: t("Still needed: {names}. The office will see the checklist is unfinished.", { names }), confirmLabel: t("Complete anyway"), cancelLabel: t("Keep working") });
       if (!anyway) return checklist.current?.showMissing();
     }
     checklist.current?.finish();
@@ -216,20 +217,20 @@ export function FieldVisitPage() {
   const commit =
     v.status === "scheduled" ? (
       <>
-        <Button icon="navigation" className="big-action" loading={going === "en_route"} onClick={() => setStatus("en_route")}>On my way</Button>
-        <Button variant="primary" icon="play" className="big-action" loading={going === "in_progress"} onClick={() => setStatus("in_progress")}>Start visit</Button>
+        <Button icon="navigation" className="big-action" loading={going === "en_route"} onClick={() => setStatus("en_route")}>{t("On my way")}</Button>
+        <Button variant="primary" icon="play" className="big-action" loading={going === "in_progress"} onClick={() => setStatus("in_progress")}>{t("Start visit")}</Button>
       </>
     ) : v.status === "en_route" ? (
-      <Button variant="primary" icon="play" className="big-action" loading={going !== null} onClick={() => setStatus("in_progress")}>Start visit</Button>
+      <Button variant="primary" icon="play" className="big-action" loading={going !== null} onClick={() => setStatus("in_progress")}>{t("Start visit")}</Button>
     ) : v.status === "in_progress" ? (
       // Green once nothing required is missing; until then it says how much is left.
       <Button variant={left ? "secondary" : "primary"} icon={left ? undefined : "check"} className="big-action" loading={going !== null} onClick={() => void complete()}>
         {progress && left > 0 && going === null && <ProgressRing value={(progress.required - left) / progress.required} />}
-        Complete visit
+        {t("Complete visit")}
         {left > 0 && (
           <>
             <span className="sr-only">, </span>
-            <span className="field-commit-left"><AnimatedNumber value={left} /> required left</span>
+            <span className="field-commit-left"><T text="{count} required left" count={<AnimatedNumber value={left} />} /></span>
           </>
         )}
       </Button>
@@ -237,57 +238,57 @@ export function FieldVisitPage() {
 
   return (
     <div className="field-app">
-      <BackLink to="/field">My day</BackLink>
+      <BackLink to="/field">{t("My day")}</BackLink>
       <div className="stack-sm">
         <h1 className="page-title">{v.title}</h1>
         <div className="row wrap">
           <EntityStatus kind="visit" status={v.status} />
-          <span className="muted">{v.starts_at ? formatDateTime(v.starts_at) : v.scheduled_on ? "Anytime today" : "Not scheduled"}</span>
-          {v.series_total && v.series_total > 1 && <span className="chip chip-blue">Day {v.series_day} of {v.series_total}</span>}
-          {clocks && minutes > 0 && <span className="chip"><Icon name="clock" size={12} />You: {formatDuration(minutes)}</span>}
-          {!sub && autopay.data && <span className="chip" title="The client is charged automatically after the visit"><Icon name="card" size={12} />Autopay</span>}
+          <span className="muted">{v.starts_at ? formatDateTime(v.starts_at) : v.scheduled_on ? t("Anytime today") : t("Not scheduled")}</span>
+          {v.series_total && v.series_total > 1 && <span className="chip chip-blue">{t("Day {day} of {days}", { day: v.series_day, days: v.series_total })}</span>}
+          {clocks && minutes > 0 && <span className="chip"><Icon name="clock" size={12} />{t("You: {time}", { time: formatDuration(minutes) })}</span>}
+          {!sub && autopay.data && <span className="chip" title={t("The client is charged automatically after the visit")}><Icon name="card" size={12} />{t("Autopay")}</span>}
         </div>
       </div>
       <OfflineNote />
       {/* The clock at the property: Complete visit goes through the checklist check, as the button below does. */}
       <GeofenceCard visitId={v.id} onStatus={(_visit, status) => (status === "completed" ? void complete() : setStatus(status))} />
-      {v.status === "completed" && v.completed_at && <div className="callout callout-good"><Icon name="check" size={20} /><div className="grow">Completed {timeAgo(v.completed_at)}.</div></div>}
+      {v.status === "completed" && v.completed_at && <div className="callout callout-good"><Icon name="check" size={20} /><div className="grow">{t("Completed {when}.", { when: timeAgo(v.completed_at) })}</div></div>}
       {/* Autopay bills the visit itself; with no signal, whether it does may not be on the phone. */}
       {v.status === "completed" && v.job && invoiceKind && takesMoney(session) && (autopay.isSuccess ? !autopay.data : !online) && <VisitInvoice visitId={v.id} jobId={v.job.id} kind={invoiceKind} />}
 
       <div className="field-actions">
         {commit && <div className="field-commit">{commit}</div>}
         {contactLinks(client).map((link) => (
-          <a key={link.label} className="btn big-action" href={link.href}><Icon name={link.label === "Call" ? "phone" : "messages"} size={20} />{link.label}</a>
+          <a key={link.label} className="btn big-action" href={link.href}><Icon name={link.label === "Call" ? "phone" : "messages"} size={20} />{link.label === "Call" ? t("Call") : t("Text", { context: "message" })}</a>
         ))}
-        {place && <MapsLink className="btn big-action" place={place}><Icon name="navigation" size={20} />Directions</MapsLink>}
+        {place && <MapsLink className="btn big-action" place={place}><Icon name="navigation" size={20} />{t("Directions")}</MapsLink>}
       </div>
 
       <section className="card card-pad stack-sm">
-        <strong style={{ fontSize: 16 }}>{client.name ?? "Site"}</strong>
+        <strong style={{ fontSize: 16 }}>{client.name ?? t("Site")}</strong>
         {place && <MapsLink className="address-link" place={place}>{v.property ? addressLine(v.property) : v.address}</MapsLink>}
         {access.isPending && v.property ? <Skeleton width="40%" /> : (
           <>
-            {codes?.gate_code && <span style={{ fontSize: 16 }}><Icon name="lock" size={16} /> Gate code <strong style={{ fontSize: 20 }}>{codes.gate_code}</strong></span>}
-            {codes?.lockbox_code && <span><Icon name="lock" size={14} /> Lockbox <strong>{codes.lockbox_code}</strong></span>}
-            {codes?.alarm_code && <span><Icon name="lock" size={14} /> Alarm <strong>{codes.alarm_code}</strong></span>}
+            {codes?.gate_code && <span style={{ fontSize: 16 }}><Icon name="lock" size={16} /> {t("Gate code")} <strong style={{ fontSize: 20 }}>{codes.gate_code}</strong></span>}
+            {codes?.lockbox_code && <span><Icon name="lock" size={14} /> {t("Lockbox")} <strong>{codes.lockbox_code}</strong></span>}
+            {codes?.alarm_code && <span><Icon name="lock" size={14} /> {t("Alarm")} <strong>{codes.alarm_code}</strong></span>}
             {codes?.instructions && <span className="muted pre-wrap">{codes.instructions}</span>}
           </>
         )}
         {v.property?.notes && <span className="muted pre-wrap">{v.property.notes}</span>}
-        {v.hold_reason && <span style={{ color: "var(--warning)", fontWeight: 600 }}><Icon name="cloud" size={14} /> Weather: {v.hold_reason}</span>}
+        {v.hold_reason && <span style={{ color: "var(--warning)", fontWeight: 600 }}><Icon name="cloud" size={14} /> {t("Weather: {reason}", { reason: v.hold_reason })}</span>}
       </section>
 
       {(v.job?.instructions || v.request?.details) && (
         <section className="card card-pad stack-sm" style={{ background: "var(--note)", borderColor: "var(--note-border)" }}>
-          <strong>Instructions</strong>
+          <strong>{t("Instructions")}</strong>
           {v.job?.instructions && <p className="pre-wrap" style={{ margin: 0 }}>{v.job.instructions}</p>}
           {v.request?.details && <p className="pre-wrap" style={{ margin: 0 }}>{v.request.details}</p>}
         </section>
       )}
       {(shownCustomFields(jobFields, v.job?.custom_fields).length > 0 || shownCustomFields(propertyFields, v.property?.custom_fields).length > 0) && (
         <section className="card card-pad stack-sm">
-          <strong>Details</strong>
+          <strong>{t("Details")}</strong>
           <dl className="kv">
             <CustomFieldList fields={jobFields} values={v.job?.custom_fields} />
             <CustomFieldList fields={propertyFields} values={v.property?.custom_fields} />
@@ -296,7 +297,7 @@ export function FieldVisitPage() {
       )}
       {v.job && (
         <section className="card card-pad stack-sm">
-          <ScopeOfWork jobId={v.job.id} title="The work" bare />
+          <ScopeOfWork jobId={v.job.id} title={t("The work")} bare />
           {/* A repeating job's work is the same every visit; this is what's extra on this one. */}
           {addsToVisit(v.job) && <VisitExtraScope visitId={v.id} />}
           {/* Not once a repeating job's visit is on an invoice: the office adds to the invoice then. */}
@@ -307,7 +308,7 @@ export function FieldVisitPage() {
       <FieldPlans visitId={v.id} jobId={v.job?.id ?? null} propertyId={v.property?.id ?? v.job?.property_id ?? null} />
       {v.equipment.length > 0 && (
         <section className="card card-pad stack-sm">
-          <strong>Bring</strong>
+          <strong>{t("Bring")}</strong>
           <div className="row wrap" style={{ gap: 6 }}>
             {v.equipment.map((e) => e.equipment && <span key={e.equipment.id} className="chip"><Icon name="truck" size={12} />{e.equipment.name}</span>)}
           </div>
@@ -321,7 +322,7 @@ export function FieldVisitPage() {
 
       <section className="card card-pad stack-sm">
         <div className="row-between">
-          <label htmlFor="visit-notes"><strong>Notes for the office</strong></label>
+          <label htmlFor="visit-notes"><strong>{t("Notes for the office")}</strong></label>
           <AutoSaveStatus status={notesSave.status} waiting={notesSending > 0} />
         </div>
         <textarea
@@ -334,13 +335,13 @@ export function FieldVisitPage() {
             notesSave.change(e.target.value);
           }}
           onBlur={notesSave.flush}
-          placeholder="Extra work they asked about, damage you noticed, materials used…"
+          placeholder={t("Extra work they asked about, damage you noticed, materials used…")}
         />
         <FormError error={saveNotes.error} />
-        {v.job && !sub && <Button variant="ghost" icon="receipt" style={{ justifySelf: "start" }} onClick={() => setExpense(true)}>Add a receipt</Button>}
+        {v.job && !sub && <Button variant="ghost" icon="receipt" style={{ justifySelf: "start" }} onClick={() => setExpense(true)}>{t("Add a receipt")}</Button>}
       </section>
 
-      {expense && v.job && !sub && <ExpenseDialog jobId={v.job.id} expense={null} onClose={() => setExpense(false)} onSaved={() => toast.success("Receipt sent to the office", { tone: "job" })} />}
+      {expense && v.job && !sub && <ExpenseDialog jobId={v.job.id} expense={null} onClose={() => setExpense(false)} onSaved={() => toast.success(t("Receipt sent to the office"), { tone: "job" })} />}
       {/* Room at the bottom for the phone's bar, so nothing ends up behind it. */}
       {commit && <div className="field-commit-room" aria-hidden="true" />}
     </div>
@@ -435,7 +436,7 @@ function AutoSaveStatus({ status, waiting }: { status: SaveState; waiting: boole
     return (
       <span className="save-status" data-state="queued" role="status">
         <Icon name="wifiOff" size={14} />
-        Saved on this phone
+        {t("Saved on this phone")}
       </span>
     );
   }
@@ -458,7 +459,7 @@ function Required() {
   return (
     <>
       <span className="text-danger" aria-hidden="true"> *</span>
-      <span className="sr-only"> (required)</span>
+      <span className="sr-only"> {t("(required)")}</span>
     </>
   );
 }
@@ -691,16 +692,16 @@ const Checklist = forwardRef<
   return (
     <section ref={root} className="card card-pad stack-sm">
       <div className="row-between">
-        <strong>{card.fixed ? (template?.name ?? "Checklist") : another ? "Another checklist" : "Checklist"}</strong>
+        <strong>{card.fixed ? (template?.name ?? t("Checklist")) : another ? t("Another checklist") : t("Checklist")}</strong>
         <span className="row" style={{ gap: 12 }}>
           <AutoSaveStatus status={autosave.status} waiting={sending > 0} />
-          {done ? <StatusPill label="Done" tone="good" /> : template && <span className="muted small tabular"><AnimatedNumber value={doneCount} /> of {countable}</span>}
+          {done ? <StatusPill label={t("Done")} tone="good" /> : template && <span className="muted small tabular"><T text="{done} of {count}" done={<AnimatedNumber value={doneCount} />} count={countable} /></span>}
         </span>
       </div>
       {template && !done && <div className="progress"><span style={{ width: `${countable ? (doneCount / countable) * 100 : 0}%` }} /></div>}
       {!card.fixed && !done && (others.length > 1 || another) && (
-        <select className="select" value={templateId} onChange={(e) => choose(e.target.value)} aria-label="Choose a checklist">
-          <option value="">Choose a checklist…</option>
+        <select className="select" value={templateId} onChange={(e) => choose(e.target.value)} aria-label={t("Choose a checklist")}>
+          <option value="">{t("Choose a checklist…")}</option>
           {others.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       )}
@@ -721,7 +722,7 @@ const Checklist = forwardRef<
             ) : item.type === "choice" ? (
               <label className="field" style={{ flex: 1 }}><span>{item.label}{item.required && <Required />}</span>
                 <select className="select" value={String(answers[item.key] ?? "")} disabled={done} onChange={(e) => set(item.key, e.target.value)}>
-                  <option value="">Choose…</option>
+                  <option value="">{t("Choose…")}</option>
                   {item.options?.map((o) => <option key={o}>{o}</option>)}
                 </select>
               </label>
@@ -732,14 +733,14 @@ const Checklist = forwardRef<
                 <input className="input" inputMode={item.type === "number" ? "decimal" : undefined} value={String(answers[item.key] ?? "")} disabled={done} onChange={(e) => set(item.key, item.type === "number" ? e.target.value.replace(/[^0-9.\-]/g, "") : e.target.value)} onBlur={autosave.flush} />
               </label>
             )}
-            {guideFor(item) && <Link to={`/kb/${item.sop_page_id}`} className="check-guide" title={guideFor(item)!.title} aria-label={`How to: ${guideFor(item)!.title}`}><Icon name="book" size={14} />How to</Link>}
+            {guideFor(item) && <Link to={`/kb/${item.sop_page_id}`} className="check-guide" title={guideFor(item)!.title} aria-label={t("How to: {guide}", { guide: guideFor(item)!.title })}><Icon name="book" size={14} />{t("How to")}</Link>}
           </div>
         ))}
       </div>
       <FormError error={saveMutation.error} />
       {/* Under way, Complete visit marks it done. Otherwise this does: completed on My day, by the office, or anyway with the rest done after. */}
-      {template && !done && !missing.length && visitStatus !== "in_progress" && <Button icon="check" style={{ justifySelf: "start" }} onClick={markDone}>Mark done</Button>}
-      {done && hasRole(session, "admin", "office", "crew_lead") && <Button variant="ghost" icon="undo" style={{ justifySelf: "start" }} loading={reopen.isPending} onClick={() => reopen.mutate()}>Reopen checklist</Button>}
+      {template && !done && !missing.length && visitStatus !== "in_progress" && <Button icon="check" style={{ justifySelf: "start" }} onClick={markDone}>{t("Mark done")}</Button>}
+      {done && hasRole(session, "admin", "office", "crew_lead") && <Button variant="ghost" icon="undo" style={{ justifySelf: "start" }} loading={reopen.isPending} onClick={() => reopen.mutate()}>{t("Reopen checklist")}</Button>}
     </section>
   );
 });
@@ -783,7 +784,7 @@ function useVisitPhotos(visitId: string) {
       try {
         const kept = await addVisitPhoto({ userId: session.userId, companyId: company.id, visitId }, file, files.length === 1 ? drawn : null);
         // Said as it's taken: with no signal and nowhere to keep it, only the open app holds it.
-        if (!kept && !onlineManager.isOnline()) toast.warning("This phone couldn't save the photo", { description: "Keep Crewtavo open until you have signal, or the photo will be lost." });
+        if (!kept && !onlineManager.isOnline()) toast.warning(t("This phone couldn't save the photo"), { description: t("Keep Crewtavo open until you have signal, or the photo will be lost.") });
       } catch (error) {
         toast.error(`${file.name}: ${errorMessage(error)}`);
       }
@@ -796,7 +797,7 @@ function useVisitPhotos(visitId: string) {
     meta: { inline: true },
     mutationFn: async (p: { id: string; path: string }) => {
       const gone = unwrap(await supabase().from("attachments").delete().eq("id", p.id).select("id"));
-      if (!gone.length) throw new Error("You can only remove photos you added. Ask the office to remove this one.");
+      if (!gone.length) throw new Error(t("You can only remove photos you added. Ask the office to remove this one."));
     },
     onSettled: () => void refreshPhotos(),
   });
@@ -814,13 +815,13 @@ function useVisitPhotos(visitId: string) {
     refresh: () => void refreshPhotos(),
     /** One that hasn't uploaded is only on this phone, so removing it has no Undo: asked first. */
     removeWaiting: async (p: PhonePhoto) => {
-      if (await confirm({ title: "Remove this photo?", body: "It hasn't uploaded yet, so it will be gone for good.", confirmLabel: "Remove", danger: true })) removePhonePhoto(p.id);
+      if (await confirm({ title: t("Remove this photo?"), body: t("It hasn't uploaded yet, so it will be gone for good."), confirmLabel: t("Remove"), danger: true })) removePhonePhoto(p.id);
     },
     // A sub removes only the photos they added.
     canRemove: (p: Photo) => !isSub(session) || p.created_by === session.userId,
     remove: (p: Photo) =>
       undoable({
-        title: "Photo removed",
+        title: t("Photo removed"),
         // A sub has no Trash to take it from later: the office can.
         description: isSub(session) ? undefined : IN_TRASH,
         tone: "job",
@@ -849,7 +850,7 @@ function PhotoPicker({ photos }: { photos: VisitPhotos }) {
     <span className="row wrap" style={{ gap: 8 }}>
       <label className="btn">
         <Icon name="camera" size={16} />
-        {photos.uploading ? "Uploading…" : "Add photos"}
+        {photos.uploading ? t("Uploading…") : t("Add photos")}
         <input
           type="file"
           accept="image/*"
@@ -865,7 +866,7 @@ function PhotoPicker({ photos }: { photos: VisitPhotos }) {
       </label>
       <label className="btn btn-ghost">
         <Icon name="pen" size={16} />
-        Draw on a photo
+        {t("Draw on a photo")}
         <input
           type="file"
           accept="image/*"
@@ -881,7 +882,7 @@ function PhotoPicker({ photos }: { photos: VisitPhotos }) {
       {drawing && (
         <PhotoEditor
           picture={drawing}
-          saveLabel="Add photo"
+          saveLabel={t("Add photo")}
           keepsBlank
           onCancel={() => setDrawing(null)}
           onSave={(drawn) => {
@@ -903,13 +904,13 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
   const unsupported = photos.photos.filter((p) => shareToggleState(session, p, clientOptOut) === "unsupported").length;
   return (
     <section className="card card-pad stack-sm">
-      <div className="row-between"><strong>Photos</strong>{count > 0 && <span className="muted small tabular"><AnimatedNumber value={count} /></span>}</div>
+      <div className="row-between"><strong>{t("Photos")}</strong>{count > 0 && <span className="muted small tabular"><AnimatedNumber value={count} /></span>}</div>
       <div ref={grid} className="thumbs">
         {photos.loading && [0, 1, 2].map((i) => <Skeleton key={i} height={96} radius={8} />)}
         {photos.photos.map((p) => (
           <div key={p.id} className="thumb">
-            {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.caption ?? p.file_name} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
-            {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label="Remove photo" onClick={() => photos.remove(p)}><Icon name="x" size={12} strokeWidth={2} /></button>}
+            {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.caption ?? p.file_name} loading="lazy" /></a> : <span className="muted small">{t("Unavailable")}</span>}
+            {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={() => photos.remove(p)}><Icon name="x" size={12} strokeWidth={2} /></button>}
             <ShareToggle photo={p} clientOptOut={clientOptOut} onShown={(shareable) => photos.showShareable(p.id, shareable)} />
             {/* Drawn on: shown with the drawing, the photo as taken a tap away. */}
             {p.marked_path && <OriginalLink url={p.originalUrl} label={p.caption ?? p.file_name} />}
@@ -919,9 +920,11 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
         {photos.waiting.map((p) => <WaitingPhoto key={p.id} photo={p} onRemove={() => void photos.removeWaiting(p)} />)}
         {Array.from({ length: photos.adding }, (_, i) => <div key={`u${i}`} className="thumb" style={{ display: "grid", placeItems: "center" }}><span className="spinner" style={{ width: 20, height: 20, color: "var(--text-3)" }} /></div>)}
       </div>
-      {sharing && <span className="muted small">Tap the corner to mark photos OK to share, and the office can post them. Posts never show the client's name or address. Check the photo doesn't show a house number, a car plate or people's faces.</span>}
-      {unsupported > 0 && !clientOptOut && <span className="muted small">{unsupported === photos.photos.length ? (unsupported === 1 ? "This photo" : "These photos") : unsupported === 1 ? "The photo marked Can't share" : "The photos marked Can't share"} can't be marked OK to share: only JPEG and PNG photos can be posted.</span>}
-      {count > 0 && clientOptOut && shareToggleState(session, { content_type: "image/jpeg" }) !== "hidden" && <span className="muted small">This client asked us not to post photos of their property.</span>}
+      {sharing && <span className="muted small">{t("Tap the corner to mark photos OK to share, and the office can post them. Posts never show the client's name or address. Check the photo doesn't show a house number, a car plate or people's faces.")}</span>}
+      {unsupported > 0 && !clientOptOut && <span className="muted small">{unsupported === photos.photos.length
+        ? unsupported === 1 ? t("This photo can't be marked OK to share: only JPEG and PNG photos can be posted.") : t("These photos can't be marked OK to share: only JPEG and PNG photos can be posted.")
+        : unsupported === 1 ? t("The photo marked Can't share can't be marked OK to share: only JPEG and PNG photos can be posted.") : t("The photos marked Can't share can't be marked OK to share: only JPEG and PNG photos can be posted.")}</span>}
+      {count > 0 && clientOptOut && shareToggleState(session, { content_type: "image/jpeg" }) !== "hidden" && <span className="muted small">{t("This client asked us not to post photos of their property.")}</span>}
       <span style={{ justifySelf: "start" }}><PhotoPicker photos={photos} /></span>
     </section>
   );
@@ -940,8 +943,8 @@ function WaitingPhoto({ photo, onRemove }: { photo: PhonePhoto; onRemove: () => 
   return (
     <div className="thumb">
       {url && <img src={url} alt={photo.fileName} />}
-      {!photo.sending && <button type="button" className="thumb-x" aria-label="Remove photo" onClick={onRemove}><Icon name="x" size={12} strokeWidth={2} /></button>}
-      <span className="thumb-note">{photo.problem ? "Didn't upload" : photo.sending ? "Uploading…" : photo.kept ? "Waiting to send" : "Not saved"}</span>
+      {!photo.sending && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={onRemove}><Icon name="x" size={12} strokeWidth={2} /></button>}
+      <span className="thumb-note">{photo.problem ? t("Didn't upload") : photo.sending ? t("Uploading…") : photo.kept ? t("Waiting to send") : t("Not saved")}</span>
     </div>
   );
 }
@@ -958,8 +961,8 @@ function SignatureAnswer({ label, required, value, disabled, onChange }: { label
         <span style={{ fontFamily: "'Brush Script MT', cursive", fontSize: 24 }}>{legacy}</span>
       ) : (
         <>
-          <SignaturePad value={current?.image ?? null} disabled={disabled} label="Sign with your finger" onChange={(image) => onChange(image || current?.name ? { name: current?.name ?? "", image } : null)} />
-          <input className="input" aria-label="Printed name" placeholder="Printed name" value={current?.name ?? ""} disabled={disabled} maxLength={120} onChange={(e) => onChange({ name: e.target.value, image: current?.image ?? null })} />
+          <SignaturePad value={current?.image ?? null} disabled={disabled} label={t("Sign with your finger")} onChange={(image) => onChange(image || current?.name ? { name: current?.name ?? "", image } : null)} />
+          <input className="input" aria-label={t("Printed name")} placeholder={t("Printed name")} value={current?.name ?? ""} disabled={disabled} maxLength={120} onChange={(e) => onChange({ name: e.target.value, image: current?.image ?? null })} />
         </>
       )}
     </div>

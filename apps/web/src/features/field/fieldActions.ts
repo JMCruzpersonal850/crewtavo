@@ -3,6 +3,7 @@
  * state), registered by name, so a queued action can still be sent after the app was closed.
  * See lib/offline.ts.
  */
+import { t } from "@/lib/i18n";
 import type { QueryClient } from "@tanstack/react-query";
 import { api, supabase, unwrap } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
@@ -136,11 +137,11 @@ export const clockRefused = (error: unknown) => /row-level security|permission/i
 /** What a status tap's confirmation says, once the server has it (a toast: no closing period). */
 export function statusSaved(result: { skipped: boolean; visitStatus?: string; clockOff?: boolean; travel?: boolean } | undefined, change: VisitStatusChange): string {
   const clocks = change.clock !== false && !result?.clockOff;
-  if (result?.skipped) return result.visitStatus === "cancelled" ? "The office cancelled this visit" : clocks ? "Your crew already moved this visit on, your time is saved" : "This visit had already moved on";
+  if (result?.skipped) return result.visitStatus === "cancelled" ? t("The office cancelled this visit") : clocks ? t("Your crew already moved this visit on, your time is saved") : t("This visit had already moved on");
   // On the whole-day clock (`travel`: their clock is on travel now) the drive is on the clock too.
-  if (change.status === "en_route") return result?.travel ? "On your way, your clock is running" : "On your way";
-  if (change.status === "in_progress") return clocks ? "Visit started, your clock is running" : "Visit started";
-  return result?.travel ? "Visit completed, your clock keeps running" : "Visit completed";
+  if (change.status === "en_route") return result?.travel ? t("On your way, your clock is running") : t("On your way");
+  if (change.status === "in_progress") return clocks ? t("Visit started, your clock is running") : t("Visit started");
+  return result?.travel ? t("Visit completed, your clock keeps running") : t("Visit completed");
 }
 
 /**

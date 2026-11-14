@@ -12,7 +12,7 @@ import { MapsLink, RouteMapsLink } from "@/components/ui/MapsLink";
 import { useDocumentTitle } from "@/components/ui/PageHeader";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { EntityStatus, statusLabel } from "@/components/ui/StatusPill";
+import { EntityStatus, visitKindText } from "@/components/ui/StatusPill";
 import { todayIn } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
 import { hasRole, isSub, keepsTime, useSession } from "@/lib/session";
@@ -31,6 +31,7 @@ import { OfflineNote } from "./OfflineNote";
 import { SpanishOffer } from "./SpanishOffer";
 import { FIELD_SCOPE } from "@/lib/offline";
 import { toast } from "@/lib/toast";
+import { intlLocale, msg, t } from "@/lib/i18n";
 
 type Visit = MyDayVisit;
 
@@ -38,9 +39,9 @@ const clientName = (v: Visit) => visitContact(v.job?.client, v.contact).name;
 
 /** A visit's next step, the card's main button. A scheduled visit can also go on its way first. */
 const NEXT: Record<string, { status: string; label: string; icon: "play" | "check" } | null> = {
-  scheduled: { status: "in_progress", label: "Start visit", icon: "play" },
-  en_route: { status: "in_progress", label: "Start visit", icon: "play" },
-  in_progress: { status: "completed", label: "Complete visit", icon: "check" },
+  scheduled: { status: "in_progress", label: msg("Start visit"), icon: "play" },
+  en_route: { status: "in_progress", label: msg("Start visit"), icon: "play" },
+  in_progress: { status: "completed", label: msg("Complete visit"), icon: "check" },
 };
 
 export function FieldTodayPage() {
@@ -50,8 +51,8 @@ export function FieldTodayPage() {
   const today = todayIn(tz);
   const [showDone, setShowDone] = useState(false);
   const isLead = useSchedulingRights().canDispatch;
-  useDocumentTitle("My day");
-  const time = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz });
+  useDocumentTitle(t("My day"));
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(intlLocale(), { hour: "numeric", minute: "2-digit", timeZone: tz });
   const key = myDayKey(session.company.id, today);
   const data = useMyDay();
 
@@ -75,7 +76,7 @@ export function FieldTodayPage() {
     scope: FIELD_SCOPE,
     meta: { success: statusSaved },
     onMutate: async (change: VisitStatusChange) => {
-      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
+      if (!onlineManager.isOnline()) toast.info(t("Saved on this phone"), { description: t("It sends when you have signal.") });
       await queryClient.cancelQueries({ queryKey: key });
       showVisitStatus(queryClient, change);
     },
@@ -105,8 +106,8 @@ export function FieldTodayPage() {
   return (
     <div className="field-app">
       <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: tz })}</div>
-        <h1 className="page-title" style={{ marginTop: 4 }}>My day</h1>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{new Date().toLocaleDateString(intlLocale(), { weekday: "long", month: "long", day: "numeric", timeZone: tz })}</div>
+        <h1 className="page-title" style={{ marginTop: 4 }}>{t("My day")}</h1>
       </div>
 
       <OfflineNote />
@@ -117,23 +118,23 @@ export function FieldTodayPage() {
       <GeofenceCard onStatus={(visit, status) => void statusTap.tap(visit, status)} />
       {session.role === "crew_lead" && <CrewClockCard visits={data.data?.today ?? []} />}
 
-      {data.isPending && <Loading label="Loading your visits"><div className="stack">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={2} />)}</div></Loading>}
+      {data.isPending && <Loading label={t("Loading your visits")}><div className="stack">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={2} />)}</div></Loading>}
       {data.error && !data.data && <div className="card"><ErrorState error={data.error} onRetry={() => data.refetch()} /></div>}
       {data.data && visits.length === 0 && (
         <div className="card">
-          <EmptyState icon="calendar" title="Nothing assigned to you today" action={isLead && <Link className="btn" to="/schedule">Open the schedule</Link>}>
-            {data.data.tomorrow.length ? "Tomorrow's visits are below." : undefined}
+          <EmptyState icon="calendar" title={t("Nothing assigned to you today")} action={isLead && <Link className="btn" to="/schedule">{t("Open the schedule")}</Link>}>
+            {data.data.tomorrow.length ? t("Tomorrow's visits are below.") : undefined}
           </EmptyState>
         </div>
       )}
       {data.data && visits.length > 0 && (
-        <div className="progress" role="progressbar" aria-label="Visits done" aria-valuemin={0} aria-valuemax={visits.length} aria-valuenow={done.length} aria-valuetext={`${done.length} of ${visits.length} visits done`}><span style={{ width: `${(done.length / visits.length) * 100}%` }} /></div>
+        <div className="progress" role="progressbar" aria-label={t("Visits done")} aria-valuemin={0} aria-valuemax={visits.length} aria-valuenow={done.length} aria-valuetext={t.plural(visits.length, { one: "{done} of {count} visit done", other: "{done} of {count} visits done" }, { done: done.length })}><span style={{ width: `${(done.length / visits.length) * 100}%` }} /></div>
       )}
 
       {route.stops.length > 1 && (
         <RouteMapsLink className="btn big-action btn-block" route={route}>
           <Icon name="map" size={20} />
-          Open route in maps
+          {t("Open route in maps")}
         </RouteMapsLink>
       )}
 
@@ -147,30 +148,30 @@ export function FieldTodayPage() {
             <article key={v.id} className="field-card" data-now={v.status === "in_progress" || undefined}>
               <div className="field-card-info">
                 <div className="row wrap" style={{ gap: 6 }}>
-                  {v.route_order != null && <span className="chip chip-green">Stop {v.route_order}</span>}
-                  <span className="chip">{v.starts_at ? time(v.starts_at) : v.route_order != null ? "Anytime" : `Stop ${i + 1}`}</span>
+                  {v.route_order != null && <span className="chip chip-green">{t("Stop {number}", { number: v.route_order })}</span>}
+                  <span className="chip">{v.starts_at ? time(v.starts_at) : v.route_order != null ? t("Anytime") : t("Stop {number}", { number: i + 1 })}</span>
                   <EntityStatus kind="visit" status={v.status} />
-                  {v.kind !== "job" && <span className="chip">{statusLabel(v.kind)}</span>}
-                  {v.series_total && v.series_total > 1 && <span className="chip chip-blue">Day {v.series_day} of {v.series_total}</span>}
+                  {v.kind !== "job" && <span className="chip">{visitKindText(v.kind)}</span>}
+                  {v.series_total && v.series_total > 1 && <span className="chip chip-blue">{t("Day {day} of {days}", { day: v.series_day, days: v.series_total })}</span>}
                 </div>
                 <Link to={`/field/visits/${v.id}`} className="field-card-title">
                   <strong>{v.title}</strong>
                   <span className="muted">{[clientName(v), v.property?.line1 ?? v.address].filter(Boolean).join(" · ")}</span>
                 </Link>
-                {v.hold_reason && <div className="small" style={{ color: "var(--warning)", fontWeight: 600 }}><Icon name="cloud" size={14} /> Weather: {v.hold_reason}</div>}
+                {v.hold_reason && <div className="small" style={{ color: "var(--warning)", fontWeight: 600 }}><Icon name="cloud" size={14} /> {t("Weather: {reason}", { reason: v.hold_reason })}</div>}
               </div>
               {/* The card's next step last and full width, where the thumb is (beside the rest on a wide screen). */}
               {(place || next) && (
                 <div className="field-card-actions">
                   {(place || v.status === "scheduled") && (
                     <div className="field-card-more">
-                      {place && <MapsLink className="btn big-action" place={place}><Icon name="navigation" size={20} />Directions</MapsLink>}
-                      {v.status === "scheduled" && <Button icon="navigation" className="big-action" loading={going === "en_route"} onClick={() => changeStatus(v, "en_route")}>On my way</Button>}
+                      {place && <MapsLink className="btn big-action" place={place}><Icon name="navigation" size={20} />{t("Directions")}</MapsLink>}
+                      {v.status === "scheduled" && <Button icon="navigation" className="big-action" loading={going === "en_route"} onClick={() => changeStatus(v, "en_route")}>{t("On my way")}</Button>}
                     </div>
                   )}
                   {next && (
                     <Button variant={v.id === now?.id ? "primary" : "secondary"} icon={next.icon} block className="big-action" loading={going === next.status} onClick={() => changeStatus(v, next.status)}>
-                      {next.label}
+                      {t(next.label)}
                     </Button>
                   )}
                 </div>
@@ -184,7 +185,7 @@ export function FieldTodayPage() {
         <section className="stack-sm">
           <button type="button" className="row link-btn" style={{ color: "var(--ink)" }} aria-expanded={showDone} onClick={() => setShowDone(!showDone)}>
             <Icon name={showDone ? "chevronDown" : "chevronRight"} size={16} />
-            <strong>Done today ({done.length})</strong>
+            <strong>{t("Done today ({count})", { count: done.length })}</strong>
           </button>
           {showDone && (
             <div className="card">
@@ -201,11 +202,11 @@ export function FieldTodayPage() {
 
       {!!data.data?.tomorrow.length && (
         <section className="stack-sm">
-          <h2 className="section-title">Tomorrow</h2>
+          <h2 className="section-title">{t("Tomorrow")}</h2>
           <div className="card">
             {[...data.data.tomorrow].sort(order).map((v) => (
               <Link key={v.id} to={`/field/visits/${v.id}`} className="card-row">
-                <span className="tabular strong small" style={{ width: 64 }}>{v.starts_at ? time(v.starts_at) : "Anytime"}</span>
+                <span className="tabular strong small" style={{ width: 64 }}>{v.starts_at ? time(v.starts_at) : t("Anytime")}</span>
                 <span className="grow"><strong>{v.title}</strong><span className="muted small" style={{ display: "block" }}>{[clientName(v), v.property?.line1 ?? v.address].filter(Boolean).join(" · ")}</span></span>
                 <Icon name="chevronRight" size={16} />
               </Link>

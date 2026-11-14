@@ -88,6 +88,10 @@ export type StatusKind = keyof typeof STATUS_TEXT;
 /** The label for a record's state, from the list at the top: statusText("invoice", "overdue") is "Past due". */
 export const statusText = (kind: StatusKind, status: string) => t((STATUS_TEXT[kind] as Record<string, string>)[status] ?? statusLabel(status));
 
+/** What a visit that isn't plain work is: "Assessment", "Task", "Event". */
+const VISIT_KINDS: Record<string, string> = { job: msg("Job"), assessment: msg("Assessment"), task: msg("Task"), event: msg("Event") };
+export const visitKindText = (kind: string) => t(VISIT_KINDS[kind] ?? statusLabel(kind));
+
 const VISIT_TONES: Record<string, Tone> = {
   completed: "good",
   in_progress: "info",

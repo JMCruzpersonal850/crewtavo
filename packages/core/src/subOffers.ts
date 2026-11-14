@@ -5,15 +5,17 @@
  * what the database says: the offer's one line, what's wrong with a sub's insurance (it only warns),
  * the time to answer by, and why an answer didn't go through.
  */
+import { intlLocale, msg, t } from "./i18n";
 import { isSquareUnit } from "./jobPay";
 import type { PaperworkStatus } from "./subs";
 
 /** How an offer ended. A new price for agreed work that isn't taken leaves the pay agreed at the old one. */
 export const OFFER_OUTCOMES = [
-  { key: "accepted", office: "Accepted", sub: "Accepted" },
-  { key: "declined", office: "Declined", sub: "Declined" },
-  { key: "expired", office: "No answer in time", sub: "Ran out" },
-  { key: "withdrawn", office: "Withdrawn", sub: "Withdrawn by the office" },
+  // The sub's words are shown with t() (their app can be in Spanish); the office's stay English.
+  { key: "accepted", office: "Accepted", sub: msg("Accepted", "offer") },
+  { key: "declined", office: "Declined", sub: msg("Declined", "offer") },
+  { key: "expired", office: "No answer in time", sub: msg("Ran out", "offer") },
+  { key: "withdrawn", office: "Withdrawn", sub: msg("Withdrawn by the office") },
 ] as const;
 export type OfferOutcome = (typeof OFFER_OUTCOMES)[number]["key"];
 export const offerOutcomeLabel = (outcome: string | null | undefined, who: "office" | "sub" = "office") =>
@@ -51,23 +53,30 @@ export function moneyShort(amount: number | string | null | undefined): string {
 export function amountWords(quantity: number | string, unit: string | null | undefined): string {
   const n = Number(quantity);
   const u = (unit ?? "").trim();
-  const words = isSquareUnit(u) ? (n === 1 ? "square" : "squares") : u.toLowerCase() === "day" ? (n === 1 ? "day" : "days") : u || "ea";
-  return `${String(n)} ${words}`;
+  if (isSquareUnit(u)) return t.plural(n, { one: "{count} square", other: "{count} squares" });
+  if (u.toLowerCase() === "day") return t.plural(n, { one: "{count} day", other: "{count} days" });
+  return `${String(n)} ${u || "ea"}`;
 }
 
-const DAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
-const MONTH_DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+// In the language the app is in (the server's is always English): "Tue Nov 3", "mar 3 nov".
+const formats = new Map<string, { day: Intl.DateTimeFormat; monthDay: Intl.DateTimeFormat }>();
+function dateFormats() {
+  const tag = intlLocale();
+  let found = formats.get(tag);
+  if (!found) formats.set(tag, (found = { day: new Intl.DateTimeFormat(tag, { weekday: "short", timeZone: "UTC" }), monthDay: new Intl.DateTimeFormat(tag, { month: "short", day: "numeric", timeZone: "UTC" }) }));
+  return found;
+}
 /** "Tue Nov 3" for a YYYY-MM-DD date (as Postgres's to_char 'Dy Mon FMDD'). */
 export function offerDate(date: string): string {
   const at = Date.parse(`${date.slice(0, 10)}T12:00:00Z`);
-  return `${DAY.format(at)} ${MONTH_DAY.format(at)}`;
+  return `${dateFormats().day.format(at)} ${dateFormats().monthDay.format(at)}`;
 }
 
 /** "Tue Nov 3", or "Tue Nov 3 to Thu Nov 5" for the first and last of several days; null for none. */
 export function offerDays(dates: ReadonlyArray<string | null | undefined>): string | null {
   const days = [...new Set(dates.filter((d): d is string => Boolean(d)).map((d) => d.slice(0, 10)))].sort();
   if (!days.length) return null;
-  return days.length === 1 ? offerDate(days[0]!) : `${offerDate(days[0]!)} to ${offerDate(days[days.length - 1]!)}`;
+  return days.length === 1 ? offerDate(days[0]!) : t("{from} to {to}", { from: offerDate(days[0]!), to: offerDate(days[days.length - 1]!) });
 }
 
 export interface OfferLineInput {
@@ -187,7 +196,7 @@ function documentWords(kind: string | null | undefined): string {
   }
 }
 
-const shortDate = (date: string | null) => (date ? MONTH_DAY.format(Date.parse(`${date.slice(0, 10)}T12:00:00Z`)) : "");
+const shortDate = (date: string | null) => (date ? dateFormats().monthDay.format(Date.parse(`${date.slice(0, 10)}T12:00:00Z`)) : "");
 
 /**
  * The warning in words. For the sub: "Your workers' comp certificate on file ends before this job."
@@ -267,26 +276,27 @@ export interface SubOffer {
 
 /**
  * Why an answer didn't go through (answer_sub_offer said false), from the offer as it now is (null
- * when it isn't theirs to see) and the round the sub answered. The API answers 409 with it.
+ * when it isn't theirs to see) and the round the sub answered. The API answers 409 with it, in
+ * English: the sub's app shows it in theirs.
  */
 export function offerClosedMessage(offer: Pick<SubOffer, "status" | "outcome" | "can_answer" | "offer_round"> | null | undefined, round?: number | null): string {
-  if (!offer) return "This offer isn't open any more.";
+  if (!offer) return msg("This offer isn't open any more.");
   if (offer.status === "offered") {
-    if (round != null && offer.offer_round !== round) return "The office changed this offer. Have a look at it again.";
-    if (!offer.can_answer) return "This offer ran out. Call the office if you'd still like the work.";
-    return "This offer isn't open any more. Try again.";
+    if (round != null && offer.offer_round !== round) return msg("The office changed this offer. Have a look at it again.");
+    if (!offer.can_answer) return msg("This offer ran out. Call the office if you'd still like the work.");
+    return msg("This offer isn't open any more. Try again.");
   }
   switch (offer.outcome) {
     case "expired":
-      return "This offer ran out. Call the office if you'd still like the work.";
+      return msg("This offer ran out. Call the office if you'd still like the work.");
     case "withdrawn":
-      return "The office withdrew this offer.";
+      return msg("The office withdrew this offer.");
     case "accepted":
       // Each offer goes to one sub: theirs already (another tap of theirs, or the office agreed it).
-      return "You've already accepted this job. It's on My day.";
+      return msg("You've already accepted this job. It's on My day.");
     case "declined":
-      return "This offer has already been declined.";
+      return msg("This offer has already been declined.");
     default:
-      return "This offer isn't open any more.";
+      return msg("This offer isn't open any more.");
   }
 }

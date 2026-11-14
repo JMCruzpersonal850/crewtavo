@@ -11,7 +11,7 @@ import { formatPhoneTyping } from "@/lib/validate";
 import styles from "./auth.module.css";
 import { BrandLockup } from "@/components/shell/BrandMark";
 import { afterAsking, ASK_THE_OFFICE, askFor, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
-import { getLocale, LOCALE_NAMES, switchLocale, t, T } from "@/lib/i18n";
+import { LOCALE_NAMES, T, getLocale, switchLocale, t } from "@/lib/i18n";
 import { LOCALES } from "@crewtavo/core/i18n";
 import { translateError } from "@crewtavo/core/i18n/patterns";
 
@@ -211,7 +211,7 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
     if (!keys.length) return setError(notAKeyFile);
     if (!account) {
       setTypingKey(true);
-      return setError("Enter your email, then one of the keys from the file.");
+      return setError(t("Enter your email, then one of the keys from the file."));
     }
     setBusy("form");
     try {
@@ -563,8 +563,8 @@ export function SetPasswordPage({ kind, onDone, onSignOut, onSignOutElsewhere }:
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) return setError("Use at least 8 characters.");
-    if (password !== confirmPw) return setError("Those passwords don't match.");
+    if (password.length < 8) return setError(t("Use at least 8 characters."));
+    if (password !== confirmPw) return setError(t("Those passwords don't match."));
     setBusy(true);
     const { error } = await supabase().auth.updateUser({ password });
     if (error) {

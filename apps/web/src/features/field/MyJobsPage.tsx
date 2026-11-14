@@ -27,11 +27,13 @@ import { formatRate, quantityWords } from "../subs/pay";
 import { answeredToast, answerState, missingOfferNote, myJobSections, offerCardLine, paidTotalNote, totalsWords } from "./myJobs";
 import { answerOffer, useMyJobs, useMyPayTotals, useOfferCompany } from "./myJobsData";
 import { useSignal } from "./OfflineNote";
+import { translateError } from "@crewtavo/core/i18n/patterns";
+import { getLocale, t } from "@/lib/i18n";
 
 export function MyJobsPage() {
   const session = useSession();
-  useDocumentTitle("My jobs");
-  if (!isSub(session) || !session.subcontractor) return <NoAccess title="My jobs" />;
+  useDocumentTitle(t("My jobs"));
+  if (!isSub(session) || !session.subcontractor) return <NoAccess title={t("My jobs")} />;
   return <MyJobs sub={session.subcontractor} />;
 }
 
@@ -68,37 +70,37 @@ function MyJobs({ sub }: { sub: SubLogin }) {
     <div className="field-app">
       <div>
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{sub.name}</div>
-        <h1 className="page-title" style={{ marginTop: 4 }}>My jobs</h1>
+        <h1 className="page-title" style={{ marginTop: 4 }}>{t("My jobs")}</h1>
       </div>
       {!online && (
         <div className="callout callout-info" role="status">
           <Icon name="wifiOff" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
-            <div>No signal</div>
-            This is what you had when you last had signal. Accepting or declining a job needs signal, so it reaches the office right away.
+            <div>{t("No signal")}</div>
+            {t("This is what you had when you last had signal. Accepting or declining a job needs signal, so it reaches the office right away.")}
           </div>
         </div>
       )}
 
-      {jobs.isPending && <Loading label="Loading your jobs"><div className="stack">{[0, 1].map((i) => <CardSkeleton key={i} lines={3} />)}</div></Loading>}
+      {jobs.isPending && <Loading label={t("Loading your jobs")}><div className="stack">{[0, 1].map((i) => <CardSkeleton key={i} lines={3} />)}</div></Loading>}
       {jobs.error && !jobs.data && <div className="card"><ErrorState error={jobs.error} onRetry={() => jobs.refetch()} /></div>}
       {missing && (
         <div className="callout callout-info" role="status">
           <Icon name="info" size={20} />
           <div className="grow" style={{ fontWeight: 400 }}>{missing.text}</div>
-          {missing.switchTo && <Button onClick={() => session.switchCompany(missing.switchTo!)}>Switch to it</Button>}
+          {missing.switchTo && <Button onClick={() => session.switchCompany(missing.switchTo!)}>{t("Switch to it")}</Button>}
         </div>
       )}
 
       {jobs.data && !anything && (
         <div className="card">
-          <EmptyState icon="job" title="No jobs yet">When {company.name} offers you a job, it shows here, and you'll get a notification. Accept or decline it in one tap.</EmptyState>
+          <EmptyState icon="job" title={t("No jobs yet")}>{t("When {company} offers you a job, it shows here, and you'll get a notification. Accept or decline it in one tap.", { company: company.name })}</EmptyState>
         </div>
       )}
 
       {sections.waiting.length > 0 && (
         <section className="stack-sm">
-          <h2 className="section-title">Waiting for your answer</h2>
+          <h2 className="section-title">{t("Waiting for your answer")}</h2>
           <div className="stack">
             {sections.waiting.map((o) => <OfferCard key={o.id} offer={o} focused={o.id === payId} />)}
           </div>
@@ -107,7 +109,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
 
       {sections.upcoming.length > 0 && (
         <section className="stack-sm">
-          <h2 className="section-title">Coming up</h2>
+          <h2 className="section-title">{t("Coming up")}</h2>
           <div className="card">
             {sections.upcoming.map((o) => {
               const next = o.visits.find((v) => v.status !== "completed") ?? o.visits[0];
@@ -135,7 +137,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
       {sections.done.length > 0 && (
         <section className="stack-sm">
           <div className="section-head">
-            <h2 className="section-title">Done, waiting to be paid</h2>
+            <h2 className="section-title">{t("Done, waiting to be paid")}</h2>
             {words.owed && <span className="muted small tabular">{words.owed}</span>}
           </div>
           <div className="card">
@@ -143,7 +145,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
               <div key={o.id} id={`job-${o.id}`} className="card-row" style={focusStyle(o.id === payId)}>
                 <span className="grow" style={{ minWidth: 0 }}>
                   <strong>{o.job_title}</strong>
-                  <span className="muted small" style={{ display: "block" }}>{o.earned_on ? `Done ${formatDate(o.earned_on)}` : "Done"}</span>
+                  <span className="muted small" style={{ display: "block" }}>{o.earned_on ? t("Done {date}", { date: formatDate(o.earned_on) }) : t("Done")}</span>
                 </span>
                 <span className="tabular strong">{formatMoneyCents(Number(o.total))}</span>
               </div>
@@ -155,7 +157,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
       {(sections.paid.length > 0 || (totals.data?.payments ?? 0) > 0) && (
         <section className="stack-sm">
           <div className="section-head">
-            <h2 className="section-title">Paid</h2>
+            <h2 className="section-title">{t("Paid")}</h2>
             {words.paid && <span className="muted small tabular">{words.paid}</span>}
           </div>
           <div className="card">
@@ -163,7 +165,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
               <div key={o.id} id={`job-${o.id}`} className="card-row" style={focusStyle(o.id === payId)}>
                 <span className="grow" style={{ minWidth: 0 }}>
                   <strong>{o.job_title}</strong>
-                  <span className="muted small" style={{ display: "block" }}>{o.paid_at ? `Paid ${formatDate(dateIn(o.paid_at, tz))}` : "Paid"}</span>
+                  <span className="muted small" style={{ display: "block" }}>{o.paid_at ? t("Paid {date}", { date: formatDate(dateIn(o.paid_at, tz)) }) : t("Paid")}</span>
                 </span>
                 <span className="tabular strong">{formatMoneyCents(Number(o.paid_amount ?? o.total))}</span>
               </div>
@@ -175,7 +177,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
 
       {sections.over.length > 0 && (
         <section className="stack-sm">
-          <h2 className="section-title">Offers that are over</h2>
+          <h2 className="section-title">{t("Offers that are over")}</h2>
           <div className="card">
             {sections.over.map((o) => (
               <div key={o.id} id={`job-${o.id}`} className="card-row" style={focusStyle(o.id === payId)}>
@@ -183,7 +185,7 @@ function MyJobs({ sub }: { sub: SubLogin }) {
                   <strong>{o.job_title}</strong>
                   <span className="muted small" style={{ display: "block" }}>{[visitDays(o), o.city, moneyShort(o.total)].filter(Boolean).join(" · ")}</span>
                 </span>
-                <StatusPill label={o.status === "offered" ? offerOutcomeLabel("expired", "sub") : offerOutcomeLabel(o.outcome ?? o.status, "sub") || "Over"} tone="muted" />
+                <StatusPill label={o.status === "offered" ? t(offerOutcomeLabel("expired", "sub")) : t(offerOutcomeLabel(o.outcome ?? o.status, "sub")) || t("Over")} tone="muted" />
               </div>
             ))}
           </div>
@@ -226,32 +228,32 @@ function OfferCard({ offer: o, focused }: { offer: SubOffer; focused: boolean })
     // Named by its job, so its Accept and Decline are told apart from another offer's.
     <article id={`job-${o.id}`} className="field-card" style={focusStyle(focused)} aria-labelledby={`job-${o.id}-title`}>
       <div className="row wrap" style={{ gap: 6 }}>
-        <StatusPill label={o.is_change ? "New price" : "New job offer"} tone="info" />
-        <span className="chip">{o.respond_by ? `Answer by ${formatDateTime(o.respond_by, tz)}` : "No deadline"}</span>
+        <StatusPill label={o.is_change ? t("New price") : t("New job offer")} tone="info" />
+        <span className="chip">{o.respond_by ? t("Answer by {when}", { when: formatDateTime(o.respond_by, tz) }) : t("No deadline")}</span>
       </div>
       <strong id={`job-${o.id}-title`} style={{ fontSize: 16 }}>{offerCardLine(o)}</strong>
       {o.is_change && o.agreed_total != null && (
-        <span className="small">The office changed the price: {moneyShort(o.total)}, was {moneyShort(o.agreed_total)}. If you decline it, you keep the job at {moneyShort(o.agreed_total)}.</span>
+        <span className="small">{t("The office changed the price: {price}, was {was}. If you decline it, you keep the job at {was}.", { price: moneyShort(o.total), was: moneyShort(o.agreed_total) })}</span>
       )}
 
       <div className="stack-sm" style={{ gap: 4 }}>
-        <strong className="small">When</strong>
+        <strong className="small">{t("When")}</strong>
         {o.visits.length === 0 ? (
-          <span className="muted small">The office will set the days.</span>
+          <span className="muted small">{t("The office will set the days.")}</span>
         ) : (
           o.visits.map((v) => (
             <span key={v.id} className="small">
-              {v.scheduled_on ? offerDate(v.scheduled_on) : "Not scheduled yet"}
-              {v.starts_at && `, ${formatTime(v.starts_at, tz)}${v.ends_at ? ` to ${formatTime(v.ends_at, tz)}` : ""}`}
+              {v.scheduled_on ? offerDate(v.scheduled_on) : t("Not scheduled yet")}
+              {v.starts_at && <>, {v.ends_at ? t("{start} to {end}", { start: formatTime(v.starts_at, tz), end: formatTime(v.ends_at, tz) }) : formatTime(v.starts_at, tz)}</>}
             </span>
           ))
         )}
-        {o.city || o.region ? <span className="muted small">In {[o.city, o.region].filter(Boolean).join(", ")}. You'll see the address once you take it.</span> : null}
+        {o.city || o.region ? <span className="muted small">{t("In {place}. You'll see the address once you take it.", { place: [o.city, o.region].filter(Boolean).join(", ") })}</span> : null}
       </div>
 
       {o.scope.length > 0 && (
         <div className="stack-sm" style={{ gap: 4 }}>
-          <strong className="small">The work</strong>
+          <strong className="small">{t("The work")}</strong>
           {o.scope.map((s, i) => (
             <span key={i} className="small">
               {s.name}
@@ -263,22 +265,22 @@ function OfferCard({ offer: o, focused }: { offer: SubOffer; focused: boolean })
 
       {o.notes && (
         <div className="stack-sm" style={{ gap: 4 }}>
-          <strong className="small">Notes from the office</strong>
+          <strong className="small">{t("Notes from the office")}</strong>
           <span className="small pre-wrap">{o.notes}</span>
         </div>
       )}
 
       <div className="stack-sm" style={{ gap: 4 }}>
-        <strong className="small">Your price</strong>
+        <strong className="small">{t("Your price")}</strong>
         {o.lines.map((l, i) => <PriceLine key={l.id ?? i} line={l} />)}
-        <div className="row-between"><strong>Total</strong><strong className="tabular">{formatMoneyCents(Number(o.total))}</strong></div>
+        <div className="row-between"><strong>{t("Total")}</strong><strong className="tabular">{formatMoneyCents(Number(o.total))}</strong></div>
       </div>
 
       {o.insurance_warning.length > 0 && (
         <div className="callout callout-warning">
           <Icon name="alert" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
-            {o.insurance_warning.join(" ")} <Link to="/field/paperwork">My paperwork</Link>
+            {o.insurance_warning.map((w) => translateError(getLocale(), w)).join(" ")} <Link to="/field/paperwork">{t("My paperwork")}</Link>
           </div>
         </div>
       )}
@@ -286,9 +288,9 @@ function OfferCard({ offer: o, focused }: { offer: SubOffer; focused: boolean })
       {state.note && <span className="small" style={{ color: "var(--warning)", fontWeight: 600 }}><Icon name={online ? "clock" : "wifiOff"} size={14} /> {state.note}</span>}
       {!declining && <FormError error={send.error} />}
       <div className="field-card-more">
-        <Button className="big-action" icon="x" aria-label={`Decline ${o.job_title}`} disabled={state.disabled || send.isPending} onClick={() => { send.reset(); setDeclining(true); }}>Decline</Button>
-        <Button className="big-action" variant="primary" icon="check" aria-label={`Accept ${o.job_title}`} disabled={state.disabled} loading={send.isPending && send.variables?.accept === true} onClick={() => send.mutate({ accept: true })}>
-          Accept
+        <Button className="big-action" icon="x" aria-label={t("Decline {job}", { job: o.job_title })} disabled={state.disabled || send.isPending} onClick={() => { send.reset(); setDeclining(true); }}>{t("Decline")}</Button>
+        <Button className="big-action" variant="primary" icon="check" aria-label={t("Accept {job}", { job: o.job_title })} disabled={state.disabled} loading={send.isPending && send.variables?.accept === true} onClick={() => send.mutate({ accept: true })}>
+          {t("Accept")}
         </Button>
       </div>
 
@@ -335,8 +337,8 @@ function DeclineDialog({ offer: o, disabled, note, sending, error, onClose, onDe
       open
       onClose={onClose}
       size="sm"
-      title={o.is_change ? "Decline the new price?" : "Decline this job?"}
-      description={o.is_change ? `You keep ${o.job_title} at ${moneyShort(o.agreed_total)}, the price you agreed.` : `${o.job_title} goes back to the office, and they can offer it to someone else.`}
+      title={o.is_change ? t("Decline the new price?") : t("Decline this job?")}
+      description={o.is_change ? t("You keep {job} at {price}, the price you agreed.", { job: o.job_title, price: moneyShort(o.agreed_total) }) : t("{job} goes back to the office, and they can offer it to someone else.", { job: o.job_title })}
     >
       <form
         className="dialog-body"
@@ -345,14 +347,14 @@ function DeclineDialog({ offer: o, disabled, note, sending, error, onClose, onDe
           if (!disabled) onDecline(reason.trim() || null);
         }}
       >
-        <Field label="Why" optional hint="The office sees this.">
-          <textarea className="textarea" rows={2} maxLength={500} value={reason} placeholder="Booked that week" onChange={(e) => setReason(e.target.value)} />
+        <Field label={t("Why")} optional hint={t("The office sees this.")}>
+          <textarea className="textarea" rows={2} maxLength={500} value={reason} placeholder={t("Booked that week")} onChange={(e) => setReason(e.target.value)} />
         </Field>
         {note && <span className="small" role="status" style={{ color: "var(--warning)", fontWeight: 600 }}>{note}</span>}
         <FormError error={error} />
         <div className="form-actions">
-          <Button onClick={onClose} disabled={sending}>Keep it</Button>
-          <Button type="submit" variant="danger" icon="x" disabled={disabled} loading={sending}>Decline</Button>
+          <Button onClick={onClose} disabled={sending}>{t("Keep it")}</Button>
+          <Button type="submit" variant="danger" icon="x" disabled={disabled} loading={sending}>{t("Decline")}</Button>
         </div>
       </form>
     </Dialog>

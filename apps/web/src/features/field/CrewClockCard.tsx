@@ -22,6 +22,7 @@ import { useMyCrews } from "../schedule/myCrews";
 import { useDispatchOptions } from "../schedule/VisitDialog";
 import { clockChange, clockSaved, crewAfter, showClockTap, waitingClockTaps, type ClockChange, type ClockTarget, type CrewClockRow } from "./clockTaps";
 import { CATEGORY_LABELS, clockPlace, formatDuration, type TimerCategory } from "./fieldData";
+import { msg, t } from "@/lib/i18n";
 
 interface VisitTarget { id: string; title: string; job: { id: string } | null; status: string }
 
@@ -35,9 +36,9 @@ export function CrewClockCard({ visits }: { visits: VisitTarget[] }) {
   const crewIds = new Set(leads.map((c) => c.id));
   const people = [
     ...new Set([session.userId, ...(options.data?.crewMembers ?? []).filter((m) => crewIds.has(m.crew_id)).map((m) => m.user_id)]),
-  ].filter((id) => options.data?.team.some((t) => t.user_id === id));
+  ].filter((id) => options.data?.team.some((m) => m.user_id === id));
   const key = ["crew-clock", session.company.id, people.join(",")];
-  const nameOf = (id: string) => options.data?.team.find((t) => t.user_id === id)?.profile?.full_name || "Crew member";
+  const nameOf = (id: string) => options.data?.team.find((m) => m.user_id === id)?.profile?.full_name || t("Crew member");
 
   const running = useQuery({
     queryKey: key,
@@ -64,7 +65,7 @@ export function CrewClockCard({ visits }: { visits: VisitTarget[] }) {
     scope: FIELD_SCOPE,
     meta: { success: (result: { lost: string[] }, change: ClockChange) => clockSaved(result, change, { nameOf }) },
     onMutate: (change: ClockChange) => {
-      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
+      if (!onlineManager.isOnline()) toast.info(t("Saved on this phone"), { description: t("It sends when you have signal.") });
       showClockTap(queryClient, { key: "clock", change });
     },
     onSettled: () => {
@@ -93,29 +94,29 @@ export function CrewClockCard({ visits }: { visits: VisitTarget[] }) {
   const on = people.filter((p) => entryOf(p));
   const targets: Array<{ label: string; target: ClockTarget }> = [
     ...visits.filter((v) => !["completed", "cancelled"].includes(v.status)).map((v) => ({ label: v.title, target: { category: "visit" as const, visit: { id: v.id, jobId: v.job?.id ?? null, title: v.title } } })),
-    { label: CATEGORY_LABELS.drive, target: { category: "drive" } },
-    { label: CATEGORY_LABELS.shop, target: { category: "shop" } },
+    { label: t(CATEGORY_LABELS.drive), target: { category: "drive" } },
+    { label: t(CATEGORY_LABELS.shop), target: { category: "shop" } },
     // Lunch for the whole crew; clock them back onto the visit after.
-    { label: CATEGORY_LABELS.break, target: { category: "break" } },
-    { label: CATEGORY_LABELS.other, target: { category: "other" } },
+    { label: t(CATEGORY_LABELS.break), target: { category: "break" } },
+    { label: t(CATEGORY_LABELS.other), target: { category: "other" } },
   ];
   const clockIn = (who: string[], label: string, text = label) => (
     <Menu
       label={label}
       triggerClassName="btn btn-sm"
       trigger={<>{going?.target && going.who.join() === who.join() ? <Spinner size={14} /> : <Icon name="play" size={14} />}{text}</>}
-      items={targets.map((t) => ({ label: t.label, disabled: going !== null, onSelect: () => void tap(who, t.target) }))}
+      items={targets.map((x) => ({ label: x.label, disabled: going !== null, onSelect: () => void tap(who, x.target) }))}
     />
   );
 
   return (
     <section className="card">
       <div className="card-head" style={{ flexWrap: "wrap", gap: 8 }}>
-        <strong className="grow">Crew clock</strong>
-        {off.length > 0 && clockIn(off, off.length === people.length ? "Clock everyone in" : `Clock in ${off.length} more`)}
+        <strong className="grow">{t("Crew clock")}</strong>
+        {off.length > 0 && clockIn(off, off.length === people.length ? t("Clock everyone in") : t("Clock in {count} more", { count: off.length }))}
         {/* Everyone on the clock onto something else at once: lunch, and back onto the visit after. */}
-        {on.length > 0 && clockIn(on, on.length === people.length ? "Switch everyone" : `Switch the ${on.length} on the clock`, "Switch")}
-        {on.length > 0 && <Button size="sm" variant="dark" icon="pause" loading={going?.target === null && going.who.length > 1} onClick={() => void tap(on, null)}>Clock everyone out</Button>}
+        {on.length > 0 && clockIn(on, on.length === people.length ? t("Switch everyone") : t("Switch the {count} on the clock", { count: on.length }), t("Switch"))}
+        {on.length > 0 && <Button size="sm" variant="dark" icon="pause" loading={going?.target === null && going.who.length > 1} onClick={() => void tap(on, null)}>{t("Clock everyone out")}</Button>}
       </div>
       {people.map((id) => {
         const entry = entryOf(id);
@@ -125,15 +126,15 @@ export function CrewClockCard({ visits }: { visits: VisitTarget[] }) {
           <div key={id} className="card-row">
             <span className="avatar" style={{ width: 30, height: 30, fontSize: 11, background: entry ? "var(--green-solid)" : "var(--fill-3)", color: entry ? "#fff" : "var(--text-2)" }}>{initials(name)}</span>
             <span className="grow" style={{ minWidth: 0 }}>
-              <strong>{name}{id === session.userId ? " (you)" : ""}</strong>
+              <strong>{name}{id === session.userId ? t(" (you)") : ""}</strong>
               <span className="muted small" style={{ display: "block" }}>
-                {entry ? `${visit?.title ?? CATEGORY_LABELS[entry.category as TimerCategory] ?? "Working"} · ${formatDuration(Date.now() - Date.parse(entry.started_at))}` : "Clock is off"}
+                {entry ? `${visit?.title ?? t(CATEGORY_LABELS[entry.category as TimerCategory] ?? msg("Working"))} · ${formatDuration(Date.now() - Date.parse(entry.started_at))}` : t("Clock is off")}
               </span>
             </span>
             {entry ? (
-              <Button size="sm" variant="ghost" icon="pause" aria-label={`Clock out ${name}`} loading={going?.target === null && going.who.length === 1 && going.who[0] === id} onClick={() => void tap([id], null)} />
+              <Button size="sm" variant="ghost" icon="pause" aria-label={t("Clock out {name}", { name })} loading={going?.target === null && going.who.length === 1 && going.who[0] === id} onClick={() => void tap([id], null)} />
             ) : (
-              clockIn([id], `Clock in ${name}`, "Clock in")
+              clockIn([id], t("Clock in {name}", { name }), t("Clock in"))
             )}
           </div>
         );

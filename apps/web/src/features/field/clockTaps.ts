@@ -9,9 +9,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { VisitStatusChange } from "./fieldActions";
 import type { ClockPlace, TimerCategory } from "./fieldData";
+import { intlLocale, msg, t } from "@/lib/i18n";
 
-/** What each kind of clock is called (fieldData exports it as CATEGORY_LABELS). */
-export const CLOCK_LABELS: Record<TimerCategory, string> = { visit: "On a visit", assessment: "Assessment", drive: "Driving", shop: "Shop time", break: "On break", other: "Other work" };
+/** What each kind of clock is called (fieldData exports it as CATEGORY_LABELS): shown with t(). */
+export const CLOCK_LABELS: Record<TimerCategory, string> = { visit: msg("On a visit"), assessment: msg("Assessment"), drive: msg("Driving"), shop: msg("Shop time"), break: msg("On break"), other: msg("Other work") };
 
 /** What a clock goes onto: a visit, or driving, the shop, a break or other work. */
 export interface ClockTarget {
@@ -89,7 +90,7 @@ export function clockAfter(clock: ShownClock | null, tap: ClockTap, userId: stri
   if (v.status === "completed" && onVisit && clock && startedBefore(clock, v.at)) return day ? travel(v.at) : null;
   if (v.userId !== userId || v.clock === false) return clock;
   if (clock && !startedBefore(clock, v.at)) return clock;
-  if (v.status === "in_progress") return onVisit ? clock : { id: `tap:${v.at}`, category: "visit", started_at: v.at, visit: { id: v.visitId, title: tap.title ?? "Visit" } };
+  if (v.status === "in_progress") return onVisit ? clock : { id: `tap:${v.at}`, category: "visit", started_at: v.at, visit: { id: v.visitId, title: tap.title ?? t("Visit") } };
   // Complete stops whatever they were on; on the whole-day clock only a clock on this visit moves (above).
   if (v.status === "completed") return day ? clock : null;
   if (v.status === "en_route" && day) return clock?.category === "drive" && !clock.visit ? clock : travel(v.at);
@@ -150,17 +151,22 @@ export function showClockTap(queryClient: QueryClient, tap: ClockTap) {
   }
 }
 
-const count = (who: readonly string[], nameOf?: (id: string) => string) => (who.length === 1 && nameOf ? nameOf(who[0]!) : `${who.length} people`);
 /** "2:15 PM" on the phone's own clock, for saying which tap is meant. */
-const tappedAt = (at: string) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+const tappedAt = (at: string) => new Date(at).toLocaleTimeString(intlLocale(), { hour: "numeric", minute: "2-digit" });
 
 /** What a clock tap's confirmation says once the server has it (a toast: no closing period). None when it lost (clockLost says that). */
 export function clockSaved(result: { lost: readonly string[] } | undefined, change: ClockChange, options: { day?: boolean; nameOf?: (id: string) => string } = {}): string | null {
   if (result?.lost.length) return null;
   const own = change.who.length === 1 && change.who[0] === change.userId;
-  if (!own) return `${change.target ? "Clocked in" : "Clocked out"} ${count(change.who, options.nameOf)}`;
-  if (!change.target) return options.day ? "Clock stopped for the day" : "Clock stopped";
-  return `${change.target.visit?.title ?? CLOCK_LABELS[change.target.category]}: clock started`;
+  if (!own) {
+    const name = change.who.length === 1 && options.nameOf ? options.nameOf(change.who[0]!) : null;
+    if (name) return change.target ? t("Clocked in {name}", { name }) : t("Clocked out {name}", { name });
+    return change.target
+      ? t.plural(change.who.length, { one: "Clocked in {count} people", other: "Clocked in {count} people" })
+      : t.plural(change.who.length, { one: "Clocked out {count} people", other: "Clocked out {count} people" });
+  }
+  if (!change.target) return options.day ? t("Clock stopped for the day") : t("Clock stopped");
+  return t("{what}: clock started", { what: change.target.visit?.title ?? t(CLOCK_LABELS[change.target.category]) });
 }
 
 /**
@@ -172,9 +178,19 @@ export function clockLost(result: { lost: readonly string[] }, change: ClockChan
   if (!result.lost.length) return null;
   const own = result.lost.length === 1 && result.lost[0] === change.userId;
   const one = result.lost.length === 1;
-  const what = change.target ? (change.target.visit?.title ?? CLOCK_LABELS[change.target.category]) : "Stop";
+  const what = change.target ? (change.target.visit?.title ?? t(CLOCK_LABELS[change.target.category])) : t("Stop");
+  const time = tappedAt(change.at);
+  const name = one && nameOf ? nameOf(result.lost[0]!) : null;
   return {
-    title: own ? "Your clock was changed after you tapped" : `${count(result.lost, nameOf)}'s ${one ? "clock was" : "clocks were"} changed after you tapped`,
-    body: `${what} at ${tappedAt(change.at)} arrived after a newer clock had started, so ${own ? "your clock stays as it is" : one ? "it stays as it is" : "they stay as they are"} now. Check Timesheets if that's wrong.`,
+    title: own
+      ? t("Your clock was changed after you tapped")
+      : name
+        ? t("{name}'s clock was changed after you tapped", { name })
+        : t.plural(result.lost.length, { one: "{count} people's clock was changed after you tapped", other: "{count} people's clocks were changed after you tapped" }),
+    body: own
+      ? t("{what} at {time} arrived after a newer clock had started, so your clock stays as it is now. Check Timesheets if that's wrong.", { what, time })
+      : one
+        ? t("{what} at {time} arrived after a newer clock had started, so it stays as it is now. Check Timesheets if that's wrong.", { what, time })
+        : t("{what} at {time} arrived after a newer clock had started, so they stay as they are now. Check Timesheets if that's wrong.", { what, time }),
   };
 }

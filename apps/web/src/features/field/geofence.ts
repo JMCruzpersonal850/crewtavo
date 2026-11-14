@@ -40,6 +40,7 @@ import { toast } from "@/lib/toast";
 import { clockChange, showClockTap, type ClockChange, type ClockTarget, type ShownClock } from "./clockTaps";
 import { onDayClock, recordsPlaces, useRunningTimer, type ClockPlace } from "./fieldData";
 import { useMyDay, type MyDayVisit } from "./myDay";
+import { t } from "@/lib/i18n";
 
 // ---------------------------------------------------------------------------------------------
 // What the geofence asks, waiting on the screen
@@ -81,9 +82,9 @@ const ask = (prompt: GeofencePrompt) => setPrompts([...prompts.filter((p) => p.v
 
 /** The question as one line, for the card and the phone's notification. */
 export function promptText(p: GeofencePrompt): { title: string; question: string } {
-  if (p.kind === "start") return { title: `You're at ${p.place}`, question: p.clockOnly ? "Start your clock?" : "Start the visit?" };
-  const question = p.complete && p.stopClock ? "Complete the visit, or stop your clock?" : p.complete ? "Complete the visit?" : "Stop your clock?";
-  return { title: `Leaving ${p.place}`, question };
+  if (p.kind === "start") return { title: t("You're at {place}", { place: p.place }), question: p.clockOnly ? t("Start your clock?") : t("Start the visit?") };
+  const question = p.complete && p.stopClock ? t("Complete the visit, or stop your clock?") : p.complete ? t("Complete the visit?") : t("Stop your clock?");
+  return { title: t("Leaving {place}", { place: p.place }), question };
 }
 
 /** Whether a question still means anything, now the visit and the clock are as they are. */
@@ -146,8 +147,8 @@ export function tappedVisits(change: ClockChange, userId: string, running: Pick<
 
 /** "Clock started at 12 Oak St" and the like: what the phone did by itself, said as it happens. */
 export function actionWords(action: GeofenceAction, place: string): string | null {
-  if (action.kind === "start-clock") return `Clock started at ${place}`;
-  if (action.kind === "stop-clock") return action.travel ? `You left ${place}, so your clock is on driving` : `Clock stopped as you left ${place}`;
+  if (action.kind === "start-clock") return t("Clock started at {place}", { place });
+  if (action.kind === "stop-clock") return action.travel ? t("You left {place}, so your clock is on driving", { place }) : t("Clock stopped as you left {place}", { place });
   return null;
 }
 
@@ -232,7 +233,7 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
         const change: ClockChange = { ...clockChange(s, [s.userId], target, where, new Date(action.at).toISOString()), geofence: true, ...(action.kind === "stop-clock" && { fromVisit: visit.id }) };
         send(change);
         const words = actionWords(action, place)!;
-        toast.success(words, onlineManager.isOnline() ? undefined : { description: "Saved on this phone. It sends when you have signal." });
+        toast.success(words, onlineManager.isOnline() ? undefined : { description: t("Saved on this phone. It sends when you have signal.") });
         return words;
       }
       const prompt: GeofencePrompt =

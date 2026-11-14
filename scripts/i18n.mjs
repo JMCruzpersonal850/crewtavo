@@ -31,7 +31,9 @@ export const COVERED = [
   "apps/web/src/features/auth/LoginPage.tsx",
   "apps/web/src/features/auth/textCode.ts",
   "apps/web/src/features/settings/Language.tsx",
-  ...["errors.ts", "files.ts", "offline.ts", "offlinePhotos.ts", "photoMarkup.ts", "push.ts", "queryClient.ts", "resumable.ts", "session.tsx", "undo.ts"].map((f) => `apps/web/src/lib/${f}`),
+  // The field app.
+  "apps/web/src/features/field",
+  ...["api.ts", "clipboard.ts", "errors.ts", "files.ts", "offline.ts", "offlinePhotos.ts", "photoMarkup.ts", "push.ts", "queryClient.ts", "resumable.ts", "session.tsx", "undo.ts"].map((f) => `apps/web/src/lib/${f}`),
 ];
 
 /** Where t()/msg()/<T> text is read from. */
@@ -41,12 +43,12 @@ const SOURCES = ["apps/web/src", "apps/api/src", "packages/core/src"];
 const TEXT_PROPS = new Set([
   "label", "title", "placeholder", "aria-label", "alt", "hint", "description", "emptyText", "confirmLabel", "cancelLabel",
   "subtitle", "caption", "help", "tooltip", "message", "heading", "actionLabel", "empty", "aria-description", "aria-valuetext", "note",
-  "eyebrow", "detail", "summary", "doneLabel", "saveLabel", "submitLabel", "busyLabel", "addLabel", "lede", "body", "slowHint",
+  "eyebrow", "detail", "summary", "doneLabel", "saveLabel", "submitLabel", "busyLabel", "addLabel", "lede", "body", "slowHint", "requiredMessage",
 ]);
 /** Object keys whose text people read (toasts' meta, confirm()'s question, a menu's items). */
 const TEXT_KEYS = new Set(["success", "error", "title", "body", "message", "label", "hint", "description", "confirmLabel", "cancelLabel", "placeholder", "empty", "note", "detail", "heading"]);
 /** Calls whose string arguments people read. */
-const TEXT_CALLS = /^(toast(\.\w+)?|alert|window\.alert|window\.confirm|window\.prompt|new Error)$/;
+const TEXT_CALLS = /^(toast(\.\w+)?|alert|window\.alert|window\.confirm|window\.prompt|new Error|set(Problem|Error|Note|Message|Failed|Warning)|useDocumentTitle|done)$/;
 /** Text that reads the same in every language. */
 const SAME_EVERYWHERE = new Set(["Crewtavo", "Google", "Apple", "Android", "iPhone", "iPad", "Stripe", "Railway", "Claude", "PDF", "SMS", "GPS", "Email", "OK"]);
 
@@ -363,8 +365,15 @@ function addImport(text, file, names) {
     return text.replace(existing[0], `import { ${all.join(", ")} } from "${from}";`);
   }
   const imports = [...text.matchAll(/^import [\s\S]*? from ["'][^"']+["'];?$/gm)];
-  const at = imports.length ? imports[imports.length - 1].index + imports[imports.length - 1][0].length : 0;
-  return `${text.slice(0, at)}\nimport { ${names.sort().join(", ")} } from "${from}";${text.slice(at)}`;
+  const line = `import { ${names.sort().join(", ")} } from "${from}";`;
+  if (!imports.length) {
+    // After the file's opening comment, if it has one.
+    const comment = text.match(/^\/\*\*[\s\S]*?\*\/\n/);
+    const at = comment ? comment[0].length : 0;
+    return `${text.slice(0, at)}${line}\n${at ? "" : "\n"}${text.slice(at)}`;
+  }
+  const at = imports[imports.length - 1].index + imports[imports.length - 1][0].length;
+  return `${text.slice(0, at)}\n${line}${text.slice(at)}`;
 }
 
 function main() {

@@ -20,6 +20,7 @@ import { hasRole, keepsTime, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { clockChange, clockSaved, showClockTap, type ClockChange, type ClockTarget } from "./clockTaps";
 import { CATEGORY_LABELS, clockPlace, onDayClock, recordsPlaces, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
+import { msg, t } from "@/lib/i18n";
 
 interface VisitUnderWay { id: string; title: string; job_id: string | null }
 
@@ -37,7 +38,7 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
     scope: FIELD_SCOPE,
     meta: { success: (result: { lost: string[] }, change: ClockChange) => clockSaved(result, change, { day }) },
     onMutate: (change: ClockChange) => {
-      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
+      if (!onlineManager.isOnline()) toast.info(t("Saved on this phone"), { description: t("It sends when you have signal.") });
       showClockTap(queryClient, { key: "clock", change });
     },
     onSettled: () => {
@@ -64,26 +65,26 @@ export function ClockCard({ visits = [] }: { visits?: VisitUnderWay[] }) {
       <div className="grow">
         {on ? (
           <>
-            <div className="strong">{visit ? visit.title : CATEGORY_LABELS[timer.data!.category as TimerCategory] ?? "Working"}</div>
-            <div className="small" style={{ color: "var(--green-dark)" }}>Clock running · {elapsed}</div>
-            {day && <div className="small muted">It runs between visits too, until you stop for the day.</div>}
+            <div className="strong">{visit ? visit.title : t(CATEGORY_LABELS[timer.data!.category as TimerCategory] ?? msg("Working"))}</div>
+            <div className="small" style={{ color: "var(--green-dark)" }}>{t("Clock running · {elapsed}", { elapsed })}</div>
+            {day && <div className="small muted">{t("It runs between visits too, until you stop for the day.")}</div>}
           </>
         ) : (
           <>
-            <div className="strong">Clock is off</div>
-            {day && <div className="small muted">On my way or Start visit starts your day.</div>}
-            {recordsPlaces(session.company) && !hasRole(session, "admin", "office") && <div className="small muted">Clocking in and out saves where you are, for the office.</div>}
+            <div className="strong">{t("Clock is off")}</div>
+            {day && <div className="small muted">{t("On my way or Start visit starts your day.")}</div>}
+            {recordsPlaces(session.company) && !hasRole(session, "admin", "office") && <div className="small muted">{t("Clocking in and out saves where you are, for the office.")}</div>}
           </>
         )}
       </div>
-      {on && <Button variant="dark" icon="pause" loading={going === "stop"} disabled={going === "start"} onClick={() => void tap(null)}>{day ? "Stop for the day" : "Stop"}</Button>}
+      {on && <Button variant="dark" icon="pause" loading={going === "stop"} disabled={going === "start"} onClick={() => void tap(null)}>{day ? t("Stop for the day") : t("Stop")}</Button>}
       <Menu
-        label="Start a timer"
+        label={t("Start a timer")}
         triggerClassName="btn"
-        trigger={<>{going === "start" ? <Spinner size={16} /> : <Icon name="play" size={16} />}{on ? "Switch" : "Start timer"}</>}
+        trigger={<>{going === "start" ? <Spinner size={16} /> : <Icon name="play" size={16} />}{on ? t("Switch") : t("Start timer")}</>}
         items={[
           ...visits.filter((v) => v.id !== visit?.id).map((v) => ({ label: v.title, disabled: going !== null, onSelect: () => void tap({ category: "visit", visit: { id: v.id, jobId: v.job_id, title: v.title } }) })),
-          ...(["drive", "shop", "break", "other"] as TimerCategory[]).map((c) => ({ label: CATEGORY_LABELS[c], disabled: going !== null, onSelect: () => void tap({ category: c }) })),
+          ...(["drive", "shop", "break", "other"] as TimerCategory[]).map((c) => ({ label: t(CATEGORY_LABELS[c]), disabled: going !== null, onSelect: () => void tap({ category: c }) })),
         ]}
       />
     </div>

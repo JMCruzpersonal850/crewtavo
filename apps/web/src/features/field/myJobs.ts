@@ -9,6 +9,7 @@
 import { necThreshold } from "@crewtavo/core/jobPay";
 import { amountWords, moneyShort, offerDays, type SubOffer } from "@crewtavo/core/subOffers";
 import { formatMoneyCents } from "@/lib/format";
+import { t } from "@/lib/i18n";
 
 /** "Smith roof · Tue Nov 3 · Springfield · 24 squares · $2,040": the job, its days, its town, the biggest per-unit line and the total. */
 export function offerCardLine(o: Pick<SubOffer, "job_title" | "visits" | "city" | "region" | "lines" | "total">): string {
@@ -85,21 +86,24 @@ export interface PayTotals { year: number; paid: number; payments: number; owed:
  * less (card and payment-app payments), and to ask for the 1099 once it reaches the amount that needs
  * one (necThreshold, as the office's 1099 totals go by).
  */
-export function paidTotalNote(t: PayTotals | undefined, companyName: string): string {
-  const base = "This year's total goes by the day you were paid, and counts every payment, not only the latest ones here.";
-  if (!t) return base;
-  const counted = t.counted ?? t.paid;
-  const part = counted < t.paid
-    ? ` ${formatMoneyCents(counted)} of it counts toward your 1099: card and payment-app payments are reported on a 1099-K instead.`
+export function paidTotalNote(totals: PayTotals | undefined, companyName: string): string {
+  const base = t("This year's total goes by the day you were paid, and counts every payment, not only the latest ones here.");
+  if (!totals) return base;
+  const counted = totals.counted ?? totals.paid;
+  const part = counted < totals.paid
+    ? ` ${t("{amount} of it counts toward your 1099: card and payment-app payments are reported on a 1099-K instead.", { amount: formatMoneyCents(counted) })}`
     : "";
-  const ask = counted > 0 && counted >= necThreshold(t.year).amount ? ` Ask ${companyName} for your 1099.` : "";
+  const ask = counted > 0 && counted >= necThreshold(totals.year).amount ? ` ${t("Ask {company} for your 1099.", { company: companyName })}` : "";
   return base + part + ask;
 }
 
 /** Under Paid and Done: "$54,210.00 in 2026" and "$2,210.00 owed", or null for what isn't known yet or is nothing. */
-export function totalsWords(t: PayTotals | undefined): { paid: string | null; owed: string | null } {
-  if (!t) return { paid: null, owed: null };
-  return { paid: `${formatMoneyCents(t.paid)} in ${t.year}`, owed: t.owed > 0 ? `${formatMoneyCents(t.owed)} owed` : null };
+export function totalsWords(totals: PayTotals | undefined): { paid: string | null; owed: string | null } {
+  if (!totals) return { paid: null, owed: null };
+  return {
+    paid: t("{amount} in {year}", { amount: formatMoneyCents(totals.paid), year: totals.year }),
+    owed: totals.owed > 0 ? t("{amount} owed", { amount: formatMoneyCents(totals.owed) }) : null,
+  };
 }
 
 /**
@@ -108,8 +112,8 @@ export function totalsWords(t: PayTotals | undefined): { paid: string | null; ow
  * without guessing why.
  */
 export function missingOfferNote(fromCompany: { id: string; name: string } | null | undefined, currentCompanyId: string): { text: string; switchTo: string | null } {
-  if (fromCompany && fromCompany.id !== currentCompanyId) return { text: `This job offer is from ${fromCompany.name}.`, switchTo: fromCompany.id };
-  return { text: "We can't find that job here. It may be over. Call the office if you're not sure.", switchTo: null };
+  if (fromCompany && fromCompany.id !== currentCompanyId) return { text: t("This job offer is from {company}.", { company: fromCompany.name }), switchTo: fromCompany.id };
+  return { text: t("We can't find that job here. It may be over. Call the office if you're not sure."), switchTo: null };
 }
 
 /**
@@ -117,14 +121,14 @@ export function missingOfferNote(fromCompany: { id: string; name: string } | nul
  * kept on the phone to go later, as an office could give the work to someone else meanwhile.
  */
 export function answerState(online: boolean, offer: Pick<SubOffer, "can_answer">): { disabled: boolean; note: string | null } {
-  if (!offer.can_answer) return { disabled: true, note: "This offer ran out. Call the office if you'd still like the work." };
-  if (!online) return { disabled: true, note: "No signal. You can accept or decline this job once you have signal." };
+  if (!offer.can_answer) return { disabled: true, note: t("This offer ran out. Call the office if you'd still like the work.") };
+  if (!online) return { disabled: true, note: t("No signal. You can accept or decline this job once you have signal.") };
   return { disabled: false, note: null };
 }
 
 /** After an answer: what they're told (a toast: no closing period). */
 export function answeredToast(accept: boolean, o: Pick<SubOffer, "is_change" | "job_title" | "agreed_total">): string {
-  if (o.is_change) return accept ? `New price accepted for ${o.job_title}` : `New price declined, ${o.job_title} stays at ${moneyShort(o.agreed_total)}`;
-  return accept ? `${o.job_title} accepted, it's on My day` : "Job declined, the office knows";
+  if (o.is_change) return accept ? t("New price accepted for {job}", { job: o.job_title }) : t("New price declined, {job} stays at {price}", { job: o.job_title, price: moneyShort(o.agreed_total) });
+  return accept ? t("{job} accepted, it's on My day", { job: o.job_title }) : t("Job declined, the office knows");
 }
 

@@ -17,6 +17,7 @@ import { clockChange, clockSaved, showClockTap, type ClockChange } from "./clock
 import { clockPlace, onDayClock, useRunningTimer } from "./fieldData";
 import { dismissPrompt, promptStands, promptText, useGeofence, useGeofencePrompts, type GeofencePrompt } from "./geofence";
 import { useMyDay } from "./myDay";
+import { t } from "@/lib/i18n";
 
 /** On My day: every visit's questions. On a visit's screen (`visitId`): that visit's. */
 export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus: (visit: { id: string; jobId: string | null }, status: string) => void }) {
@@ -32,7 +33,7 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
     scope: FIELD_SCOPE,
     meta: { success: (result: { lost: string[] }, change: ClockChange) => clockSaved(result, change, { day: dayClock }) },
     onMutate: (change: ClockChange) => {
-      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
+      if (!onlineManager.isOnline()) toast.info(t("Saved on this phone"), { description: t("It sends when you have signal.") });
       showClockTap(queryClient, { key: "clock", change });
     },
     onSettled: () => {
@@ -68,11 +69,11 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
               {p.done && <span>{p.done}.</span>}
               <span>{text.question}</span>
               <span className="row wrap" style={{ gap: 8 }}>
-                {p.kind === "start" && !p.clockOnly && <Button size="sm" variant="primary" icon="play" onClick={() => status(p, "in_progress")}>Start visit</Button>}
-                {p.kind === "start" && p.clockOnly && <Button size="sm" variant="primary" icon="play" onClick={() => void tapClock(p, true)}>Start my clock</Button>}
-                {p.kind === "finish" && p.complete && <Button size="sm" variant="primary" icon="check" onClick={() => status(p, "completed")}>Complete visit</Button>}
-                {p.kind === "finish" && p.stopClock && <Button size="sm" icon="pause" onClick={() => void tapClock(p, false)}>{dayClock ? "Switch to driving" : "Stop my clock"}</Button>}
-                <Button size="sm" variant="ghost" onClick={() => dismissPrompt(p.id)}>Not now</Button>
+                {p.kind === "start" && !p.clockOnly && <Button size="sm" variant="primary" icon="play" onClick={() => status(p, "in_progress")}>{t("Start visit")}</Button>}
+                {p.kind === "start" && p.clockOnly && <Button size="sm" variant="primary" icon="play" onClick={() => void tapClock(p, true)}>{t("Start my clock")}</Button>}
+                {p.kind === "finish" && p.complete && <Button size="sm" variant="primary" icon="check" onClick={() => status(p, "completed")}>{t("Complete visit")}</Button>}
+                {p.kind === "finish" && p.stopClock && <Button size="sm" icon="pause" onClick={() => void tapClock(p, false)}>{dayClock ? t("Switch to driving") : t("Stop my clock")}</Button>}
+                <Button size="sm" variant="ghost" onClick={() => dismissPrompt(p.id)}>{t("Not now")}</Button>
               </span>
             </div>
           </div>
@@ -82,14 +83,14 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
         <div className="callout callout-warning" role="status">
           <Icon name="pin" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
-            <div>Location is off for Crewtavo</div>
-            {mode === "clock" ? "Your clock can't start and stop at the property." : "Crewtavo can't remind you at the property."} Turn on location for Crewtavo in your phone's settings.
+            <div>{t("Location is off for Crewtavo")}</div>
+            {mode === "clock" ? t("Your clock can't start and stop at the property. Turn on location for Crewtavo in your phone's settings.") : t("Crewtavo can't remind you at the property. Turn on location for Crewtavo in your phone's settings.")}
           </div>
         </div>
       )}
       {!visitId && watching && !denied && (
         <span className="muted small">
-          {mode === "clock" ? "Your clock starts when you get to a visit and stops when you leave," : "Crewtavo reminds you to start and finish visits when you get there and leave,"} while Crewtavo is open on this phone.
+          {mode === "clock" ? t("Your clock starts when you get to a visit and stops when you leave, while Crewtavo is open on this phone.") : t("Crewtavo reminds you to start and finish visits when you get there and leave, while Crewtavo is open on this phone.")}
         </span>
       )}
     </>
