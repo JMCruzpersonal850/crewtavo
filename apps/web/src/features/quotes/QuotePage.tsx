@@ -699,7 +699,7 @@ export function QuotePage() {
           </div>
         </div>
       )}
-      {q.status === "draft" && <DraftedCallout drafted={q.drafted} lines={q.lines} requestId={q.request_id} admin={hasRole(session, "admin")} />}
+      {q.status === "draft" && <DraftedCallout quoteId={q.id} message={q.message} drafted={q.drafted} lines={q.lines} requestId={q.request_id} admin={hasRole(session, "admin")} canEdit={editable} onChanged={refresh} />}
       {q.status === "lost" && <div className="callout callout-danger"><Icon name="x" size={20} /><div className="grow">Marked lost{q.lost_reason ? `: ${q.lost_reason}` : ""}.</div></div>}
       {q.status === "sent" && q.sent_at && (
         <div className="callout">

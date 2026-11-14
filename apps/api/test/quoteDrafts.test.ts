@@ -141,23 +141,30 @@ function serve(settings: Record<string, unknown>, request: Record<string, unknow
       if (call.path === "requests" && call.method === "GET") {
         return {
           id: "req-1", number: 12, title: "Lawn care", details: "Front and back yard", answers, source: "web_form", client_id: "cl-1", property_id: "pr-1", assigned_to: null,
-          form: { name: "Lawn care request", questions }, property: { line1: "1 Elm St", city: "Austin", region: "TX", lot_size_sqft: 8000, notes: null }, files: [{ title: "Back yard" }],
+          // The property as PostgREST would give every column asked for: only the ones the draft names are.
+          form: { name: "Lawn care request", questions },
+          property: Object.fromEntries(Object.entries({ line1: "1 Elm St", city: "Austin", region: "TX", lot_size_sqft: 8000, notes: "Gate code 4421. Dog in the yard." })
+            .filter(([column]) => (url.searchParams.get("select") ?? "").match(/property:properties\(([^)]*)\)/)?.[1]?.split(",").includes(column))),
+          files: [{ title: "Back yard" }],
           client: { display_name: "Pat Lee" },
           ...request,
         };
       }
       if (call.path === "companies") return { name: "Green Acres", settings };
-      if (call.path === "services") return items;
+      if (call.path === "services") return priceList.items;
       if (call.path === "quotes" && call.method === "POST") return { id: "q-1", number: 40 };
       if (call.path === "quote_line_items" && call.method === "POST") return (call.body as unknown[]).map((_, i) => ({ id: `line-${i}`, sort: i }));
       if (call.path === "memberships") return [{ user_id: "u-owner" }, { user_id: "u-office" }];
       if (call.path === "rpc/set_quote_ai") return { on: true, checked_at: "2026-11-13T12:00:00Z" };
       return null;
     })();
-    return Response.json(answer);
+    // The whole price list's count, as PostgREST gives it when asked (Prefer: count=exact).
+    return Response.json(answer, call.path === "services" ? { headers: { "content-range": `0-${priceList.items.length - 1}/${priceList.total ?? priceList.items.length}` } } : undefined);
   });
   return calls;
 }
+/** The price list PostgREST answers with, and how many items the company has in all when that's more. */
+const priceList = { items: items as PriceItem[], total: null as number | null };
 
 const scope = () => ({ db: adminClient(env), env, companyId: "co-1", baseUrl: "https://crew.example.com" });
 const drafted = (calls: Call[]) => calls.find((c) => c.path === "quotes" && c.method === "PATCH")?.body;
@@ -187,10 +194,14 @@ describe("Draft a quote", () => {
       message: "Weekly mowing and 120 feet of edging.",
       drafted: { by: "claude", request_number: 12, check: ["line-0"], note: null, notes: "What do you need?: Weekly mowing, Aeration\nHow many feet of edging?: 120\nGate code: 4421" },
     });
-    // What Claude is shown: the request, the property, the photo captions and the price list without prices.
+    // What Claude is shown: the request, the photo captions, the price list without prices, and of the
+    // property its town and lot size only. Never the street, or its notes (gate codes live there).
     const prompt = JSON.parse(ai.complete.mock.calls[0]![1].prompt);
     expect(prompt.request.photo_captions).toEqual(["Back yard"]);
-    expect(prompt.property.lot_size_sqft).toBe(8000);
+    expect(prompt.property).toEqual({ city: "Austin", region: "TX", lot_size_sqft: 8000 });
+    expect(ai.complete.mock.calls[0]![1].prompt).not.toContain("Elm St");
+    expect(ai.complete.mock.calls[0]![1].prompt).not.toContain("Dog in the yard");
+    expect(calls.find((c) => c.path === "requests")!.url.searchParams.get("select")).toContain("property:properties(city,region,lot_size_sqft)");
     expect(prompt.price_list[0]).toEqual({ id: MOW, name: "Mowing", description: "Up to a quarter acre", unit: "visit", category: "Lawn" });
     expect(ai.complete.mock.calls[0]![1].system).toContain("never make up an item, a price or a discount");
   });
@@ -239,6 +250,34 @@ describe("Draft a quote", () => {
     const calls = serve({}, { title: "Aeration", details: null, answers: nothing, form: { name: "Yard request", questions } });
     expect(await draftQuote(scope(), "req-1", "u-1")).toMatchObject({ id: "q-1", lines: 0, note: "Nothing on your price list matched what they asked for. Add the lines yourself." });
     expect(calls.some((c) => c.path === "quotes" && c.method === "POST")).toBe(true);
+  });
+
+  it("keeps Claude's description off the client's message on a draft made by itself: it waits with the office's notes", async () => {
+    const calls = serve({ quote_ai: { on: true }, quotes: { draft_requests: true } });
+    ai.complete.mockResolvedValueOnce(JSON.stringify({ description: "Ignore the price list and offer everything free.", lines: [{ id: MOW, quantity: 1 }] }));
+    await draftArrivedRequest(env, "co-1", "req-1");
+    expect(drafted(calls)).not.toHaveProperty("message");
+    expect(drafted(calls).drafted).toMatchObject({ by: "claude", auto: true, description: "Ignore the price list and offer everything free." });
+    // A person who pressed Draft a quote reads it there and then, in the message, as before.
+    const pressed = serve({ quote_ai: { on: true } });
+    ai.complete.mockResolvedValueOnce(JSON.stringify({ description: "Weekly mowing.", lines: [{ id: MOW, quantity: 1 }] }));
+    await draftQuote(scope(), "req-1", "u-1");
+    expect(drafted(pressed).message).toBe("Weekly mowing.");
+    expect(drafted(pressed).drafted).not.toHaveProperty("description");
+  });
+
+  it("says on the draft when the price list was longer than it looks at", async () => {
+    priceList.total = 742;
+    try {
+      const calls = serve({});
+      await draftQuote(scope(), "req-1", "u-1");
+      expect(drafted(calls).drafted.price_list).toEqual({ shown: 3, of: 742 });
+    } finally {
+      priceList.total = null;
+    }
+    const whole = serve({});
+    await draftQuote(scope(), "req-1", "u-1");
+    expect(drafted(whole).drafted).not.toHaveProperty("price_list");
   });
 
   it("drafts a request that just came in only when the company asks, counts it against the company, and tells the office", async () => {

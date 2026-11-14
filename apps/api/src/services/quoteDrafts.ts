@@ -3,15 +3,24 @@
  * for the office to review. Nothing is sent.
  *
  *   With Claude     when the company switched it on for this (settings.quote_ai, after the key was
- *                   checked with Claude: setQuoteAi). Claude reads the request (its answers, notes,
- *                   the property and its photos' captions) and the price list, and proposes lines
- *                   and a short description. It never sets a price or makes up an item: every line
- *                   is checked against the price list here (validateDraft) and takes the item's own
- *                   name, unit, price and tax; anything else is dropped. A quantity the request
- *                   doesn't give is 1, flagged "check the quantity".
+ *                   checked with Claude: setQuoteAi). Claude reads the request (its answers, notes
+ *                   and its photos' captions), the property's town and lot size, and the price
+ *                   list, and proposes lines and a short description. It's never sent the street
+ *                   address or the property's notes: gate codes and the like live there. It never
+ *                   sets a price or makes up an item: every line is checked against the price list
+ *                   here (validateDraft) and takes the item's own name, unit, price and tax;
+ *                   anything else is dropped. A quantity the request doesn't give is 1, flagged
+ *                   "check the quantity". Its description is the quote's message when a person
+ *                   pressed Draft a quote, who reads it there and then. On a draft made by itself
+ *                   it stays with the office's notes (quotes.drafted.description), to be used as
+ *                   the message with a press: it was written from what a stranger typed into a
+ *                   form, so someone reads it before a client can.
  *   Without         lines from the price list items whose names match the request's choice answers
  *                   or its form's name (matchPriceList), and the page says that Claude drafts better.
  *                   Also what happens when Claude can't be asked (busy, the key failed).
+ *
+ * A price list longer than MAX_PRICE_ITEMS is only looked at that far, with or without Claude, and
+ * the draft says so (quotes.drafted.price_list), so nobody takes the draft for the whole list's.
  *
  * Either way the request's answers go in the quote's notes for the office (quotes.drafted, never sent
  * to the client), and the quote is made the way Create quote makes it (sales.ts quoteFromRequest).
@@ -190,7 +199,8 @@ export function draftPrompt(input: {
   company: string;
   request: { title: string; details: string | null; source: string; form: string | null };
   answers: readonly RequestAnswer[];
-  property: { line1: string | null; city: string | null; region: string | null; lot_size_sqft: number | null; notes: string | null } | null;
+  /** Where the work is, roughly, and how big: never the street address or the property's notes. */
+  property: { city: string | null; region: string | null; lot_size_sqft: number | null } | null;
   photos: readonly string[];
   items: readonly PriceItem[];
 }) {
@@ -242,11 +252,13 @@ async function makeDraft(s: SalesScope, requestId: string, userId: string | null
   const request = await loadRequest(s.db, s.companyId, requestId);
   const [company, items] = await Promise.all([
     s.db.from("companies").select("name, settings").eq("id", s.companyId).maybeSingle(),
-    s.db.from("services").select("id, name, description, category, unit, unit_price, taxable").eq("company_id", s.companyId).eq("active", true).order("sort").order("name").limit(MAX_PRICE_ITEMS),
+    s.db.from("services").select("id, name, description, category, unit, unit_price, taxable", { count: "exact" }).eq("company_id", s.companyId).eq("active", true).order("sort").order("name").limit(MAX_PRICE_ITEMS),
   ]);
   if (company.error || !company.data) throw new HttpError(404, "Company not found.");
   if (items.error) throw new HttpError(500, items.error.message);
   const priceList = (items.data ?? []) as PriceItem[];
+  // A longer price list than a draft looks at: said on the quote, so what's missing isn't a surprise.
+  const cut = (items.count ?? 0) > priceList.length ? { shown: priceList.length, of: items.count! } : null;
   const answers = requestAnswers(request.form?.questions, request.answers);
   let lines: DraftLine[] = [];
   let description: string | null = null;
@@ -260,7 +272,7 @@ async function makeDraft(s: SalesScope, requestId: string, userId: string | null
         company: company.data.name,
         request: { title: request.title, details: request.details, source: request.source, form: request.form?.name ?? null },
         answers,
-        property: request.property,
+        property: request.property ? { city: request.property.city, region: request.property.region, lot_size_sqft: request.property.lot_size_sqft } : null,
         photos: request.photos,
         items: priceList,
       });
@@ -289,17 +301,24 @@ async function makeDraft(s: SalesScope, requestId: string, userId: string | null
       .select("id, sort");
     if (error) throw new HttpError(500, error.message);
     const check = (saved ?? []).filter((row) => lines[row.sort]?.check).map((row) => row.id);
-    await saveDrafted(s.db, quote.id, { by, auto, request: request.number, check, lines: lines.length, answers, note, description });
+    await saveDrafted(s.db, quote.id, { by, auto, request: request.number, check, lines: lines.length, answers, note, description, cut });
   } else {
-    await saveDrafted(s.db, quote.id, { by, auto, request: request.number, check: [], lines: 0, answers, note, description });
+    await saveDrafted(s.db, quote.id, { by, auto, request: request.number, check: [], lines: 0, answers, note, description, cut });
   }
   return { id: quote.id, number: quote.number, by, lines: lines.length, check: lines.filter((l) => l.check).length, note };
 }
 
-async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; auto: boolean; request: number | null; check: string[]; lines: number; answers: readonly RequestAnswer[]; note: string | null; description: string | null }) {
-  // `auto` marks one made by itself: its request is still as it came in, and becomes Quoted when this quote is sent.
-  const drafted = { by: d.by, at: new Date().toISOString(), request_number: d.request, check: d.check, lines: d.lines, notes: answerNotes(d.answers) || null, note: d.note, ...(d.auto ? { auto: true } : {}) };
-  const { error } = await db.from("quotes").update({ drafted, ...(d.description ? { message: d.description } : {}) }).eq("id", quoteId);
+async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; auto: boolean; request: number | null; check: string[]; lines: number; answers: readonly RequestAnswer[]; note: string | null; description: string | null; cut: { shown: number; of: number } | null }) {
+  // `auto` marks one made by itself: its request is still as it came in, and becomes Quoted when this
+  // quote is sent. Claude's description for it stays here, with the office's notes, until someone
+  // uses it as the message; a person who pressed Draft a quote gets it as the message to read now.
+  const drafted = {
+    by: d.by, at: new Date().toISOString(), request_number: d.request, check: d.check, lines: d.lines, notes: answerNotes(d.answers) || null, note: d.note,
+    ...(d.auto ? { auto: true } : {}),
+    ...(d.auto && d.description ? { description: d.description } : {}),
+    ...(d.cut ? { price_list: d.cut } : {}),
+  };
+  const { error } = await db.from("quotes").update({ drafted, ...(d.description && !d.auto ? { message: d.description } : {}) }).eq("id", quoteId);
   if (error) throw new HttpError(500, error.message);
 }
 
@@ -307,7 +326,7 @@ async function saveDrafted(db: Db, quoteId: string, d: { by: Drafted["by"]; auto
 async function loadRequest(db: Db, companyId: string, requestId: string) {
   const { data, error } = await db
     .from("requests")
-    .select("id, number, title, details, answers, source, client_id, assigned_to, form:intake_forms(name, questions), property:properties(line1, city, region, lot_size_sqft, notes), files:plan_files(title)")
+    .select("id, number, title, details, answers, source, client_id, assigned_to, form:intake_forms(name, questions), property:properties(city, region, lot_size_sqft), files:plan_files(title)")
     .eq("id", requestId)
     .eq("company_id", companyId)
     .maybeSingle();

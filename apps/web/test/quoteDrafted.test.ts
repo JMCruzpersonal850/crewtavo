@@ -3,7 +3,7 @@
  * quantity to check (only those still on it), and why Claude didn't draft it when it was meant to.
  */
 import { describe, expect, it } from "vitest";
-import { draftedWords, readDrafted, readyDraft } from "@/features/quotes/DraftedCallout";
+import { cutListWords, descriptionWaiting, draftedWords, readDrafted, readyDraft } from "@/features/quotes/DraftedCallout";
 
 describe("a drafted quote", () => {
   it("reads quotes.drafted, and anything else as not drafted", () => {
@@ -22,6 +22,23 @@ describe("a drafted quote", () => {
     expect(readyDraft([])).toBeNull();
     expect(readDrafted({ by: "claude", auto: true })?.auto).toBe(true);
     expect(readDrafted({ by: "claude", auto: "yes" })).not.toHaveProperty("auto");
+  });
+
+  it("keeps Claude's description for a draft made by itself until it's used as the message", () => {
+    const d = readDrafted({ by: "claude", auto: true, description: " Weekly mowing, front and back. " })!;
+    expect(d.description).toBe("Weekly mowing, front and back.");
+    expect(descriptionWaiting(d, null)).toBe(true);
+    expect(descriptionWaiting(d, "Thanks for asking us.")).toBe(true);
+    expect(descriptionWaiting(d, "Weekly mowing, front and back.")).toBe(false);
+    // One a person drafted has it as the message already, so nothing waits.
+    expect(descriptionWaiting(readDrafted({ by: "claude" })!, "Weekly mowing.")).toBe(false);
+  });
+
+  it("says when the price list was too long to go by whole", () => {
+    expect(cutListWords(readDrafted({ by: "claude", price_list: { shown: 500, of: 1742 } })!)).toBe("Your price list has 1,742 items, and Claude was shown the first 500. Check that nothing further down is missing.");
+    expect(draftedWords(readDrafted({ by: "price_list", request_number: 3, price_list: { shown: 500, of: 742 } })!, []).at(-1)).toBe("Your price list has 742 items, and this draft went by the first 500. Check that nothing further down is missing.");
+    expect(cutListWords(readDrafted({ by: "claude", price_list: { shown: 500, of: 500 } })!)).toBeNull();
+    expect(cutListWords(readDrafted({ by: "claude" })!)).toBeNull();
   });
 
   it("says who drafted it and what to check", () => {
