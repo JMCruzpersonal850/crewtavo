@@ -197,7 +197,7 @@ export function MapsSettings() {
             <span id="google-places-help" className="muted small">
               {places.isPending && places.variables
                 ? "Checking the key with Google…"
-                : "As anyone types an address, on Measure and in calendar entries, the places suggested come from Google Maps instead of OpenStreetMap. Your clients' own addresses still come first. Needs Places API (New) on this key; Google includes 10,000 lookups a month at no charge."}
+                : "As anyone types an address, in calendar entries and on Measure while it shows Google satellite, the places suggested come from Google Maps instead of OpenStreetMap. Your clients' own addresses still come first. Needs Places API (New) on this key; Google includes 10,000 lookups a month at no charge."}
             </span>
             <FormError error={places.error} />
           </div>

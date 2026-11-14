@@ -543,9 +543,13 @@ export function MeasurePage() {
       goTo({ lat: r.lat!, lng: r.lng!, zoom: 19, country: r.country ?? null, place: r.formatted ?? "This address" });
     },
   });
-  /** Move the map to a place found by search or picked from the suggestions. */
-  const goTo = (to: { lat: number; lng: number; zoom: number; country: string | null; place: string }) => {
+  /**
+   * Move the map to a place found by search or picked from the suggestions. `keepImagery`: leave
+   * the imagery as it is (a place Google found stays on Google's tiles).
+   */
+  const goTo = (to: { lat: number; lng: number; zoom: number; country: string | null; place: string }, keepImagery = false) => {
     mapRef.current?.jumpTo(to.lng, to.lat, to.zoom);
+    if (keepImagery) return;
     if (to.country && to.country !== "US") {
       // Auto finds the best there is by itself; a US-only source someone picked gets explained.
       if (choice !== "auto" && (imagery === "naip" || imagery === "terrain" || imagery?.startsWith("state:") || imagery?.startsWith("usgs"))) setAbroad({ place: to.place });
@@ -579,8 +583,12 @@ export function MeasurePage() {
   };
   const pickPlace = (s: PlaceSuggestion) => {
     find.reset();
+    const place = [s.label, s.detail].filter(Boolean).join(", ");
+    // Where Google says a place is moves only a map showing Google's tiles. On any other imagery
+    // (it changed while Google was answering), the words are looked up with the free geocoder.
+    if (s.from === "google" && imagery !== "google") return find.mutate(place);
     unpick();
-    goTo({ lat: s.lat, lng: s.lng, zoom: s.kind === "address" ? 19 : s.kind === "street" ? 17 : 15, country: s.country, place: [s.label, s.detail].filter(Boolean).join(", ") });
+    goTo({ lat: s.lat, lng: s.lng, zoom: s.kind === "address" ? 19 : s.kind === "street" ? 17 : 15, country: s.country, place }, s.from === "google");
   };
   const locate = () => {
     if (!navigator.geolocation) return toast.error("This browser can't share its location. Search for the address instead.");
@@ -1094,6 +1102,8 @@ export function MeasurePage() {
               onPickClient={pickClient}
               onPickPlace={pickPlace}
               onEdit={() => find.isError && find.reset()}
+              // Google's suggestions only while the map shows Google's tiles; OpenStreetMap's otherwise.
+              google={imagery === "google"}
             />
             {imagery && (
               <ImageryPicker choice={choice ?? "auto"} opening={opening} showing={imagery} center={center} keys={keys} isAdmin={isAdmin} streetMap={streetMap} streetNames={streetNames} houseNumbers={houseNumbers} overlays={overlays} onPick={(next) => chooseImagery(next)} onMakeDefault={makeDefault} onStreetNames={setStreetNames} onHouseNumbers={showHouseNumbers} onOverlay={toggleOverlay} />

@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkGooglePlaces, googlePlace, googlePlacesKey, googleSuggest, placesProblem } from "../src/features/measure/googlePlaces";
+
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 describe("address suggestions from Google", () => {
   beforeEach(() => {
@@ -64,5 +67,26 @@ describe("address suggestions from Google", () => {
     expect(placesProblem(400, { status: "INVALID_ARGUMENT", message: "API key not valid. Please pass a valid API key.", details: [{ reason: "API_KEY_INVALID" }] })).toMatch(/didn't accept this key/);
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ suggestions: [] })));
     expect(await checkGooglePlaces("AIzaOwn")).toBeNull();
+  });
+});
+
+describe("Google's address suggestions on the measuring map", () => {
+  it("are offered only while the map shows Google's tiles, and a place Google found doesn't move any other map", () => {
+    const page = read("../src/features/measure/MeasurePage.tsx");
+    expect(page).toContain('google={imagery === "google"}');
+    expect(page).toContain('if (s.from === "google" && imagery !== "google") return find.mutate(place);');
+    const search = read("../src/features/measure/AddressSearch.tsx");
+    expect(search).toContain("const googleKey = googleAllowed ? ownGoogleKey : null;");
+    expect(search).toContain('googleNow.current ? onPickPlace({ ...place, ...at, from: "google" }) : onSubmit?.(label)');
+  });
+
+  it("stay on in a form that only takes the words of an address", () => {
+    const dialog = read("../src/features/schedule/VisitDialog.tsx");
+    const box = dialog.slice(dialog.indexOf("<AddressSearch"), dialog.indexOf("/>", dialog.indexOf("<AddressSearch")));
+    expect(box).toContain("onEdit={setAddress}");
+    expect(box).not.toContain("onPickPlace");
+    expect(box).not.toContain("google=");
+    // Without somewhere to put a place, Google is never asked where it is.
+    expect(read("../src/features/measure/AddressSearch.tsx")).toContain("if (!onPickPlace) return;");
   });
 });
