@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { publicFetch } from "@/lib/publicApi";
 import { fileSize, isAbort, uploadToLink } from "../plans/plans";
 import { asksForEndDate, endDateProblem, greeting, kindsFor, needsEndDate, neededWhy, UPLOAD_ACCEPT, uploadProblem, withType } from "../subs/paperwork";
-import { getLocale, t } from "@/lib/i18n";
+import { getLocale, msg, t } from "@/lib/i18n";
 
 interface PaperworkView {
   company: { name: string; logo: string | null };
@@ -38,7 +38,7 @@ export interface Item {
   expires_on: string;
 }
 
-const REQUIREMENT_LABELS: Record<string, string> = { w9: "W-9", liability: "Liability insurance", workers_comp: "Workers' comp" };
+const REQUIREMENT_LABELS: Record<string, string> = { w9: "W-9", liability: msg("Liability insurance"), workers_comp: msg("Workers' comp") };
 const localToday = () => new Date().toLocaleDateString("en-CA");
 
 export function PaperworkPage() {
@@ -53,7 +53,7 @@ export function PaperworkPage() {
   const data = view.data;
 
   useEffect(() => {
-    if (data) document.title = `Paperwork for ${data.company.name}`;
+    if (data) document.title = t("Paperwork for {company}", { company: data.company.name });
     if (data && !items) setItems(data.needed.map((n) => ({ key: n.requirement, label: n.label, kinds: kindsFor(n.requirement), kind: kindsFor(n.requirement)[0]!, why: neededWhy(n), file: null, expires_on: "" })));
   }, [data, items]);
 
@@ -88,9 +88,9 @@ export function PaperworkPage() {
           await uploadToLink(link, file, (progress) => setSending({ label: item.label, progress })).promise;
           const recorded = await publicFetch<{ added: number }>(`${path}/files`, { files_token: link.files_token, expires_on: asksForEndDate(item.kind) && item.expires_on ? item.expires_on : null });
           if (recorded.added) done.push(item.key);
-          else problems[item.key] = "That file didn't come through. Try sending it again.";
+          else problems[item.key] = t("That file didn't come through. Try sending it again.");
         } catch (error) {
-          if (!isAbort(error)) problems[item.key] = error instanceof Error ? error.message : "That file didn't come through. Try sending it again.";
+          if (!isAbort(error)) problems[item.key] = error instanceof Error ? error.message : t("That file didn't come through. Try sending it again.");
         }
       }
       return { done, problems };

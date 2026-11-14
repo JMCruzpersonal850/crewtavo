@@ -307,7 +307,7 @@ function teamName(queryClient: QueryClient, userId: string): string {
     const name = options?.team?.find((t) => t.user_id === userId)?.profile?.full_name;
     if (name) return name;
   }
-  return "A crew member";
+  return t("A crew member");
 }
 
 /**

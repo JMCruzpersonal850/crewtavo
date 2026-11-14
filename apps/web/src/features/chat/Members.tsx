@@ -26,7 +26,7 @@ export function groupMembers(members: ChatMember[], online: Set<string>) {
     const on = isOn(m);
     const key = !on ? "offline" : m.show_separately ? `role:${m.role_key}` : "online";
     const order = !on ? 1000 : m.show_separately ? (LEVEL_ORDER.indexOf(m.role_key) >= 0 ? LEVEL_ORDER.indexOf(m.role_key) : 50) : 900;
-    const title = !on ? "Offline" : m.show_separately ? m.role_label : "Online";
+    const title = !on ? t("Offline", { context: "member" }) : m.show_separately ? m.role_label : t("Online", { context: "member" });
     const group = groups.get(key) ?? { title, order, people: [] };
     group.people.push(m);
     groups.set(key, group);

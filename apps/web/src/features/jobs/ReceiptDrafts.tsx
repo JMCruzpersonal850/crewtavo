@@ -113,7 +113,7 @@ export function ReceiptDrafts({ jobId, onSaved }: { jobId?: string; onSaved?: ()
                   <span className="muted small" style={{ display: "block" }}>
                     {d.status === "reading" && !stuck ? t("Reading…")
                       : d.status === "failed" || stuck ? t("Couldn't be read: fill it in")
-                        : [r?.total != null ? formatMoneyCents(r.total) : null, r?.date ? formatDate(r.date) : null, !jobId && job ? `Job #${job.number}${d.job ? "" : " (suggested)"}` : null, d.read?.problems.length ? `${d.read.problems.length} to check` : null].filter(Boolean).join(" · ")}
+                        : [r?.total != null ? formatMoneyCents(r.total) : null, r?.date ? formatDate(r.date) : null, !jobId && job ? (d.job ? t("Job #{number}", { number: job.number }) : t("Job #{number} (suggested)", { number: job.number })) : null, d.read?.problems.length ? t("{count} to check", { count: d.read.problems.length }) : null].filter(Boolean).join(" · ")}
                   </span>
                 </span>
                 <Button size="sm" disabled={d.status === "reading" && !stuck} onClick={() => setChecking(d)}>{t("Check and save")}</Button>

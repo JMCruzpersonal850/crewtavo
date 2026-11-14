@@ -223,7 +223,7 @@ function ServiceHistory({ assetId }: { assetId: string }) {
         <div key={v.id} className="small">
           <strong>{formatDate(v.completed_at ?? v.scheduled_on)}</strong> · {v.title}
           {v.who && <span className="muted"> · {v.who}</span>}
-          {v.checklists.length > 0 && <span className="muted"> · {v.checklists.map((c) => `${c.template?.name ?? "Checklist"}${c.completed_at ? "" : " (not finished)"}`).join(", ")}</span>}
+          {v.checklists.length > 0 && <span className="muted"> · {v.checklists.map((c) => (c.completed_at ? c.template?.name ?? t("Checklist") : t("{checklist} (not finished)", { checklist: c.template?.name ?? t("Checklist") }))).join(", ")}</span>}
         </div>
       ))}
     </div>

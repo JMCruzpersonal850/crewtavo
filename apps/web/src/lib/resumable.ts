@@ -18,7 +18,7 @@
 import type { DetailedError, HttpRequest, Upload as TusUpload } from "tus-js-client";
 import { loadConfig, supabase } from "./api";
 import { StorageFullError } from "./errors";
-import { t } from "@/lib/i18n";
+import { msg, t } from "@/lib/i18n";
 
 export { StorageFullError } from "./errors";
 
@@ -44,8 +44,8 @@ export const RETRY_DELAYS = [0, 3000, 5000, 10000, 20000];
 /** How long Storage keeps an unfinished upload (TUS_URL_EXPIRY_MS on the storage service is a day). */
 const RESUMABLE_FOR_MS = 23 * 60 * 60_000;
 
-const SIGNED_OUT = "You're signed out. Sign in again, then add the file.";
-const STOPPED = "The upload stopped. Check the connection and try again.";
+const SIGNED_OUT = msg("You're signed out. Sign in again, then add the file.");
+const STOPPED = msg("The upload stopped. Check the connection and try again.");
 
 class SignedOutError extends Error {
   constructor() {
@@ -77,7 +77,7 @@ export interface ResumableOptions {
  * to the same folder was already going to (that upload is finished instead of starting again).
  */
 export function resumableUpload({ path, file, contentType, onProgress, name }: ResumableOptions): Upload {
-  const label = name ?? (file instanceof File && file.name ? file.name : "The file");
+  const label = name ?? (file instanceof File && file.name ? file.name : t("The file"));
   let stopped = false;
   let tus: TusUpload | null = null;
   let whole: Upload | null = null;

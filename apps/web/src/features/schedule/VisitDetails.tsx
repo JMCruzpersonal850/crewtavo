@@ -20,7 +20,7 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { useVisitExtraScope } from "../field/FieldExtras";
 import { usePendingChanges } from "./changeRequests";
 import { lengthLabel } from "./VisitDialog";
-import { intlLocale, t } from "@/lib/i18n";
+import { intlLocale, msg, t } from "@/lib/i18n";
 
 const day = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString(intlLocale(), { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 
@@ -40,7 +40,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
           )
           .eq("id", visitId)
           .maybeSingle(),
-        "This visit",
+        msg("This visit"),
       ),
   });
   const v = visit.data;
@@ -64,7 +64,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
   const place = v ? visitPlace(v) : null;
   const minutes = v?.starts_at && v.ends_at ? Math.round((Date.parse(v.ends_at) - Date.parse(v.starts_at)) / 60_000) : null;
   const when = v
-    ? `${v.scheduled_on ? day(v.scheduled_on) : "Not scheduled yet"}${v.starts_at ? ` · ${formatTime(v.starts_at, tz)}${v.ends_at ? ` – ${formatTime(v.ends_at, tz)}` : ""}` : v.scheduled_on ? " · Anytime" : ""}`
+    ? `${v.scheduled_on ? day(v.scheduled_on) : t("Not scheduled yet")}${v.starts_at ? ` · ${formatTime(v.starts_at, tz)}${v.ends_at ? ` – ${formatTime(v.ends_at, tz)}` : ""}` : v.scheduled_on ? ` · ${t("Anytime")}` : ""}`
     : "";
   const codes = access.data;
   const names = (people.data ?? []).map((p) => p.full_name).filter(Boolean);

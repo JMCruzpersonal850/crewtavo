@@ -454,4 +454,44 @@ export default {
   "Started by the phone on leaving a property": "Lo inició el teléfono al salir de una propiedad",
   "Stopped by the phone on leaving the property": "Lo paró el teléfono al salir de la propiedad",
   "Stopped by the phone on arriving at a property": "Lo paró el teléfono al llegar a una propiedad",
+
+  // Team chat: what's said around the messages (features/chat)
+  "Archived": "Archivados",
+  "Message {channel}": "Escribe en {channel}",
+  "{name} is typing…": "{name} está escribiendo…",
+  "{first} and {second} are typing…": "{first} y {second} están escribiendo…",
+  "Several people are typing…": "Varias personas están escribiendo…",
+  "member::Offline": "Sin conexión",
+  "member::Online": "En línea",
+
+  // Guides (features/kb)
+  "Picture": "Imagen",
+  "Pinned to the top of the knowledge base": "Fijada al inicio de las guías",
+  "Unpinned": "Ya no está fijada",
+  "This guide doesn't exist, or it was deleted.": "Esta guía no existe, o la eliminaron.",
+  "Revision {number} restored as a new revision": "La revisión {number} se restauró como una revisión nueva",
+  "Write question {number}, or remove it.": "Escribe la pregunta {number}, o quítala.",
+  "Question {number} needs at least two answers.": "La pregunta {number} necesita al menos dos respuestas.",
+  "Pick the right answer for question {number}.": "Elige la respuesta correcta de la pregunta {number}.",
+
+  // The schedule: what a move says, and what's in the way (features/schedule)
+  "no crew": "sin cuadrilla",
+  "Moved to unscheduled": "Pasó a sin programar",
+  "Moved to {when}": "Se movió al {when}",
+  "{when}, anytime": "{when}, a cualquier hora",
+  "Now {length}": "Ahora dura {length}",
+  "{when} at {time}": "{when} a las {time}",
+  "Moved to {who}": "Pasó a {who}",
+  "Added {who}": "Se agregó a {who}",
+  "Took {who} off": "Se quitó a {who}",
+  "Calendar": "Calendario",
+  "Pick a different day.": "Elige otro día.",
+  "Added {count} visits": { one: "Se agregó {count} visita", other: "Se agregaron {count} visitas" },
+  "This person is on another visit at the same time": "Esta persona está en otra visita a la misma hora",
+  "This crew is booked for another visit at the same time": "Esta cuadrilla tiene otra visita a la misma hora",
+  "This person's calendar shows them busy at this time": "El calendario de esta persona dice que está ocupada a esta hora",
+  "This crew's calendar shows them busy at this time": "El calendario de esta cuadrilla dice que está ocupada a esta hora",
+
+  // Timesheets
+  "Approved {count} entries": { one: "Se aprobó {count} registro", other: "Se aprobaron {count} registros" },
 } satisfies Catalog;

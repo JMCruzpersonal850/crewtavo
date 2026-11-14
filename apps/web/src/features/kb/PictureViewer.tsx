@@ -4,7 +4,7 @@ import ImageView from "../files/ImageView";
 import { t } from "@/lib/i18n";
 
 export function PictureViewer({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  const title = alt || "Picture";
+  const title = alt || t("Picture");
   return (
     <Dialog open onClose={onClose} title={title} size="xl" className="picture-dialog">
       <div className="picture-stage">

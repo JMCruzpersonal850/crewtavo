@@ -58,7 +58,7 @@ import { AddWork, VisitInvoice } from "./FieldBilling";
 import { addsToVisit, addsWork, fieldInvoiceKind, takesMoney, takesWork } from "./fieldMoney";
 import { VisitExtraScope } from "./FieldExtras";
 import { YourPrice } from "./YourPrice";
-import { t, T } from "@/lib/i18n";
+import { msg, t, T } from "@/lib/i18n";
 
 interface ChecklistItem { key: string; label: string; type: "check" | "number" | "text" | "choice" | "photo" | "signature"; required: boolean; options?: string[]; sop_page_id?: string }
 
@@ -97,7 +97,7 @@ export function FieldVisitPage() {
           .select("id, title, kind, status, starts_at, ends_at, scheduled_on, notes, address, hold_reason, completed_at, invoice_id, series_day, series_total, equipment:visit_equipment(equipment:equipment(id, name, kind)), job:jobs(id, number, title, instructions, property_id, custom_fields, kind, status, pricing, client:clients(display_name, phone, social_photos_opt_out)), request:requests(id, title, details, client:clients(display_name, phone, social_photos_opt_out)), property:properties(id, line1, city, region, postal_code, lat, lng, notes, custom_fields)")
           .eq("id", id)
           .maybeSingle(),
-        "This visit",
+        msg("This visit"),
       );
       const notes = pendingVisitSave<VisitNotesSave>(queryClient, "visit-notes", id);
       return { ...row, status: pendingVisitStatus(queryClient, id) ?? row.status, notes: notes ? notes.notes : row.notes };

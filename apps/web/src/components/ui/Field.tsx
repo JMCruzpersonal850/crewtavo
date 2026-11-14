@@ -32,16 +32,16 @@ export function validityMessage(control: Checkable, label: string, requiredMessa
   if (v.valueMissing) return requiredMessage ?? (label && !label.endsWith("?") ? t("{label} is required.", { label }) : t("This is required."));
   if (v.typeMismatch) return type === "email" ? t("Enter an email like name@company.com.") : type === "url" ? t("Enter a web address like https://example.com.") : t(NOT_RIGHT);
   if (v.badInput) return type === "number" ? t("Enter a number.") : DATE_TYPES.has(type) ? t("Enter a full date.") : type === "time" ? t("Enter a full time.") : t(NOT_RIGHT);
-  if (v.rangeUnderflow) return dated ? `Pick ${readLimit(control, (control as HTMLInputElement).min)} or later.` : `Enter ${readLimit(control, (control as HTMLInputElement).min)} or more.`;
-  if (v.rangeOverflow) return dated ? `Pick ${readLimit(control, (control as HTMLInputElement).max)} or earlier.` : `Enter ${readLimit(control, (control as HTMLInputElement).max)} or less.`;
+  if (v.rangeUnderflow) return dated ? t("Pick {limit} or later.", { limit: readLimit(control, (control as HTMLInputElement).min) }) : t("Enter {limit} or more.", { limit: readLimit(control, (control as HTMLInputElement).min) });
+  if (v.rangeOverflow) return dated ? t("Pick {limit} or earlier.", { limit: readLimit(control, (control as HTMLInputElement).max) }) : t("Enter {limit} or less.", { limit: readLimit(control, (control as HTMLInputElement).max) });
   if (v.stepMismatch) {
     const step = control.getAttribute("step") ?? "1";
     if (Number(step) === 1) return t("Use whole numbers.");
     const places = /^0\.0*1$/.test(step) ? step.length - 2 : 0;
-    return places ? `Use up to ${places} decimal ${places === 1 ? "place" : "places"}.` : `Use steps of ${step}.`;
+    return places ? t.plural(places, { one: "Use up to {count} decimal place.", other: "Use up to {count} decimal places." }) : t("Use steps of {step}.", { step });
   }
-  if (v.tooShort) return `Use at least ${(control as HTMLInputElement).minLength} characters.`;
-  if (v.tooLong) return `Use ${(control as HTMLInputElement).maxLength} characters or fewer.`;
+  if (v.tooShort) return t("Use at least {count} characters.", { count: (control as HTMLInputElement).minLength });
+  if (v.tooLong) return t("Use {count} characters or fewer.", { count: (control as HTMLInputElement).maxLength });
   if (v.patternMismatch) return control.title || t(NOT_RIGHT);
   return control.validationMessage || t(NOT_RIGHT);
 }

@@ -66,7 +66,7 @@ export function TimesheetsPage() {
     queryClient.invalidateQueries({ queryKey: ["job"] });
   };
   const approve = useMutation({
-    meta: { success: (n: number) => `Approved ${n} ${n === 1 ? "entry" : "entries"}` },
+    meta: { success: (n: number) => t.plural(n, { one: "Approved {count} entry", other: "Approved {count} entries" }) },
     mutationFn: async (userIds: string[]) => {
       let count = 0;
       for (const userId of userIds) {
@@ -102,7 +102,7 @@ export function TimesheetsPage() {
       commit: () => remove.mutateAsync(entry.id),
     });
 
-  const name = (id: string) => memberName(data.data?.team.find((m) => m.user_id === id), "Team member");
+  const name = (id: string) => memberName(data.data?.team.find((m) => m.user_id === id), t("Team member"));
   const color = (id: string) => data.data?.team.find((m) => m.user_id === id)?.profile?.color ?? "var(--text-3)";
   const photo = (id: string) => data.data?.team.find((m) => m.user_id === id)?.profile?.avatar_url;
   const rows = data.data?.rows ?? [];

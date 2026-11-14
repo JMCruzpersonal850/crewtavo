@@ -60,7 +60,7 @@ const TEXT_KEYS = new Set(["success", "error", "title", "body", "message", "labe
 /** Calls whose string arguments people read. */
 const TEXT_CALLS = /^(toast(\.\w+)?|alert|window\.alert|window\.confirm|window\.prompt|new Error|set(Problem|Error|Note|Message|Failed|Warning)|useDocumentTitle|done)$/;
 /** Text that reads the same in every language. */
-const SAME_EVERYWHERE = new Set(["Crewtavo", "Google", "Apple", "Android", "iPhone", "iPad", "Stripe", "Railway", "Claude", "PDF", "SMS", "GPS", "Email", "OK"]);
+const SAME_EVERYWHERE = new Set(["Crewtavo", "Google", "Apple", "Android", "iPhone", "iPad", "Stripe", "Railway", "Claude", "PDF", "SMS", "GPS", "Email", "OK", "Windows", "Mac", "Edge", "Chrome", "Firefox", "Safari"]);
 
 const isTranslateCall = (node) =>
   ts.isCallExpression(node) &&
@@ -352,7 +352,105 @@ export function rawStrings(file) {
     ts.forEachChild(node, visit);
   };
   visit(sf);
+  looseStrings(sf, found, add);
   return found;
+}
+
+/** Calls whose text arguments aren't for people: the database, the network, storage, the page, the console. */
+const CODE_CALLS = /(^|\.)(select|eq|neq|in|is|not|or|order|from|rpc|filter|match|like|ilike|contains|overlaps|gt|gte|lt|lte|limit|range|schema|channel|on|getItem|setItem|removeItem|getAttribute|setAttribute|removeAttribute|querySelector|querySelectorAll|closest|matches|getElementById|createElement|addEventListener|removeEventListener|dispatchEvent|postMessage|open|fetch|get|post|put|patch|delete|head|append|set|has|includes|startsWith|endsWith|indexOf|split|join|replace|replaceAll|test|exec|localeCompare|toLocaleString|toLocaleDateString|toLocaleTimeString|padStart|padEnd|log|warn|error|info|debug|invalidateQueries|removeQueries|setQueryData|getQueryData|getQueriesData|cancelQueries|navigate|redirect|encodeURIComponent|decodeURIComponent|require|import|lazy|createObjectURL|getContext|toBlob|toDataURL|setProperty|getPropertyValue|add|remove|toggle|contains|observe|mark|measure|captureException|captureMessage|setTag|format|formatToParts|vibrate|register|subscribe|track|className|classNames|cx|clsx|msg|t|plural)$/;
+/** Constructors whose text arguments aren't for people. */
+const CODE_NEWS = /^(RegExp|URL|URLSearchParams|Intl\.\w+|Blob|File|Request|Response|Headers|Date|CustomEvent|Event|BroadcastChannel|Worker|Notification|Map|Set)$/;
+/** JSX attributes that hold names for the machine, not words for people. */
+const CODE_ATTRIBUTES = /^(className|class|style|id|key|type|name|role|href|to|src|srcSet|d|viewBox|fill|stroke|htmlFor|target|rel|method|action|accept|autoComplete|inputMode|enterKeyHint|pattern|lang|dir|slot|as|variant|size|icon|tone|kind|align|side|sideOffset|value|defaultValue|mode|format|step|min|max|capture|loading|decoding|crossOrigin|referrerPolicy|sandbox|allow|wrap|spellCheck|tabIndex|xmlns|transform|points|cx|cy|r|x|y|x1|x2|y1|y2|width|height|offset|data-[\w-]+|aria-(?!label$|description$|valuetext$|roledescription$|placeholder$)[\w-]+)$/;
+
+/**
+ * English a person may read that isn't in JSX text, a text prop or a text call: a string kept in a
+ * variable, built in a template literal, picked by `?:`, given as a fallback (`?? "Team member"`)
+ * or returned by a small helper. Read by where it stands and how it's written, since a covered
+ * file is also full of strings that are names for the machine:
+ *
+ *   - Never: imports, object keys, what's compared against (`=== "admin"`, `case "x"`), a type, an
+ *     attribute that isn't words (className, to, type...), arguments to the database, the network,
+ *     storage, the page or the console (CODE_CALLS), and anything already inside t()/msg().
+ *   - Words: two words or more starting with a capital ("Moved to unscheduled", `Revision ${n}
+ *     restored`), wherever they stand.
+ *   - One capitalised word ("Unpinned", " · Anytime"), or lower-case words ("no crew"): only
+ *     where a value is being chosen for showing: a branch of `?:`, a `??`/`||` fallback, a `${}`
+ *     of a template literal, a variable or a return.
+ *
+ * What it still can't see is listed in docs/spanish-support-plan.md ("What the coverage check can't see").
+ */
+function looseStrings(sf, found, add) {
+  const seen = new Set(found.map((f) => `${f.line}:${f.text}`));
+  // A template literal's own words, with a mark (§) where each ${} goes.
+  const wordsOf = (node) => (ts.isTemplateExpression(node) ? [node.head.text, ...node.templateSpans.map((s) => s.literal.text)].join("§") : node.text);
+  const several = (text) => /^[^A-Za-z]*[A-Z]/.test(text) && /[A-Za-z]{2,}[,.:;]?\s+[#@]?[A-Za-z§]/.test(text);
+  const oneCapitalised = (text) => /^[^A-Za-z]*[A-Z][a-z]{3,}[^A-Za-z]*$/.test(text);
+  const lowerWords = (text) => /^[^A-Za-z]*[a-z]{2,}( [a-z]{2,})+[^A-Za-z]*$/.test(text);
+  // Built around values with lower-case words: "${name} is typing…", "${day} at ${time}", "${n} to check".
+  const builtSentence = (text) => /(^|[\s§])[a-z]{2,} [a-z]{2,}([\s§.,…!?]|$)/.test(text) || /§ (at|of|and|or|to|in|on|by|for|from|with) §/.test(text);
+  /** Reads as words wherever it stands: a sentence or label of several words, or a sentence built around values. */
+  const wordy = (node) => several(wordsOf(node)) || (ts.isTemplateExpression(node) && builtSentence(wordsOf(node)) && !/[=<>{};]|\bclass|\bpx\b/.test(wordsOf(node)));
+  const isCode = (text) => (/^[\s\w-]*$/.test(text) && !/\s/.test(text.trim()) && /[_-]|^[a-z]/.test(text.trim())) || /^Bearer /.test(text);
+
+  /** Whether a literal stands where code keeps names rather than words. */
+  const standsInCode = (node) => {
+    // Still the value itself (through ?:, ??, a template): not yet inside a function or an object that holds it.
+    let direct = true;
+    for (let n = node, parent = node.parent; parent; n = parent, parent = parent.parent) {
+      if (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent) || ts.isLiteralTypeNode(parent) || ts.isTypeNode?.(parent)) return true;
+      if (ts.isPropertyAssignment(parent) && parent.name === n) return true;
+      // A value under a key that isn't words ({ status: "scheduled" }): a name. Sentences are still read (several words).
+      if (direct && ts.isPropertyAssignment(parent) && parent.initializer === n && !TEXT_KEYS.has(parent.name.getText(sf).replace(/["']/g, "")) && !wordy(node)) return true;
+      if (ts.isElementAccessExpression(parent) && parent.argumentExpression === n) return true;
+      if (ts.isCaseClause(parent)) return true;
+      if (ts.isBinaryExpression(parent) && [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.InKeyword].includes(parent.operatorToken.kind)) return true;
+      if (ts.isJsxAttribute(parent)) return !TEXT_PROPS.has(parent.name.getText(sf)) && (CODE_ATTRIBUTES.test(parent.name.getText(sf)) || !wordy(node));
+      if (ts.isCallExpression(parent) && parent.arguments.includes(n)) {
+        if (isTranslateCall(parent) || CODE_CALLS.test(parent.expression.getText(sf))) return true;
+        // An argument to anything else: words only when it reads as a sentence or a label of several words.
+        if (direct) return !wordy(node);
+      }
+      if (ts.isNewExpression(parent) && (parent.arguments ?? []).includes(n)) {
+        if (CODE_NEWS.test(parent.expression.getText(sf))) return true;
+        if (direct) return !wordy(node);
+      }
+      if (direct && ts.isArrayLiteralExpression(parent) && !wordy(node)) return true;
+      if (ts.isTaggedTemplateExpression(parent) || ts.isEnumMember(parent)) return true;
+      if (ts.isArrowFunction(parent) || ts.isFunctionExpression(parent) || ts.isObjectLiteralExpression(parent) || ts.isArrayLiteralExpression(parent) || ts.isJsxExpression(parent)) direct = false;
+      // Past the statement it's in, where it stands doesn't change.
+      if (ts.isBlock(parent) || ts.isSourceFile(parent)) return false;
+    }
+    return false;
+  };
+  /** Whether a value is being chosen here: a branch, a fallback, a `${}`, a variable, a return, a short function's result. */
+  const isChosen = (node) => {
+    const parent = node.parent;
+    if (!parent) return false;
+    if (ts.isParenthesizedExpression(parent)) return isChosen(parent);
+    if (ts.isConditionalExpression(parent)) return parent.whenTrue === node || parent.whenFalse === node;
+    if (ts.isBinaryExpression(parent)) return parent.right === node && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.EqualsToken, ts.SyntaxKind.PlusToken, ts.SyntaxKind.PlusEqualsToken].includes(parent.operatorToken.kind);
+    return ts.isTemplateSpan(parent) || ts.isVariableDeclaration(parent) || ts.isReturnStatement(parent) || ts.isArrowFunction(parent);
+  };
+
+  const visit = (node) => {
+    if (isTranslateCall(node)) return;
+    if (ts.isJsxAttribute(node) && !TEXT_PROPS.has(node.name.getText(sf)) && CODE_ATTRIBUTES.test(node.name.getText(sf))) return;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)) {
+      const text = wordsOf(node);
+      const shown = ts.isTemplateExpression(node) ? node.getText(sf) : node.text;
+      const key = `${lineOf(sf, node)}:${shown}`;
+      const reads = /[A-Za-z]{2,}/.test(text) && !SAME_EVERYWHERE.has(text.replace(/[^A-Za-z-]/g, "")) && !isCode(text) && !/^(https?:|\/|\.\/|#[0-9a-f]{3,8}$|[a-z]+\/[a-z+.-]+$)/i.test(text.trim());
+      const asWords = wordy(node) || ((oneCapitalised(text) || lowerWords(text)) && isChosen(node));
+      if (reads && !seen.has(key) && !insideTranslate(node) && asWords && !standsInCode(node)) {
+        seen.add(key);
+        const built = ts.isTemplateExpression(node);
+        add(node, shown, built ? "words built with ${}" : "words kept in a value", built ? undefined : [node.getStart(sf), node.getEnd(), `${insideFunction(node) ? "t" : "msg"}(${JSON.stringify(node.text)})`]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
 }
 
 /** Applies rawStrings' fixes to a file and adds the import; returns what's left for a person. */

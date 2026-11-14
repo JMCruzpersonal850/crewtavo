@@ -155,8 +155,8 @@ function redeemEmailLink(): Promise<string | null> {
   redeeming ??= supabase()
     .auth.verifyOtp({ token_hash: emailLink.tokenHash, type: emailLink.type })
     .then(
-      ({ error }) => (error ? "That link has expired or was already used. Ask whoever sent it for a new one, or sign in below." : null),
-      () => "Couldn't open that link. Check your connection and try again.",
+      ({ error }) => (error ? t("That link has expired or was already used. Ask whoever sent it for a new one, or sign in below.") : null),
+      () => t("Couldn't open that link. Check your connection and try again."),
     )
     .finally(() => {
       // The token works once; keep it out of the address bar and history.

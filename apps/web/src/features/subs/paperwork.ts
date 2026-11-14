@@ -78,9 +78,12 @@ export function insuranceWarning(statuses: ReadonlyArray<Pick<PaperworkRow, "req
   const gaps = uninsured(statuses.map((s) => ({ requirement: s.requirement as PaperworkRequirement, state: (s.state ?? "missing") as PaperworkState })));
   if (!gaps.length) return null;
   const expired = (key: PaperworkRequirement) => statuses.find((s) => s.requirement === key)?.state === "expired";
+  // i18n-ignore: said to the office, on its own screens
   const words = gaps.map((g) => `${g === "liability" ? "liability insurance" : "workers' comp"} ${expired(g) ? "has run out" : "isn't on file"}`);
   const sentence = words.join(" and ");
+  // i18n-ignore: said to the office, on its own screens
   const sent = gaps.some((g) => statuses.find((s) => s.requirement === g)?.waiting) ? " They've sent a new one: verify it below." : "";
+  // i18n-ignore
   return `Their ${sentence}.${sent} You can still give them work, but without current certificates your insurance company may charge you for their work at your audit.`;
 }
 

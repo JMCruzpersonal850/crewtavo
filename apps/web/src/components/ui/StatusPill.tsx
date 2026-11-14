@@ -74,13 +74,16 @@ const STATUS_TEXT = {
   job: { active: msg("Active", "job"), requires_invoicing: msg("Requires invoicing", "job"), completed: msg("Completed", "job"), archived: msg("Archived", "job"), late: msg("Late", "job"), today: msg("Today", "job"), upcoming: msg("Upcoming", "job"), unscheduled: msg("Unscheduled", "job"), paused: msg("Paused", "job") },
   invoice: { draft: msg("Draft", "invoice"), sent: msg("Awaiting payment", "invoice"), partially_paid: msg("Partly paid", "invoice"), paid: msg("Paid", "invoice"), overdue: msg("Past due", "invoice"), void: msg("Void", "invoice"), written_off: msg("Written off", "invoice") },
   visit: { unscheduled: msg("Unscheduled", "visit"), scheduled: msg("Scheduled", "visit"), en_route: msg("On the way", "visit"), in_progress: msg("In progress", "visit"), completed: msg("Completed", "visit"), cancelled: msg("Cancelled", "visit") },
+  // The office's lists (referrals, campaigns, reviews, posts) are still in English, as their screens are.
+  // i18n-ignore
   referral: { new: "New lead", quoted: "Quoted", won: "Won", lost: "Lost" },
-  credit: { pending: "Pending", earned: "Earned", applied: "Applied", issued: "Given", none: "No credit" },
+  credit: { pending: "Pending", earned: "Earned", applied: "Applied", issued: "Given", none: "No credit" }, // i18n-ignore
   campaign: { draft: "Draft", scheduled: "Scheduled", sending: "Sending", sent: "Sent", cancelled: "Stopped", automated: "Automated" },
   recipient: { pending: "Queued", sending: "Sending", sent: "Sent", failed: "Failed", skipped: "Skipped", opened: "Opened", clicked: "Clicked" },
+  // i18n-ignore
   review: { needs_reply: "Needs a reply", replied: "Replied" },
-  post: { draft: "Draft", scheduled: "Scheduled", posting: "Posting", posted: "Posted", partly_posted: "Partly posted", check: "Unconfirmed", failed: "Failed", cancelled: "Cancelled" },
-  network: { waiting: "Queued", sending: "Posting", posted: "Posted", retry: "Trying again", failed: "Failed", unknown: "Unconfirmed", skipped: "Skipped" },
+  post: { draft: "Draft", scheduled: "Scheduled", posting: "Posting", posted: "Posted", partly_posted: "Partly posted", check: "Unconfirmed", failed: "Failed", cancelled: "Cancelled" }, // i18n-ignore
+  network: { waiting: "Queued", sending: "Posting", posted: "Posted", retry: "Trying again", failed: "Failed", unknown: "Unconfirmed", skipped: "Skipped" }, // i18n-ignore
 } satisfies Record<string, Record<string, string>>;
 
 export type StatusKind = keyof typeof STATUS_TEXT;

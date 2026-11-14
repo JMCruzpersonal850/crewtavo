@@ -112,7 +112,7 @@ export function ProfileSettings() {
         <strong>{t("Change password")}</strong>
         <Field label={t("Current password")} hint={t("Leave it empty if you don't have one yet.")}><input className="input" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" /></Field>
         <Field label={t("New password")} hint={t("At least 8 characters.")}><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required minLength={8} /></Field>
-        <Field label={t("Confirm new password")} error={confirmPw && password !== confirmPw ? "The passwords don't match." : null}><input className="input" type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" required /></Field>
+        <Field label={t("Confirm new password")} error={confirmPw && password !== confirmPw ? t("The passwords don't match.") : null}><input className="input" type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} autoComplete="new-password" required /></Field>
         <FormError error={changePassword.error} />
         <Button type="submit" loading={changePassword.isPending} done={changed} doneLabel={t("Password changed")} style={{ justifySelf: "start" }}>{t("Change password")}</Button>
       </form>}

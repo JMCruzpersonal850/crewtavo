@@ -221,7 +221,7 @@ export function KnowledgeBasePage() {
         <section className="stack-sm" aria-labelledby="kb-category">
           <button type="button" className="back-link" style={{ border: 0, background: "none", padding: 0, marginBottom: 0 }} onClick={() => set({ category: null })}><Icon name="arrowLeft" size={14} />{t("All categories")}</button>
           <h2 id="kb-category" className="section-title">{category.name}</h2>
-          <GuideCards pages={pages.filter((p) => p.category_id === (category.id === "none" ? null : category.id))} loading={index.isPending} error={index.error} retry={() => index.refetch()} isRead={index.data?.isRead} empty={editor ? <NewGuideButton category={category.id !== "none" ? category.id : null} label="Write a guide" primary={false} /> : undefined} />
+          <GuideCards pages={pages.filter((p) => p.category_id === (category.id === "none" ? null : category.id))} loading={index.isPending} error={index.error} retry={() => index.refetch()} isRead={index.data?.isRead} empty={editor ? <NewGuideButton category={category.id !== "none" ? category.id : null} label={t("Write a guide")} primary={false} /> : undefined} />
         </section>
       ) : (
         <>

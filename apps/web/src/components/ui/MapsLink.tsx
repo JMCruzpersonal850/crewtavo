@@ -49,7 +49,7 @@ export function MapsChooser({ place, onClose }: { place: Place; onClose: () => v
             </a>
           ))}
           {text && (
-            <button type="button" className="btn big-action" onClick={() => { void copyText(text, "Address copied"); onClose(); }}>
+            <button type="button" className="btn big-action" onClick={() => { void copyText(text, t("Address copied")); onClose(); }}>
               <Icon name="copy" size={20} />
               {t("Copy address")}
             </button>

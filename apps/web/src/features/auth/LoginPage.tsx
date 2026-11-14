@@ -11,7 +11,7 @@ import { formatPhoneTyping } from "@/lib/validate";
 import styles from "./auth.module.css";
 import { BrandLockup } from "@/components/shell/BrandMark";
 import { afterAsking, ASK_THE_OFFICE, askFor, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
-import { LOCALE_NAMES, T, getLocale, pickAtSignIn, t } from "@/lib/i18n";
+import { getLocale, LOCALE_NAMES, msg, pickAtSignIn, T, t } from "@/lib/i18n";
 import { LOCALES } from "@crewtavo/core/i18n";
 import { translateError } from "@crewtavo/core/i18n/patterns";
 
@@ -205,7 +205,7 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
     e.target.value = ""; // so picking the same file again still counts
     if (!file) return;
     setError(null);
-    const notAKeyFile = `That doesn't look like your key file. It's called ${KEY_FILE_NAME}.`;
+    const notAKeyFile = t("That doesn't look like your key file. It's called {name}.", { name: KEY_FILE_NAME });
     if (file.size > 20_000) return setError(notAKeyFile);
     const { email: account, keys } = readKeyFile(await file.text());
     if (!keys.length) return setError(notAKeyFile);
@@ -339,7 +339,7 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
 
         {!(mode === "recover" && !typingKey) && (
           <Button type="submit" variant="primary" size="lg" loading={busy === "form"} disabled={Boolean(busy)}>
-            {{ sign_in: "Sign in", sign_up: "Create account", magic_link: "Email me a link", forgot: "Send reset link", recover: "Continue" }[mode]}
+            {{ sign_in: t("Sign in"), sign_up: t("Create account"), magic_link: t("Email me a link"), forgot: t("Send reset link"), recover: t("Continue") }[mode]}
           </Button>
         )}
         {mode === "recover" && (
@@ -382,21 +382,21 @@ function NewPhoneOffer({ offers, onPick }: { offers: ReturnType<typeof newPhoneO
   ));
 }
 
-/** The words that change with the way the code goes. */
+/** The words that change with the way the code goes: said with t() where they're shown. */
 const WAY_WORDS = {
   text: {
-    intro: `For subcontractors. We'll text a ${SIGN_IN_CODE_DIGITS}-digit code to the number the office has for you.`,
-    send: "Text me a code",
+    intro: msg("For subcontractors. We'll text a {digits}-digit code to the number the office has for you."),
+    send: msg("Text me a code"),
     icon: "smartphone",
-    other: "Use a different number",
-    switchTo: "Get a code by text instead",
+    other: msg("Use a different number"),
+    switchTo: msg("Get a code by text instead"),
   },
   email: {
-    intro: `For subcontractors. We'll email a ${SIGN_IN_CODE_DIGITS}-digit code to the address the office has for you.`,
-    send: "Email me a code",
+    intro: msg("For subcontractors. We'll email a {digits}-digit code to the address the office has for you."),
+    send: msg("Email me a code"),
     icon: "mail",
-    other: "Use a different email",
-    switchTo: "No phone on file? Get a code by email instead",
+    other: msg("Use a different email"),
+    switchTo: msg("No phone on file? Get a code by email instead"),
   },
 } as const;
 
@@ -503,7 +503,7 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
         {step.step === "address" ? (
           <>
             <h1 className={styles.title}>{t("Get a sign-in code")}</h1>
-            <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>{words.intro}</p>
+            <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>{t(words.intro, { digits: SIGN_IN_CODE_DIGITS })}</p>
             {way === "text" ? (
               <Field label={t("Mobile phone")} hint={t("With the area code. Outside the US and Canada, start with + and your country code.")}>
                 <input className="input" type="tel" inputMode="tel" autoComplete="tel" value={typed.text} onChange={(e) => { setTyped({ ...typed, text: formatPhoneTyping(e.target.value) }); setError(null); }} maxLength={40} required autoFocus />
@@ -514,8 +514,8 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
               </Field>
             )}
             {alert}
-            <Button type="submit" variant="primary" size="lg" icon={words.icon} loading={busy === "send"}>{words.send}</Button>
-            {otherWay && <button type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => switchWay(otherWay)}>{WAY_WORDS[otherWay].switchTo}</button>}
+            <Button type="submit" variant="primary" size="lg" icon={words.icon} loading={busy === "send"}>{t(words.send)}</Button>
+            {otherWay && <button type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => switchWay(otherWay)}>{t(WAY_WORDS[otherWay].switchTo)}</button>}
           </>
         ) : (
           <>
@@ -539,7 +539,7 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
             <Button type="submit" variant="primary" size="lg" loading={busy === "sign_in"} disabled={!wholeCode(code) || Boolean(busy)}>{t("Sign in")}</Button>
             <Button disabled={wait > 0 || Boolean(busy)} loading={busy === "send"} onClick={() => sendCode(step.address)}>{resendLabel(wait)}</Button>
             <p className="muted small" style={{ margin: 0, textAlign: "center" }}>{t(NOTHING_CAME[way])}</p>
-            <button type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => { setStep({ step: "address" }); setCode(""); setError(null); }}>{words.other}</button>
+            <button type="button" className="link-btn small" style={{ justifySelf: "center" }} onClick={() => { setStep({ step: "address" }); setCode(""); setError(null); }}>{t(words.other)}</button>
           </>
         )}
         <div className={styles.links} style={{ justifyContent: "center" }}>

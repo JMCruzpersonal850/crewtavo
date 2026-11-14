@@ -652,4 +652,12 @@ export default {
   // Small things around the app (lib/api.ts, lib/clipboard.ts)
   "Still loading. Try again in a moment.": "Todavía está cargando. Intenta de nuevo en un momento.",
   "Copy this:": "Copia esto:",
+
+  // Named in a message when it can't be found, or who a clock belongs to isn't known
+  "This visit": "Esta visita",
+  "A crew member": "Alguien de la cuadrilla",
+  // A receipt read by the phone
+  "Job #{number} (suggested)": "Trabajo #{number} (sugerido)",
+  "{count} to check": "{count} por revisar",
+  "{checklist} (not finished)": "{checklist} (sin terminar)",
 } satisfies Catalog;

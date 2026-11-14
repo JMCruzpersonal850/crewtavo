@@ -357,19 +357,19 @@ export function SchedulePage() {
     const wasOff = visit.status === "unscheduled";
     const when = (date: string) => label(date, { weekday: "short", month: "short", day: "numeric" });
     const crewPart = (crew: string | undefined): Moves => (crew !== undefined && (crew || null) !== visit.crew_id ? { crew_id: crew || null } : {});
-    const crewNote = (crew: string | undefined) => (crew !== undefined && (crew || null) !== visit.crew_id ? ` · ${crewOf(crew || null)?.name ?? "no crew"}` : "");
+    const crewNote = (crew: string | undefined) => (crew !== undefined && (crew || null) !== visit.crew_id ? ` · ${crewOf(crew || null)?.name ?? t("no crew")}` : "");
     let patch: Moves;
     let message: string;
     if (target.type === "unscheduled") {
       if (wasOff) return;
       patch = { status: "unscheduled", scheduled_on: null, starts_at: null, ends_at: null };
-      message = "Moved to unscheduled";
+      message = t("Moved to unscheduled");
     } else if (target.type === "day") {
       patch = visit.scheduled_on === target.date && !wasOff ? {} : { ...patchFor(visit, target.date, tz), ...(wasOff ? { status: "scheduled" } : {}) };
-      message = `Moved to ${when(target.date)}`;
+      message = t("Moved to {when}", { when: when(target.date) });
     } else if (target.type === "anytime") {
       patch = { scheduled_on: target.date, starts_at: null, ends_at: null, ...crewPart(target.crew), ...(wasOff ? { status: "scheduled" } : {}) };
-      message = `${when(target.date)}, anytime${crewNote(target.crew)}`;
+      message = `${t("{when}, anytime", { when: when(target.date) })}${crewNote(target.crew)}`;
     } else {
       const start = zonedTimeToUtc(target.date, hhmm(target.minutes), tz);
       patch = {
@@ -380,13 +380,13 @@ export function SchedulePage() {
         ...(wasOff ? { status: "scheduled" } : {}),
       };
       const resized = visit.scheduled_on === target.date && sameTime(visit.starts_at, patch.starts_at) && !sameTime(visit.ends_at, patch.ends_at);
-      message = resized ? `Now ${lengthLabel(duration)}` : `${when(target.date)} at ${clock(target.minutes)}${crewNote(target.crew)}`;
+      message = resized ? t("Now {length}", { length: lengthLabel(duration) }) : `${t("{when} at {time}", { when: when(target.date), time: clock(target.minutes) })}${crewNote(target.crew)}`;
     }
     const changed = (Object.keys(patch) as Array<keyof Moves>).some((k) => (k === "starts_at" || k === "ends_at" ? !sameTime(visit[k], patch[k]) : (visit[k] ?? null) !== (patch[k] ?? null)));
     // People view: off the row it was dragged from, onto the row it was dropped on.
     const to = target.type === "unscheduled" ? undefined : target.person;
     const assignees = to === undefined ? null : movePeople(visitPeople(visit, onCrews), from, to);
-    const peopleNote = assignees && (to ? (from ? `Moved to ${who(to)}` : `Added ${who(to)}`) : `Took ${who(from!)} off`);
+    const peopleNote = assignees && (to ? (from ? t("Moved to {who}", { who: who(to) }) : t("Added {who}", { who: who(to) })) : t("Took {who} off", { who: who(from!) }));
     if (changed || assignees) {
       update.mutate({ visit, patch: { ...(changed && patch), ...(assignees && { assignee_ids: assignees }) }, message: [changed && message, peopleNote].filter(Boolean).join(" · "), undoable: true });
     }
@@ -607,7 +607,7 @@ export function SchedulePage() {
               ["", "Everyone"],
               [session.userId, t("You")],
               ...pickable.map((p): [string, string] => [p.user_id, nameOf(p.user_id)]),
-              ...(canDispatch ? [["none", "Nobody assigned"] as [string, string]] : []),
+              ...(canDispatch ? [["none", t("Nobody assigned")] as [string, string]] : []),
             ]}
           />
         )}
@@ -689,7 +689,7 @@ export function SchedulePage() {
                                 );
                               })}
                               {rowEvents.map((e) => (
-                                <button key={e.id} type="button" className="tg-chip" data-external data-free={!e.busy || undefined} style={{ "--cal": e.source?.color ?? undefined } as CSSProperties} title={`${e.title} · ${e.source?.name ?? "Calendar"}`} onClick={() => setViewing(e)}>
+                                <button key={e.id} type="button" className="tg-chip" data-external data-free={!e.busy || undefined} style={{ "--cal": e.source?.color ?? undefined } as CSSProperties} title={`${e.title} · ${e.source?.name ?? t("Calendar")}`} onClick={() => setViewing(e)}>
                                   {monthLabel(e, date, tz)}
                                 </button>
                               ))}
@@ -715,7 +715,7 @@ export function SchedulePage() {
                           <span className="grow" style={{ minWidth: 0 }}>
                             <strong>{v.title}</strong>
                             {(v.job?.client || v.property || v.address) && <span className="muted small" style={{ display: "block" }}>{[v.job?.client?.display_name, addressLine(v.property) || v.address].filter(Boolean).join(" · ")}</span>}
-                            <span className="muted small" style={{ display: "block" }}>{[namesOn(v) || "Nobody assigned", crewOf(v.crew_id)?.name].filter(Boolean).join(" · ")}</span>
+                            <span className="muted small" style={{ display: "block" }}>{[namesOn(v) || t("Nobody assigned"), crewOf(v.crew_id)?.name].filter(Boolean).join(" · ")}</span>
                           </span>
                           <EntityStatus kind="visit" status={v.status} />
                         </button>
@@ -781,7 +781,7 @@ export function SchedulePage() {
                         </button>
                       ))}
                       {shownEvents.map((e) => (
-                        <button key={e.id} type="button" className="month-chip" data-external data-free={!e.busy || undefined} style={{ ["--cal" as string]: e.source?.color ?? undefined }} title={`${e.title} · ${e.source?.name ?? "Calendar"}`} onClick={() => setViewing(e)}>
+                        <button key={e.id} type="button" className="month-chip" data-external data-free={!e.busy || undefined} style={{ ["--cal" as string]: e.source?.color ?? undefined }} title={`${e.title} · ${e.source?.name ?? t("Calendar")}`} onClick={() => setViewing(e)}>
                           {monthLabel(e, date, tz)}
                         </button>
                       ))}
@@ -919,9 +919,9 @@ function ShiftDialog({ defaultDate, crews, allCrews, onClose }: { defaultDate: s
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); shift.mutate(); }}>
         <div className="form-grid">
           <Field label={t("From")}><input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} required /></Field>
-          <Field label={t("To")} error={fromDate && fromDate === toDate ? "Pick a different day." : null}>
+          <Field label={t("To")} error={fromDate && fromDate === toDate ? t("Pick a different day.") : null}>
             {/* The same day twice also stops Move visits, and counts in "1 field needs a look". */}
-            <input ref={(el) => el?.setCustomValidity(fromDate && fromDate === toDate ? "Pick a different day." : "")} className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} required />
+            <input ref={(el) => el?.setCustomValidity(fromDate && fromDate === toDate ? t("Pick a different day.") : "")} className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} required />
           </Field>
           <Field label={t("Crew")}>
             <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
@@ -955,7 +955,7 @@ function BulkVisitsDialog({ defaultDate, crews, onClose }: { defaultDate: string
   });
   const shown = (jobs.data ?? []).filter((j) => `${j.title} ${j.client?.display_name ?? ""} ${j.number}`.toLowerCase().includes(term.toLowerCase()));
   const create = useMutation({
-    meta: { inline: true, tone: "job", success: (r: { created: number }) => `Added ${r.created} ${r.created === 1 ? "visit" : "visits"}` },
+    meta: { inline: true, tone: "job", success: (r: { created: number }) => t.plural(r.created, { one: "Added {count} visit", other: "Added {count} visits" }) },
     mutationFn: async () => {
       if (!picked.length) throw new Error(t("Pick at least one job."));
       return api.post<{ created: number }>("/schedule/bulk-visits", { job_ids: picked, date, crew_id: crewId || undefined });

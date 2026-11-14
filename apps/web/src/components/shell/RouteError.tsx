@@ -53,6 +53,7 @@ export function RouteError({ fullPage }: { fullPage?: boolean }) {
   // Something the app threw for people to read ("Still loading. Try again in a moment.") can just say so.
   const readable = error instanceof Error && Boolean(message) && !looksTechnical(message);
   const raw = isRouteErrorResponse(error) ? `${error.status} ${error.statusText}`.trim() : message;
+  // i18n-ignore: the details are for whoever fixes it, and are sent as they are
   const details = [`Screen: ${pathname}`, `Time: ${at.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "long" })}`, raw].filter(Boolean).join("\n");
   return (
     <Wrap

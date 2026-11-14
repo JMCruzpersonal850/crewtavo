@@ -31,7 +31,7 @@ import { PictureViewer } from "./PictureViewer";
 import { QuizDialog, type QuizQuestion } from "./QuizDialog";
 import { VersionCompare } from "./VersionCompare";
 import { guideQuery, mustRead, reviewDueAt, ROLE_LABELS, useIsEditor, useSopIndex, useTraining } from "./kbData";
-import { t } from "@/lib/i18n";
+import { msg, t } from "@/lib/i18n";
 
 interface TeamMember { user_id: string; role: string; role_id: string | null; active: boolean; profile: { full_name: string; color: string | null; avatar_url?: string | null } | null }
 
@@ -97,7 +97,7 @@ export function SopPage() {
     onSettled: refresh,
   });
   const pin = useMutation({
-    meta: { success: (_: unknown, on: boolean) => (on ? "Pinned to the top of the knowledge base" : "Unpinned") },
+    meta: { success: (_: unknown, on: boolean) => (on ? t("Pinned to the top of the knowledge base") : t("Unpinned")) },
     mutationFn: async (on: boolean) => unwrap(await supabase().from("sop_pages").update({ pinned_at: on ? new Date().toISOString() : null }).eq("id", pageId)),
     onSettled: refresh,
   });
@@ -122,9 +122,9 @@ export function SopPage() {
   }, [hash, body]);
 
   if (page.isPending) return <DetailSkeleton />;
-  if (page.error || !page.data) return <PageError error={page.error ?? new ApiError("This guide doesn't exist, or it was deleted.", 404)} onRetry={page.error ? () => page.refetch() : undefined} back={<BackLink to="/kb">{t("Knowledge base")}</BackLink>} />;
+  if (page.error || !page.data) return <PageError error={page.error ?? new ApiError(msg("This guide doesn't exist, or it was deleted."), 404)} onRetry={page.error ? () => page.refetch() : undefined} back={<BackLink to="/kb">{t("Knowledge base")}</BackLink>} />;
   const sop = page.data;
-  const name = (id: string | null) => team.data?.find((m) => m.user_id === id)?.profile?.full_name ?? "Team member";
+  const name = (id: string | null) => team.data?.find((m) => m.user_id === id)?.profile?.full_name ?? t("Team member");
   const readers = reads.data ?? [];
   const acknowledged = readers.some((r) => r.user_id === userId);
   // Who has to read it: required reading's audience, and everyone whose job's training includes it.
@@ -333,7 +333,7 @@ function HistoryDialog({ pageId, current, names, onClose }: { pageId: string; cu
     queryFn: async () => unwrap(await supabase().from("sop_revisions").select("revision, title, body_html, edited_by, created_at").eq("page_id", pageId).order("revision", { ascending: false }).limit(100)),
   });
   const restore = useMutation({
-    meta: { success: (_: unknown, r: number) => `Revision ${r} restored as a new revision` },
+    meta: { success: (_: unknown, r: number) => t("Revision {number} restored as a new revision", { number: r }) },
     mutationFn: async (revision: number) => {
       const r = revisions.data!.find((x) => x.revision === revision)!;
       unwrap(await supabase().from("sop_pages").update({ title: r.title, body: { type: "html", html: r.body_html }, body_html: r.body_html, body_text: htmlToText(r.body_html) }).eq("id", pageId));

@@ -180,6 +180,7 @@ export function CommandPalette() {
 
   const items = useMemo<Item[]>(() => {
     const isOffice = hasRole(session, "admin", "office");
+    // i18n-ignore: words to find it by, never shown
     const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: msg("Create"), icon: c.icon, title: c.newLabel, keywords: `add new ${english(c.label)} ${c.keywords}`, run: () => go(c.to) }));
     const actions: Item[] = [
       ...creates,
@@ -200,6 +201,7 @@ export function CommandPalette() {
     );
     const appItems: Item[] = (apps.data?.apps ?? []).map((a) => ({
       id: `app-${a.id}`, group: msg("Go to"), icon: "apps", title: a.name, subtitle: `Apps · ${categoryName(a.category)}`,
+      // i18n-ignore: words to find it by, never shown
       keywords: `app integration ${a.id.replace(/_/g, " ")} ${infoFor(a).tagline}`, run: () => go(`/apps/${a.id}`),
     }));
 

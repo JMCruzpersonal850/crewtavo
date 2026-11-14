@@ -1,7 +1,7 @@
 /** Photo and receipt uploads to the private "files" bucket, under the company's folder. */
 import { supabase } from "./api";
 import { ApiError, isRestarting, OFFLINE, StorageFullError } from "./errors";
-import { t } from "./i18n";
+import { msg, t } from "./i18n";
 
 /** The largest file an upload sends (a photo once it's shrunk). */
 export const MAX_BYTES = 15 * 1024 * 1024;
@@ -185,7 +185,7 @@ export async function uploadFile(companyId: string, folder: string, file: File):
   const ext = storedExtension(file, body);
   const path = `${companyId}/${folder}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase().storage.from("files").upload(path, body, { contentType: body.type || file.type || "application/octet-stream", upsert: false });
-  if (error) throw uploadRefused(error, "You don't have permission to upload here.");
+  if (error) throw uploadRefused(error, msg("You don't have permission to upload here."));
   return path;
 }
 
@@ -201,9 +201,9 @@ export async function uploadOnce(path: string, body: Blob): Promise<void> {
   const status = Number((error as { status?: unknown }).status) || Number((error as { statusCode?: unknown }).statusCode) || 0;
   if (status === 409 || /already exists|duplicate/i.test(error.message)) return;
   if (/failed to fetch|networkerror|load failed/i.test(error.message)) throw new ApiError(OFFLINE, 0, "network");
-  if (isRestarting(status)) throw new ApiError("Crewtavo is restarting. Try again in a moment.", status, "restarting");
-  if (/jwt|unauthorized/i.test(error.message) && !/row-level security/i.test(error.message)) throw new ApiError("Your session has expired. Sign in again.", 401);
-  throw uploadRefused(error, "You don't have permission to upload here.");
+  if (isRestarting(status)) throw new ApiError(msg("Crewtavo is restarting. Try again in a moment."), status, "restarting");
+  if (/jwt|unauthorized/i.test(error.message) && !/row-level security/i.test(error.message)) throw new ApiError(msg("Your session has expired. Sign in again."), 401);
+  throw uploadRefused(error, msg("You don't have permission to upload here."));
 }
 
 /**

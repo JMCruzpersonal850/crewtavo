@@ -8,7 +8,7 @@ import type { Database } from "@crewtavo/core/database";
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, friendlyDbError, isRestarting, OFFLINE, SESSION_EXPIRED } from "./errors";
 import { startMonitoring, type MonitoringConfig } from "./monitoring";
-import { t } from "@/lib/i18n";
+import { msg, t } from "@/lib/i18n";
 
 export { ApiError } from "./errors";
 
@@ -70,7 +70,7 @@ export function loadConfig(): Promise<AppConfig> {
     .then(async (res) => {
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new ApiError(body.error ?? "Couldn't connect to Crewtavo. Try again in a moment.", res.status);
+        throw new ApiError(body.error ?? msg("Couldn't connect to Crewtavo. Try again in a moment."), res.status);
       }
       const config = (await res.json()) as AppConfig;
       try {
@@ -123,7 +123,7 @@ function signedInFetch(config: AppConfig): typeof fetch {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const publicKeyOnly = new Headers(init?.headers).get("Authorization") === `Bearer ${config.supabaseKey}`;
     // Sign-in requests themselves always go with the public key.
-    if (publicKeyOnly && !url.includes("/auth/v1/") && signInStored()) return Promise.reject(new TypeError("Failed to fetch"));
+    if (publicKeyOnly && !url.includes("/auth/v1/") && signInStored()) return Promise.reject(new TypeError("Failed to fetch")); // i18n-ignore: the browser's own words for no connection, which errors.ts knows
     return globalThis.fetch(input, init);
   };
 }
@@ -197,7 +197,7 @@ async function request<T>(method: string, path: string, body?: unknown, options:
   }
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) {
-    const fallback = res.status >= 500 ? "Something went wrong on our end. Try again in a moment." : "Something went wrong. Try again.";
+    const fallback = res.status >= 500 ? msg("Something went wrong on our end. Try again in a moment.") : msg("Something went wrong. Try again.");
     throw new ApiError(json.error ?? fallback, res.status, res.status === 401 ? SESSION_EXPIRED : undefined);
   }
   return json as T;
@@ -210,7 +210,7 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
   if (res.status === 404) return null;
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(json.error ?? "Something went wrong. Try again.", res.status);
+    throw new ApiError(json.error ?? msg("Something went wrong. Try again."), res.status);
   }
   return res.blob();
 }
@@ -221,7 +221,7 @@ async function requestDownload(path: string, body: unknown, options: RequestOpti
   if (res.status === 401 && client && (await refreshSignIn()) === "ok") res = await send("POST", path, body, options);
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(json.error ?? "Something went wrong. Try again.", res.status);
+    throw new ApiError(json.error ?? msg("Something went wrong. Try again."), res.status);
   }
   return res.blob();
 }
@@ -244,7 +244,7 @@ type DbResult = { data: unknown; error: { message: string; code?: string; detail
  */
 function dbFailure(result: DbResult): ApiError {
   // The server restarting isn't a database fault to report (a field action retries through it).
-  if (isRestarting(result.status)) return new ApiError("Crewtavo is restarting. Try again in a moment.", result.status!, "restarting");
+  if (isRestarting(result.status)) return new ApiError(msg("Crewtavo is restarting. Try again in a moment."), result.status!, "restarting");
   return friendlyDbError(result.error!);
 }
 
@@ -255,9 +255,10 @@ export function unwrap<R extends DbResult>(result: R): NonNullable<R["data"]> {
 }
 
 /** Like unwrap, but a missing row is an error ("not found") rather than null. */
-export function unwrapOne<R extends DbResult>(result: R, what = "That record"): NonNullable<R["data"]> {
+export function unwrapOne<R extends DbResult>(result: R, what = msg("That record")): NonNullable<R["data"]> {
   if (result.error) throw dbFailure(result);
-  if (result.data == null) throw new ApiError(`${what} wasn't found. It may have been deleted.`, 404, "PGRST116");
+  // Said in the person's language as it's thrown: what's missing is named in it.
+  if (result.data == null) throw new ApiError(t("{what} wasn't found. It may have been deleted.", { what: t(what) }), 404, "PGRST116");
   return result.data as NonNullable<R["data"]>;
 }
 

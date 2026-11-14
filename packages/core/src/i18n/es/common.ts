@@ -540,4 +540,48 @@ export default {
   "Couldn't load your account": "No se pudo cargar tu cuenta",
   "Your sign-in is turned off": "Tu acceso está desactivado",
   "The business that gave you this sign-in has turned it off. Ask their office to turn it back on.": "La empresa que te dio este acceso lo desactivó. Pídele a su oficina que lo vuelva a activar.",
+
+  // A field's own checks (components/ui/Field.tsx)
+  "Pick {limit} or later.": "Elige {limit} o después.",
+  "Enter {limit} or more.": "Escribe {limit} o más.",
+  "Pick {limit} or earlier.": "Elige {limit} o antes.",
+  "Enter {limit} or less.": "Escribe {limit} o menos.",
+  "Use up to {count} decimal places.": { one: "Usa hasta {count} decimal.", other: "Usa hasta {count} decimales." },
+  "Use steps of {step}.": "Usa pasos de {step}.",
+  "Use at least {count} characters.": "Usa al menos {count} caracteres.",
+  "Use {count} characters or fewer.": "Usa {count} caracteres o menos.",
+  "Address copied": "Dirección copiada",
+
+  // Signing in (features/auth/LoginPage.tsx, lib/session.tsx)
+  "That doesn't look like your key file. It's called {name}.": "Ese no parece tu archivo de llaves. Se llama {name}.",
+  "Create account": "Crear cuenta",
+  "Email me a link": "Envíame un enlace por correo",
+  "Send reset link": "Enviar enlace para restablecerla",
+  "Continue": "Continuar",
+  "For subcontractors. We'll text a {digits}-digit code to the number the office has for you.": "Para subcontratistas. Te mandamos por mensaje de texto un código de {digits} dígitos al número que la oficina tiene de ti.",
+  "Text me a code": "Mándame un código por mensaje",
+  "Use a different number": "Usar otro número",
+  "Get a code by text instead": "Mejor recibir el código por mensaje de texto",
+  "For subcontractors. We'll email a {digits}-digit code to the address the office has for you.": "Para subcontratistas. Te mandamos por correo un código de {digits} dígitos a la dirección que la oficina tiene de ti.",
+  "Email me a code": "Mándame un código por correo",
+  "Use a different email": "Usar otro correo",
+  "That link has expired or was already used. Ask whoever sent it for a new one, or sign in below.": "Ese enlace ya venció o ya se usó. Pídele uno nuevo a quien te lo mandó, o inicia sesión aquí abajo.",
+  "Couldn't open that link. Check your connection and try again.": "No se pudo abrir ese enlace. Revisa tu conexión e intenta de nuevo.",
+
+  // What the app says when something doesn't go through (lib/api.ts, lib/files.ts, lib/resumable.ts)
+  "Couldn't connect to Crewtavo. Try again in a moment.": "No se pudo conectar con Crewtavo. Intenta de nuevo en un momento.",
+  "Something went wrong on our end. Try again in a moment.": "Algo salió mal de nuestro lado. Intenta de nuevo en un momento.",
+  "Crewtavo is restarting. Try again in a moment.": "Crewtavo se está reiniciando. Intenta de nuevo en un momento.",
+  "That record": "Ese registro",
+  "{what} wasn't found. It may have been deleted.": "{what}: no se encontró. Puede que se haya eliminado.",
+  "You don't have permission to upload here.": "No tienes permiso para subir archivos aquí.",
+  "You're signed out. Sign in again, then add the file.": "Se cerró tu sesión. Inicia sesión de nuevo y luego agrega el archivo.",
+  "The upload stopped. Check the connection and try again.": "La subida se detuvo. Revisa la conexión e intenta de nuevo.",
+  "The file": "El archivo",
+
+  // Sending a link, and a sub's paperwork page (features/quotes/SendDialog.tsx, features/public/PaperworkPage.tsx)
+  "Link copied. Paste it into a message to your client.": "Enlace copiado. Pégalo en un mensaje para tu cliente.",
+  "Link copied": "Enlace copiado",
+  "Paperwork for {company}": "Documentos para {company}",
+  "That file didn't come through. Try sending it again.": "Ese archivo no llegó. Intenta enviarlo de nuevo.",
 } satisfies Catalog;

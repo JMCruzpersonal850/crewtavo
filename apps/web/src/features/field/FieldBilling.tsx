@@ -26,7 +26,7 @@ import { SendDialog } from "../quotes/SendDialog";
 import { waitingScopeLine, type JobLineAdd } from "./fieldActions";
 import { visitExtrasKey, waitingExtra, type ExtraScopeLine } from "./FieldExtras";
 import { useSignal } from "./OfflineNote";
-import { t } from "@/lib/i18n";
+import { msg, t } from "@/lib/i18n";
 
 /**
  * Add work: an item from the price list and how many. The office's price applies, and the crew never
@@ -139,7 +139,7 @@ async function visitInvoice(visitId: string, jobId: string, kind: "standard" | "
     supabase().from("visits").select("invoice_id").eq("id", visitId).maybeSingle(),
     supabase().from("invoices").select("id, number, kind, status, total, balance_due, client_id, client:clients(email, phone, sms_opt_out_at)").eq("job_id", jobId).neq("status", "void").order("number"),
   ]);
-  const invoiceId = unwrapOne(visit, "This visit").invoice_id;
+  const invoiceId = unwrapOne(visit, msg("This visit")).invoice_id;
   const rows = unwrap(invoices) as VisitInvoiceRow[];
   return (kind === "visits" ? rows.find((i) => i.id === invoiceId) : rows.find((i) => i.kind === "standard")) ?? null;
 }

@@ -199,9 +199,9 @@ const asItem = (e: GridExternal): GridVisit & { ext: GridExternal } => ({ id: `e
 /** What a double booking's mark says, in a crew's lane or on a person's row. */
 export const conflictText = (conflict: Placed<unknown>["conflict"], person: boolean) =>
   conflict === "visit"
-    ? person ? "This person is on another visit at the same time" : "This crew is booked for another visit at the same time"
+    ? person ? t("This person is on another visit at the same time") : t("This crew is booked for another visit at the same time")
     : conflict === "calendar"
-      ? person ? "This person's calendar shows them busy at this time" : "This crew's calendar shows them busy at this time"
+      ? person ? t("This person's calendar shows them busy at this time") : t("This crew's calendar shows them busy at this time")
       : undefined;
 
 /** Each visit's double booking, by id, as a column of the grid marks it: for the People week's chips and the visit form. */

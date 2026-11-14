@@ -7,8 +7,11 @@
 import { addCatalog, setLocale } from "@crewtavo/core/i18n";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { COVERED, listFiles, rawStrings } from "../../../scripts/i18n.mjs";
+import { COVERED, listFiles, rawStrings, ROOT } from "../../../scripts/i18n.mjs";
 import { formatDate, formatDateTime, formatDay, formatMoney, formatMoneyCents, formatNumber, formatTime, timeAgo, weekdayName } from "../src/lib/format";
 import { T } from "../src/lib/i18n";
 
@@ -67,4 +70,63 @@ describe("the screens a crew uses", () => {
     const left = listFiles(COVERED).flatMap((file) => rawStrings(file).map((s) => `${file}:${s.line} [${s.kind}] ${s.text}`));
     expect(left).toEqual([]);
   }, 60_000);
+});
+
+describe("the check for English typed outside t()", () => {
+  /** What the check reports in a file with this in it. */
+  const found = (code: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "crewtavo-i18n-"));
+    try {
+      writeFileSync(join(dir, "Screen.tsx"), code);
+      return rawStrings(relative(ROOT, join(dir, "Screen.tsx"))).map((s) => s.text);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("sees words kept in a variable, built in a template, picked by ?:, given as a fallback or returned by a helper", () => {
+    const leaks = found(`
+      export function Screen({ channel, v, crew, team, id, names }) {
+        const placeholder = channel.kind === "announcement" ? \`Message \${channel.name}\` : \`Message #\${channel.name}\`;
+        const when = \`\${v.scheduled_on ? day(v.scheduled_on) : "Not scheduled yet"}\${v.starts_at ? "" : v.scheduled_on ? " · Anytime" : ""}\`;
+        let message;
+        message = "Moved to unscheduled";
+        const crewNote = \` · \${crew?.name ?? "no crew"}\`;
+        const name = team.find((m) => m.user_id === id)?.full_name ?? "Team member";
+        const other = memberName(team[0], "Team member");
+        const pin = useMutation({ meta: { success: (_, on) => (on ? "Pinned to the top of the knowledge base" : "Unpinned") } });
+        const typing = names.length === 1 ? \`\${names[0]} is typing…\` : "Several people are typing…";
+        const note = \`\${when} at \${clock}\`;
+        const label = () => "Nobody assigned";
+        return <Cards empty={<NewGuideButton label="Write a guide" />} placeholder={placeholder} />;
+      }
+    `);
+    for (const text of ["`Message ${channel.name}`", "`Message #${channel.name}`", "Not scheduled yet", " · Anytime", "Moved to unscheduled", "no crew", "Team member", "Pinned to the top of the knowledge base", "Unpinned", "`${names[0]} is typing…`", "Several people are typing…", "`${when} at ${clock}`", "Nobody assigned", "Write a guide"]) {
+      expect(leaks, text).toContain(text);
+    }
+  });
+
+  it("leaves names for the machine alone, and text that's already in t()", () => {
+    expect(
+      found(`
+      import { api } from "@/lib/api";
+      export function Screen({ v, status, tone }) {
+        const rows = supabase().from("visits").select("id, title, crew:crews(name)").eq("status", "in_progress");
+        const key = ["field", v.id, "Photos"];
+        const cls = \`chip \${tone === "good" ? "chip-green" : "chip-blue"}\`;
+        const kind = status === "Draft" ? "draft" : "sent";
+        const path = \`/field/visits/\${v.id}\`;
+        const header = { Authorization: \`Bearer \${token}\`, "Content-Type": "application/json" };
+        const size = \`\${h}h \${m}m\`;
+        const title = \`\${v.title} · Crewtavo\`;
+        const said = on ? t("Pinned to the top of the knowledge base") : t("Unpinned");
+        const constant = msg("Moved to unscheduled");
+        if (event.key === "Enter" || event.key === "Escape") document.getElementById("photo-editor-words")?.focus();
+        // i18n-ignore: said to the office
+        const office = "You can still give them work";
+        return <div className="row wrap" role="group" data-kind="Visit card" style={{ gridTemplateColumns: "1fr auto" }}>{t("Start visit")}</div>;
+      }
+    `),
+    ).toEqual([]);
+  });
 });

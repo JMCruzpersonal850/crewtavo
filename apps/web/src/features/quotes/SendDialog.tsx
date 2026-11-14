@@ -52,6 +52,7 @@ export function SendDialog({
   const { company, config } = useSession();
   const [channel, setChannel] = useState<Channel>(email ? "email" : phone && !textsOffSince ? "sms" : "link");
   const label = (kind === "quote" ? t("Quote #{number}", { number: number ?? "" }) : t("Invoice #{number}", { number: number ?? "" })).trim();
+  // i18n-ignore: the email's subject, which the client reads (clients are written to in English for now)
   const [subject, setSubject] = useState(`${label} from ${company.name}`);
   const [message, setMessage] = useState("");
   // The client and their contacts, from the server. Until it answers (or if it can't: offline, or
@@ -82,7 +83,7 @@ export function SendDialog({
     mutationFn: () => api.post<Sent>(`/${kind}s/${id}/send`, sendPayload({ channel, list, subject, message })),
     onSuccess: (r) => {
       onSent?.();
-      if (channel === "link") copyText(r.link, "Link copied. Paste it into a message to your client.");
+      if (channel === "link") copyText(r.link, t("Link copied. Paste it into a message to your client."));
     },
   });
 
@@ -113,7 +114,7 @@ export function SendDialog({
             <span>{t("Client link")}</span>
             <div className="row">
               <input className="input" readOnly value={done.link} onFocus={(e) => e.target.select()} />
-              <Button icon="copy" onClick={() => copyText(done.link, "Link copied")}>{t("Copy")}</Button>
+              <Button icon="copy" onClick={() => copyText(done.link, t("Link copied"))}>{t("Copy")}</Button>
             </div>
           </div>
           <div className="form-actions">

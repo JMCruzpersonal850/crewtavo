@@ -239,7 +239,7 @@ export function Composer({
     );
   }
 
-  const placeholder = channel.kind === "announcement" ? `Message ${channel.name}` : `Message #${channel.name}`;
+  const placeholder = t("Message {channel}", { channel: channel.kind === "announcement" ? channel.name : `#${channel.name}` });
   return (
     <div className={s.foot}>
       <TypingLine channelId={channel.id} />
@@ -324,7 +324,7 @@ export function Composer({
 function TypingLine({ channelId }: { channelId: string }) {
   const session = useSession();
   const names = useTypingNames(channelId, session.userId);
-  const text = names.length === 0 ? "" : names.length === 1 ? `${names[0]} is typing…` : names.length === 2 ? `${names[0]} and ${names[1]} are typing…` : "Several people are typing…";
+  const text = names.length === 0 ? "" : names.length === 1 ? t("{name} is typing…", { name: names[0] }) : names.length === 2 ? t("{first} and {second} are typing…", { first: names[0], second: names[1] }) : t("Several people are typing…");
   return (
     <div className={s.typing} aria-live="polite">
       {text && (

@@ -128,7 +128,7 @@ function ChannelList({ state, current }: { state: ChatState | undefined; current
   const groups = useMemo(() => {
     const map = new Map<string, { name: string; order: number; channels: ChatChannel[] }>();
     for (const c of channels) {
-      const name = c.archived ? "Archived" : c.category;
+      const name = c.archived ? t("Archived") : c.category;
       const g = map.get(name) ?? { name, order: c.archived ? Number.MAX_SAFE_INTEGER : c.position, channels: [] };
       g.order = Math.min(g.order, c.archived ? Number.MAX_SAFE_INTEGER : c.position);
       g.channels.push(c);
