@@ -205,6 +205,33 @@ select tmkpf.check(tmkpf.error_of('select * from public.stuck_postcard_recipient
 reset role;
 
 \o
+\echo 'One mailed to ourselves first'
+\o /dev/null
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Proofed', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["stuck"]}') returning id as pc_p \gset
+set local role service_role;
+select tmkpf.as_nobody();
+insert into public.postcard_proofs (company_id, campaign_id, mode, size, address, image_token, image_path, status, lob_id, proof_url)
+values (:'co', :'pc_p', 'live', '4x6', '{"line1": "1 Main St", "city": "Springfield", "region": "IL", "postal_code": "62701", "country": "US"}', repeat('p', 32), :'co' || '/postcards/' || :'pc_p' || '/proof.jpg', 'made', 'psc_proof', 'https://lob-assets.com/postcards/psc_proof.pdf')
+returning id as proof \gset
+reset role;
+set local role authenticated;
+select tmkpf.as_user(:'olive');
+select tmkpf.check((select mode = 'live' and status = 'made' and proof_url like 'https://%' from public.postcard_proofs where id = :'proof'), 'the office reads a card mailed to the company, with Lob''s picture of it');
+select tmkpf.check(tmkpf.error_of(format('insert into public.postcard_proofs (company_id, mode, size, address, image_token, image_path) values (%L, %L, %L, %L, %L, %L)', :'co', 'live', '4x6', '{}', repeat('q', 32), 'x')) like '42501:%'
+  and tmkpf.error_of(format('update public.postcard_proofs set image_path = %L where id = %L', 'elsewhere/secret.jpg', :'proof')) like '42501:%',
+  'and can''t make one, or point its public picture at another file, from the browser');
+-- The draft is deleted: the card mailed to us, and the picture Lob may still fetch, stay.
+select tmkpf.check(tmkpf.error_of(format('delete from public.postcard_campaigns where id = %L', :'pc_p')) = 'none', 'a draft a card was mailed from can still be deleted');
+select tmkpf.check((select campaign_id is null and image_token = repeat('p', 32) from public.postcard_proofs where id = :'proof'), 'and its card to us stays, picture and all');
+select tmkpf.as_user(:'ray');
+select tmkpf.check(tmkpf.count_of('select 1 from public.postcard_proofs') = 0, 'field crew don''t see them');
+reset role;
+set local role anon;
+select tmkpf.as_nobody();
+select tmkpf.check(tmkpf.error_of('select count(*) from public.postcard_proofs') like '42501:%', 'nor anyone without signing in');
+reset role;
+
+\o
 \echo 'After Lob has accepted the cards'
 \o /dev/null
 insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Spring', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["mail"]}') returning id as pc \gset

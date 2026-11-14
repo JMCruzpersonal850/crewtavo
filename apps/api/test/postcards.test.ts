@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
-import { checkMailedCards, processPostcards, returnAddressProblem, sameDraft, sendProblem, settleStoppedCards, startPostcards } from "../src/services/postcards";
+import { checkMailedCards, frontImage, mailProof, processPostcards, returnAddressProblem, sameDraft, sendProblem, settleStoppedCards, startPostcards } from "../src/services/postcards";
 import { backFit } from "@crewtavo/core/postcards";
 
 const current = vi.hoisted(() => ({ db: null as unknown, key: "test_0123456789abcdef0123" as string | null }));
@@ -60,6 +60,8 @@ function memoryDb(tables: Record<string, Row[]>) {
       for (const r of recipients()) if (r.campaign_id === p_campaign && r.status === "pending") Object.assign(r, { status: "skipped", error: p_reason });
       return null;
     },
+    // The limiter: `limited` says no.
+    rate_limit_hit: () => !tables.limited,
     // Recipients still being made in a stopped campaign, and what became of one.
     stuck_postcard_recipients: () =>
       recipients()
@@ -97,9 +99,15 @@ function memoryDb(tables: Record<string, Row[]>) {
   function query(table: string) {
     const filters: Array<(r: Row) => boolean> = [];
     let update: Row | null = null;
+    let insert: Row | null = null;
     let single = false;
     let limit = Infinity;
     const run = () => {
+      if (insert) {
+        const row = { id: `${table}-${(tables[table] ??= []).length + 1}`, idempotency_key: `key-${table}-${(tables[table] ??= []).length + 1}`, status: "sending", ...insert };
+        tables[table]!.push(row);
+        return { data: single ? { ...row } : [{ ...row }], error: null };
+      }
       const rows = (tables[table] ??= []).filter((r) => filters.every((f) => f(r))).slice(0, limit);
       if (update) {
         for (const r of rows) Object.assign(r, update);
@@ -111,7 +119,9 @@ function memoryDb(tables: Record<string, Row[]>) {
     const q: any = {
       select: () => q,
       update: (values: Row) => ((update = values), q),
-      eq: (column: string, value: unknown) => (filters.push((r) => r[column] === value), q),
+      insert: (values: Row) => ((insert = values), q),
+      single: () => ((single = true), q),
+      eq:(column: string, value: unknown) => (filters.push((r) => r[column] === value), q),
       neq: (column: string, value: unknown) => (filters.push((r) => r[column] !== value), q),
       match: (values: Row) => (filters.push((r) => Object.entries(values).every(([k, v]) => r[k] === v)), q),
       order: () => q,
@@ -550,7 +560,7 @@ describe("Send", () => {
     const tables = draft();
     current.db = memoryDb(tables);
     const saved = tables.postcard_campaigns[0]!;
-    const shown = { message: saved.message, size: "4x6", front_attachment_id: null, front_marked: true, front_path: saved.front_path as string, audience: {} };
+    const shown = { message: saved.message, size: "4x6", front_attachment_id: null, front_marked: true, front_path: (saved as Row).front_path as string, audience: {} };
     // The page shows a message that never reached the database.
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", draft: { ...shown, message: `${saved.message} Call today.` } })).rejects.toThrow(/last changes on this page weren't saved, so nothing was sent/);
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", draft: { ...shown, audience: { tags_any: ["vip"] } } })).rejects.toMatchObject({ status: 409 });
@@ -575,6 +585,75 @@ describe("Send", () => {
     tables.integrations[0]!.settings = { mode: "test" };
     current.key = "test_0123456789abcdef0123";
     await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", sendLive: false })).resolves.toMatchObject({ mode: "test" });
+  });
+});
+
+describe("Mail one to us first", () => {
+  const USER = "00000000-0000-4000-8000-0000000000aa";
+  const draft = (mode: "test" | "live" = "live") => {
+    const tables = world(mode) as ReturnType<typeof world> & { profiles: Row[]; postcard_proofs: Row[]; limited?: Row[] };
+    Object.assign(tables.postcard_campaigns[0]!, { status: "draft", mode: null, image_token: null, audience: {}, front_marked: true, front_path: `${CO}/postcards/${CAMPAIGN}/front.jpg` });
+    tables.postcard_recipients = [];
+    tables.profiles = [{ user_id: USER, full_name: "Olive Office" }];
+    tables.postcard_proofs = [];
+    current.key = mode === "live" ? "live_0123456789abcdef0123" : "test_0123456789abcdef0123";
+    return tables;
+  };
+
+  it("mails one card of the draft to the company's own address, and mails no client", async () => {
+    const tables = draft("live");
+    current.db = memoryDb(tables);
+    const result = await mailProof(env, current.db as never, CO, CAMPAIGN, USER, { confirm: 1, shown: "live", sendLive: true });
+    expect(result).toMatchObject({ status: "made", mode: "live", address: "1 Main St, Springfield, IL 62701", expected_delivery: "2026-11-20" });
+    expect(sent).toHaveLength(1);
+    // To us, from us, with the words a client would read and the name of whoever asked.
+    expect(sent[0]!.body.to).toMatchObject({ name: "Sketchy Gutters", address_line1: "1 Main St", address_state: "IL", address_zip: "62701" });
+    expect(sent[0]!.body.from).toEqual(sent[0]!.body.to);
+    expect(sent[0]!.body.back).toContain("Hi Olive, book at https://crew.example.com/book/sketchy/spring");
+    expect(sent[0]!.auth).toBe("live_0123456789abcdef0123:");
+    const [proof] = tables.postcard_proofs;
+    expect(proof).toMatchObject({ company_id: CO, campaign_id: CAMPAIGN, mode: "live", size: "4x6", status: "made", lob_id: "psc_1", created_by: USER });
+    expect(sent[0]!.key).toBe(proof!.idempotency_key);
+    // Its front is its own public copy, which outlives the draft.
+    expect(sent[0]!.body.front).toContain(`/api/public/postcards/${proof!.image_token}.jpg`);
+    expect(proof!.image_path).toMatch(new RegExp(`^${CO}/postcards/proofs/front-`));
+    // Lob can fetch it, though the campaign is a draft; a made-up token gets nothing.
+    await expect(frontImage(current.db as never, proof!.image_token)).resolves.toBeInstanceOf(Uint8Array);
+    await expect(frontImage(current.db as never, "x".repeat(32))).resolves.toBeNull();
+    // The campaign is still a draft and nobody else was mailed.
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
+    expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
+  });
+
+  it("takes the same care as Send: an owner or admin and a confirmed card with a live key, the key the page said", async () => {
+    const tables = draft("live");
+    current.db = memoryDb(tables);
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { confirm: 1, shown: "live", sendLive: false })).rejects.toThrow(/only an owner or admin can send it/);
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { shown: "live", sendLive: true })).rejects.toThrow(/Lob charges for it. Confirm/);
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { confirm: 1, shown: "test", sendLive: true })).rejects.toThrow(/This page said a test key, but the Lob key on file is a live key/);
+    tables.companies[0]!.address = { line1: "1 Main St", city: "Springfield", region: "Ill.", postal_code: "62701" };
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { confirm: 1, shown: "live", sendLive: true })).rejects.toThrow(/state in your company's address/);
+    expect(sent).toHaveLength(0);
+    expect(tables.postcard_proofs).toHaveLength(0);
+  });
+
+  it("with a test key, makes a test card for anyone in the office, and stops at five an hour", async () => {
+    const tables = draft("test");
+    current.db = memoryDb(tables);
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { shown: "test", sendLive: false })).resolves.toMatchObject({ status: "made", mode: "test" });
+    expect(sent[0]!.auth).toBe("test_0123456789abcdef0123:");
+    tables.limited = [{}];
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { shown: "test", sendLive: false })).rejects.toThrow(/five cards mailed to yourself this hour/);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("says Lob's reason when Lob refuses the card, and keeps that with it", async () => {
+    const tables = draft("live");
+    current.db = memoryDb(tables);
+    answers.push(() => lobAnswer(401, { error: { message: "You must have a verified bank account or credit card to submit live requests.", code: "payment_method_unverified" } }));
+    await expect(mailProof(env, current.db as never, CO, CAMPAIGN, USER, { confirm: 1, shown: "live", sendLive: true })).rejects.toThrow(/verified payment method/);
+    expect(tables.postcard_proofs[0]).toMatchObject({ status: "failed" });
+    expect(tables.postcard_proofs[0]!.error).toMatch(/verified payment method/);
   });
 });
 

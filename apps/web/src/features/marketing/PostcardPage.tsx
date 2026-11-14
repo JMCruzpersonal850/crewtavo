@@ -35,7 +35,8 @@ import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
 import { PostcardAudienceDialog } from "./PostcardAudience";
-import { ASK_ADMIN_WORDS, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, needsAdmin, pickablePhotos, proofLink, waitForSave } from "./postcardForm";
+import { ASK_ADMIN_WORDS, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, needsAdmin, pickablePhotos, proofLink, proofQuestion, waitForSave } from "./postcardForm";
+import { PostcardProofs } from "./PostcardProofs";
 import { LobMode } from "../apps/LobPanel";
 
 interface Draft {
@@ -156,6 +157,12 @@ function PostcardScreen() {
     mutationFn: (sent: { count: number; mode: "test" | "live"; draft: ReturnType<typeof draftAsSaved> }) => api.post<{ recipients: number; mode: string }>(`/postcards/${id}/send`, { confirm: sent.count, mode: sent.mode, draft: sent.draft }),
     onSuccess: refresh,
   });
+  // One card of the draft to the company's own address, before the campaign goes out.
+  const proof = useMutation({
+    meta: { success: (r: { mode: string; address: string }) => (r.mode === "live" ? `One card is on its way to ${r.address}` : "One test card made. Lob's picture of it is below.") },
+    mutationFn: (sent: { mode: "test" | "live"; draft: ReturnType<typeof draftAsSaved> }) => api.post<{ mode: string; address: string }>(`/postcards/${id}/proof`, { confirm: 1, mode: sent.mode, draft: sent.draft }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["postcard-proofs", id] }),
+  });
   const stop = useMutation({
     meta: { success: "Mailing stopped" },
     mutationFn: () => api.post(`/postcards/${id}/stop`),
@@ -203,16 +210,17 @@ function PostcardScreen() {
   const fit = backFit(shown.size, message);
   // Send mails what's saved: it waits for the save of what's on screen.
   const unsaved = waitForSave(saving.status);
-  const problems = [
+  // What stands in the way of making any card at all, one to ourselves included.
+  const cardProblems = [
     !s?.lob && "Lob isn't connected.",
     s?.lob?.problem,
     s && !s.public_address && "Crewtavo's address isn't public, so Lob can't fetch the front picture.",
     s && !s.return_address && (s.return_address_problem ?? "Add your company's full address in Settings → Company. Lob prints it on each card as the return address."),
     !draft.front_attachment_id && !draft.front_path && "Pick a picture for the front.",
     messageProblem(message, draft.size),
-    editable && summary.data && !count && "No one in this audience has a complete mailing address.",
     editable && unsaved.problem,
   ].filter(Boolean) as string[];
+  const problems = [...cardProblems, editable && summary.data && !count && "No one in this audience has a complete mailing address."].filter(Boolean) as string[];
   const mode = c.status === "draft" ? s?.lob?.mode : (c.mode as "test" | "live");
   // A live key spends the company's money: an owner or admin sends. The office gets the campaign ready.
   const askAdmin = needsAdmin(mode, s?.can_send_live);
@@ -221,6 +229,12 @@ function PostcardScreen() {
   const askToDuplicate = async () => {
     const question = duplicateQuestion({ status: c.status, mode: c.mode, made: c.made_count });
     if (!question || (await confirm({ title: question.title, body: question.body, confirmLabel: "Make the copy" }))) duplicate.mutate();
+  };
+
+  const askForProof = async () => {
+    if (!mode) return;
+    const question = proofQuestion(mode, s?.return_address ?? "your company's address");
+    if (await confirm({ title: question.title, body: `${question.body}${mode === "live" ? ` ${PRICE_WORDS}` : ""}`, confirmLabel: question.confirmLabel })) proof.mutate({ mode, draft: draftAsSaved(draft) });
   };
 
   const askToSend = async () => {
@@ -245,6 +259,7 @@ function PostcardScreen() {
         documentTitle={c.name}
         actions={
           <>
+            {editable && !askAdmin && <Button icon="mail" loading={proof.isPending} disabled={cardProblems.length > 0 || unsaved.blocked || !mode} onClick={askForProof}>{mode === "test" ? "Make one test card first" : "Mail one to us first"}</Button>}
             {editable && !askAdmin && <Button variant="primary" icon="send" loading={send.isPending} disabled={problems.length > 0 || summary.isFetching || !count || unsaved.blocked} onClick={askToSend}>{mode === "test" ? "Make test cards" : "Send"}</Button>}
             {c.status === "sending" && <Button variant="danger" icon="x" loading={stop.isPending} onClick={async () => (await confirm({ title: "Stop mailing?", body: "Cards Lob has already made are still mailed. Lob can cancel them for a short while from your Lob dashboard.", confirmLabel: "Stop", danger: true })) && stop.mutate()}>Stop</Button>}
             <Menu
@@ -321,6 +336,7 @@ function PostcardScreen() {
             <PostcardRecipients id={c.id} mode={c.mode as "test" | "live"} live={c.status === "sending"} />
           )}
           <PostcardPreview size={shown.size} frontUrl={front.data?.url ?? null} back={backHtml({ size: shown.size, message })} />
+          <PostcardProofs campaignId={c.id} />
         </div>
 
         <aside className="narrow stack">
@@ -344,6 +360,7 @@ function PostcardScreen() {
           </div>
           {editable && problems.length > 0 && <div className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">{problems.map((p) => <div key={p} style={{ fontWeight: 600 }}>{p}</div>)}</div></div>}
           <FormError error={send.error} />
+          <FormError error={proof.error} />
         </aside>
       </div>
       {picking && <FrontPhotoPicker onClose={() => setPicking(false)} onPick={(photo) => { set({ front_attachment_id: photo, front_path: null, front_marked: true }); setPicking(false); }} />}

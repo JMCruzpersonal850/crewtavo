@@ -15,7 +15,7 @@ import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
 import { clientIp } from "../lib/visitor";
 import { isJpeg } from "../services/photos";
-import { bookingLink, companyLob, frontImage, keyLabelProblem, returnAddress, returnAddressProblem, startPostcards, stopPostcards } from "../services/postcards";
+import { bookingLink, companyLob, frontImage, keyLabelProblem, mailProof, returnAddress, returnAddressProblem, startPostcards, stopPostcards } from "../services/postcards";
 import { imagesPublic } from "../services/social";
 
 export const postcards = new Hono<AppEnv>();
@@ -68,6 +68,16 @@ postcards.post("/postcards/:id/send", requireUser, requireCompany(OFFICE, "marke
   const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, { confirm: body.confirm ?? null, shown: body.mode ?? null, sendLive: ADMINS.includes(c.var.role), draft: body.draft ?? null });
   kickPostcards(c, id);
   return c.json(result);
+});
+
+/**
+ * Mail one to us first: one card of the draft to the company's own address, live or test. The same
+ * checks as Send; with a live key `confirm` is 1, the one card Lob charges for, and only an owner
+ * or admin may.
+ */
+postcards.post("/postcards/:id/proof", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
+  const body = await readJson(c, ASK);
+  return c.json(await mailProof(c.env, c.var.db, c.var.companyId, param(c, "id"), c.var.userId, { confirm: body.confirm ?? null, shown: body.mode ?? null, sendLive: ADMINS.includes(c.var.role), draft: body.draft ?? null }));
 });
 
 postcards.post("/postcards/:id/stop", requireUser, requireCompany(OFFICE, "marketing"), async (c) => c.json(await stopPostcards(c.env, c.var.db, c.var.companyId, param(c, "id"))));

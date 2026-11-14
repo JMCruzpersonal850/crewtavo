@@ -24,13 +24,14 @@
 import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { CANT_SHARE, type CantShare } from "@crewtavo/core/social";
-import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type AddressProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
+import { addressLine, backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type AddressProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
 import type { Env } from "../env";
 import { createPostcard, listCards, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
 import { loadSecret } from "../integrations/tokens";
 import { randomId } from "../lib/crypto";
 import { firstName } from "../lib/email";
 import { dbError, HttpError, must } from "../lib/http";
+import { allowStrict } from "../lib/limit";
 import { reportError } from "../lib/monitoring";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
@@ -152,7 +153,7 @@ export async function frontPhotoProblem(admin: Db, companyId: string, attachment
  * under row-level security), so only one they could open anyway is copied, and only when it may be
  * shown (frontPhotoProblem).
  */
-async function makeFront(admin: Db, db: Db, companyId: string, campaign: { id: string; front_attachment_id: string | null; front_marked: boolean; front_path: string | null }) {
+async function makeFront(admin: Db, db: Db, companyId: string, campaign: { id: string; front_attachment_id: string | null; front_marked: boolean; front_path: string | null }, folder = campaign.id) {
   let path = campaign.front_path;
   if (campaign.front_attachment_id) {
     const { data: photo } = await db.from("attachments").select("path, marked_path").eq("company_id", companyId).eq("id", campaign.front_attachment_id).maybeSingle();
@@ -173,7 +174,7 @@ async function makeFront(admin: Db, db: Db, companyId: string, campaign: { id: s
     throw error;
   }
   const token = randomId(24);
-  const stored = `${companyId}/postcards/${campaign.id}/front-${token}.jpg`;
+  const stored = `${companyId}/postcards/${folder}/front-${token}.jpg`;
   const { error } = await admin.storage.from("files").upload(stored, made.body, { contentType: "image/jpeg", upsert: true });
   if (error) throw new Error(`Couldn't save the front picture: ${error.message}`);
   return { token, path: stored };
@@ -345,6 +346,58 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
     throw dbError(error);
   }
   return { status: "sending" as const, recipients: count as number, mode: lob.mode };
+}
+
+/** Cards a company may mail itself in an hour: a few tries at a design, never a campaign by another door. */
+const PROOFS_PER_HOUR = 5;
+
+/**
+ * "Mail one to us first": one card of the draft as it's saved, made through Lob and addressed to the
+ * company's own address, so the office holds the real card (with a live key; Lob charges for the
+ * one) or sees Lob's picture of it (with a test key) before the campaign goes out. Everything Send
+ * checks is checked, and a live key's card is an owner's or admin's to mail, confirmed as one card.
+ * The card says what a client's would, with the name of whoever asked for it filled in.
+ */
+export async function mailProof(env: Env, db: Db, companyId: string, id: string, userId: string, ask: SendAsk = {}) {
+  const { admin, campaign, company, lob, size, link } = await readyToMail(env, db, companyId, id, ask);
+  if (lob.mode === "live" && ask.confirm !== 1) throw new HttpError(409, "This mails one postcard to your own address, and Lob charges for it. Confirm to send it.");
+  const to = returnAddress(company)!;
+  const { data: me } = await admin.from("profiles").select("full_name").eq("user_id", userId).maybeSingle();
+  const message = postcardMessage(campaign.message, postcardVars(company, me?.full_name?.trim() || SAMPLE_NAME, link));
+  if (!backFit(size, message).fits) throw new HttpError(400, `The message is too long for the back of a ${POSTCARD_SIZE_INFO[size].label} card with your name filled in. Shorten it or pick a bigger card.`);
+  // It spends money, so a card that can't be counted isn't made.
+  if (!(await allowStrict(env, `postcard-proof:${companyId}`, PROOFS_PER_HOUR, 3600))) throw new HttpError(429, "That's five cards mailed to yourself this hour. Try again later.");
+  const front = await makeFront(admin, db, companyId, campaign, "proofs");
+  const { data: proof, error } = await admin
+    .from("postcard_proofs")
+    .insert({ company_id: companyId, campaign_id: id, mode: lob.mode, size, address: to as never, image_token: front.token, image_path: front.path, created_by: userId })
+    .select("id, idempotency_key")
+    .single();
+  if (error || !proof) {
+    await admin.storage.from("files").remove([front.path]);
+    throw dbError(error ?? { message: "The card couldn't be recorded." });
+  }
+  const base = (env.APP_URL ?? "").replace(/\/$/, "");
+  try {
+    const address = lobAddress(company.name, to);
+    const made = await createPostcard(lob.key, {
+      to: address,
+      from: address,
+      size,
+      front: frontHtml(size, `${base}/api/public/postcards/${front.token}.jpg`),
+      back: backHtml({ size, message }),
+      description: `${campaign.name} (one to us)`,
+      metadata: { crewtavo_proof: proof.id },
+      idempotencyKey: proof.idempotency_key,
+    });
+    await admin.from("postcard_proofs").update({ status: "made", lob_id: made.id, proof_url: made.url?.startsWith("https://") ? made.url.slice(0, 2000) : null, expected_delivery: made.expected_delivery_date }).eq("id", proof.id);
+    return { status: "made" as const, mode: lob.mode, proof_url: made.url, expected_delivery: made.expected_delivery_date, address: addressLine(to) };
+  } catch (failure) {
+    if (!(failure instanceof LobProblem)) throw failure;
+    const words = failure.retry ? (failure.final ?? failure.message) : failure.message;
+    await admin.from("postcard_proofs").update({ status: "failed", error: words.slice(0, 1000) }).eq("id", proof.id);
+    throw new HttpError(failure.retry ? 502 : 400, failure.retry ? "Lob couldn't be reached to make the card, so nothing was mailed. Try again in a minute." : words);
+  }
 }
 
 /** Stop: what isn't made yet isn't. Cards Lob already made are mailed (Lob can cancel them for a while, from its dashboard). */
@@ -624,5 +677,8 @@ export async function postcardsTask(env: Env) {
 /** The front picture's public copy, for Lob to fetch: by its token alone, while the campaign is mailed or kept. */
 export async function frontImage(admin: Db, token: string): Promise<Uint8Array | null> {
   const { data } = await admin.from("postcard_campaigns").select("image_path").eq("image_token", token).neq("status", "draft").maybeSingle();
-  return data?.image_path ? storedFile(admin, data.image_path, FRONT_MAX_BYTES) : null;
+  if (data?.image_path) return storedFile(admin, data.image_path, FRONT_MAX_BYTES);
+  // Or the front of one card mailed to the company itself (postcard_proofs), which outlives its draft.
+  const { data: proof } = await admin.from("postcard_proofs").select("image_path").eq("image_token", token).maybeSingle();
+  return proof?.image_path ? storedFile(admin, proof.image_path, FRONT_MAX_BYTES) : null;
 }

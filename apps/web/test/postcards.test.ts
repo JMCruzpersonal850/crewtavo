@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ONE_PER_ADDRESS } from "@crewtavo/core/postcards";
-import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, leftOutWords, needsAdmin, pickablePhotos, proofLink, waitForSave, type AudienceRow } from "../src/features/marketing/postcardForm";
+import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, draftAsSaved, duplicateQuestion, leftOutWords, needsAdmin, pickablePhotos, proofLink, proofQuestion, waitForSave, type AudienceRow } from "../src/features/marketing/postcardForm";
 import { toCsv } from "../src/lib/csv";
 
 describe("the photos offered for a postcard's front", () => {
@@ -77,6 +77,23 @@ describe("Send waits for the draft to be saved", () => {
     const page = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardPage.tsx", import.meta.url)), "utf8");
     expect(page).toContain("draft: draftAsSaved(draft)");
     expect(page).toMatch(/disabled=\{[^}]*unsaved\.blocked\}/);
+  });
+});
+
+describe("Mail one to us first", () => {
+  it("says before a live card that it's a real one, mailed to the company and charged for, and that a test card isn't", () => {
+    const live = proofQuestion("live", "1 Main St, Springfield, IL 62701");
+    expect(live.title).toBe("Mail one card to your own address?");
+    expect(live.body).toMatch(/mails it to 1 Main St, Springfield, IL 62701, and charges your Lob account for that one card.*No client is mailed/);
+    const test = proofQuestion("test", "1 Main St, Springfield, IL 62701");
+    expect(test.body).toMatch(/Nothing is printed or mailed, and nothing is charged/);
+    expect(test.confirmLabel).toBe("Make one test card");
+  });
+
+  it("is offered beside Send, held back by the same save and the same problems with the card, but not by an empty audience", () => {
+    const page = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardPage.tsx", import.meta.url)), "utf8");
+    expect(page).toMatch(/disabled=\{cardProblems\.length > 0 \|\| unsaved\.blocked \|\| !mode\} onClick=\{askForProof\}/);
+    expect(page).toContain("`/postcards/${id}/proof`");
   });
 });
 

@@ -101,6 +101,24 @@ export function draftAsSaved(d: { message: string; size: string; front_attachmen
   return { message: d.message, size: d.size, front_attachment_id: d.front_attachment_id, front_marked: d.front_marked, front_path: d.front_path, audience: audienceKeys(d.audience) as Record<string, unknown> };
 }
 
+/**
+ * What's asked before one card of the draft is made for the company's own address: with a live key
+ * it's a real card, printed, mailed and charged for; with a test key Lob only draws it.
+ */
+export function proofQuestion(mode: "test" | "live", address: string): { title: string; body: string; confirmLabel: string } {
+  return mode === "live"
+    ? {
+        title: "Mail one card to your own address?",
+        body: `Lob prints one card and mails it to ${address}, and charges your Lob account for that one card. It's the card a client would get, with your name in place of theirs, so you can hold it before the campaign goes out. No client is mailed.`,
+        confirmLabel: "Mail one card",
+      }
+    : {
+        title: "Make one test card?",
+        body: `Lob makes one test card addressed to ${address}, so you can see exactly how Lob draws it. Nothing is printed or mailed, and nothing is charged.`,
+        confirmLabel: "Make one test card",
+      };
+}
+
 const DAY = 86_400_000;
 
 /** Lob's link to its picture of a card, while it still works (30 days from when Lob gave it), else null. */
