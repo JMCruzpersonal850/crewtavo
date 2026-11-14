@@ -43,6 +43,7 @@ import { allow } from "../lib/limit";
 import { reportError } from "../lib/monitoring";
 import { emailReady } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
+import { noteTextConsent } from "../services/textsOff";
 import { clientIp } from "../lib/visitor";
 import { bookingVisit } from "../services/analytics";
 import { checkFiles, emailApplication, removeFiles, storeFiles } from "../services/careers";
@@ -195,12 +196,14 @@ formInbox.post("/f/:key", async (c) => {
     });
     if (error) throw dbError(error);
     const made = data as {
-      request_id: string; property_id: string | null; new_property: boolean;
+      request_id: string; client_id?: string | null; property_id: string | null; new_property: boolean;
       promo_code: string | null; rejected_promo_code: string | null; promo_problem: string | null;
     };
     const promo = made.promo_code ? { code: made.promo_code, problem: null } : made.rejected_promo_code ? { code: made.rejected_promo_code, problem: made.promo_problem ?? "It isn't valid." } : null;
     if (made.new_property && made.property_id && message.address.line1) geocodeLater(c, made.property_id, { line1: message.address.line1, city: message.address.city, postal_code: message.address.postal_code });
     kickAutomations(c, company.id);
+    // Where their number came from, for the office: the business's own website form (which Crewtavo doesn't write, so it can't say what the form told them).
+    if (message.phone && made.client_id) runInBackground(c, noteTextConsent(adminClient(c.env), company.id, made.client_id, message.phone, "website_form"));
     if (form.email_to.length) {
       runInBackground(c, emailMessage(c.env, { base: appUrl(c), company, form, submission: message, requestId: made.request_id, promo }));
     }

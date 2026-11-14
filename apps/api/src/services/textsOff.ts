@@ -140,12 +140,13 @@ export const textsOffRefusal = (name: string) => `${textsOffReason(name)} Send i
 export const numberStoppedRefusal = (to: string) => `${to} asked not to be texted, so Crewtavo can't text it.`;
 
 /**
- * A number someone typed on a public form, under the line that says the business may text it
- * (core textDisclosure): kept on the client as where their say-so came from, when it's the number
- * on their record. A form's word outranks "entered by the office"; an earlier form's is kept, as
+ * A number someone typed on a public form: kept on the client as where it came from, when it's
+ * the number on their record. On Crewtavo's own forms (a booking form, a referral page) it's typed
+ * under the line that says the business may text it (core textDisclosure); a form on the
+ * business's own website is its own to word. A form's word outranks "entered by the office"; an earlier form's is kept, as
  * the first time they agreed. Never stops the request it came with.
  */
-export async function noteTextConsent(admin: Db, companyId: string, clientId: string, phone: string | null | undefined, source: "booking_form" | "referral_form"): Promise<void> {
+export async function noteTextConsent(admin: Db, companyId: string, clientId: string, phone: string | null | undefined, source: "booking_form" | "referral_form" | "website_form"): Promise<void> {
   const key = phoneMatchKey(phone);
   if (!key) return;
   try {
