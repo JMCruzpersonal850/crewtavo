@@ -111,6 +111,29 @@ select tqa.check((select string_agg(event, ',' order by event) = 'approved,sent'
   'a quote converted straight from sent tells them it was approved');
 select tqa.check((select count(*) = 3 from public.quote_alerts where quote_id = :'big'), 'each event is kept once');
 
+-- ===== Not whoever did it (20261113001660_quote_alerts_skip_who_did_it.sql) ====================
+begin;
+set local role authenticated;
+select tqa.as_user(:'ora');
+insert into public.quotes (company_id, client_id, title, salesperson_id) values (:'co', :'lee', 'Shop roof', :'sam') returning id as shop \gset
+insert into public.quote_line_items (company_id, quote_id, name, unit_price) values (:'co', :'shop', 'Roof', 18000);
+update public.quotes set status = 'sent', sent_at = now() where id = :'shop';
+commit;
+select tqa.check(tqa.told(:'shop') = (select format(
+    E'ada@oak.test: Quote #%1$s for $18,000.00 was sent to Lee Lopez | Shop roof. It''s at or above the $10,000.00 you asked to hear about.\n'
+    'sam@oak.test: Quote #%1$s for $18,000.00 was sent to Lee Lopez | Shop roof. It''s at or above the $10,000.00 you asked to hear about.',
+    (select number from public.quotes where id = :'shop'))),
+  'the owner sending her own quote isn''t told about it; the admin and the salesperson are');
+begin;
+set local role authenticated;
+select tqa.as_user(:'sam');
+update public.quotes set status = 'approved', approved_at = now() where id = :'shop';
+commit;
+select tqa.check(tqa.count(:'shop') = 4 and tqa.told(:'shop') like '%ada@oak.test: Lee Lopez approved quote #% for $18,000.00 |%ora@oak.test: Lee Lopez approved quote #% for $18,000.00 |%'
+  and tqa.told(:'shop') not like '%sam@oak.test: Lee Lopez approved%',
+  'the salesperson marking it approved isn''t told; the owner and the admin are');
+select tqa.check((select count(*) = 2 from public.quote_alerts where quote_id = :'shop'), 'and each event is still kept once');
+
 -- ===== Only the database writes them ===========================================================
 select tqa.check(not has_table_privilege('authenticated', 'public.quote_alerts', 'insert'), 'nobody writes quote_alerts but the database');
 begin;
@@ -118,7 +141,7 @@ set local role authenticated;
 select tqa.as_user(:'sam');
 select tqa.check((select count(*) = 0 from public.quote_alerts), 'an estimator doesn''t read them');
 select tqa.as_user(:'ada');
-select tqa.check((select count(*) = 5 from public.quote_alerts), 'an admin does');
+select tqa.check((select count(*) = 7 from public.quote_alerts), 'an admin does');
 commit;
 
 \echo 'All quote alert tests passed.'

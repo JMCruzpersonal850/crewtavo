@@ -81,7 +81,7 @@ export function QuoteSettings() {
   return (
     <form className="card card-pad stack" onSubmit={(e) => { e.preventDefault(); save.mutate(f); }}>
       <strong>Quotes and payments</strong>
-      <Field label="Tell me about quotes over" optional hint="When a quote of at least this much is sent, approved, or the client asks for changes, owners, admins and its salesperson hear about it on the bell and their phone. Empty is off.">
+      <Field label="Tell me about quotes over" optional hint="When a quote of at least this much is sent, approved, or the client asks for changes, owners, admins and its salesperson hear about it on the bell and their phone, except whoever did it. Empty is off.">
         <span className="input-group" style={{ maxWidth: 180 }}>
           <span className="addon">$</span>
           <input className="input" inputMode="decimal" style={{ paddingLeft: 22 }} value={f.alertOver} placeholder="Off" onChange={(e) => setF({ ...f, alertOver: e.target.value.replace(/[^0-9.]/g, "") })} />
