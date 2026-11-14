@@ -2020,6 +2020,58 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     }
                   ]
+                },"postcard_campaigns": {
+                  Row: {
+                    "audience": NonNullable<Json>,"company_id": string,"created_at": string,"created_by": string | null,"failed_count": number,"finished_at": string | null,"front_attachment_id": string | null,"front_marked": boolean,"front_path": string | null,"id": string,"image_path": string | null,"image_token": string | null,"made_count": number,"message": string,"mode": string | null,"name": string,"recipients_count": number,"size": string,"started_at": string | null,"status": string,"stopped_reason": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "audience"?: NonNullable<Json>,"company_id": string,"created_at"?: string,"created_by"?: string | null,"failed_count"?: number,"finished_at"?: string | null,"front_attachment_id"?: string | null,"front_marked"?: boolean,"front_path"?: string | null,"id"?: string,"image_path"?: string | null,"image_token"?: string | null,"made_count"?: number,"message"?: string,"mode"?: string | null,"name": string,"recipients_count"?: number,"size"?: string,"started_at"?: string | null,"status"?: string,"stopped_reason"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "audience"?: NonNullable<Json>,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"failed_count"?: number,"finished_at"?: string | null,"front_attachment_id"?: string | null,"front_marked"?: boolean,"front_path"?: string | null,"id"?: string,"image_path"?: string | null,"image_token"?: string | null,"made_count"?: number,"message"?: string,"mode"?: string | null,"name"?: string,"recipients_count"?: number,"size"?: string,"started_at"?: string | null,"status"?: string,"stopped_reason"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "postcard_campaigns_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "postcard_campaigns_front_attachment_id_fkey"
+      columns: ["front_attachment_id"]
+isOneToOne: false
+      referencedRelation: "attachments"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"postcard_recipients": {
+                  Row: {
+                    "address": NonNullable<Json>,"attempts": number,"campaign_id": string,"claim_token": string | null,"claimed_at": string | null,"client_id": string | null,"company_id": string,"created_at": string,"error": string | null,"expected_delivery": string | null,"id": number,"idempotency_key": string,"lob_id": string | null,"locked_until": string | null,"made_at": string | null,"name": string,"status": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address": NonNullable<Json>,"attempts"?: number,"campaign_id": string,"claim_token"?: string | null,"claimed_at"?: string | null,"client_id"?: string | null,"company_id": string,"created_at"?: string,"error"?: string | null,"expected_delivery"?: string | null,"id"?: never,"idempotency_key"?: string,"lob_id"?: string | null,"locked_until"?: string | null,"made_at"?: string | null,"name": string,"status"?: string
+                  }
+                  Update: {
+                    "address"?: NonNullable<Json>,"attempts"?: number,"campaign_id"?: string,"claim_token"?: string | null,"claimed_at"?: string | null,"client_id"?: string | null,"company_id"?: string,"created_at"?: string,"error"?: string | null,"expected_delivery"?: string | null,"id"?: never,"idempotency_key"?: string,"lob_id"?: string | null,"locked_until"?: string | null,"made_at"?: string | null,"name"?: string,"status"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "postcard_recipients_company_id_campaign_id_fkey"
+      columns: ["company_id","campaign_id"]
+isOneToOne: false
+      referencedRelation: "postcard_campaigns"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "postcard_recipients_company_id_client_id_fkey"
+      columns: ["company_id","client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
                 },"price_change_lines": {
                   Row: {
                     "applied_at": string,"change_id": string,"company_id": string,"id": string,"job_id": string,"line_id": string,"name": string,"new_price": number,"old_price": number,"quantity": number,"restored_at": string | null
@@ -2530,6 +2582,26 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     }
                   ]
+                },"review_comparisons": {
+                  Row: {
+                    "checked_at": string | null,"checked_by_hand_at": string | null,"company_id": string,"enabled": boolean,"enabled_by": string | null,"last_error": string | null,"lat": number | null,"lng": number | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id": string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id"?: string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "review_comparisons_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: true
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"review_match_choices": {
                   Row: {
                     "chosen_at": string,"chosen_by": string | null,"client_id": string | null,"company_id": string,"location_id": string,"review_id": string
@@ -2550,6 +2622,26 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     },{
       foreignKeyName: "review_match_choices_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"review_places": {
+                  Row: {
+                    "address": string | null,"checked_at": string | null,"company_id": string,"created_at": string,"id": string,"is_own": boolean,"maps_url": string | null,"name": string,"place_id": string,"previous_checked_at": string | null,"previous_total": number | null,"rating": number | null,"ratings_total": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address"?: string | null,"checked_at"?: string | null,"company_id": string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name": string,"place_id": string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"rating"?: number | null,"ratings_total"?: number | null
+                  }
+                  Update: {
+                    "address"?: string | null,"checked_at"?: string | null,"company_id"?: string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name"?: string,"place_id"?: string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"rating"?: number | null,"ratings_total"?: number | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "review_places_company_id_fkey"
       columns: ["company_id"]
 isOneToOne: false
       referencedRelation: "companies"
@@ -2813,6 +2905,64 @@ isOneToOne: false
       columns: ["company_id"]
 isOneToOne: false
       referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"showcase_photos": {
+                  Row: {
+                    "attachment_id": string,"company_id": string,"id": number,"public_path": string | null,"role": string,"showcase_id": string,"sort": number,"use_marked": boolean
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "attachment_id": string,"company_id": string,"id"?: never,"public_path"?: string | null,"role"?: string,"showcase_id": string,"sort"?: number,"use_marked"?: boolean
+                  }
+                  Update: {
+                    "attachment_id"?: string,"company_id"?: string,"id"?: never,"public_path"?: string | null,"role"?: string,"showcase_id"?: string,"sort"?: number,"use_marked"?: boolean
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "showcase_photos_attachment_id_fkey"
+      columns: ["attachment_id"]
+isOneToOne: false
+      referencedRelation: "attachments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "showcase_photos_company_id_showcase_id_fkey"
+      columns: ["company_id","showcase_id"]
+isOneToOne: false
+      referencedRelation: "showcases"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"showcases": {
+                  Row: {
+                    "company_id": string,"created_at": string,"created_by": string | null,"description": string,"id": string,"job_id": string,"published_at": string | null,"published_by": string | null,"show_town": boolean,"status": string,"title": string,"token": string,"unpublished_at": string | null,"updated_at": string,"visit_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"created_at"?: string,"created_by"?: string | null,"description"?: string,"id"?: string,"job_id": string,"published_at"?: string | null,"published_by"?: string | null,"show_town"?: boolean,"status"?: string,"title": string,"token"?: string,"unpublished_at"?: string | null,"updated_at"?: string,"visit_id"?: string | null
+                  }
+                  Update: {
+                    "company_id"?: string,"created_at"?: string,"created_by"?: string | null,"description"?: string,"id"?: string,"job_id"?: string,"published_at"?: string | null,"published_by"?: string | null,"show_town"?: boolean,"status"?: string,"title"?: string,"token"?: string,"unpublished_at"?: string | null,"updated_at"?: string,"visit_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "showcases_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "showcases_company_id_job_id_fkey"
+      columns: ["company_id","job_id"]
+isOneToOne: false
+      referencedRelation: "jobs"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "showcases_visit_id_fkey"
+      columns: ["visit_id"]
+isOneToOne: false
+      referencedRelation: "visits"
       referencedColumns: ["id"]
     }
                   ]
@@ -4002,6 +4152,32 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_postcard_recipients":
+{ Args: { "p_campaign": string,"p_limit"?: number }; Returns: {
+              "address": NonNullable<Json>,
+"attempts": number,
+"campaign_id": string,
+"claim_token": string | null,
+"claimed_at": string | null,
+"client_id": string | null,
+"company_id": string,
+"created_at": string,
+"error": string | null,
+"expected_delivery": string | null,
+"id": number,
+"idempotency_key": string,
+"lob_id": string | null,
+"locked_until": string | null,
+"made_at": string | null,
+"name": string,
+"status": string
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "postcard_recipients"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
 "claim_review_notices":
 { Args: { "p_claim": string,"p_company": string }; Returns: number
                            },
@@ -4070,6 +4246,9 @@ isOneToOne: false
                            },
 "convert_quote_to_job":
 { Args: { "p_quote": string }; Returns: string
+                           },
+"count_postcard_campaign":
+{ Args: { "p_campaign": string }; Returns: Json
                            },
 "create_company":
 { Args: { "p_name": string,"p_timezone"?: string,"p_trade_preset"?: string }; Returns: string
@@ -4187,6 +4366,9 @@ isOneToOne: false
                            },
 "finish_campaign_send":
 { Args: { "p_error"?: string,"p_id": number,"p_status": string }; Returns: boolean
+                           },
+"finish_postcard_recipient":
+{ Args: { "p_error"?: string,"p_expected"?: string,"p_id": number,"p_lob_id"?: string,"p_status": string,"p_token": string }; Returns: boolean
                            },
 "finish_profit_sweep":
 { Args: { "p_company": string,"p_line": number }; Returns: number
@@ -4575,6 +4757,17 @@ isOneToOne: false
 "note_sending":
 { Args: { "p_body"?: string,"p_channel": string,"p_company": string,"p_error"?: string,"p_ok": boolean,"p_refused"?: boolean,"p_title"?: string }; Returns: string
                            },
+"postcard_audience":
+{ Args: { "p_audience": Json,"p_company": string }; Returns: {
+              "address": Json,"client_id": string,"display_name": string,"left_out": string
+            }[]
+                           },
+"postcard_audience_summary":
+{ Args: { "p_audience": Json,"p_company": string }; Returns: Json
+                           },
+"postcard_results":
+{ Args: { "p_campaign"?: string,"p_company": string }; Returns: Json
+                           },
 "postpone_automation_run":
 { Args: { "p_busy"?: boolean,"p_id": number,"p_note"?: string,"p_result": Json,"p_token": string,"p_until": string }; Returns: boolean
                            },
@@ -4625,6 +4818,9 @@ isOneToOne: false
 "record_referral":
 { Args: { "p_address"?: Json,"p_company": string,"p_details"?: string,"p_email"?: string,"p_name": string,"p_phone"?: string,"p_referrer": string }; Returns: Json
                            },
+"record_review_place":
+{ Args: { "p_id": string,"p_maps_url"?: string,"p_name": string,"p_rating": number,"p_total": number }; Returns: undefined
+                           },
 "record_reviews":
 { Args: { "p_claim": string,"p_company": string,"p_fetched_at"?: string,"p_location_id": string,"p_reviews": Json }; Returns: (string)[]
                            },
@@ -4663,6 +4859,9 @@ isOneToOne: false
 "release_inactive_backlog":
 { Args: { "p_rule": string }; Returns: number
                            },
+"release_postcard_recipients":
+{ Args: { "p_ids": (number)[],"p_token": string }; Returns: number
+                           },
 "release_social_post":
 { Args: { "p_claim": string,"p_post": string }; Returns: boolean
                            },
@@ -4690,6 +4889,9 @@ isOneToOne: false
 "renew_equipment_document":
 { Args: { "p_document": string,"p_expense"?: string,"p_expires_on": string,"p_notes"?: string }; Returns: string
                            },
+"renew_postcard_recipient":
+{ Args: { "p_id": number,"p_token": string }; Returns: boolean
+                           },
 "request_manual_charges":
 { Args: { "p_amounts": (number)[],"p_company": string,"p_invoices": (string)[] }; Returns: {
               "invoice_id": string,"outcome": string,"reason": string
@@ -4703,6 +4905,11 @@ isOneToOne: false
                            },
 "retry_social_post":
 { Args: { "p_by": string,"p_company": string,"p_post": string }; Returns: number
+                           },
+"review_comparisons_due":
+{ Args: { "p_limit"?: number }; Returns: {
+              "company_id": string
+            }[]
                            },
 "review_stats":
 { Args: { "p_company": string }; Returns: Json
@@ -4806,6 +5013,9 @@ isOneToOne: false
 "settle_notification_deliveries":
 { Args: { "p_delivered": (string)[],"p_error"?: string,"p_failed"?: (string)[],"p_retry"?: (string)[],"p_token": string }; Returns: number
                            },
+"showcase_view":
+{ Args: { "p_token": string }; Returns: Json
+                           },
 "sign_in_code_check":
 { Args: { "p_address_hash": string,"p_channel": string,"p_code_hash": string,"p_ip_hash"?: string,"p_user"?: string }; Returns: string
                            },
@@ -4856,8 +5066,14 @@ isOneToOne: false
               "delivery": Json,"id": string
             }[]
                            },
+"start_postcard_campaign":
+{ Args: { "p_campaign": string,"p_image_path": string,"p_image_token": string,"p_max"?: number,"p_mode": string }; Returns: number
+                           },
 "start_review_reminder":
 { Args: { "p_id": string,"p_next"?: string,"p_token": string }; Returns: boolean
+                           },
+"stop_postcard_campaign":
+{ Args: { "p_campaign": string,"p_reason"?: string }; Returns: undefined
                            },
 "storage_overview":
 { Args: { "p_company": string }; Returns: Json
