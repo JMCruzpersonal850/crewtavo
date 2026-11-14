@@ -11,6 +11,7 @@ import { localTime } from "@crewtavo/core/time";
 import { useEffect, useState, type CSSProperties, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { DragState } from "./useVisitDrag";
+import { getLocale, t } from "@/lib/i18n";
 
 export interface GridVisit {
   id: string;
@@ -117,7 +118,7 @@ export const lengthOf = (v: { starts_at: string | null; ends_at: string | null }
 export const clock = (minutes: number) => {
   const h = Math.floor(minutes / 60) % 24;
   const m = minutes % 60;
-  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? (getLocale() === "es" ? "a.m." : "AM") : getLocale() === "es" ? "p.m." : "PM"}`;
 };
 
 /**
@@ -278,7 +279,7 @@ export function TimeGrid<V extends GridVisit>({
 
   return (
     <div className={`tg-wrap${stale ? " is-stale" : ""}`}>
-      <div className="tg" style={style} role="grid" aria-label="Schedule">
+      <div className="tg" style={style} role="grid" aria-label={t("Schedule")}>
         <div className="tg-row tg-head" role="row">
           <div className="tg-gutter" />
           {columns.map((col) => (
@@ -290,7 +291,7 @@ export function TimeGrid<V extends GridVisit>({
         </div>
 
         <div className="tg-row tg-anytime" role="row">
-          <div className="tg-gutter tg-gutter-label" role="rowheader">Anytime</div>
+          <div className="tg-gutter tg-gutter-label" role="rowheader">{t("Anytime")}</div>
           {columns.map((col) => {
             const items = visitsFor(col).filter((v) => !v.starts_at);
             const allDay = (externalFor?.(col) ?? []).filter((e) => !e.starts_at);
@@ -318,7 +319,7 @@ export function TimeGrid<V extends GridVisit>({
                     {e.title}
                   </button>
                 ))}
-                {canDispatch && !items.length && <button type="button" className="tg-anyadd" aria-label="Add an anytime visit" onClick={() => onCreate(col, null)}>+</button>}
+                {canDispatch && !items.length && <button type="button" className="tg-anyadd" aria-label={t("Add an anytime visit")} onClick={() => onCreate(col, null)}>+</button>}
               </div>
             );
           })}
