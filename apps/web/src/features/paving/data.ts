@@ -9,7 +9,8 @@ import { evaluateFormula, formulaVariables, type FormulaVariable } from "@crewta
 import { drawingPitchFactor, edgeLengths, type Section } from "@crewtavo/core/geo";
 import { countsOn, lineTotal, optionTotals, toCents, type Amount, type OptionLine, type TotalsPromo } from "@crewtavo/core/money";
 import { isPavingTakeoff, pavingQuantities } from "@crewtavo/core/paving";
-import { savedRoofingQuantities } from "@crewtavo/core/roofing";
+import { getPreset } from "@crewtavo/core/presets";
+import { ROOFING_VARIABLE_NAMES, savedRoofingQuantities } from "@crewtavo/core/roofing";
 import type { IconName } from "@/components/ui/Icon";
 import { statusText } from "@/components/ui/StatusPill";
 
@@ -91,10 +92,18 @@ export function formulaValue(formula: string, vars: Record<string, number | null
 }
 
 /**
+/** Where Roofing's standard setup files its measured services: Roof, Tear-off, Gutters and the rest. */
+const ROOFING_CATEGORIES = new Set(getPreset("roofing_exteriors").services.filter((s) => s.formula_name).map((s) => s.category));
+
+/**
  * What a service prices, by the values its formula reads (or, for a price list from before paving
- * items, its name): the asphalt itself, sealing it, or the rest.
+ * items, its name): the asphalt itself, sealing it, a roof, or the rest. A roof's service belongs to
+ * another trade on the same price list, and a lot's estimate never offers it: a takeoff's area would
+ * price shingles as if the lot were a roof, and its lines would price gutters by the foot. It's told
+ * by a roof value in its formula, or by sitting in one of Roofing's own categories (gutters and
+ * siding read plain lengths and areas, which say nothing about the trade).
  */
-export function serviceKind(formula: string | null, name = ""): "pave" | "seal" | "other" {
+export function serviceKind(formula: string | null, name = "", category: string | null = null): "pave" | "seal" | "roof" | "other" {
   if (!formula) return "other";
   let names: Set<string>;
   try {
@@ -102,6 +111,7 @@ export function serviceKind(formula: string | null, name = ""): "pave" | "seal" 
   } catch {
     return "other";
   }
+  if (ROOFING_VARIABLE_NAMES.some((roof) => names.has(roof)) || (category && ROOFING_CATEGORIES.has(category))) return "roof";
   if (names.has("sealcoat_sqft") || (/seal ?coat/i.test(name) && (names.has("area_sqft") || names.has("asphalt_sqft")))) return "seal";
   if (names.has("asphalt_sqft") || names.has("asphalt_sqyd") || names.has("area_sqyd") || names.has("area_sqft")) return "pave";
   return "other";

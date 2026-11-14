@@ -121,7 +121,7 @@ function Estimate({ quote, takeoff, editable, onChanged }: EstimateProps) {
   const loadingServices = servicesQuery.isPending;
   const [depth, setDepth] = useState("2");
   const onEstimate = new Set(visible.map((l) => l.service_id).filter(Boolean));
-  const kinds = useMemo(() => new Map(services.map((s) => [s.id, serviceKind(s.formula, s.name)])), [services]);
+  const kinds = useMemo(() => new Map(services.map((s) => [s.id, serviceKind(s.formula, s.name, s.category)])), [services]);
   // Priced on the calculator: its worksheets, at the top of the estimate.
   const worksheets = useWorksheets(quote.id);
   const priced = (worksheets.data?.rows.length ?? 0) > 0;

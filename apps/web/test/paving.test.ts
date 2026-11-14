@@ -255,6 +255,10 @@ describe("the paving flow", () => {
     expect(serviceKind("area_sqft", "Sealcoat")).toBe("seal"); // a price list from before paving items
     expect(serviceKind("asphalt_sqyd * depth_in * 110 / 2000")).toBe("pave");
     expect(serviceKind("stripe_ft")).toBe("other");
+    // A roofing service on the same price list: a lot's area isn't squares of roof.
+    expect([serviceKind("squares"), serviceKind("roof_squares * 1.1"), serviceKind("roof_sqft * depth_in")]).toEqual(["roof", "roof", "roof"]);
+    // Gutters read a plain length: only where Roofing's setup files them says whose they are.
+    expect([serviceKind("length_ft", "Seamless gutters", "Gutters"), serviceKind("length_ft", "Crack filling", "Sealcoat and repair"), serviceKind("length_ft", "Crack filling")]).toEqual(["roof", "other", "other"]);
     expect(serviceKind(null)).toBe("other");
     expect(usesDepth("asphalt_sqyd * depth_in")).toBe(true);
     expect(usesDepth("stripe_ft")).toBe(false);
