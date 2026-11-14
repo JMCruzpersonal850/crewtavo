@@ -341,7 +341,7 @@ export function ClientPicker({ value, onChange, allowCreate = true }: { value: P
         <span className="addon"><Icon name="search" size={16} /></span>
         <input className="input" placeholder="Search by name, email or phone" value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={onKeyDown} aria-label="Search clients" autoComplete="off" />
       </div>
-      <div className="card" style={{ maxHeight: 248, overflowY: "auto", boxShadow: "none" }} role="listbox">
+      <div className="card" style={{ maxHeight: 248, overflowY: "auto", boxShadow: "none" }} role="listbox" aria-label="Clients">
         {results.isPending &&
           [0, 1, 2].map((i) => (
             <div key={i} className="card-row" style={{ padding: "10px 12px" }}><Skeleton width={`${60 - i * 12}%`} height={12} /></div>

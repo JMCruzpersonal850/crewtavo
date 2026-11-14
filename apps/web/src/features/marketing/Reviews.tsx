@@ -303,10 +303,11 @@ function AskAutomatically({ rules, google }: { rules: AskRuleRow[]; google: Goog
 
       <p className="muted small" style={{ margin: 0 }}>
         {timing} At most once every 6 months per client. Between 9pm and 9am the first ask goes by email.
+        {/* Underlined: in grey text a link told apart by colour alone can't be seen by everyone. */}
         {(afterRule || recurringRule) && " In Automations: "}
-        {afterRule && <Link to={`/automations/${afterRule.id}`}>{afterRule.name}</Link>}
+        {afterRule && <Link to={`/automations/${afterRule.id}`} style={{ textDecoration: "underline" }}>{afterRule.name}</Link>}
         {afterRule && recurringRule && " · "}
-        {recurringRule && <Link to={`/automations/${recurringRule.id}`}>{recurringRule.name}</Link>}
+        {recurringRule && <Link to={`/automations/${recurringRule.id}`} style={{ textDecoration: "underline" }}>{recurringRule.name}</Link>}
         {(afterRule || recurringRule) && "."}
       </p>
       {canSave && missing && <p className="muted small" style={{ margin: 0 }}>Saving puts the rules back in Automations.</p>}
