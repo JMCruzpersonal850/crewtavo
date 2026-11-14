@@ -178,7 +178,7 @@ export function backHtml({ size, message, returnAddress }: BackInput): string {
     "body{background:#fff;color:#1d1d1b;font-family:Helvetica,Arial,sans-serif}",
     `.from{position:absolute;left:${inset}in;top:${inset}in;width:${column}in;font-size:${Math.max(7, info.fontPt - 3)}pt;line-height:1.3;color:#555}`,
     ".from strong{display:block;color:#1d1d1b}",
-    `.message{position:absolute;left:${inset}in;top:${inset + 0.55}in;width:${column}in;bottom:${inset}in;overflow:hidden;font-size:${info.fontPt}pt;line-height:1.35}`,
+    `.message{position:absolute;left:${inset}in;top:${inset + 0.55}in;width:${column}in;bottom:${inset}in;overflow:hidden;overflow-wrap:anywhere;font-size:${info.fontPt}pt;line-height:1.35}`,
     ".message p{margin:0 0 0.6em}",
   ].join("");
   const from = `<div class="from"><strong>${escapeHtml(returnAddress.name)}</strong>${escapeHtml(returnAddress.line)}</div>`;

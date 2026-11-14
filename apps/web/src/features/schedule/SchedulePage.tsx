@@ -45,7 +45,7 @@ import { usePendingChanges } from "./changeRequests";
 import { useSchedulingRights } from "./myCrews";
 import { eventOnRow, movePeople, onRow, peopleRows } from "./people";
 import { spanDays, stepMonth, type Span } from "./range";
-import { intlLocale, t } from "@/lib/i18n";
+import { intlLocale, msg, t } from "@/lib/i18n";
 
 const ScheduleMap = lazy(() => import("./ScheduleMap").then((m) => ({ default: m.ScheduleMap })));
 
@@ -87,6 +87,8 @@ interface ScheduleData {
 }
 type View = "day" | "week" | "month" | "list" | "map";
 const VIEWS: View[] = ["day", "week", "month", "list", "map"];
+/** Each view by name, said in the person's language where it's shown. */
+const VIEW_LABELS: Record<View, string> = { day: msg("Day"), week: msg("Week"), month: msg("Month"), list: msg("List"), map: msg("Map") };
 const SPANS: Span[] = ["day", "week", "month"];
 type Board = "crews" | "people";
 /** Someone on the team, from GET /api/team (former members too, so old visits keep their names). */
@@ -609,7 +611,7 @@ export function SchedulePage() {
             ]}
           />
         )}
-        {crews.length > 1 && <FilterSelect label={t("Crew")} value={crewId} onChange={setCrewId} options={[["", "All"], ...crews.map((c): [string, string] => [c.id, c.name])]} />}
+        {crews.length > 1 && <FilterSelect label={t("Crew")} value={crewId} onChange={setCrewId} options={[["", t("All")], ...crews.map((c): [string, string] => [c.id, c.name])]} />}
         {(view === "day" || view === "week") && (
           <div className="segmented" role="group" aria-label={t("Show by")}>
             {(["crews", "people"] as const).map((b) => <button key={b} type="button" aria-pressed={board === b} onClick={() => setBoard(b)}>{b === "crews" ? t("Crews") : t("People")}</button>)}
@@ -617,7 +619,7 @@ export function SchedulePage() {
         )}
         {view === "list" && <FilterSelect label={t("Range")} value={listSpan} onChange={(s) => setListSpan(s as Span)} options={SPANS.map((s): [string, string] => [s, s[0].toUpperCase() + s.slice(1)])} />}
         <div className="segmented" role="group" aria-label={t("View")}>
-          {VIEWS.map((v) => <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
+          {VIEWS.map((v) => <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}>{t(VIEW_LABELS[v])}</button>)}
         </div>
       </div>
       {((crews.length > 0 && (view !== "day" || byPerson)) || (showCalendars && calendarsShown.length > 0)) && (

@@ -372,6 +372,13 @@ export default {
   "Move all open visits to another day. Start times stay the same.": "Mueve todas las visitas abiertas a otro día. Las horas de inicio se quedan igual.",
   "From": "De",
   "All crews": "Todas las cuadrillas",
+  // The schedule's views, and its crew filter with every crew showing.
+  "Day": "Día",
+  "Week": "Semana",
+  "Month": "Mes",
+  "List": "Lista",
+  "Map": "Mapa",
+  "All": "Todas",
   "Move visits": "Mover visitas",
   "Pick at least one job.": "Elige al menos un trabajo.",
   "Each job's default crew": "La cuadrilla de cada trabajo",

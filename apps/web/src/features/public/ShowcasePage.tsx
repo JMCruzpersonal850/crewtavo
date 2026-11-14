@@ -9,7 +9,7 @@ import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { inkOn } from "@/features/documents/words";
+import { initials, inkOn } from "@/features/documents/words";
 import { publicFetch } from "@/lib/publicApi";
 
 interface ShowcaseView {
@@ -43,7 +43,7 @@ export function ShowcasePage() {
         {d && (
           <div className="stack-lg">
             <header className="public-brand">
-              {d.company.logo ? <img className="logo" src={d.company.logo} alt="" /> : <span className="tile" aria-hidden="true" style={{ background: "var(--brand)", color: "var(--on-brand)" }}>{d.company.name.slice(0, 2).toUpperCase()}</span>}
+              {d.company.logo ? <img className="logo" src={d.company.logo} alt="" /> : <span className="tile" aria-hidden="true" style={{ background: "var(--brand)", color: "var(--on-brand)" }}>{initials(d.company.name)}</span>}
               <div><strong>{d.company.name}</strong>{d.company.phone && <div className="muted text-sm"><a href={`tel:${d.company.phone}`}>{d.company.phone}</a></div>}</div>
             </header>
             <section className="card card-pad stack" style={{ borderTop: "4px solid var(--brand)" }}>

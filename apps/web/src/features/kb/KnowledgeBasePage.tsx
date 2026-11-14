@@ -246,7 +246,7 @@ export function KnowledgeBasePage() {
                     <GuideCover path={c.cover_path} />
                     <span className="guide-card-body">
                       <strong className="guide-card-title">{c.name}</strong>
-                      <span className="muted small">{index.data ? `${countFor(c.id)} ${countFor(c.id) === 1 ? "guide" : "guides"}` : <Skeleton width={50} height={10} />}</span>
+                      <span className="muted small">{index.data ? t.plural(countFor(c.id), { one: "{count} guide", other: "{count} guides" }) : <Skeleton width={50} height={10} />}</span>
                     </span>
                   </button>
                 ))}
