@@ -302,6 +302,15 @@ insert into public.social_posts (company_id, source, attachment_ids, caption, ne
 insert into public.social_post_networks (post_id, company_id, network, status) values (:'social_post', :'co', 'facebook', 'posted');
 insert into public.social_post_images (company_id, post_id, n, variant, attachment_id, path, token, width, height, bytes, expires_at)
 values (:'co', :'social_post', 0, 'feed', :'porch', :'co' || '/social/' || :'social_post' || '/0-feed.jpg', repeat('b', 32), 10, 10, 100, now() + interval '7 days');
+-- A postcard mailed to Ann, a showcase of the roof job, and how Oscar compares on Google
+-- (20261113001400_postcards.sql, 20261113001410_showcases.sql, 20261113001420_review_comparison.sql): the office's, never a sub's.
+insert into public.postcard_campaigns (company_id, name) values (:'co', 'Spring postcard') returning id as postcard \gset
+insert into public.postcard_recipients (company_id, campaign_id, client_id, name, address) values (:'co', :'postcard', :'c1', 'Ann', '{"line1": "1 Main St", "city": "Radford", "region": "VA", "postal_code": "24141"}');
+select id as roof_before from public.attachments where owner_type = 'visit' and owner_id = :'v1' and file_name = 'before.jpg' \gset
+insert into public.showcases (company_id, job_id, title) values (:'co', :'j1', 'New roof') returning id as showcase \gset
+insert into public.showcase_photos (company_id, showcase_id, attachment_id, role) values (:'co', :'showcase', :'roof_before', 'before');
+insert into public.review_comparisons (company_id, enabled) values (:'co', true);
+insert into public.review_places (company_id, place_id, name, is_own) values (:'co', 'place-1070', 'Oscar Roofing', true);
 insert into public.roof_packages (company_id, name) values (:'co', 'Good') returning id as roof_package \gset
 insert into public.roof_package_items (company_id, package_id, service_id, kind) values (:'co', :'roof_package', :'shingles_service', 'included');
 insert into public.service_materials (company_id, service_id, item_number, name, uom, per_unit) values (:'co', :'shingles_service', 'ABC-1', 'Shingle bundle', 'BD', 3);
@@ -613,6 +622,10 @@ select t1070.check(array(
   'my_sub_pay_totals(uuid)',
   -- The next request, quote, job and invoice numbers (and set_next_number below): owners and admins only, never a sub.
   'next_numbers(uuid)',
+  -- Who a postcard goes to, with their addresses: runs as the caller, so the office's clients only, none for a sub.
+  'postcard_audience(uuid, jsonb)', 'postcard_audience_summary(uuid, jsonb)',
+  -- What postcards brought in: the office with Marketing only (it checks), never a sub.
+  'postcard_results(uuid, uuid)',
   'price_change_history(uuid, integer)', 'price_change_preview(uuid, jsonb)',
   'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
   -- The quote follow-up after an exact price goes out: the office and estimators with Sales only, never a sub.
@@ -640,6 +653,8 @@ select t1070.check(array(
   'set_visit_notices(uuid, boolean, boolean)',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',
+  -- A published job showcase, by its link's token: what anyone with the link sees, nothing of the client.
+  'showcase_view(text)',
   'sign_quote(uuid, jsonb, uuid, numeric)', 'social_photos(uuid, timestamp with time zone, uuid, integer, uuid)',
   'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
   -- Installs Paving or Roofing: owners and admins who connect apps only, never a sub.

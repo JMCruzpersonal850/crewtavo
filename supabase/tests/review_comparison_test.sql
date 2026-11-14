@@ -7,27 +7,27 @@
 \set QUIET on
 \o /dev/null
 
-create schema trc;
-grant usage on schema trc to authenticated, service_role, anon;
-create function trc.check(p_ok boolean, p_what text) returns void language plpgsql as $$
+create schema tmkrc;
+grant usage on schema tmkrc to authenticated, service_role, anon;
+create function tmkrc.check(p_ok boolean, p_what text) returns void language plpgsql as $$
 begin
   if not coalesce(p_ok, false) then raise exception 'FAIL: %', p_what; end if;
   raise notice 'ok - %', p_what;
 end $$;
-create function trc.error_of(p_sql text) returns text language plpgsql as $$
+create function tmkrc.error_of(p_sql text) returns text language plpgsql as $$
 begin
   execute p_sql;
   return 'none';
 exception when others then
   return sqlstate || ': ' || sqlerrm;
 end $$;
-create function trc.as_user(p_user uuid) returns void language sql as $$
+create function tmkrc.as_user(p_user uuid) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true)
 $$;
-create function trc.as_nobody() returns void language sql as $$
+create function tmkrc.as_nobody() returns void language sql as $$
   select set_config('request.jwt.claims', '', true)
 $$;
-grant execute on all functions in schema trc to authenticated, service_role, anon;
+grant execute on all functions in schema tmkrc to authenticated, service_role, anon;
 
 \set pat 'ae100000-0000-0000-0000-000000000001'
 \set olive 'ae100000-0000-0000-0000-000000000002'
@@ -39,10 +39,10 @@ insert into auth.users (id, email, raw_user_meta_data) values
   (:'olive', 'olive@sketchy.test', '{"full_name": "Olive Office"}'),
   (:'ray', 'ray@sketchy.test', '{"full_name": "Ray Crew"}');
 set local role authenticated;
-select trc.as_user(:'pat');
+select tmkrc.as_user(:'pat');
 select public.create_company('Sketchy Gutters', 'general') as co \gset
 reset role;
-select trc.as_nobody();
+select tmkrc.as_nobody();
 insert into public.memberships (company_id, user_id, role) values (:'co', :'olive', 'office'), (:'co', :'ray', 'field_crew');
 update public.companies set settings = jsonb_set(coalesce(settings, '{}'), '{marketing}', '{"enabled": true}') where id = :'co';
 
@@ -52,10 +52,10 @@ update public.companies set settings = jsonb_set(coalesce(settings, '{}'), '{mar
 insert into public.review_comparisons (company_id, enabled) values (:'co', true);
 insert into public.review_places (company_id, place_id, name, is_own) values (:'co', 'own', 'Sketchy Gutters', true);
 insert into public.review_places (company_id, place_id, name) values (:'co', 'p1', 'Rival 1');
-select trc.check(trc.error_of(format('insert into public.review_places (company_id, place_id, name) values (%L, %L, %L)', :'co', 'p1', 'Rival 1')) like '23505:%', 'a place is on the card once');
+select tmkrc.check(tmkrc.error_of(format('insert into public.review_places (company_id, place_id, name) values (%L, %L, %L)', :'co', 'p1', 'Rival 1')) like '23505:%', 'a place is on the card once');
 insert into public.review_places (company_id, place_id, name) select :'co', 'p' || n, 'Rival ' || n from generate_series(2, 5) n;
-select trc.check(trc.error_of(format('insert into public.review_places (company_id, place_id, name) values (%L, %L, %L)', :'co', 'p6', 'Rival 6')) like '22023:%', 'a sixth competitor is turned down');
-select trc.check(trc.error_of(format('insert into public.review_places (company_id, place_id, name, is_own) values (%L, %L, %L, true)', :'co', 'own2', 'Us again')) like '23505:%', 'and a second place of its own');
+select tmkrc.check(tmkrc.error_of(format('insert into public.review_places (company_id, place_id, name) values (%L, %L, %L)', :'co', 'p6', 'Rival 6')) like '22023:%', 'a sixth competitor is turned down');
+select tmkrc.check(tmkrc.error_of(format('insert into public.review_places (company_id, place_id, name, is_own) values (%L, %L, %L, true)', :'co', 'own2', 'Us again')) like '23505:%', 'and a second place of its own');
 
 \o
 \echo 'A check keeps the count before'
@@ -63,9 +63,9 @@ select trc.check(trc.error_of(format('insert into public.review_places (company_
 select id as p1 from public.review_places where place_id = 'p1' \gset
 set local role service_role;
 select public.record_review_place(:'p1', 'Rival One', 4.4, 50, 'https://maps.google.com/?cid=1');
-select trc.check((select rating = 4.4 and ratings_total = 50 and previous_total is null and name = 'Rival One' from public.review_places where id = :'p1'), 'the first check has nothing before it');
+select tmkrc.check((select rating = 4.4 and ratings_total = 50 and previous_total is null and name = 'Rival One' from public.review_places where id = :'p1'), 'the first check has nothing before it');
 select public.record_review_place(:'p1', 'Rival One', 4.5, 53, 'javascript:alert(1)');
-select trc.check((select ratings_total = 53 and previous_total = 50 and previous_checked_at is not null and maps_url = 'https://maps.google.com/?cid=1' from public.review_places where id = :'p1'),
+select tmkrc.check((select ratings_total = 53 and previous_total = 50 and previous_checked_at is not null and maps_url = 'https://maps.google.com/?cid=1' from public.review_places where id = :'p1'),
   'the next keeps the count before, and only an https Maps link');
 reset role;
 
@@ -73,30 +73,30 @@ reset role;
 \echo 'Read by the office, written only by the server'
 \o /dev/null
 set local role authenticated;
-select trc.as_user(:'olive');
-select trc.check((select count(*) = 6 from public.review_places) and (select count(*) = 1 from public.review_comparisons), 'the office reads the comparison');
-select trc.check(trc.error_of(format('insert into public.review_places (company_id, place_id, name) values (%L, %L, %L)', :'co', 'x', 'X')) like '42501:%', 'but can''t add a place from the browser');
-select trc.check(trc.error_of(format('update public.review_comparisons set enabled = true where company_id = %L', :'co')) like '42501:%', 'nor flip the switch around the check with Google');
-select trc.check(trc.error_of(format('select public.record_review_place(%L, %L, 5, 999)', :'p1', 'Fake')) like '42501:%', 'nor write a rating');
-select trc.as_user(:'ray');
-select trc.check((select count(*) = 0 from public.review_places), 'field crew don''t see it');
+select tmkrc.as_user(:'olive');
+select tmkrc.check((select count(*) = 6 from public.review_places) and (select count(*) = 1 from public.review_comparisons), 'the office reads the comparison');
+select tmkrc.check(tmkrc.error_of(format('insert into public.review_places (company_id, place_id, name) values (%L, %L, %L)', :'co', 'x', 'X')) like '42501:%', 'but can''t add a place from the browser');
+select tmkrc.check(tmkrc.error_of(format('update public.review_comparisons set enabled = true where company_id = %L', :'co')) like '42501:%', 'nor flip the switch around the check with Google');
+select tmkrc.check(tmkrc.error_of(format('select public.record_review_place(%L, %L, 5, 999)', :'p1', 'Fake')) like '42501:%', 'nor write a rating');
+select tmkrc.as_user(:'ray');
+select tmkrc.check((select count(*) = 0 from public.review_places), 'field crew don''t see it');
 reset role;
 set local role anon;
-select trc.as_nobody();
-select trc.check(trc.error_of('select count(*) from public.review_places') like '42501:%', 'nor anyone without signing in');
+select tmkrc.as_nobody();
+select tmkrc.check(tmkrc.error_of('select count(*) from public.review_places') like '42501:%', 'nor anyone without signing in');
 reset role;
 
 \o
 \echo 'The weekly check'
 \o /dev/null
 set local role service_role;
-select trc.check((select count(*) = 1 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'due when never checked');
+select tmkrc.check((select count(*) = 1 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'due when never checked');
 update public.review_comparisons set checked_at = now() - interval '3 days' where company_id = :'co';
-select trc.check((select count(*) = 0 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'not again within the week');
+select tmkrc.check((select count(*) = 0 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'not again within the week');
 update public.review_comparisons set checked_at = now() - interval '8 days' where company_id = :'co';
-select trc.check((select count(*) = 1 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'due again after it');
+select tmkrc.check((select count(*) = 1 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'due again after it');
 update public.review_comparisons set enabled = false where company_id = :'co';
-select trc.check((select count(*) = 0 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'never while it''s off');
+select tmkrc.check((select count(*) = 0 from public.review_comparisons_due(20) d where d.company_id = :'co'), 'never while it''s off');
 reset role;
 
 rollback;

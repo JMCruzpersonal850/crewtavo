@@ -8,27 +8,27 @@
 \set QUIET on
 \o /dev/null
 
-create schema tsc;
-grant usage on schema tsc to authenticated, service_role, anon;
-create function tsc.check(p_ok boolean, p_what text) returns void language plpgsql as $$
+create schema tmksc;
+grant usage on schema tmksc to authenticated, service_role, anon;
+create function tmksc.check(p_ok boolean, p_what text) returns void language plpgsql as $$
 begin
   if not coalesce(p_ok, false) then raise exception 'FAIL: %', p_what; end if;
   raise notice 'ok - %', p_what;
 end $$;
-create function tsc.error_of(p_sql text) returns text language plpgsql as $$
+create function tmksc.error_of(p_sql text) returns text language plpgsql as $$
 begin
   execute p_sql;
   return 'none';
 exception when others then
   return sqlstate || ': ' || sqlerrm;
 end $$;
-create function tsc.as_user(p_user uuid) returns void language sql as $$
+create function tmksc.as_user(p_user uuid) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true)
 $$;
-create function tsc.as_nobody() returns void language sql as $$
+create function tmksc.as_nobody() returns void language sql as $$
   select set_config('request.jwt.claims', '', true)
 $$;
-grant execute on all functions in schema tsc to authenticated, service_role, anon;
+grant execute on all functions in schema tmksc to authenticated, service_role, anon;
 
 \set pat 'ad100000-0000-0000-0000-000000000001'
 \set olive 'ad100000-0000-0000-0000-000000000002'
@@ -40,7 +40,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
   (:'olive', 'olive@sketchy.test', '{"full_name": "Olive Office"}'),
   (:'ray', 'ray@sketchy.test', '{"full_name": "Ray Crew"}');
 set local role authenticated;
-select tsc.as_user(:'pat');
+select tmksc.as_user(:'pat');
 select public.create_company('Sketchy Gutters', 'general') as co \gset
 reset role;
 insert into public.memberships (company_id, user_id, role) values (:'co', :'olive', 'office'), (:'co', :'ray', 'field_crew');
@@ -61,77 +61,77 @@ values (:'co', 'job', :'other_job', :'co' || '/job/' || :'other_job' || '/x.jpg'
 \echo 'The office writes a showcase of its own job''s photos'
 \o /dev/null
 set local role authenticated;
-select tsc.as_user(:'olive');
+select tmksc.as_user(:'olive');
 insert into public.showcases (company_id, job_id, visit_id, title, description, status, token, published_at)
 values (:'co', :'job', :'visit', 'Gutters cleared', 'Cleared and flushed.', 'published', repeat('0', 32), now()) returning id as sc, token as tok \gset
-select tsc.check((select status = 'draft' and published_at is null and token <> repeat('0', 32) and token ~ '^[0-9a-f]{32}$' from public.showcases where id = :'sc'),
+select tmksc.check((select status = 'draft' and published_at is null and token <> repeat('0', 32) and token ~ '^[0-9a-f]{32}$' from public.showcases where id = :'sc'),
   'a new showcase is a draft with a token nobody chose');
 insert into public.showcase_photos (company_id, showcase_id, attachment_id, role, public_path) values (:'co', :'sc', :'before_photo', 'before', 'anything.jpg'), (:'co', :'sc', :'after_photo', 'after', null);
-select tsc.check((select count(*) = 2 and bool_and(public_path is null) from public.showcase_photos where showcase_id = :'sc'), 'its photos are the job''s and its visit''s, with no public copy from the browser');
-select tsc.check(tsc.error_of(format('insert into public.showcase_photos (company_id, showcase_id, attachment_id) values (%L, %L, %L)', :'co', :'sc', :'elsewhere')) like '22023:%', 'another job''s photo is turned down');
-select tsc.check(tsc.error_of(format('update public.showcases set visit_id = %L where id = %L', :'other_visit', :'sc')) like '22023:%', 'nor a visit of another job');
+select tmksc.check((select count(*) = 2 and bool_and(public_path is null) from public.showcase_photos where showcase_id = :'sc'), 'its photos are the job''s and its visit''s, with no public copy from the browser');
+select tmksc.check(tmksc.error_of(format('insert into public.showcase_photos (company_id, showcase_id, attachment_id) values (%L, %L, %L)', :'co', :'sc', :'elsewhere')) like '22023:%', 'another job''s photo is turned down');
+select tmksc.check(tmksc.error_of(format('update public.showcases set visit_id = %L where id = %L', :'other_visit', :'sc')) like '22023:%', 'nor a visit of another job');
 update public.showcases set status = 'published', title = 'Gutters cleared and flushed' where id = :'sc';
-select tsc.check((select status = 'draft' and title = 'Gutters cleared and flushed' from public.showcases where id = :'sc'), 'the browser changes what it says, never whether it''s published');
-select tsc.check(tsc.error_of(format('update public.showcases set job_id = %L where id = %L', :'other_job', :'sc')) = 'none' and (select job_id = :'job' from public.showcases where id = :'sc'), 'nor which job it''s of');
+select tmksc.check((select status = 'draft' and title = 'Gutters cleared and flushed' from public.showcases where id = :'sc'), 'the browser changes what it says, never whether it''s published');
+select tmksc.check(tmksc.error_of(format('update public.showcases set job_id = %L where id = %L', :'other_job', :'sc')) = 'none' and (select job_id = :'job' from public.showcases where id = :'sc'), 'nor which job it''s of');
 
-select tsc.as_user(:'ray');
-select tsc.check((select count(*) = 0 from public.showcases), 'field crew don''t see showcases');
+select tmksc.as_user(:'ray');
+select tmksc.check((select count(*) = 0 from public.showcases), 'field crew don''t see showcases');
 reset role;
 
 \o
 \echo 'Read publicly only while published'
 \o /dev/null
 set local role anon;
-select tsc.as_nobody();
-select tsc.check(public.showcase_view(:'tok') is null, 'a draft isn''t there for anyone');
-select tsc.check(tsc.error_of('select count(*) from public.showcases') like '42501:%', 'the table isn''t readable without signing in');
-select tsc.check(tsc.error_of('select count(*) from public.showcase_photos') like '42501:%', 'nor its photos');
+select tmksc.as_nobody();
+select tmksc.check(public.showcase_view(:'tok') is null, 'a draft isn''t there for anyone');
+select tmksc.check(tmksc.error_of('select count(*) from public.showcases') like '42501:%', 'the table isn''t readable without signing in');
+select tmksc.check(tmksc.error_of('select count(*) from public.showcase_photos') like '42501:%', 'nor its photos');
 reset role;
 
 -- The server publishes it: copies for the page, for the after photo only so far.
 set local role service_role;
-select tsc.as_nobody();
+select tmksc.as_nobody();
 update public.showcases set status = 'published', published_at = now() where id = :'sc';
 update public.showcase_photos set public_path = :'co' || '/showcases/' || :'sc' || '/a.jpg' where showcase_id = :'sc' and attachment_id = :'after_photo';
 reset role;
 set local role anon;
-select tsc.as_nobody();
-select tsc.check((select v ->> 'title' = 'Gutters cleared and flushed' and v -> 'town' = 'null'::jsonb and jsonb_array_length(v -> 'photos') = 1 and v -> 'photos' -> 0 ->> 'role' = 'after'
+select tmksc.as_nobody();
+select tmksc.check((select v ->> 'title' = 'Gutters cleared and flushed' and v -> 'town' = 'null'::jsonb and jsonb_array_length(v -> 'photos') = 1 and v -> 'photos' -> 0 ->> 'role' = 'after'
   from public.showcase_view(:'tok') v), 'published: the write-up and the photos with a copy, without the town unless chosen');
-select tsc.check((select v::text not like '%Ann Oak%' and v::text not like '%Oak St%' and v::text not like '%62701%' and v::text not like '%' || :'client' || '%' and v::text not like '%/visit/%'
+select tmksc.check((select v::text not like '%Ann Oak%' and v::text not like '%Oak St%' and v::text not like '%62701%' and v::text not like '%' || :'client' || '%' and v::text not like '%/visit/%'
   from public.showcase_view(:'tok') v), 'never the client''s name, address or ids, nor where the photos are kept');
-select tsc.check(public.showcase_view(repeat('f', 32)) is null, 'a token that isn''t one finds nothing');
+select tmksc.check(public.showcase_view(repeat('f', 32)) is null, 'a token that isn''t one finds nothing');
 reset role;
 
 \o
 \echo 'A published showcase is unpublished to change it'
 \o /dev/null
 set local role authenticated;
-select tsc.as_user(:'olive');
-select tsc.check(tsc.error_of(format('update public.showcases set show_town = true where id = %L', :'sc')) like '22023:%', 'its words can''t change while it''s published');
-select tsc.check(tsc.error_of(format('delete from public.showcase_photos where showcase_id = %L', :'sc')) like '22023:%', 'nor its photos');
+select tmksc.as_user(:'olive');
+select tmksc.check(tmksc.error_of(format('update public.showcases set show_town = true where id = %L', :'sc')) like '22023:%', 'its words can''t change while it''s published');
+select tmksc.check(tmksc.error_of(format('delete from public.showcase_photos where showcase_id = %L', :'sc')) like '22023:%', 'nor its photos');
 reset role;
 set local role service_role;
-select tsc.as_nobody();
+select tmksc.as_nobody();
 update public.showcases set status = 'unpublished', unpublished_at = now() where id = :'sc';
 update public.showcase_photos set public_path = null where showcase_id = :'sc';
 reset role;
 set local role authenticated;
-select tsc.as_user(:'olive');
+select tmksc.as_user(:'olive');
 update public.showcases set show_town = true where id = :'sc';
 reset role;
 set local role anon;
-select tsc.as_nobody();
-select tsc.check(public.showcase_view(:'tok') is null, 'unpublished, the link finds nothing');
+select tmksc.as_nobody();
+select tmksc.check(public.showcase_view(:'tok') is null, 'unpublished, the link finds nothing');
 reset role;
 set local role service_role;
-select tsc.as_nobody();
+select tmksc.as_nobody();
 update public.showcases set status = 'published' where id = :'sc';
 update public.showcase_photos set public_path = 'x.jpg' where showcase_id = :'sc';
 reset role;
 set local role anon;
-select tsc.as_nobody();
-select tsc.check((select v ->> 'town' = 'Springfield' and v ->> 'region' = 'IL' from public.showcase_view(:'tok') v), 'published again with the town chosen: the town, never the street');
+select tmksc.as_nobody();
+select tmksc.check((select v ->> 'town' = 'Springfield' and v ->> 'region' = 'IL' from public.showcase_view(:'tok') v), 'published again with the town chosen: the town, never the street');
 reset role;
 
 rollback;
