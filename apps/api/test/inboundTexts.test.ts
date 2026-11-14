@@ -14,13 +14,17 @@ interface State {
   contacts: Array<{ id: string; company_id: string; client_id: string; name: string; phone: string }>;
   unknown: Array<{ company_id: string; phone_key: string; from_phone: string; body: string; created_at: string }>;
   stops: Set<string>;
+  /** How each stop is kept (sms_stops.source and note), by the same key. */
+  kept: Map<string, { source: string; note: string | null }>;
+  /** The record of texts going off and on (sms_stop_changes). */
+  changes: Array<Record<string, unknown>>;
   messages: Array<Record<string, unknown>>;
   notices: Array<{ company_id: string; title: string; body: string; link: string }>;
   /** The companies each read of clients and contacts was kept to (null: every company). */
   scopes: Array<string[] | null>;
 }
 
-const fresh = (): State => ({ companies: ["co-1"], clients: [], contacts: [], unknown: [], stops: new Set(), messages: [], notices: [], scopes: [] });
+const fresh = (): State => ({ companies: ["co-1"], clients: [], contacts: [], unknown: [], stops: new Set(), kept: new Map(), changes: [], messages: [], notices: [], scopes: [] });
 
 function fakeDb(state: State): Db {
   const from = (table: string) => {
@@ -42,10 +46,23 @@ function fakeDb(state: State): Db {
       if (table === "sms_stops") {
         const key = op === "upsert" ? `${row.company_id}:${row.phone_key}` : `${eq.company_id}:${eq.phone_key}`;
         const had = state.stops.has(key);
-        if (op === "upsert") state.stops.add(key);
-        else state.stops.delete(key);
+        // A stop the office or a phrase set becomes the keyword's when the keyword comes.
+        if (op === "update") {
+          const was = state.kept.get(key);
+          if (!was || !["phrase", "office"].includes(was.source)) return { data: [] };
+          state.kept.set(key, { ...was, source: row.source });
+          return { data: [{ phone_key: key }] };
+        }
+        if (op === "upsert") {
+          state.stops.add(key);
+          if (!had) state.kept.set(key, { source: row.source, note: row.note });
+        } else {
+          state.stops.delete(key);
+          state.kept.delete(key);
+        }
         return { data: (op === "upsert") === had ? [] : [{ phone_key: key }] };
       }
+      if (table === "sms_stop_changes") return (state.changes.push(row), { data: null });
       if (table === "unknown_texts" && op === "insert") return (state.unknown.push({ ...row, created_at: new Date().toISOString() }), { data: null });
       if (table === "unknown_texts" && counting) {
         return { count: state.unknown.filter((u) => u.company_id === eq.company_id && (!eq.phone_key || u.phone_key === eq.phone_key) && u.created_at >= since).length };
@@ -71,6 +88,8 @@ function fakeDb(state: State): Db {
 }
 
 const text = (body: string, from = "+15405550163") => ({ from, body, sid: "SM1", keyword: /^stop$/i.test(body) ? ("stop" as const) : /^start$/i.test(body) ? ("start" as const) : null });
+/** Words that ask to stop, as the webhook hands them over (core asksToStopTexts). */
+const asking = (body: string, from = "+15405550163") => ({ from, body, sid: "SM1", keyword: "stop" as const, phrase: true });
 
 afterEach(() => vi.useRealTimers());
 
@@ -121,6 +140,43 @@ describe("a text from a contact's phone", () => {
     await receiveText(fakeDb(state), text("START"), null);
     expect([...state.stops]).toEqual([]);
     expect(state.notices.map((n) => n.title)).toEqual(["Mo Manager turned texts back on"]);
+  });
+});
+
+describe("a text that asks to stop without the keyword", () => {
+  it("stops a contact's number as a phrase, with what they texted, and the office reads it", async () => {
+    const state = fresh();
+    state.contacts = [{ id: "contact-1", company_id: "co-1", client_id: "client-1", name: "Mo Manager", phone: "540-555-0163" }];
+    expect(await receiveText(fakeDb(state), asking("Please stop texting me"), null)).toEqual(["co-1"]);
+    expect([...state.kept]).toEqual([["co-1:5405550163", { source: "phrase", note: "Please stop texting me" }]]);
+    expect(state.changes).toEqual([{ company_id: "co-1", phone_key: "5405550163", phone: "+15405550163", texts_on: false, source: "phrase", how: "text", note: "Please stop texting me", set_by: null, set_by_name: null }]);
+    // On the client's timeline like any text, and the office is told what was written.
+    expect(state.messages.map((m) => [m.client_id, m.body, m.from_name])).toEqual([["client-1", "Please stop texting me", "Mo Manager"]]);
+    expect(state.notices.map((n) => [n.title, n.body])).toEqual([[
+      "Mo Manager asked to stop texts",
+      "They texted “Please stop texting me” from +15405550163, so Crewtavo won't text that number. If that isn't what they meant, you can turn its texts back on from the client's page, only if they ask.",
+    ]]);
+  });
+
+  it("becomes the keyword's stop when STOP follows, and START still turns texts back on", async () => {
+    const state = fresh();
+    state.contacts = [{ id: "contact-1", company_id: "co-1", client_id: "client-1", name: "Mo Manager", phone: "540-555-0163" }];
+    const db = fakeDb(state);
+    await receiveText(db, asking("no more texts"), null);
+    await receiveText(db, text("STOP"), null);
+    expect(state.kept.get("co-1:5405550163")).toEqual({ source: "keyword", note: "no more texts" });
+    expect(state.changes.map((c) => [c.texts_on, c.source])).toEqual([[false, "phrase"], [false, "keyword"]]);
+    await receiveText(db, text("START"), null);
+    expect([...state.stops]).toEqual([]);
+    expect(state.changes.at(-1)).toMatchObject({ texts_on: true, source: "keyword" });
+  });
+
+  it("from a number nobody knows is honoured, and kept for the office to read", async () => {
+    const state = fresh();
+    expect(await receiveText(fakeDb(state), asking("stop texting me, wrong person"), null)).toEqual([]);
+    expect([...state.kept]).toEqual([["co-1:5405550163", { source: "phrase", note: "stop texting me, wrong person" }]]);
+    expect(state.unknown.map((u) => u.body)).toEqual(["stop texting me, wrong person"]);
+    expect(state.notices.map((n) => [n.title, n.body, n.link])).toEqual([["An unknown number asked to stop texts", "+15405550163 texted “stop texting me, wrong person”, so Crewtavo won't text it.", "/messages?unknown=5405550163"]]);
   });
 });
 

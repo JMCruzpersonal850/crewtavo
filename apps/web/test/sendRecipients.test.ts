@@ -53,7 +53,7 @@ describe("before the server says who the contacts are", () => {
   });
 
   it("shows a client who texted STOP as not to be texted", () => {
-    expect(ownChoices({ email: null, phone: "540-555-0111", textsOffSince: "2026-11-01T12:00:00Z" }).sms).toEqual([{ to: "540-555-0111", name: "The client", contact_id: null, ticked: false, blocked: "Texted STOP" }]);
+    expect(ownChoices({ email: null, phone: "540-555-0111", textsOffSince: "2026-11-01T12:00:00Z" }).sms).toEqual([{ to: "540-555-0111", name: "The client", contact_id: null, ticked: false, blocked: "Texts off" }]);
   });
 });
 

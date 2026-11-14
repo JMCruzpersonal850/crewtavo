@@ -457,8 +457,33 @@ describe("texting", () => {
         // The number itself, by company: remembered on a STOP (sms_stops), forgotten on a START.
         stops: calls.filter((c) => c.method === "POST" && c.path === "sms_stops").map((c) => [c.body.company_id, c.body.phone_key, c.body.phone]),
         starts: calls.filter((c) => c.method === "DELETE" && c.path === "sms_stops").map((c) => [c.params.get("company_id"), c.params.get("phone_key")]),
+        // How each stop is kept: the keyword's, or the words that asked for it.
+        kept: calls.filter((c) => c.method === "POST" && c.path === "sms_stops").map((c) => [c.body.source, c.body.note]),
+        told: calls.filter((c) => c.method === "POST" && c.path === "notifications").flatMap((c) => c.body.map((n: { body: string }) => n.body)),
       };
     }
+
+    it.each(["Please stop texting me", "stop texting me!!", "please stop", "Unsubscribe me", "No more texts"])("turns texts off on words that plainly ask for it (%j), keeps what was texted and tells the office", async (body) => {
+      const { optOuts, messages, notices, kept, told } = await text(body);
+      expect(optOuts).toEqual([
+        { id: "eq.client-1", when: "is.null", set: "string" },
+        { id: "eq.client-2", when: "is.null", set: "string" },
+      ]);
+      // Kept as a phrase, not the keyword: Twilio didn't stop the number, so the office can lift it if they ask.
+      expect(kept).toEqual([["phrase", body], ["phrase", body]]);
+      // The text is on their timeline like any other, and the office reads what they wrote.
+      expect(messages).toEqual([["client-1", body], ["client-2", body]]);
+      expect(notices).toEqual(["Ana Smith asked to stop texts", "Ana S. asked to stop texts"]);
+      expect(told[0]).toBe(`They texted “${body}”, so Crewtavo won't text them. If that isn't what they meant, you can turn texts back on from their page, only if they ask.`);
+    });
+
+    it("keeps the keyword as the keyword's, and what Twilio acted on as Twilio's", async () => {
+      expect((await text("STOP")).kept).toEqual([["keyword", null], ["keyword", null]]);
+      // Twilio says it stopped the number (Advanced Opt-Out), whatever the words.
+      expect((await text("please stop texting me", { OptOutType: "STOP" })).kept).toEqual([["keyword", null], ["keyword", null]]);
+      // And says a text was only its HELP: words in it that ask to stop aren't read.
+      expect((await text("stop texting me", { OptOutType: "HELP" })).kept).toEqual([]);
+    });
 
     it("stops the number itself too, for each company that keeps it as a client's or a contact's", async () => {
       // A property manager in a third company's contacts has the number too, and someone else there doesn't.

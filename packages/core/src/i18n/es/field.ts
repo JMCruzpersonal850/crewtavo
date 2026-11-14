@@ -634,7 +634,7 @@ export default {
   "Preview": "Vista previa",
   "How to send": "Cómo enviarlo",
   "Copy link": "Copiar enlace",
-  "They texted STOP, so their own number can't be texted. You can text a different one.": "Mandaron STOP, así que no se le pueden enviar mensajes a su número. Puedes enviarlo a otro.",
+  "Their texts are off, so their own number can't be texted. You can text a different one.": "Sus mensajes de texto están desactivados, así que no se le pueden enviar a su número. Puedes enviarlo a otro.",
   "Email isn't turned on yet. Use “Copy link” and send it yourself.": "El correo todavía no está activado. Usa “Copiar enlace” y envíalo tú.",
   "Texting isn't turned on yet. Use “Copy link” and send it yourself.": "Los mensajes todavía no están activados. Usa “Copiar enlace” y envíalo tú.",
   "Send to": "Enviar a",

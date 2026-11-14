@@ -14,6 +14,7 @@ import { useListAnimation } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 import { formatPhoneTyping } from "@/lib/validate";
+import { TextsSwitch, useTextStops } from "./TextsSwitch";
 
 interface Contact {
   id: string;
@@ -42,7 +43,7 @@ export function useClientContacts(clientId: string) {
  * The other contacts, as a section of their own once there's one. With none it isn't shown: the
  * client's Details card offers "Add another contact" (AddContact) instead.
  */
-export function ContactsCard({ clientId, canEdit }: { clientId: string; canEdit: boolean }) {
+export function ContactsCard({ clientId, canEdit, canSetTexts = false }: { clientId: string; canEdit: boolean; canSetTexts?: boolean }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Contact | "new" | null>(null);
   const contacts = useClientContacts(clientId);
@@ -69,6 +70,8 @@ export function ContactsCard({ clientId, canEdit }: { clientId: string; canEdit:
   };
 
   const rows = contacts.data ?? [];
+  // Which of their numbers are on the stop list, for each contact's Texts switch (the office's).
+  const stopFor = useTextStops(rows.map((row) => row.phone), canSetTexts);
   return (
     <>
       {rows.length > 0 && (
@@ -88,6 +91,7 @@ export function ContactsCard({ clientId, canEdit }: { clientId: string; canEdit:
                   </span>
                   {c.email && <a href={`mailto:${c.email}`} className="small">{c.email}</a>}
                   {c.phone && <a href={`tel:${c.phone}`} className="small">{c.phone}</a>}
+                  {c.phone && canSetTexts && <span className="small"><TextsSwitch clientId={clientId} contactId={c.id} name={c.name} phone={c.phone} stop={stopFor(c.phone)} label="Can be texted" /></span>}
                 </span>
                 {canEdit && (
                   <Menu

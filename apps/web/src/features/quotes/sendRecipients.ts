@@ -22,7 +22,7 @@ export interface SendChoices {
  */
 export function ownChoices(client: { email: string | null; phone: string | null; textsOffSince?: string | null }): SendChoices {
   const own = (to: string | null, blocked = false): SendChoice[] =>
-    to?.trim() ? [{ to: to.trim(), name: "The client", contact_id: null, ticked: !blocked, ...(blocked ? { blocked: "Texted STOP" } : {}) }] : [];
+    to?.trim() ? [{ to: to.trim(), name: "The client", contact_id: null, ticked: !blocked, ...(blocked ? { blocked: "Texts off" } : {}) }] : [];
   return { email: own(client.email), sms: own(client.phone, Boolean(client.textsOffSince)), contacts_on: false, max: MAX_RECIPIENTS };
 }
 

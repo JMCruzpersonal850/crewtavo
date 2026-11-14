@@ -640,7 +640,7 @@ describe("the signed copy", () => {
     roofer({ status: "approved", approval: { name: "Alex Morgan", signature: HOMEOWNER } });
     state.tables.clients = [{ id: CLIENT, company_id: ROOFER, display_name: "Alex Morgan", phone: "(614) 555-0142", sms_opt_out_at: "2026-10-01T12:00:00.000Z" }];
     const res = await call(`/quotes/${QUOTE}/send-copy`, { channel: "sms" });
-    expect(await res.json()).toEqual({ sent: false, reason: "Alex Morgan texted STOP, so texts to them are off. Send it by email instead.", link: expect.any(String) });
+    expect(await res.json()).toEqual({ sent: false, reason: "Alex Morgan asked not to be texted, so texts to them are off. Send it by email instead.", link: expect.any(String) });
     expect(sendSms).not.toHaveBeenCalled();
     expect(await (await call(`/quotes/${QUOTE}/send-copy`, { channel: "sms", to: "614-555-0199" })).json()).toMatchObject({ sent: true });
     expect(sendSms.mock.calls[0]![1].to).toBe("614-555-0199");

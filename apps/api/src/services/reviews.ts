@@ -47,7 +47,7 @@ import { reportError } from "../lib/monitoring";
 import { emailReady, sendSms, smsReady, type SendResult } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { emailClient } from "./marketingEmail";
-import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT } from "./textsOff";
+import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT, withNumberStop } from "./textsOff";
 
 /** An action that can't happen yet: the automation run waits until then, with the message saying why. */
 export class WaitUntil extends Error {
@@ -206,7 +206,8 @@ export function askOutcome(sent: SendChannel[], failures: Failure[]): { detail: 
 
 export async function sendReviewRequest(env: Env, admin: Db, args: ReviewArgs): Promise<ReviewResult> {
   const automatic = args.automatic === true;
-  const { client } = args;
+  // Their phone may be a stopped number though they aren't marked (services/textsOff.ts).
+  const client = await withNumberStop(admin, args.companyId, args.client);
   const name = client.display_name;
   const skipped = (detail: string): ReviewResult => ({ sent: false, link: "", detail, id: "", skipped: true });
   const { data: company } = await admin.from("companies").select("name, phone, email, address, timezone, settings").eq("id", args.companyId).maybeSingle();
@@ -344,8 +345,9 @@ export async function sendDueReminders(env: Env) {
       if (finishError) throw new Error(finishError.message);
     };
     const company = companyById.get(row.company_id);
-    const client = clientById.get(row.client_id) ?? null;
+    const onFile = clientById.get(row.client_id) ?? null;
     if (!company) return null;
+    const client = onFile ? await withNumberStop(admin, company.id, onFile) : null;
     const settings = (company.settings ?? {}) as Record<string, unknown> & { review_url?: string };
     const timeZone = company.timezone || "UTC";
     if (!ready.has(company.id)) ready.set(company.id, await emailReady(env, company.id));

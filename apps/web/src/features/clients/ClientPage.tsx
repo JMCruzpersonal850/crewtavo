@@ -32,6 +32,7 @@ import { PropertyDialog, type AccessRow, type PropertyRow } from "./PropertyDial
 import { PropertyEquipment } from "./PropertyEquipment";
 import { RESET_LINKS_BODY, RESET_LINKS_LABEL, resetLinksPath } from "./resetLinks";
 import { MergeClientsDialog } from "./MergeClientsDialog";
+import { TextsSwitch, useTextStops } from "./TextsSwitch";
 import { Timeline } from "./Timeline";
 import { PhotosCard } from "../files/PhotosCard";
 import { socialKey } from "../marketing/socialData";
@@ -76,6 +77,8 @@ export function ClientPage() {
       ),
   });
   const c = client.data;
+  // Whether their number is on the stop list, and why, for the office's Texts switch.
+  const stopFor = useTextStops([c?.phone], isOffice);
   useRememberRecent(session.company.id, c ? { kind: "client", id: c.id, title: c.display_name, subtitle: c.properties[0] ? addressLine(c.properties[0]) : c.email ?? undefined, path: `/clients/${c.id}` } : null);
 
   const referrer = useQuery({
@@ -192,7 +195,7 @@ export function ClientPage() {
   if (client.error || !c) return <PageError error={client.error} onRetry={() => client.refetch()} back={<BackLink to="/clients">Clients</BackLink>} />;
 
   const unpaid = work.data?.invoices.filter((i) => ["sent", "partially_paid", "overdue"].includes(i.status)) ?? [];
-  const stopped = textsOff(c);
+  const stopped = textsOff(c) || Boolean(stopFor(c.phone));
   // The review asks offered are the ones that can go: not to a client who opted out or is archived,
   // nor by a way this Crewtavo can't send or the client can't get.
   const ready = { email: session.config.features.email, sms: session.config.features.sms };
@@ -441,7 +444,11 @@ export function ClientPage() {
             <dl className="kv">
               <dt>Email</dt><dd>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : "—"}</dd>
               <dt>Phone</dt><dd>{c.phone ? <a href={`tel:${c.phone}`}>{c.phone}</a> : "—"}</dd>
-              {c.sms_opt_out_at && <><dt>Texts</dt><dd>Off since {formatDate(c.sms_opt_out_at)}. They texted STOP, and can text START to turn texts back on.</dd></>}
+              {isOffice && c.phone ? (
+                <><dt>Texts</dt><dd><TextsSwitch clientId={c.id} name={c.display_name} phone={c.phone} stop={stopFor(c.phone)} since={c.sms_opt_out_at} /></dd></>
+              ) : c.sms_opt_out_at ? (
+                <><dt>Texts</dt><dd>Off since {formatDate(c.sms_opt_out_at)}. They asked not to be texted.</dd></>
+              ) : null}
               {owed > 0 && (
                 <>
                   <dt>Balance</dt>
@@ -508,7 +515,7 @@ export function ClientPage() {
             {canSell && contacts.data?.length === 0 && <AddContact clientId={c.id} />}
           </div>
           {seesMoney && autopayOn && <AutopayCard client={c} />}
-          <ContactsCard clientId={c.id} canEdit={canSell} />
+          <ContactsCard clientId={c.id} canEdit={canSell} canSetTexts={isOffice} />
         </aside>
       </div>
 

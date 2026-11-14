@@ -117,7 +117,7 @@ export function clientRecipients(channel: "email" | "sms", client: RecipientClie
 /** One line in the Send dialog: someone the quote or invoice can go to, and whether they start ticked. */
 export interface SendChoice extends Recipient {
   ticked: boolean;
-  /** Why they can't be picked (their number texted STOP), if they can't. */
+  /** Why they can't be picked (their number's texts are off), if they can't. */
   blocked?: string;
 }
 
@@ -135,7 +135,7 @@ export function sendChoices(channel: "email" | "sms", client: RecipientClient, c
   return everyone.map((r) => ({
     ...r,
     ticked: ticked.has(key(r.to)),
-    ...(channel === "sms" && stopped.has(key(r.to)) ? { blocked: "Texted STOP" } : {}),
+    ...(channel === "sms" && stopped.has(key(r.to)) ? { blocked: "Texts off" } : {}),
   }));
 }
 

@@ -4,10 +4,11 @@
  * contact's phone goes there too, and one from a number nobody knows is kept for the office to
  * attach to a client (services/inboundTexts.ts). A client who texts STOP has texts off
  * (clients.sms_opt_out_at) until they text START, and no number that texted STOP is texted
- * (sms_stops, services/textsOff.ts).
+ * (sms_stops, services/textsOff.ts). The office turns texts off, and back on, for someone who
+ * asked another way (POST /clients/:id/texts).
  */
-import { SALES } from "@crewtavo/core";
-import { smsKeyword } from "@crewtavo/core/marketing";
+import { OFFICE, SALES } from "@crewtavo/core";
+import { asksToStopTexts, smsKeyword, STOP_HOWS } from "@crewtavo/core/marketing";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
@@ -16,7 +17,7 @@ import { kickAutomations } from "../lib/background";
 import { requireCompany, requireUser } from "../lib/auth";
 import { safeEqual } from "../lib/crypto";
 import { isEmail, renderEmail } from "../lib/email";
-import { appUrl, dbError, HttpError, must, readJson, uuid } from "../lib/http";
+import { appUrl, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { sentToClient } from "../lib/links";
 import { sendEmail, sendSms } from "../lib/notify";
 import { inboundAccounts } from "../lib/twilio";
@@ -24,7 +25,7 @@ import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
 import { logoImage } from "../services/logo";
 import { receiveText } from "../services/inboundTexts";
-import { noteRefusedText, numberStopped, numberStoppedRefusal, phoneKey, textsOffRefusal, textsOffTo } from "../services/textsOff";
+import { noteRefusedText, numberStopped, numberStoppedRefusal, phoneKey, setTexts, TextsRefusal, textsOffRefusal, textsOffTo } from "../services/textsOff";
 
 export const messages = new Hono<AppEnv>();
 
@@ -75,6 +76,34 @@ messages.post("/messages/send", requireUser, requireCompany(SALES), async (c) =>
   return c.json({ id: row.id, sent: true, to });
 });
 
+/**
+ * The office's "Texts" switch on a client or one of their contacts (services/textsOff.ts setTexts):
+ * off for someone who asked by phone, by email, in person or in a text that wasn't the keyword,
+ * saying how they asked; back on only because they asked for that, and never over a STOP Twilio has.
+ * For owners, admins and the office. Recorded with who set it.
+ */
+messages.post("/clients/:id/texts", requireUser, requireCompany(OFFICE), async (c) => {
+  const clientId = param(c, "id");
+  const body = await readJson(
+    c,
+    z.object({
+      on: z.boolean(),
+      contact_id: uuid.optional(),
+      how: z.enum(STOP_HOWS).optional(),
+      note: z.string().trim().max(500).optional(),
+    }),
+  );
+  if (!body.on && !body.how) throw new HttpError(400, "Say how they asked for texts to stop.");
+  const admin = adminClient(c.env);
+  const { data: who } = await admin.from("profiles").select("full_name").eq("user_id", c.var.userId).maybeSingle();
+  try {
+    return c.json(await setTexts(admin, { companyId: c.var.companyId, clientId, contactId: body.contact_id ?? null, on: body.on, how: body.how ?? null, note: body.note ?? null, by: c.var.userId, byName: who?.full_name ?? null }));
+  } catch (error) {
+    if (error instanceof TextsRefusal) throw new HttpError(400, error.message);
+    throw error;
+  }
+});
+
 /** Twilio's request signature: base64(HMAC-SHA1(auth token, URL + sorted form params)). */
 export async function twilioSignature(token: string, url: string, params: Record<string, string>) {
   const data = url + Object.keys(params).sort().map((k) => k + params[k]).join("");
@@ -110,10 +139,14 @@ messages.post("/webhooks/twilio", async (c) => {
   if (!from || !body) return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
   // STOP or START: what Twilio itself acted on when it says (Advanced Opt-Out), else the words.
   const optOut = (form.OptOutType ?? "").toUpperCase();
-  const keyword = optOut === "STOP" ? "stop" : optOut === "START" ? "start" : optOut ? null : smsKeyword(body);
+  const word = optOut === "STOP" ? "stop" : optOut === "START" ? "start" : optOut ? null : smsKeyword(body);
+  // Not the keyword, but words that plainly ask to stop ("please stop texting me"): honoured as one.
+  // Twilio did nothing about it, so it's kept as a phrase, which the office can lift if they ask.
+  const phrase = !optOut && !word && asksToStopTexts(body);
+  const keyword = phrase ? "stop" : word;
   // Filed under the client or contact whose number it is, or kept as from an unknown number
   // (services/inboundTexts.ts), for the companies on the account that signed it.
-  const touched = await receiveText(admin, { from: form.From!, body, sid: form.MessageSid ?? null, keyword }, account.companies);
+  const touched = await receiveText(admin, { from: form.From!, body, sid: form.MessageSid ?? null, keyword, phrase }, account.companies);
   for (const company of touched) kickAutomations(c, company);
   return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
 });

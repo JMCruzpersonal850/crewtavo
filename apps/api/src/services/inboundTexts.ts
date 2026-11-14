@@ -15,6 +15,11 @@
  * client's own phone on the client too (clients.sms_opt_out_at). From a number nobody knows they
  * are honoured and not kept as a message.
  *
+ * Words that plainly ask to stop without being the keyword ("please stop texting me": `phrase`,
+ * core asksToStopTexts) turn texts off the same way. Twilio did nothing about those, so the stop is
+ * kept as a phrase with what was texted, the text is always filed where the office reads it (from a
+ * number nobody knows too), and the office is told what they wrote and that texts are off.
+ *
  * `companies` says which companies the text can be for: the ones on the Twilio account that signed
  * it. Null is the server's own number, which every company without its own account shares; there
  * a number nobody knows can only be filed when the instance has one company.
@@ -24,7 +29,7 @@
  */
 import { phoneMatchKey } from "@crewtavo/core/recipients";
 import type { Db } from "../lib/supabase";
-import { clearStop, noteStop, phoneKey } from "./textsOff";
+import { clearStop, noteStop, phoneKey, type StopDetails } from "./textsOff";
 
 export interface InboundText {
   /** The number as Twilio gave it ("+15405550163"). */
@@ -34,6 +39,8 @@ export interface InboundText {
   sid: string | null;
   /** STOP or START, when the text is one (what Twilio acted on, else the words). */
   keyword: "stop" | "start" | null;
+  /** The "stop" is words that ask for it, not the keyword itself: Twilio hasn't stopped the number. */
+  phrase?: boolean;
 }
 
 /** As many texts from one unknown number as a company keeps in a day, and from all unknown numbers. */
@@ -60,6 +67,10 @@ async function tellOffice(admin: Db, companyId: string, notice: Notice) {
 export async function receiveText(admin: Db, text: InboundText, companies: readonly string[] | null): Promise<string[]> {
   const from = phoneKey(text.from);
   const { body, keyword } = text;
+  const phrase = keyword === "stop" && text.phrase === true;
+  // How a stop is kept: the keyword, or the words they used instead.
+  const stopped: StopDetails = phrase ? { source: "phrase", how: "text", note: body } : { source: "keyword" };
+  const theirWords = `“${body.trim().slice(0, 160)}”`;
   // Match the sender by phone number (last 10 digits), across the companies the text can be for.
   let clientRows = admin.from("clients").select("id, company_id, phone, display_name").not("phone", "is", null).ilike("phone", `%${from.slice(-4)}%`);
   let contactRows = admin.from("client_contacts").select("id, company_id, client_id, name, phone").not("phone", "is", null).ilike("phone", `%${from.slice(-4)}%`);
@@ -84,13 +95,15 @@ export async function receiveText(admin: Db, text: InboundText, companies: reado
       const { data } = await admin.from("clients").update({ sms_opt_out_at: new Date().toISOString() }).eq("id", client.id).is("sms_opt_out_at", null).select("id");
       changed = Boolean(data?.length);
       // The number itself, too: a contact kept under it isn't texted either (sms_stops).
-      await noteStop(admin, client.company_id, text.from);
+      await noteStop(admin, client.company_id, text.from, stopped);
     } else if (keyword === "start") {
       const { data } = await admin.from("clients").update({ sms_opt_out_at: null }).eq("id", client.id).not("sms_opt_out_at", "is", null).select("id");
       changed = Boolean(data?.length);
       await clearStop(admin, client.company_id, text.from);
     }
-    const notice = changed && keyword === "stop"
+    const notice = changed && phrase
+      ? { title: `${client.display_name} asked to stop texts`, body: `They texted ${theirWords}, so Crewtavo won't text them. If that isn't what they meant, you can turn texts back on from their page, only if they ask.` }
+      : changed && keyword === "stop"
       ? { title: `${client.display_name} turned off texts`, body: "They texted STOP. Crewtavo won't text them until they text START." }
       : changed
         ? { title: `${client.display_name} turned texts back on`, body: `They texted ${body.trim().slice(0, 20).toUpperCase()}, so Crewtavo can text them again.` }
@@ -118,10 +131,12 @@ export async function receiveText(admin: Db, text: InboundText, companies: reado
     });
     // STOP or START is about the number, once for the company; the office hears once too.
     let changed = false;
-    if (first && keyword === "stop") changed = await noteStop(admin, contact.company_id, text.from);
+    if (first && keyword === "stop") changed = await noteStop(admin, contact.company_id, text.from, stopped);
     else if (first && keyword === "start") changed = await clearStop(admin, contact.company_id, text.from);
     else if (keyword) continue;
-    const notice = changed && keyword === "stop"
+    const notice = changed && phrase
+      ? { title: `${contact.name} asked to stop texts`, body: `They texted ${theirWords} from ${text.from}, so Crewtavo won't text that number. If that isn't what they meant, you can turn its texts back on from the client's page, only if they ask.` }
+      : changed && keyword === "stop"
       ? { title: `${contact.name} turned off texts`, body: `They texted STOP from ${text.from}. Crewtavo won't text that number until they text START.` }
       : changed
         ? { title: `${contact.name} turned texts back on`, body: `They texted ${body.trim().slice(0, 20).toUpperCase()} from ${text.from}, so Crewtavo can text that number again.` }
@@ -134,8 +149,9 @@ export async function receiveText(admin: Db, text: InboundText, companies: reado
   if (keyword) {
     // Honoured for the number, for every company it could have been texting.
     const all = companies ?? ((await admin.from("companies").select("id").limit(SHARED_COMPANIES)).data ?? []).map((row) => row.id);
-    for (const company of all) await (keyword === "stop" ? noteStop(admin, company, text.from) : clearStop(admin, company, text.from));
-    return [];
+    for (const company of all) await (keyword === "stop" ? noteStop(admin, company, text.from, stopped) : clearStop(admin, company, text.from));
+    // The keyword isn't a message. Words that ask to stop are, so the office can read what came.
+    if (!phrase) return [];
   }
   const company = await unknownsCompany(admin, companies);
   if (!company) {
@@ -157,7 +173,8 @@ export async function receiveText(admin: Db, text: InboundText, companies: reado
   const { error } = await admin.from("unknown_texts").insert({ company_id: company, from_phone: text.from.slice(0, 40), phone_key: key, body, external_id: text.sid });
   if (error) throw new Error(`Couldn't keep a text from an unknown number: ${error.message}`);
   // Once an hour for a number, however much it texts.
-  if (!lastHour) await tellOffice(admin, company, { title: "New text from an unknown number", body: `${text.from}: ${body.slice(0, 180)}`, link: `/messages?unknown=${key}` });
+  if (phrase) await tellOffice(admin, company, { title: "An unknown number asked to stop texts", body: `${text.from} texted ${theirWords}, so Crewtavo won't text it.`, link: `/messages?unknown=${key}` });
+  else if (!lastHour) await tellOffice(admin, company, { title: "New text from an unknown number", body: `${text.from}: ${body.slice(0, 180)}`, link: `/messages?unknown=${key}` });
   return [];
 }
 

@@ -905,7 +905,7 @@ describe("autopay invites", () => {
   it("doesn't text a client who texted STOP, and keeps it when Twilio says they did", async () => {
     const db = world();
     db.tables.clients!.find((c) => c.id === SAM)!.sms_opt_out_at = "2026-10-01T12:00:00.000Z";
-    expect(await invite(db, { clientId: SAM, channel: "sms" })).toEqual({ sent: false, detail: "Skipped: Sam Ortiz texted STOP, so texts to them are off." });
+    expect(await invite(db, { clientId: SAM, channel: "sms" })).toEqual({ sent: false, detail: "Skipped: Sam Ortiz asked not to be texted, so texts to them are off." });
     expect(m.sendSms).not.toHaveBeenCalled();
     // Twilio refusing a number that texted STOP: the client is marked, so nothing texts them again.
     const fresh = world();

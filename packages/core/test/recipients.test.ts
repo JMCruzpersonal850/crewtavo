@@ -116,9 +116,9 @@ describe("the Send dialog's choices", () => {
   it("shows a number that texted STOP, unticked and marked", () => {
     const stopped = { ...client, sms_opt_out_at: "2026-11-01T12:00:00Z" };
     expect(sendChoices("sms", stopped, [mo, sam], { contactsOn: true, stopped: [phoneMatchKey(sam.phone)] })).toEqual([
-      { to: "(540) 555-0111", name: "Pat Lee", contact_id: null, ticked: false, blocked: "Texted STOP" },
+      { to: "(540) 555-0111", name: "Pat Lee", contact_id: null, ticked: false, blocked: "Texts off" },
       { to: "540-555-0122", name: "Mo Manager", contact_id: "Mo Manager", ticked: true },
-      { to: "+1 540 555 0133", name: "Sam Spouse", contact_id: "Sam Spouse", ticked: false, blocked: "Texted STOP" },
+      { to: "+1 540 555 0133", name: "Sam Spouse", contact_id: "Sam Spouse", ticked: false, blocked: "Texts off" },
     ]);
   });
 });

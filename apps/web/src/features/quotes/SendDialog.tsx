@@ -44,7 +44,7 @@ export function SendDialog({
   number?: number | null;
   email: string | null;
   phone: string | null;
-  /** When the client texted STOP: Crewtavo doesn't text their number, though another one can be texted. */
+  /** When the client's texts went off: Crewtavo doesn't text their number, though another one can be texted. */
   textsOffSince?: string | null;
   onClose: () => void;
   onSent?: () => void;
@@ -135,7 +135,7 @@ export function SendDialog({
             <button type="button" aria-pressed={channel === "sms"} onClick={() => setChannel("sms")}>{t("Text")}</button>
             <button type="button" aria-pressed={channel === "link"} onClick={() => setChannel("link")}>{t("Copy link")}</button>
           </div>
-          {textsOffSince && <p className="muted small" style={{ margin: 0 }}>{t("They texted STOP, so their own number can't be texted. You can text a different one.")}</p>}
+          {textsOffSince && <p className="muted small" style={{ margin: 0 }}>{t("Their texts are off, so their own number can't be texted. You can text a different one.")}</p>}
           {unavailable && (
             <div className="callout callout-info">
               <Icon name="info" size={20} />

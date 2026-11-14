@@ -32,6 +32,9 @@ import {
   rescheduledReminder,
   reviewSettings,
   smsKeyword,
+  asksToStopTexts,
+  textsOffWhy,
+  twilioHasStop,
   textsOff,
   EMAIL_NOT_CONNECTED,
   TEXTS_NOT_SET_UP,
@@ -180,12 +183,12 @@ describe("channels for a first ask", () => {
   });
 
   it("says why when nothing can go", () => {
-    expect(askChannels("sms", reach({ textsOff: true }), false)).toEqual({ send: [], skip: "Ana texted STOP, so texts to them are off." });
+    expect(askChannels("sms", reach({ textsOff: true }), false)).toEqual({ send: [], skip: "Ana asked not to be texted, so texts to them are off." });
     expect(askChannels("sms", reach({ hasPhone: false }), false).skip).toBe("Ana has no phone number.");
     expect(askChannels("email", reach({ hasEmail: false }), false).skip).toBe("Ana has no email address.");
     expect(askChannels("email", reach({ emailReady: false }), false)).toMatchObject({ send: [], setup: true });
     expect(askChannels("both", reach({ hasEmail: false, hasPhone: false }), false).skip).toBe("Ana has no email address or phone number.");
-    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), true).skip).toBe("Ana texted STOP, so texts to them are off.");
+    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), true).skip).toBe("Ana asked not to be texted, so texts to them are off.");
     expect(askChannels("email", reach({ hasEmail: false }), true).skip).toBe("Ana has no email address.");
     expect(askChannels("sms", reach({ smsReady: false }), false)).toEqual({ send: [], skip: TEXTS_NOT_SET_UP, setup: true });
   });
@@ -195,7 +198,7 @@ describe("channels for a first ask", () => {
     expect(askChannels("both", reach({ textsOff: true, emailReady: false }), false)).toEqual({ send: [], skip: EMAIL_NOT_CONNECTED, setup: true });
     expect(askChannels("both", reach({ smsReady: false, emailReady: false }), false)).toEqual({ send: [], skip: EMAIL_NOT_CONNECTED, setup: true });
     // With no address, the text's reason.
-    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), false).skip).toBe("Ana texted STOP, so texts to them are off.");
+    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), false).skip).toBe("Ana asked not to be texted, so texts to them are off.");
     expect(askChannels("both", reach({ hasEmail: false, smsReady: false }), false)).toEqual({ send: [], skip: TEXTS_NOT_SET_UP, setup: true });
   });
 
@@ -229,7 +232,7 @@ describe("who's asked by hand", () => {
   it("by a way that reaches them, right away", () => {
     expect(askRefusal(ana, "sms", ready)).toBeNull();
     expect(askRefusal(ana, "sms", { email: true, sms: false })).toBe(TEXTS_NOT_SET_UP);
-    expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "sms", ready)).toBe("Ana texted STOP, so texts to them are off.");
+    expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "sms", ready)).toBe("Ana asked not to be texted, so texts to them are off.");
     expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "both", ready)).toBeNull();
     expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "both", { email: false, sms: true })).toBe(EMAIL_NOT_CONNECTED);
     expect(askRefusal({ ...ana, email: "not an address" }, "email", ready)).toBe("Ana has no email address.");
@@ -452,6 +455,53 @@ describe("texts from clients", () => {
       ["STOP STOP", null], ["ſtop", null], ["¡STOP", null], ["stöp", null], ["stop2", null], ["OPT\u00a0OUT", null], ["\u00a0STOP", null], ["", null],
     ];
     for (const [body, word] of cases) expect(smsKeyword(body), JSON.stringify(body)).toBe(word);
+  });
+});
+
+describe("a text that asks for texts to stop without the keyword", () => {
+  it("is read as that when it's short and is, or opens with, the ask", () => {
+    const asks = [
+      "stop texting me", "Please stop texting me.", "STOP TEXTING ME!!!", "Stop. Texting. Me.", "pls stop texting", "can you stop texting me", "Could you please stop messaging me?",
+      "please stop", "Stop please", "stop it", "Please stop. Thank you", "unsubscribe me", "Please unsubscribe me from these texts", "unsubscribe please", "no more texts", "No more messages please",
+      "No texts please", "don't text me", "Don’t text me again", "do not text this number", "Do not contact me", "quit texting me", "remove me from your list", "Please remove my number", "take me off your list",
+      "opt me out", "I want to opt out", "I'd like to unsubscribe", "stop sending me texts", "Stop the texts", "stop these messages", "Stop texting me, I sold the house", "i want you to stop texting me",
+    ];
+    for (const body of asks) expect(asksToStopTexts(body), body).toBe(true);
+  });
+
+  it("leaves anything else as an ordinary message", () => {
+    const ordinary = [
+      "Please stop by tomorrow", "can you stop by at 3", "stop by", "Don't stop texting me updates, they help", "Stop at the gate and text me", "No message from you yesterday, are we still on?",
+      "I can't stop thinking about the new deck", "Please stop mowing so early", "stop the mowing service", "Stop texting my husband, text me instead", "Tell the crew to stop texting me", "Why did you stop texting me?",
+      "Please cancel", "remove the old shrubs please", "Take me off Tuesday, I'm away", "No text needed, just come by", "ok", "", null,
+      // Too long to be only that: the office reads it.
+      "Stop texting me about the invoice because I already paid it last week by check and your office confirmed it on the phone",
+    ];
+    for (const body of ordinary) expect(asksToStopTexts(body), String(body)).toBe(false);
+  });
+});
+
+describe("why a number's texts are off, as the office reads it", () => {
+  const stop = (over: Partial<Parameters<typeof textsOffWhy>[0] & object> = {}) => ({ source: "office", how: "phone", note: null, set_by_name: "Dana Office", ...over });
+
+  it("says who turned them off and how they were asked", () => {
+    expect(textsOffWhy(stop())).toBe("Turned off by Dana Office: they asked by phone.");
+    expect(textsOffWhy(stop({ how: "in_person", note: "At the Tuesday visit" }))).toBe("Turned off by Dana Office: they asked in person. At the Tuesday visit");
+    expect(textsOffWhy(stop({ how: "other", set_by_name: null }))).toBe("Turned off by the office: they asked.");
+  });
+
+  it("shows the words that asked to stop", () => {
+    expect(textsOffWhy(stop({ source: "phrase", how: "text", note: "please stop texting me", set_by_name: null }))).toBe("They texted “please stop texting me”.");
+  });
+
+  it("says a STOP is Twilio's to lift, which the office's own stops aren't", () => {
+    for (const source of ["keyword", "carrier", null]) {
+      expect(twilioHasStop(source), String(source)).toBe(true);
+      expect(textsOffWhy(stop({ source })), String(source)).toBe("They texted STOP. Twilio won't deliver texts to this number until they text START, so it can't be turned back on here.");
+    }
+    for (const source of ["office", "phrase"]) expect(twilioHasStop(source), source).toBe(false);
+    // Marked on the client alone (a merge, a number changed since): the office can turn it back on.
+    expect(textsOffWhy(null)).toBe("Turned off for this client.");
   });
 });
 

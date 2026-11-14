@@ -101,7 +101,7 @@ describe("sending an invoice with nobody named", () => {
     expect(await refusal(deliver(scope({}, bare), "invoice", { ...invoice, client: bare }, sendSchema.parse({ channel: "sms" })))).toEqual([400, "This client has no phone number."]);
     // Their phone texted STOP, and nobody else is ticked for texts.
     const stopped = { ...client, sms_opt_out_at: "2026-11-01T12:00:00Z" };
-    expect(await refusal(deliver(scope({}, stopped), "invoice", { ...invoice, client: stopped }, sendSchema.parse({ channel: "sms" })))).toEqual([400, "Pat Lee texted STOP, so texts to them are off. Send it by email instead."]);
+    expect(await refusal(deliver(scope({}, stopped), "invoice", { ...invoice, client: stopped }, sendSchema.parse({ channel: "sms" })))).toEqual([400, "Pat Lee asked not to be texted, so texts to them are off. Send it by email instead."]);
     expect(emails).toEqual([]);
     expect(texts).toEqual([]);
   });
@@ -148,11 +148,11 @@ describe("sending to the people named", () => {
   it("never texts a number that texted STOP, the client's own or anyone's", async () => {
     const stopped = { ...client, sms_opt_out_at: "2026-11-01T12:00:00Z" };
     expect(await refusal(deliver(scope({}, stopped), "invoice", { ...invoice, client: stopped }, sendSchema.parse({ channel: "sms", recipients: ["540-555-0122", "+1 540 555 0111"] })))).toEqual([
-      400, "Pat Lee texted STOP, so texts to them are off. Send it by email instead.",
+      400, "Pat Lee asked not to be texted, so texts to them are off. Send it by email instead.",
     ]);
     server.tables = { client_contacts: contacts, sms_stops: [{ phone_key: "5405550133" }] };
     expect(await refusal(deliver(scope(), "invoice", invoice, sendSchema.parse({ channel: "sms", recipients: ["(540) 555-0111", "540-555-0133"] })))).toEqual([
-      400, "540-555-0133 texted STOP, so Crewtavo can't text it until they text START.",
+      400, "540-555-0133 asked not to be texted, so Crewtavo can't text it.",
     ]);
     expect(texts).toEqual([]);
   });
@@ -178,7 +178,7 @@ describe("who the Send dialog offers", () => {
     server.tables = { client_contacts: contacts, sms_stops: [{ phone_key: "5405550122" }] };
     const offered = await sendChoicesOf(scope(), "invoice", "inv-1");
     expect(offered.email.map((c) => [c.name, c.to, c.ticked])).toEqual([["Pat Lee", "pat@example.com", true], ["Mo Manager", "mo@example.com", true], ["Sam Spouse", "sam@example.com", false]]);
-    expect(offered.sms.map((c) => [c.name, c.ticked, c.blocked ?? null])).toEqual([["Pat Lee", true, null], ["Mo Manager", false, "Texted STOP"], ["Sam Spouse", false, null]]);
+    expect(offered.sms.map((c) => [c.name, c.ticked, c.blocked ?? null])).toEqual([["Pat Lee", true, null], ["Mo Manager", false, "Texts off"], ["Sam Spouse", false, null]]);
     expect(offered).toMatchObject({ contacts_on: true, max: 10 });
   });
 });
