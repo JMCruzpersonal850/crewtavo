@@ -241,8 +241,9 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
       the original is kept), materials used and a crew clock. The clock
       runs for visits only, or for the whole day with the driving between visits on it: your
       choice. Turn it on and the phone reminds the crew to start and finish a visit as they get to
-      the property and leave, or starts and stops their clock there itself, while Crewtavo is open
-      on the phone. It installs like an app on Android and iPhone, keeps working with no signal and
+      the property and leave, or starts their clock there itself and moves it to driving as they
+      leave, while Crewtavo is open on the phone. It never takes anyone off the clock by itself: on
+      the visits-only clock it asks first. It installs like an app on Android and iPhone, keeps working with no signal and
       catches up when the connection is back. Each crew member can use it in Spanish: their day,
       the clock, chat, guides, timesheets and the notifications they get, while the office stays in
       English.</p>

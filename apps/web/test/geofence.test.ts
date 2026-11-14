@@ -310,7 +310,6 @@ describe("what it says and asks", () => {
 
   it("says what the phone did by itself", () => {
     expect(actionWords({ kind: "start-clock", visitId: "v1", at: 0 }, "12 Oak St")).toBe("Clock started at 12 Oak St");
-    expect(actionWords({ kind: "stop-clock", visitId: "v1", at: 0, travel: false }, "12 Oak St")).toBe("Clock stopped as you left 12 Oak St");
     expect(actionWords({ kind: "stop-clock", visitId: "v1", at: 0, travel: true }, "12 Oak St")).toBe("You left 12 Oak St, so your clock is on driving");
     expect(actionWords({ kind: "ask-start", visitId: "v1", clockOnly: false }, "12 Oak St")).toBeNull();
   });
@@ -334,9 +333,28 @@ describe("what the crew is told on My day", () => {
   it("says the clock starts when Crewtavo is open at the property, not when they pull in", async () => {
     const { readFileSync } = await import("node:fs");
     const card = readFileSync(new URL("../src/features/field/GeofenceCard.tsx", import.meta.url), "utf8");
-    expect(card).toContain("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in, and stops once it sees you've left.");
+    expect(card).toContain("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in.");
     expect(card).toContain("It can't tell while the phone is locked.");
     expect(card).not.toContain("Your clock starts when you get to a visit");
+  });
+});
+
+describe("leaving, on the visits-only clock", () => {
+  it("tells the crew the phone asks and never stops their clock by itself, and that the whole-day clock goes to driving", async () => {
+    const { readFileSync } = await import("node:fs");
+    const card = readFileSync(new URL("../src/features/field/GeofenceCard.tsx", import.meta.url), "utf8");
+    expect(card).toContain("It never stops your clock by itself: once it sees you've left, it asks you.");
+    expect(card).toContain("Once it sees you've left, it moves your clock to driving.");
+    expect(card).not.toContain("and stops once it sees you've left");
+  });
+
+  it("has no words for a clock the phone stopped, and no way to send one: leaving only ever moves it to driving", async () => {
+    const { readFileSync } = await import("node:fs");
+    const code = readFileSync(new URL("../src/features/field/geofence.ts", import.meta.url), "utf8");
+    expect(code).not.toContain("Clock stopped as you left");
+    // The geofence's own tap: a start goes onto the visit, anything else onto driving, never to nothing.
+    expect(code).toContain(': { category: "drive" };');
+    expect(code).not.toMatch(/action\.travel \? \{ category: "drive" \} : null/);
   });
 });
 

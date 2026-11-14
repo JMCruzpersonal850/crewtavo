@@ -7,7 +7,8 @@
  *     while they have a visit today with a point on the map that isn't finished. A web page can't
  *     watch the position in the background: phones pause it, and it catches up when it's opened.
  *   - It looks every half minute or so near a property, less often and less precisely far away.
- *   - The position stays on the phone. A clock the geofence starts or stops goes through the same
+ *   - The position stays on the phone. A clock the geofence starts, or moves to driving as they
+ *     leave (the whole-day clock only: it never takes anyone off the clock), goes through the same
  *     offline-safe tap as the clock card's (clockTaps.ts, fieldActions.setClock), marked as the
  *     geofence's, and carries where the phone was only when the company keeps that.
  *   - What it asks ("You're at 12 Oak St. Start the visit?") waits on the screen (GeofenceCard),
@@ -215,7 +216,8 @@ export function tappedVisits(change: ClockChange, userId: string, running: Pick<
 /** "Clock started at 12 Oak St" and the like: what the phone did by itself, said as it happens. */
 export function actionWords(action: GeofenceAction, place: string): string | null {
   if (action.kind === "start-clock") return t("Clock started at {place}", { place });
-  if (action.kind === "stop-clock") return action.travel ? t("You left {place}, so your clock is on driving", { place }) : t("Clock stopped as you left {place}", { place });
+  // Leaving only ever moves the clock onto driving (core geofence: never off the clock by itself).
+  if (action.kind === "stop-clock") return t("You left {place}, so your clock is on driving", { place });
   return null;
 }
 
@@ -373,7 +375,7 @@ export function useGeofence(): { mode: "off" | "remind" | "clock"; watching: boo
         // Where the phone was, only where the company keeps that; six places is about 10 cm.
         const where: ClockPlace | undefined = recordsPlaces(s.company) ? { lat: Number(fix.lat.toFixed(6)), lng: Number(fix.lng.toFixed(6)), accuracy: Math.round(fix.accuracy) } : undefined;
         const target: ClockTarget | null =
-          action.kind === "start-clock" ? { category: "visit", visit: { id: visit.id, jobId: visit.job?.id ?? null, title: visit.title } } : action.travel ? { category: "drive" } : null;
+          action.kind === "start-clock" ? { category: "visit", visit: { id: visit.id, jobId: visit.job?.id ?? null, title: visit.title } } : { category: "drive" };
         const change: ClockChange = { ...clockChange(s, [s.userId], target, where, new Date(action.at).toISOString()), geofence: true, ...(action.kind === "stop-clock" && { fromVisit: visit.id }) };
         send(change);
         const words = actionWords(action, place)!;

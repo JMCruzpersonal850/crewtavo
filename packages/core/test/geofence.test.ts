@@ -77,6 +77,14 @@ describe("what the office is told under the setting", () => {
     // And what the phone won't do by itself.
     expect(GEOFENCE_MODE_HINTS.clock).toContain("never moves a running clock from one visit to another by itself");
   });
+
+  it("says the phone never takes anyone off the clock by itself, and what leaving does on each clock", () => {
+    expect(GEOFENCE_MODE_HINTS.clock).toContain("The phone never takes anyone off the clock by itself");
+    expect(GEOFENCE_MODE_HINTS.clock).toContain('on the "Whole day" clock it moves their clock to driving, which is still paid time');
+    expect(GEOFENCE_MODE_HINTS.clock).toContain('on the "Visits only" clock it asks "Stop your clock?" and the clock keeps running until they answer');
+    // The old promise, which took the drive to the next site off a visits-only clock.
+    expect(GEOFENCE_MODE_HINTS.clock).not.toContain("stops it when it notices they've left");
+  });
 });
 
 describe("arriving", () => {
@@ -340,15 +348,35 @@ describe("what to do", () => {
       ]);
     });
 
-    it("stops their clock on the visit as they leave, and asks them to complete it", () => {
+    it("never stops a visits-only clock as they leave: it asks, and the clock runs on (the drive to the next site is working time)", () => {
       expect(geofenceActions([left()], ctx({ sites: [{ ...OAK, status: "in_progress" }], clock: { category: "visit", visitId: "oak" } }))).toEqual([
-        { kind: "stop-clock", visitId: "oak", at: T0 + 60 * min, travel: false },
+        { kind: "ask-finish", visitId: "oak", complete: true, stopClock: true },
+      ]);
+      // A visit that isn't in progress (a crewmate's, or one not started): still only the question.
+      expect(geofenceActions([left()], ctx({ clock: { category: "visit", visitId: "oak" } }))).toEqual([{ kind: "ask-finish", visitId: "oak", complete: false, stopClock: true }]);
+    });
+
+    it("moves it to travel on the whole-day clock, and asks them to complete the visit", () => {
+      expect(geofenceActions([left()], ctx({ day: true, clock: { category: "visit", visitId: "oak" } }))).toEqual([{ kind: "stop-clock", visitId: "oak", at: T0 + 60 * min, travel: true }]);
+      expect(geofenceActions([left()], ctx({ day: true, sites: [{ ...OAK, status: "in_progress" }], clock: { category: "visit", visitId: "oak" } }))).toEqual([
+        { kind: "stop-clock", visitId: "oak", at: T0 + 60 * min, travel: true },
         { kind: "ask-finish", visitId: "oak", complete: true, stopClock: false },
       ]);
     });
 
-    it("moves it to travel on the whole-day clock", () => {
-      expect(geofenceActions([left()], ctx({ day: true, clock: { category: "visit", visitId: "oak" } }))).toEqual([{ kind: "stop-clock", visitId: "oak", at: T0 + 60 * min, travel: true }]);
+    it("never takes anyone off the clock, whatever the clock, the visit's status or what else the fix shows", () => {
+      const clock = { category: "visit", visitId: "oak" };
+      for (const day of [false, true]) {
+        for (const status of ["scheduled", "en_route", "in_progress"]) {
+          for (const events of [[left()], [left(), arrived("elm")], [arrived("elm"), left()]]) {
+            const actions = geofenceActions(events, ctx({ day, sites: [{ ...OAK, status }, ELM], clock, now: T0 + 70 * min, here: [{ visitId: "elm", since: T0, tapped: false, inNow: true, held: false }] }));
+            // The only thing that changes a running clock is a move onto travel, and only on the whole-day clock.
+            for (const a of actions) if (a.kind === "stop-clock") expect(day && a.travel).toBe(true);
+            expect(actions.some((a) => a.kind === "stop-clock")).toBe(day);
+            if (!day) expect(actions.some((a) => a.kind === "start-clock")).toBe(false);
+          }
+        }
+      }
     });
 
     it("leaves a clock that isn't on the visit as it is (a break, the next visit, driving)", () => {
@@ -377,12 +405,20 @@ describe("what to do", () => {
       ]);
     });
 
-    it("stops the clock at the last property before starting it at the next, from one fix", () => {
+    it("moves the clock to travel at the last property before starting it at the next, from one fix (the whole-day clock)", () => {
       const sites = [{ ...OAK, status: "in_progress" }, ELM];
-      expect(geofenceActions([arrived("elm"), left("oak")], ctx({ sites, clock: { category: "visit", visitId: "oak" } }))).toEqual([
-        { kind: "stop-clock", visitId: "oak", at: T0 + 60 * min, travel: false },
+      expect(geofenceActions([arrived("elm"), left("oak")], ctx({ day: true, sites, clock: { category: "visit", visitId: "oak" } }))).toEqual([
+        { kind: "stop-clock", visitId: "oak", at: T0 + 60 * min, travel: true },
         { kind: "ask-finish", visitId: "oak", complete: true, stopClock: false },
         { kind: "start-clock", visitId: "elm", at: T0 },
+        { kind: "ask-start", visitId: "elm", clockOnly: false },
+      ]);
+    });
+
+    it("on the visits-only clock, asks about both from one fix and moves nothing: the clock stays on the visit they left", () => {
+      const sites = [{ ...OAK, status: "in_progress" }, ELM];
+      expect(geofenceActions([arrived("elm"), left("oak")], ctx({ sites, clock: { category: "visit", visitId: "oak" } }))).toEqual([
+        { kind: "ask-finish", visitId: "oak", complete: true, stopClock: true },
         { kind: "ask-start", visitId: "elm", clockOnly: false },
       ]);
     });
@@ -409,32 +445,41 @@ describe("a day, fix by fix (geofenceStep)", () => {
     return { state, done };
   }
 
-  it("leaves the clock on the last visit when they turn up at the next with it still running, and moves it once it's sure they left", () => {
-    // Clock on Oak (in progress). They drive to Elm with the phone locked and open Crewtavo there at minute 30.
+  /** Clock on Oak (in progress). They drive to Elm with the phone locked and open Crewtavo there at minute 30. The phone does what it decides. */
+  function driveToElm(dayClock: boolean) {
     const oak = { ...OAK, status: "in_progress" };
     const atOak = run([fix(10, 0), fix(10, 1)], [oak, ELM]).state;
     const fixes = [fix(elmNorth, 30), fix(elmNorth + 5, 30.4), fix(elmNorth, 31), fix(elmNorth + 3, 32), fix(elmNorth, 33.1)];
-    // The phone does what it decides: their clock is on Oak until it stops it there.
     let clock: Ctx["clock"] = { category: "visit", visitId: "oak" };
     let state = atOak;
     const done: string[] = [];
     for (const f of fixes) {
-      const out = geofenceStep(state, f, 200, ctx({ sites: [oak, ELM], clock }));
+      const out = geofenceStep(state, f, 200, ctx({ day: dayClock, sites: [oak, ELM], clock }));
       state = out.state;
       for (const a of out.actions) {
-        done.push(`${(f.at - T0) / min} ${a.kind} ${a.visitId}${"at" in a ? ` @${(a.at - T0) / min}` : ""}`);
-        if (a.kind === "stop-clock") clock = null;
+        done.push(`${(f.at - T0) / min} ${a.kind} ${a.visitId}${"at" in a ? ` @${(a.at - T0) / min}` : ""}${a.kind === "ask-finish" && a.stopClock ? " stop?" : ""}`);
+        if (a.kind === "stop-clock") clock = { category: "drive", visitId: null };
         if (a.kind === "start-clock") clock = { category: "visit", visitId: a.visitId };
       }
     }
-    expect(done).toEqual([
+    return { done, clock };
+  }
+
+  it("leaves the clock on the last visit when they turn up at the next with it still running, and moves it once it's sure they left (the whole-day clock)", () => {
+    expect(driveToElm(true).done).toEqual([
       // At Elm: asked, and Oak's clock is left alone (it used to jump to Elm here).
       "30.4 ask-start elm",
-      // Three minutes on, surely gone from Oak: stopped there, dated when they were first seen away, and started at Elm from then.
+      // Three minutes on, surely gone from Oak: onto travel there, dated when they were first seen away, and started at Elm from then.
       "33.1 stop-clock oak @30",
       "33.1 ask-finish oak",
       "33.1 start-clock elm @30",
     ]);
+  });
+
+  it("on the visits-only clock the same drive only asks: nothing comes off the clock, and it's still running on the visit they left", () => {
+    const { done, clock } = driveToElm(false);
+    expect(done).toEqual(["30.4 ask-start elm", "33.1 ask-finish oak stop?"]);
+    expect(clock).toEqual({ category: "visit", visitId: "oak" });
   });
 
   it("doesn't start a clock at a property they're only passing as the one behind is confirmed left", () => {
@@ -443,7 +488,7 @@ describe("a day, fix by fix (geofenceStep)", () => {
     const pineNorth = (pine.lat - 40) * M_PER_DEG;
     const atOak = run([fix(10, 0), fix(10, 1)], [oak, ELM, pine]).state;
     // Away from Oak at minute 30, through Pine's circle (a later visit) a minute on, and out the other side.
-    const { done } = day([fix(900, 30), fix(pineNorth - 20, 31), fix(pineNorth + 20, 31.4), fix(pineNorth + 900, 32), fix(pineNorth + 1500, 33.2)], () => ({ sites: [oak, ELM, pine], clock: { category: "visit", visitId: "oak" } }), atOak);
+    const { done } = day([fix(900, 30), fix(pineNorth - 20, 31), fix(pineNorth + 20, 31.4), fix(pineNorth + 900, 32), fix(pineNorth + 1500, 33.2)], () => ({ day: true, sites: [oak, ELM, pine], clock: { category: "visit", visitId: "oak" } }), atOak);
     expect(done).toEqual([
       [31.4, "ask-start", "pine", undefined],
       [33.2, "stop-clock", "oak", 30],

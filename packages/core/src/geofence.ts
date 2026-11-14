@@ -1,7 +1,8 @@
 /**
  * The clock at the property (settings.clock.geofence; Settings → Company → Time clock): the phone
  * notices when the person arrives at a visit's property and when they leave it, and either asks
- * them (remind) or starts and stops their clock itself (clock), as their own tap would.
+ * them (remind) or starts their clock itself and, on the whole-day clock, moves it to travel as
+ * they leave (clock), as their own tap would.
  *
  * Crewtavo is a web app, so the phone only says where it is while Crewtavo is open on it: phones
  * pause a web page in the background. Everything here is pure (fixes in, what to do out) so the
@@ -20,12 +21,18 @@
  *   Taps win   A tap the person makes on a visit while there (Start, Stop, a timer, Complete) means
  *              they're running their own clock: the geofence only asks, for that visit, until they
  *              leave and come back.
+ *   Never off  The phone never takes anyone off the clock by itself. Travel from one job site to
+ *              the next during the day is working time (29 CFR 785.38), and so is a run to the
+ *              supplier mid-job, and the phone can't tell those from going home. On the whole-day
+ *              clock, leaving moves their clock onto travel, which is paid. On the visits-only
+ *              clock there is no travel to move it onto, so it asks "Stop your clock?" and the
+ *              clock runs on until they answer.
  *   One clock  The phone starts a clock by itself only when theirs is off or on driving, and only
  *              at their next visit (or one already under way, or that they're on their way to).
  *              It never moves a clock that's running on one visit, the shop or anything else onto
  *              another visit: it asks. Once it's sure they left the visit their clock was on and
- *              stops it there, and they've been at another visit's property a couple of minutes,
- *              it starts their clock on that one.
+ *              has moved it to travel there (the whole-day clock), and they've been at another
+ *              visit's property a couple of minutes, it starts their clock on that one.
  *   One at a   Two visits at one address, or with circles that overlap: one is put to the person,
  *   time       and the other waits until that question is answered or dismissed, then gets its own.
  *
@@ -46,7 +53,8 @@ export const GEOFENCE_MODE_LABELS: Record<GeofenceMode, string> = {
 export const GEOFENCE_MODE_HINTS: Record<GeofenceMode, string> = {
   off: "The clock starts and stops only when someone taps.",
   remind: "When someone's phone notices them at a visit's property, it asks them to start the visit; when it notices they've left, to complete it or stop their clock.",
-  clock: "When someone's phone notices them at their next visit's property, it starts their clock if it's off or on driving, and stops it when it notices they've left. It never moves a running clock from one visit to another by itself: it asks. They're still asked to start and complete the visit.",
+  clock:
+    "When someone's phone notices them at their next visit's property, it starts their clock if it's off or on driving. The phone never takes anyone off the clock by itself. When it notices they've left: on the \"Whole day\" clock it moves their clock to driving, which is still paid time; on the \"Visits only\" clock it asks \"Stop your clock?\" and the clock keeps running until they answer. It never moves a running clock from one visit to another by itself: it asks. They're still asked to start and complete the visit.",
 };
 
 /** Said with either choice that's on: what a web app can and can't do, and what that does to the times. */
@@ -251,8 +259,12 @@ export interface ClockNow {
 export type GeofenceAction =
   /** Start their clock on the visit, dated `at`, as the clock card's tap would. */
   | { kind: "start-clock"; visitId: string; at: number }
-  /** Stop their clock on the visit, dated `at`; on the whole-day clock, onto travel instead. */
-  | { kind: "stop-clock"; visitId: string; at: number; travel: boolean }
+  /**
+   * Move their clock off the visit and onto travel, dated `at`. Only on the whole-day clock, so
+   * `travel` is always true: on the visits-only clock that would take them off the clock, and the
+   * phone asks instead (ask-finish with stopClock).
+   */
+  | { kind: "stop-clock"; visitId: string; at: number; travel: true }
   /** "You're at 12 Oak St. Start the visit?" (or, with the visit under way, "Start your clock?"). */
   | { kind: "ask-start"; visitId: string; clockOnly: boolean }
   /** "Leaving 12 Oak St. Complete the visit, or stop your clock?": either part, as it applies. */
@@ -275,7 +287,7 @@ export interface ActionContext {
   /** Today's visits in the day's order, which says which one is next. */
   sites: readonly GeofenceSite[];
   clock: ClockNow | null;
-  /** On the whole-day clock: leaving moves the clock to travel instead of stopping it. */
+  /** On the whole-day clock: leaving moves the clock to travel. Otherwise leaving only asks. */
   day: boolean;
   /** When the fix was taken. A clock started for an arrival that waited its turn is dated then, not back at the arrival. */
   now?: number;
@@ -314,8 +326,9 @@ function isNext(site: GeofenceSite, sites: readonly GeofenceSite[]): boolean {
  * What to do about what a fix confirmed, and which arrivals wait their turn (`held`). Never twice
  * for one arrival (trackFix and geofenceStep see to that), never a clock on a finished or
  * cancelled visit, never over a clock that's running on anything but driving, never against a
- * tap the person made there, and never finishing a visit: that, and starting one (which can text
- * the client), is always the person's tap.
+ * tap the person made there, never taking them off the clock (leaving moves it to travel on the
+ * whole-day clock, and is a question on the visits-only one), and never finishing a visit: that,
+ * and starting one (which can text the client), is always the person's tap.
  */
 function decide(events: readonly GeofenceEvent[], ctx: ActionContext): { actions: GeofenceAction[]; held: string[] } {
   if (ctx.mode === "off") return { actions: [], held: [] };
@@ -324,7 +337,7 @@ function decide(events: readonly GeofenceEvent[], ctx: ActionContext): { actions
   const here = ctx.here ?? [];
   const actions: GeofenceAction[] = [];
   let clock = ctx.clock;
-  /** When the phone stopped their clock at a property they left, from this fix. */
+  /** When the phone moved their clock to travel at a property they left, from this fix. */
   let stoppedAt: number | null = null;
   const gone = new Set<string>();
 
@@ -334,10 +347,13 @@ function decide(events: readonly GeofenceEvent[], ctx: ActionContext): { actions
     const s = site(e.visitId);
     if (!s || DONE.has(s.status)) continue;
     const clockOn = clock?.visitId === e.visitId;
-    const stops = ctx.mode === "clock" && !e.tapped && clockOn;
+    // Only onto travel, which is paid. With no travel to move it onto (the visits-only clock) the
+    // phone would be taking working time off the clock: the drive to the next site, or to the
+    // supplier and back. It asks instead (stopClock below), and the clock runs until they answer.
+    const stops = ctx.mode === "clock" && ctx.day && !e.tapped && clockOn;
     if (stops) {
-      actions.push({ kind: "stop-clock", visitId: e.visitId, at: e.at, travel: ctx.day });
-      clock = ctx.day ? { category: "drive", visitId: null } : null;
+      actions.push({ kind: "stop-clock", visitId: e.visitId, at: e.at, travel: true });
+      clock = { category: "drive", visitId: null };
       stoppedAt = Math.max(stoppedAt ?? e.at, e.at);
     }
     const complete = s.status === "in_progress";
@@ -378,7 +394,7 @@ function decide(events: readonly GeofenceEvent[], ctx: ActionContext): { actions
     }
   }
 
-  // Their clock was on the visit they've now surely left, and the phone stopped it there. If
+  // Their clock was on the visit they've now surely left, and the phone moved it to travel there. If
   // they've been at another visit's property a couple of minutes (they drove over with the phone
   // locked and were only asked on arriving, the clock being busy), it goes onto that one.
   if (ctx.mode === "clock" && stoppedAt != null && !started && clockFree(clock)) {

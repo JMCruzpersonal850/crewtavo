@@ -5,7 +5,9 @@
  *
  * Starting and completing a visit stay the person's own taps, through the screen's own buttons
  * (`onStatus`): starting one can text the client, and Complete visit checks the checklist first on
- * the visit's screen. "Start my clock" and "Stop my clock" are clock taps like the clock card's.
+ * the visit's screen. "Start my clock" and "Stop my clock" are clock taps like the clock card's,
+ * dated when they're tapped. On the visits-only clock "Stop my clock" is the only way the clock at
+ * the property ever stops a clock: the phone asks and never takes anyone off the clock by itself.
  */
 import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
@@ -87,14 +89,16 @@ export function GeofenceCard({ visitId, onStatus }: { visitId?: string; onStatus
           <Icon name="pin" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
             <div>{t("Location is off for Crewtavo")}</div>
-            {mode === "clock" ? t("Your clock can't start and stop at the property. Turn on location for Crewtavo in your phone's settings.") : t("Crewtavo can't remind you at the property. Turn on location for Crewtavo in your phone's settings.")}
+            {mode === "clock" ? t("Your clock can't start at the property. Turn on location for Crewtavo in your phone's settings.") : t("Crewtavo can't remind you at the property. Turn on location for Crewtavo in your phone's settings.")}
           </div>
         </div>
       )}
       {!visitId && watching && !denied && (
         <span className="muted small">
           {mode === "clock"
-            ? t("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in, and stops once it sees you've left. Open it when you get there and when you leave, or tap the clock yourself.")
+            ? dayClock
+              ? t("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in. Once it sees you've left, it moves your clock to driving. Open it when you get there and when you leave, or tap the clock yourself.")
+              : t("Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in. It never stops your clock by itself: once it sees you've left, it asks you. Open it when you get there and when you leave, or tap the clock yourself.")
             : t("Crewtavo reminds you to start and finish visits when it's open on this phone at the property. It can't tell while the phone is locked.")}
         </span>
       )}

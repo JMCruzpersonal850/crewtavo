@@ -96,15 +96,15 @@ export default {
   "Leaving {place}": "Saliendo de {place}",
   "Clock started at {place}": "Reloj iniciado en {place}",
   "You left {place}, so your clock is on driving": "Saliste de {place}, así que tu reloj ahora cuenta como manejo",
-  "Clock stopped as you left {place}": "Reloj parado al salir de {place}",
   "Start my clock": "Iniciar mi reloj",
   "Switch to driving": "Cambiar a manejo",
   "Stop my clock": "Parar mi reloj",
   "Not now": "Ahora no",
   "Location is off for Crewtavo": "La ubicación está apagada para Crewtavo",
-  "Your clock can't start and stop at the property. Turn on location for Crewtavo in your phone's settings.": "Tu reloj no puede iniciar y parar en la propiedad. Activa la ubicación para Crewtavo en la configuración de tu teléfono.",
+  "Your clock can't start at the property. Turn on location for Crewtavo in your phone's settings.": "Tu reloj no puede iniciar en la propiedad. Activa la ubicación para Crewtavo en la configuración de tu teléfono.",
   "Crewtavo can't remind you at the property. Turn on location for Crewtavo in your phone's settings.": "Crewtavo no puede avisarte en la propiedad. Activa la ubicación para Crewtavo en la configuración de tu teléfono.",
-  "Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in, and stops once it sees you've left. Open it when you get there and when you leave, or tap the clock yourself.": "Tu reloj empieza cuando Crewtavo está abierto en este teléfono en tu siguiente visita, no cuando llegas, y se detiene cuando ve que te fuiste. Ábrelo al llegar y al irte, o marca el reloj tú mismo.",
+  "Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in. Once it sees you've left, it moves your clock to driving. Open it when you get there and when you leave, or tap the clock yourself.": "Tu reloj empieza cuando Crewtavo está abierto en este teléfono en tu siguiente visita, no cuando llegas. Cuando ve que te fuiste, pasa tu reloj a manejo. Ábrelo al llegar y al irte, o marca el reloj tú mismo.",
+  "Your clock starts when Crewtavo is open on this phone at your next visit, not when you pull in. It never stops your clock by itself: once it sees you've left, it asks you. Open it when you get there and when you leave, or tap the clock yourself.": "Tu reloj empieza cuando Crewtavo está abierto en este teléfono en tu siguiente visita, no cuando llegas. Nunca para tu reloj por su cuenta: cuando ve que te fuiste, te pregunta. Ábrelo al llegar y al irte, o marca el reloj tú mismo.",
   "Crewtavo reminds you to start and finish visits when it's open on this phone at the property. It can't tell while the phone is locked.": "Crewtavo te recuerda empezar y terminar las visitas cuando está abierto en este teléfono en la propiedad. No se da cuenta con el teléfono bloqueado.",
 
   // Installing the app (InstallAppCard.tsx)
