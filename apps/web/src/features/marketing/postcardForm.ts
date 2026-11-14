@@ -58,6 +58,29 @@ export function audienceCsvRows(rows: readonly AudienceRow[]): { rows: Array<Rec
   return { rows: [...rows.filter((r) => !r.left_out), ...rows.filter((r) => r.left_out)].map(line), columns };
 }
 
+/**
+ * Whether the person looking has to ask an owner or admin to send: the key is live, which spends
+ * the company's money, and the server says they may not (`canSendLive` false). With a test key, or
+ * before the server has said, they aren't sent away; the server refuses a live Send from them anyway.
+ */
+export const needsAdmin = (mode: "test" | "live" | null | undefined, canSendLive: boolean | undefined) => mode === "live" && canSendLive === false;
+
+export const ASK_ADMIN_WORDS = "The Lob key is a live one, so sending mails real cards and Lob charges for each. You can get the campaign ready and see who it goes to; an owner or admin presses Send.";
+
+/**
+ * What to ask before copying a campaign, or null when there's nothing to ask (a draft's copy is
+ * just another draft). A copy keeps the audience, so sending it mails the same people again: there
+ * is no "only the ones who didn't get one".
+ */
+export function duplicateQuestion(c: { status: string; mode: string | null; made: number }): { title: string; body: string } | null {
+  if (c.status === "draft") return null;
+  const mailed = c.mode === "live" && c.made > 0 ? `${c.made.toLocaleString("en-US")} ${c.made === 1 ? "client has" : "clients have"} already been mailed this card. ` : "";
+  return {
+    title: "Copy this campaign?",
+    body: `The copy is a new draft with the same card and the same audience. ${mailed}Sending the copy mails everyone in the audience again, those already mailed too: narrow who it goes to first if that isn't what you want. Nothing is mailed until the copy is sent.`,
+  };
+}
+
 const DAY = 86_400_000;
 
 /** Lob's link to its picture of a card, while it still works (30 days from when Lob gave it), else null. */

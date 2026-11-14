@@ -223,17 +223,31 @@ export function unfitRecipients(size: PostcardSize, template: string, company: P
 /** "for Ann Oak", "for Ann Oak and 2 other clients". */
 const forClients = (names: readonly string[]) => `for ${names[0]}${names.length > 1 ? ` and ${(names.length - 1).toLocaleString("en-US")} other ${names.length === 2 ? "client" : "clients"}` : ""}`;
 
+/** Said when a campaign stops part-way: a copy isn't a way to mail only the rest. */
+const COPY_MAILS_ALL = "A copy of this campaign would mail everyone again, those already mailed too, unless you narrow who it goes to.";
+
+export const ASK_AN_ADMIN ="Mailing with a live Lob key spends the company's money, so only an owner or admin can send it. The campaign is saved: ask an owner or admin to send it.";
+
+/** How Send (or one card to ourselves) was asked for. */
+export interface SendAsk {
+  /** For a live key: the number of cards the office was shown and confirmed. */
+  confirm?: number | null;
+  /** The kind of key the page said it is, test or live. */
+  shown?: LobMode | null;
+  /** Whether the person asking may spend with a live key: an owner or admin. */
+  sendLive?: boolean;
+}
+
 /**
- * Send: checks everything first, makes the front's public copy, then the database takes the audience
- * as it is now. A live key's campaign goes only with `confirm` naming how many cards it mails, the
- * number the office was shown, so a segment that grew meanwhile isn't mailed unasked. `shown` is the
- * kind of key the page said it is, test or live: when the key on file is the other kind, or isn't
- * what Apps says, nothing is sent.
+ * What both Send and "Mail one to us first" check before anything is made: the draft, Marketing,
+ * Lob, this server's address, the company's own address, a front and a message that fits; that the
+ * key on file is the kind Apps and the page said; and, for a live key, that it's an owner or admin
+ * asking. Hands back what a card is made from.
  */
-export async function startPostcards(env: Env, db: Db, companyId: string, id: string, confirm: number | null, shown: LobMode | null = null) {
+async function readyToMail(env: Env, db: Db, companyId: string, id: string, ask: SendAsk) {
   const admin = adminClient(env);
   const campaign = must(
-    await db.from("postcard_campaigns").select("id, status, size, message, audience, front_attachment_id, front_marked, front_path").eq("company_id", companyId).eq("id", id).maybeSingle(),
+    await db.from("postcard_campaigns").select("id, name, status, size, message, audience, front_attachment_id, front_marked, front_path").eq("company_id", companyId).eq("id", id).maybeSingle(),
     "Campaign not found.",
   );
   if (campaign.status !== "draft") throw new HttpError(409, "This campaign has already been sent.");
@@ -247,20 +261,34 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
     publicAddress: imagesPublic(env),
     returnAddressProblem: returnAddressProblem(company),
     front: Boolean(campaign.front_attachment_id || campaign.front_path),
-    // As the page previews it; each client's own card is measured below.
+    // As the page previews it; each client's own card is measured at Send.
     message: postcardMessage(campaign.message, postcardVars(company, SAMPLE_NAME, link)),
     size,
   });
-  if (problem) throw new HttpError(problem === LOB_NOT_CONNECTED || problem === MARKETING_OFF ? 409 : 400, problem);
-  const mislabelled = keyLabelProblem(lob!);
+  if (problem || !lob) throw new HttpError(problem === LOB_NOT_CONNECTED || problem === MARKETING_OFF ? 409 : 400, problem ?? LOB_NOT_CONNECTED);
+  const mislabelled = keyLabelProblem(lob);
   if (mislabelled) throw new HttpError(409, mislabelled);
-  if (shown && shown !== lob!.mode) {
-    throw new HttpError(409, `This page said ${keyKind(shown)}, but the Lob key on file is ${keyKind(lob!.mode)}, so nothing was sent. Reload the page and check before sending.`);
+  if (ask.shown && ask.shown !== lob.mode) {
+    throw new HttpError(409, `This page said ${keyKind(ask.shown)}, but the Lob key on file is ${keyKind(lob.mode)}, so nothing was sent. Reload the page and check before sending.`);
   }
+  // A test key spends nothing, so the office can try a campaign with it; a live one is an owner's or admin's to send.
+  if (lob.mode === "live" && !ask.sendLive) throw new HttpError(403, ASK_AN_ADMIN);
+  return { admin, campaign, company, lob, size, link };
+}
+
+/**
+ * Send: checks everything first, makes the front's public copy, then the database takes the audience
+ * as it is now. A live key's campaign goes only from an owner or admin, and only with `confirm`
+ * naming how many cards it mails, the number the office was shown, so a segment that grew meanwhile
+ * isn't mailed unasked. `shown` is the kind of key the page said it is, test or live: when the key
+ * on file is the other kind, or isn't what Apps says, nothing is sent.
+ */
+export async function startPostcards(env: Env, db: Db, companyId: string, id: string, ask: SendAsk = {}) {
+  const { admin, campaign, company, lob, size, link } = await readyToMail(env, db, companyId, id, ask);
   const summary = must(await db.rpc("postcard_audience_summary", { p_company: companyId, p_audience: campaign.audience })) as unknown as { count: number };
   if (!summary.count) throw new HttpError(400, "No one in this audience has a complete mailing address.");
   if (summary.count > MAX_POSTCARDS) throw new HttpError(400, `Postcard campaigns are limited to ${MAX_POSTCARDS.toLocaleString("en-US")} cards. Narrow the audience.`);
-  if (lob!.mode === "live" && confirm !== summary.count) {
+  if (lob.mode === "live" && ask.confirm !== summary.count) {
     throw new HttpError(409, `This mails ${summary.count.toLocaleString("en-US")} ${summary.count === 1 ? "postcard" : "postcards"} and Lob charges for each. Confirm that number to send.`);
   }
   const unfit = unfitRecipients(size, campaign.message, company, link, (await audienceNow(db, companyId, campaign.audience)).map((r) => r.display_name));
@@ -268,14 +296,14 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
     throw new HttpError(400, `The message is too long for the back of a ${POSTCARD_SIZE_INFO[size].label} card ${forClients(unfit)}: with their name filled in, the end would be cut off. Shorten it or pick a bigger card.`);
   }
   const front = await makeFront(admin, db, companyId, campaign);
-  const { data: count, error } = await admin.rpc("start_postcard_campaign", { p_campaign: id, p_mode: lob!.mode, p_image_token: front.token, p_image_path: front.path, p_max: MAX_POSTCARDS });
+  const { data: count, error } = await admin.rpc("start_postcard_campaign", { p_campaign: id, p_mode: lob.mode, p_image_token: front.token, p_image_path: front.path, p_max: MAX_POSTCARDS });
   if (error) {
     await admin.storage.from("files").remove([front.path]);
     if (error.code === "55000") throw new HttpError(409, "This campaign has already been sent.");
     if (error.code === "22023") throw new HttpError(400, `${error.message}.`);
     throw dbError(error);
   }
-  return { status: "sending" as const, recipients: count as number, mode: lob!.mode };
+  return { status: "sending" as const, recipients: count as number, mode: lob.mode };
 }
 
 /** Stop: what isn't made yet isn't. Cards Lob already made are mailed (Lob can cancel them for a while, from its dashboard). */
@@ -324,12 +352,12 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
     if (lob.mode !== campaign.mode) {
       await stop(lob.mode === "live"
         ? "The Lob key was changed to a live key after this was sent as a test, so nothing more was made. Send a copy to mail it for real."
-        : "The Lob key was changed to a test key after this was sent, so the rest weren't mailed. Send a copy to mail them.");
+        : `The Lob key was changed to a test key after this was sent, so the rest weren't mailed. ${COPY_MAILS_ALL}`);
       continue;
     }
     const from = returnAddress(company as Company);
     if (!from) {
-      await stop("The company's address isn't complete anymore, and it's the cards' return address. Add it in Settings → Company and send a copy.");
+      await stop(`The company's address isn't complete anymore, and it's the cards' return address, so the rest weren't mailed. Add it in Settings → Company. ${COPY_MAILS_ALL}`);
       continue;
     }
     // A job photo on the front is checked again before each batch, as a post's photos are when it

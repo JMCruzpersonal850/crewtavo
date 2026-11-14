@@ -40,6 +40,8 @@ postcards.get("/postcards/setup", requireUser, requireCompany(OFFICE, "marketing
     return_address_problem: company.data ? returnAddressProblem(company.data) : null,
     link: company.data ? await bookingLink(c.env, admin, c.var.companyId, company.data) : "",
     can_connect: ADMINS.includes(c.var.role) && c.var.permissions.includes("apps"),
+    // A live key spends money: sending with one is an owner's or admin's.
+    can_send_live: ADMINS.includes(c.var.role),
     // Lob's API doesn't say what a card costs: that's in the business's own Lob account.
     price: null,
   });
@@ -49,7 +51,7 @@ postcards.get("/postcards/setup", requireUser, requireCompany(OFFICE, "marketing
 postcards.post("/postcards/:id/send", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
   const body = await readJson(c, z.object({ confirm: z.number().int().min(0).nullable().optional(), mode: z.enum(["test", "live"]).optional() }));
   const id = param(c, "id");
-  const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, body.confirm ?? null, body.mode ?? null);
+  const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, { confirm: body.confirm ?? null, shown: body.mode ?? null, sendLive: ADMINS.includes(c.var.role) });
   kickPostcards(c, id);
   return c.json(result);
 });

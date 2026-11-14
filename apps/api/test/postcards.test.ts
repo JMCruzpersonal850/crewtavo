@@ -410,7 +410,7 @@ describe("Send", () => {
   it("starts a test campaign with a test key, as the kind the key itself is", async () => {
     const tables = draft();
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending", mode: "test", recipients: 3 });
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test" })).resolves.toMatchObject({ status: "sending", mode: "test", recipients: 3 });
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "sending", mode: "test" });
   });
 
@@ -418,9 +418,9 @@ describe("Send", () => {
     const tables = draft();
     current.key = "live_0123456789abcdef0123";
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3, "test")).rejects.toThrow(/Apps → Lob says a test key is saved, but the key on file is a live key/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, shown: "test", sendLive: true })).rejects.toThrow(/Apps → Lob says a test key is saved, but the key on file is a live key/);
     // A page from before this check sends no kind: still nothing goes.
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3)).rejects.toThrow(/key on file is a live key/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, sendLive: true })).rejects.toThrow(/key on file is a live key/);
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft", mode: null });
     expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
   });
@@ -430,7 +430,7 @@ describe("Send", () => {
     tables.integrations[0]!.settings = { mode: "live" };
     current.key = "live_0123456789abcdef0123";
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3, "test")).rejects.toThrow(/This page said a test key, but the Lob key on file is a live key/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, shown: "test", sendLive: true })).rejects.toThrow(/This page said a test key, but the Lob key on file is a live key/);
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
   });
 
@@ -442,12 +442,12 @@ describe("Send", () => {
     (tables.clients as Row[])[1]!.name = "Bob Ash";
     (tables.clients as Row[])[2]!.name = "The Honourable Bartholomew Featherstonehaugh-Cholmondeley and Family of Springfield Heights Estates";
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/too long for the back of a 4 × 6 in card for The Honourable Bartholomew .*: with their name filled in/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test" })).rejects.toThrow(/too long for the back of a 4 × 6 in card for The Honourable Bartholomew .*: with their name filled in/);
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
     expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
     // Without them it goes.
     tables.clients.pop();
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending" });
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test" })).resolves.toMatchObject({ status: "sending" });
   });
 
   const PHOTO = "00000000-0000-4000-8000-0000000000f0";
@@ -461,16 +461,16 @@ describe("Send", () => {
   it("puts a job photo on the front only when it's marked OK to share", async () => {
     const tables = withPhoto({ shareable: false });
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/isn't marked OK to share/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test" })).rejects.toThrow(/isn't marked OK to share/);
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
     tables.attachments[0]!.shareable = true;
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending" });
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test" })).resolves.toMatchObject({ status: "sending" });
   });
 
   it("never puts a photo on the front of a client who asked that photos of their property not be posted, even one marked OK before", async () => {
     const tables = withPhoto({ shareable: true, problem: "client_opt_out" });
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/asked that photos of their property not be posted/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test" })).rejects.toThrow(/asked that photos of their property not be posted/);
     expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
   });
 
@@ -479,7 +479,7 @@ describe("Send", () => {
     current.db = memoryDb(tables);
     // Their own read of attachments (under row-level security) doesn't find it.
     const theirs = memoryDb({ ...tables, attachments: [] });
-    await expect(startPostcards(env, theirs as never, CO, CAMPAIGN, null, "test")).rejects.toThrow(/isn't one you can open/);
+    await expect(startPostcards(env, theirs as never, CO, CAMPAIGN, { shown: "test" })).rejects.toThrow(/isn't one you can open/);
     expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
   });
 
@@ -488,9 +488,24 @@ describe("Send", () => {
     tables.integrations[0]!.settings = { mode: "live" };
     current.key = "live_0123456789abcdef0123";
     current.db = memoryDb(tables);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "live")).rejects.toThrow(/Confirm that number/);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 2, "live")).rejects.toThrow(/Confirm that number/);
-    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3, "live")).resolves.toMatchObject({ mode: "live", recipients: 3 });
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "live", sendLive: true })).rejects.toThrow(/Confirm that number/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 2, shown: "live", sendLive: true })).rejects.toThrow(/Confirm that number/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, shown: "live", sendLive: true })).resolves.toMatchObject({ mode: "live", recipients: 3 });
+  });
+
+  it("leaves mailing with a live key to an owner or admin: the office is told to ask one, however they confirm", async () => {
+    const tables = draft();
+    tables.integrations[0]!.settings = { mode: "live" };
+    current.key = "live_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, shown: "live", sendLive: false })).rejects.toThrow(/only an owner or admin can send it.*ask an owner or admin to send it/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { confirm: 3, shown: "live" })).rejects.toMatchObject({ status: 403 });
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
+    expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
+    // With a test key, which spends nothing, the office can try the campaign.
+    tables.integrations[0]!.settings = { mode: "test" };
+    current.key = "test_0123456789abcdef0123";
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, { shown: "test", sendLive: false })).resolves.toMatchObject({ mode: "test" });
   });
 });
 

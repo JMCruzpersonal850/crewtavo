@@ -35,7 +35,7 @@ import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
 import { PostcardAudienceDialog } from "./PostcardAudience";
-import { blockStyle, deletableFrom, pickablePhotos, proofLink } from "./postcardForm";
+import { ASK_ADMIN_WORDS, blockStyle, deletableFrom, duplicateQuestion, needsAdmin, pickablePhotos, proofLink } from "./postcardForm";
 import { LobMode } from "../apps/LobPanel";
 
 interface Draft {
@@ -58,6 +58,8 @@ interface Setup {
   /** What {{link}} prints. */
   link: string;
   can_connect: boolean;
+  /** Whether this person may send with a live key: owners and admins. Missing from a server before this was asked. */
+  can_send_live?: boolean;
 }
 
 interface Summary {
@@ -208,6 +210,14 @@ function PostcardScreen() {
     editable && summary.data && !count && "No one in this audience has a complete mailing address.",
   ].filter(Boolean) as string[];
   const mode = c.status === "draft" ? s?.lob?.mode : (c.mode as "test" | "live");
+  // A live key spends the company's money: an owner or admin sends. The office gets the campaign ready.
+  const askAdmin = needsAdmin(mode, s?.can_send_live);
+
+  // A copy of a campaign that's been mailed goes to the same people again: said before it's made.
+  const askToDuplicate = async () => {
+    const question = duplicateQuestion({ status: c.status, mode: c.mode, made: c.made_count });
+    if (!question || (await confirm({ title: question.title, body: question.body, confirmLabel: "Make the copy" }))) duplicate.mutate();
+  };
 
   const askToSend = async () => {
     const n = count.toLocaleString("en-US");
@@ -231,11 +241,11 @@ function PostcardScreen() {
         documentTitle={c.name}
         actions={
           <>
-            {editable && <Button variant="primary" icon="send" loading={send.isPending} disabled={problems.length > 0 || summary.isFetching || !count} onClick={askToSend}>{mode === "test" ? "Make test cards" : "Send"}</Button>}
+            {editable && !askAdmin && <Button variant="primary" icon="send" loading={send.isPending} disabled={problems.length > 0 || summary.isFetching || !count} onClick={askToSend}>{mode === "test" ? "Make test cards" : "Send"}</Button>}
             {c.status === "sending" && <Button variant="danger" icon="x" loading={stop.isPending} onClick={async () => (await confirm({ title: "Stop mailing?", body: "Cards Lob has already made are still mailed. Lob can cancel them for a short while from your Lob dashboard.", confirmLabel: "Stop", danger: true })) && stop.mutate()}>Stop</Button>}
             <Menu
               items={[
-                { label: "Duplicate", icon: "copy", onSelect: () => duplicate.mutate() },
+                { label: c.status === "draft" ? "Duplicate" : "Duplicate (mails everyone again)", icon: "copy", onSelect: askToDuplicate },
                 {
                   label: "Delete",
                   icon: "trash",
@@ -260,6 +270,7 @@ function PostcardScreen() {
         {c.status !== "draft" && <span className="muted">{c.made_count.toLocaleString("en-US")} of {c.recipients_count.toLocaleString("en-US")} {c.mode === "live" ? "mailed" : "made in test mode"}{c.failed_count ? ` · ${c.failed_count} failed` : ""}</span>}
       </div>
       {c.stopped_reason && c.stopped_reason !== "Stopped" && <div className="callout callout-warning"><Icon name="alert" size={20} /><div className="grow">{c.stopped_reason}</div></div>}
+      {editable && askAdmin && <div className="callout callout-info" role="note"><Icon name="lock" size={20} /><div className="grow"><strong>Ask an owner or admin to send it</strong><span style={{ display: "block", fontWeight: 400 }}>{ASK_ADMIN_WORDS}</span></div></div>}
       {setup.error ? <div className="card"><ErrorState compact error={setup.error} onRetry={() => setup.refetch()} /></div> : s && !s.lob && editable ? (
         <div className="callout callout-info">
           <Icon name="info" size={20} />

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ONE_PER_ADDRESS } from "@crewtavo/core/postcards";
-import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, leftOutWords, pickablePhotos, proofLink, type AudienceRow } from "../src/features/marketing/postcardForm";
+import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, duplicateQuestion, leftOutWords, needsAdmin, pickablePhotos, proofLink, type AudienceRow } from "../src/features/marketing/postcardForm";
 import { toCsv } from "../src/lib/csv";
 
 describe("the photos offered for a postcard's front", () => {
@@ -57,6 +57,30 @@ describe("who gets a card, in full", () => {
   it("is read a page at a time, so a list past 1,000 clients is whole", () => {
     const dialog = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardAudience.tsx", import.meta.url)), "utf8");
     expect(dialog).toMatch(/everyRow<AudienceRow>\(\(\) => supabase\(\)\.rpc\("postcard_audience"/);
+  });
+});
+
+describe("who may spend", () => {
+  it("sends the office to an owner or admin when the key is live, and not when it's a test key", () => {
+    expect(needsAdmin("live", false)).toBe(true);
+    expect(needsAdmin("live", true)).toBe(false);
+    expect(needsAdmin("test", false)).toBe(false);
+    // A server from before this was asked doesn't say: the page doesn't guess, and the server decides at Send.
+    expect(needsAdmin("live", undefined)).toBe(false);
+    expect(needsAdmin(undefined, false)).toBe(false);
+  });
+
+  it("says plainly that a copy of a mailed campaign mails everyone again", () => {
+    expect(duplicateQuestion({ status: "draft", mode: null, made: 0 })).toBeNull();
+    const sent = duplicateQuestion({ status: "sent", mode: "live", made: 212 })!;
+    expect(sent.body).toMatch(/212 clients have already been mailed this card\. Sending the copy mails everyone in the audience again, those already mailed too/);
+    expect(duplicateQuestion({ status: "cancelled", mode: "live", made: 1 })!.body).toMatch(/1 client has already been mailed/);
+    // A test campaign mailed no one, but its copy still goes to the whole audience.
+    const test = duplicateQuestion({ status: "sent", mode: "test", made: 40 })!;
+    expect(test.body).not.toMatch(/already been mailed this card/);
+    expect(test.body).toMatch(/mails everyone in the audience again/);
+    const page = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardPage.tsx", import.meta.url)), "utf8");
+    expect(page).toContain('"Duplicate (mails everyone again)"');
   });
 });
 
