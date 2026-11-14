@@ -92,6 +92,36 @@ select tmkpf.check((select s -> 'count' = '2' and s -> 'left_out' ->> 'bad_state
 reset role;
 
 \o
+\echo 'One card per address'
+\o /dev/null
+-- Hal and Ida are a couple entered twice, Ida first; Jo is at the same street number in another
+-- unit; Kit shares their address but opted out; Lu's property is at Hal and Ida's address too.
+insert into public.clients (company_id, display_name, status, billing_address, marketing_opt_out, tags, created_at) values
+  (:'co', 'Ida Ash', 'active', '{"line1": "4 Ash Ln", "city": "Springfield", "region": "IL", "postal_code": "62704"}', false, '{home}', now() - interval '3 years'),
+  (:'co', 'Hal Ash', 'active', '{"line1": "4 ASH LN ", "city": "Springfield", "region": "Illinois", "postal_code": "62704-1111"}', false, '{home}', now() - interval '1 year'),
+  (:'co', 'Jo Bay', 'active', '{"line1": "4 Ash Ln", "line2": "Unit B", "city": "Springfield", "region": "IL", "postal_code": "62704"}', false, '{home}', now() - interval '2 years'),
+  (:'co', 'Kit Ash', 'active', '{"line1": "4 Ash Ln", "city": "Springfield", "region": "IL", "postal_code": "62704"}', true, '{home}', now() - interval '5 years'),
+  (:'co', 'Lu Ash', 'active', '{}', false, '{home}', now() - interval '6 months');
+select id as lu from public.clients where display_name = 'Lu Ash' \gset
+insert into public.properties (company_id, client_id, line1, city, region, postal_code) values (:'co', :'lu', '4 ash ln', 'Springfield', 'IL', '62704');
+set local role authenticated;
+select tmkpf.as_user(:'olive');
+select tmkpf.check((select array_agg(display_name order by display_name) = '{Ida Ash,Jo Bay}' from public.postcard_audience(:'co', '{"tags_any": ["home"]}') where left_out is null),
+  'one card goes to each address, to the client there longest; another unit is another address');
+select tmkpf.check((select jsonb_object_agg(display_name, left_out) = '{"Hal Ash": "same_address", "Kit Ash": "opted_out", "Lu Ash": "same_address"}'::jsonb
+  from public.postcard_audience(:'co', '{"tags_any": ["home"]}') where left_out is not null), 'the others at it are left out as sharing it; someone who opted out doesn''t take the card from them');
+select tmkpf.check((select address ->> 'line1' = '4 ASH LN' from public.postcard_audience(:'co', '{"tags_any": ["home"]}') where display_name = 'Hal Ash'), 'and the list still says which address they share');
+select tmkpf.check((select s -> 'count' = '2' and s -> 'left_out' ->> 'same_address' = '2' and s -> 'left_out' ->> 'opted_out' = '1' from public.postcard_audience_summary(:'co', '{"tags_any": ["home"]}') s),
+  'the count before Send is one per address');
+reset role;
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Homes', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["home"]}') returning id as pc_home \gset
+set local role service_role;
+select tmkpf.as_nobody();
+select tmkpf.check(public.start_postcard_campaign(:'pc_home', 'test', repeat('h', 32), 'x') = 2, 'Send mails that many');
+select tmkpf.check((select array_agg(name order by name) = '{Ida Ash,Jo Bay}' from public.postcard_recipients where campaign_id = :'pc_home'), 'to those clients');
+reset role;
+
+\o
 \echo 'After Lob has accepted the cards'
 \o /dev/null
 insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Spring', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["mail"]}') returning id as pc \gset

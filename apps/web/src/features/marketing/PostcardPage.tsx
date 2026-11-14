@@ -8,7 +8,7 @@
  * After sending: what was made, what failed and why, and what the clients mailed have paid since.
  */
 import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
-import { addressLine, backFit, backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, POSTCARD_KEEP_DAYS, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
+import { addressLine, backFit, backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, ONE_PER_ADDRESS, POSTCARD_KEEP_DAYS, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
 import { greetingName } from "@crewtavo/core/automations";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from "react";
@@ -34,6 +34,7 @@ import { AudienceFields, useAudienceChoices } from "./AudienceFields";
 import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
+import { PostcardAudienceDialog } from "./PostcardAudience";
 import { blockStyle, deletableFrom, pickablePhotos, proofLink } from "./postcardForm";
 import { LobMode } from "../apps/LobPanel";
 
@@ -84,6 +85,7 @@ function PostcardScreen() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [picking, setPicking] = useState(false);
+  const [listing, setListing] = useState(false);
 
   const campaign = useQuery({
     queryKey: ["postcard", id],
@@ -317,7 +319,8 @@ function PostcardScreen() {
                   {summary.data && leftOutLine(summary.data.left_out) && <span className="muted small">{leftOutLine(summary.data.left_out)}.</span>}
                   {summary.data?.sample.map((r) => <span key={r.client_id} className="small ellipsis">{r.name} · <span className="muted">{[r.city, r.region].filter(Boolean).join(", ")}</span></span>)}
                   {count > 5 && <span className="muted small">and {(count - 5).toLocaleString("en-US")} more</span>}
-                  <span className="muted small">Each card goes to the client's billing address, or their first property's when that's missing. {PRICE_WORDS}</span>
+                  {summary.data && <div><Button size="sm" icon="users" onClick={() => setListing(true)}>See everyone and their addresses</Button></div>}
+                  <span className="muted small">Each card goes to the client's billing address, or their first property's when that one can't be mailed to. {ONE_PER_ADDRESS} {PRICE_WORDS}</span>
                 </div>
               </>
             ) : (
@@ -329,6 +332,7 @@ function PostcardScreen() {
         </aside>
       </div>
       {picking && <FrontPhotoPicker onClose={() => setPicking(false)} onPick={(photo) => { set({ front_attachment_id: photo, front_path: null, front_marked: true }); setPicking(false); }} />}
+      {listing && <PostcardAudienceDialog name={draft.name} audience={draft.audience} onClose={() => setListing(false)} />}
     </>
   );
 }

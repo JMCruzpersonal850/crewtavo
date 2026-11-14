@@ -303,7 +303,7 @@ export function mailingAddress(billing: LooseAddress, properties: ReadonlyArray<
 }
 
 /** Why a client in the segment doesn't get a card, in the order they're counted. */
-export const LEFT_OUT = ["archived", "opted_out", "no_address", "outside_us", "bad_state", "too_long"] as const;
+export const LEFT_OUT = ["archived", "opted_out", "no_address", "outside_us", "bad_state", "too_long", "same_address"] as const;
 export type LeftOut = (typeof LEFT_OUT)[number];
 export const LEFT_OUT_WORDS: Record<LeftOut, string> = {
   archived: "archived",
@@ -312,14 +312,24 @@ export const LEFT_OUT_WORDS: Record<LeftOut, string> = {
   outside_us: "an address outside the US",
   bad_state: "a state that isn't a US state",
   too_long: "an address line too long to mail",
+  same_address: "at an address another client's card goes to",
 };
+/** Said after the count as they are ("3 archived"); the rest take "with" ("8 with no complete mailing address"). */
+const LEFT_OUT_PLAIN: ReadonlySet<LeftOut> = new Set(["archived", "opted_out", "same_address"]);
+
+/**
+ * How one card per address is chosen, for the page to say: two clients at one address (the same
+ * street line, unit and ZIP) get one card, addressed to the one who has been a client longest.
+ * public.postcard_audience (20261113001560_postcard_households.sql) does the choosing.
+ */
+export const ONE_PER_ADDRESS = "One card goes to each address. When two clients share one, it's addressed to the one who has been your client longest.";
 
 /** "12 left out: 8 with no complete mailing address, 3 opted out of marketing, 1 archived", or null with none. */
 export function leftOutLine(counts: Partial<Record<LeftOut, number>>): string | null {
   const parts = LEFT_OUT.filter((k) => (counts[k] ?? 0) > 0).sort((a, b) => (counts[b] ?? 0) - (counts[a] ?? 0));
   if (!parts.length) return null;
   const total = parts.reduce((sum, k) => sum + (counts[k] ?? 0), 0);
-  const words = parts.map((k) => `${(counts[k] ?? 0).toLocaleString("en-US")} ${k === "archived" || k === "opted_out" ? LEFT_OUT_WORDS[k] : `with ${LEFT_OUT_WORDS[k]}`}`);
+  const words = parts.map((k) => `${(counts[k] ?? 0).toLocaleString("en-US")} ${LEFT_OUT_PLAIN.has(k) ? LEFT_OUT_WORDS[k] : `with ${LEFT_OUT_WORDS[k]}`}`);
   return `${total.toLocaleString("en-US")} left out: ${words.join(", ")}`;
 }
 

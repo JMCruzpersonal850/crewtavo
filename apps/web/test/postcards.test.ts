@@ -5,7 +5,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { blockStyle, deletableFrom, pickablePhotos, proofLink } from "../src/features/marketing/postcardForm";
+import { ONE_PER_ADDRESS } from "@crewtavo/core/postcards";
+import { audienceAddress, audienceCsvRows, blockStyle, deletableFrom, leftOutWords, pickablePhotos, proofLink, type AudienceRow } from "../src/features/marketing/postcardForm";
+import { toCsv } from "../src/lib/csv";
 
 describe("the photos offered for a postcard's front", () => {
   it("are only those the database says may be shown, and of those only the ones the person can open", () => {
@@ -22,6 +24,39 @@ describe("the photos offered for a postcard's front", () => {
     const picker = page.slice(page.indexOf("function FrontPhotoPicker"), page.indexOf("export function PostcardPreview"));
     expect(picker).toContain('rpc("social_photos"');
     expect(picker).toContain("pickablePhotos(shared, readable)");
+  });
+});
+
+describe("who gets a card, in full", () => {
+  const rows: AudienceRow[] = [
+    { client_id: "1", display_name: "Ann Oak", address: { line1: "12 Oak St", line2: "Apt 2", city: "Springfield", region: "IL", postal_code: "62701-1234" }, left_out: null },
+    { client_id: "2", display_name: "Bea Elm", address: null, left_out: "bad_state" },
+    { client_id: "3", display_name: "Cal Oak", address: { line1: "12 Oak St", line2: "Apt 2", city: "Springfield", region: "IL", postal_code: "62701" }, left_out: "same_address" },
+    { client_id: "4", display_name: "=Dee Fir", address: { line1: "3 Fir Rd", city: "Peoria", region: "IL", postal_code: "61602" }, left_out: null },
+  ];
+
+  it("shows the whole address a card goes to, and why someone is left out", () => {
+    expect(audienceAddress(rows[0]!)).toBe("12 Oak St, Apt 2, Springfield, IL 62701-1234");
+    expect(audienceAddress(rows[1]!)).toBe("");
+    expect(leftOutWords("bad_state")).toBe("a state that isn't a US state");
+    expect(leftOutWords("same_address")).toBe("at an address another client's card goes to");
+    expect(ONE_PER_ADDRESS).toMatch(/One card goes to each address.*longest/);
+  });
+
+  it("downloads as a spreadsheet: everyone who gets one with their address, then everyone left out with why", () => {
+    const sheet = audienceCsvRows(rows);
+    expect(sheet.rows.map((r) => `${r.name}|${r.gets}`)).toEqual(["Ann Oak|Yes", "=Dee Fir|Yes", "Bea Elm|No", "Cal Oak|No"]);
+    expect(sheet.rows[0]).toEqual({ name: "Ann Oak", gets: "Yes", line1: "12 Oak St", line2: "Apt 2", city: "Springfield", state: "IL", zip: "62701-1234", why: "" });
+    expect(sheet.rows[3]).toMatchObject({ gets: "No", line1: "12 Oak St", why: "at an address another client's card goes to" });
+    const csv = toCsv(sheet.rows, sheet.columns);
+    expect(csv.split("\r\n")[0]).toBe("Client,Gets a card,Address,Address line 2,City,State,ZIP,Why not");
+    // A name that would run as a formula in a spreadsheet is written as text.
+    expect(csv).toContain("'=Dee Fir,Yes,3 Fir Rd");
+  });
+
+  it("is read a page at a time, so a list past 1,000 clients is whole", () => {
+    const dialog = readFileSync(fileURLToPath(new URL("../src/features/marketing/PostcardAudience.tsx", import.meta.url)), "utf8");
+    expect(dialog).toMatch(/everyRow<AudienceRow>\(\(\) => supabase\(\)\.rpc\("postcard_audience"/);
   });
 });
 

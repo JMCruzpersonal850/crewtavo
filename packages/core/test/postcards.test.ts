@@ -63,6 +63,7 @@ describe("where a postcard goes", () => {
     // The address worth fixing is the one named when none can be mailed to.
     expect(mailingAddress({ line1: "12 Oak St", city: "Springfield", region: "Ill.", postal_code: "62701" }, [{ line1: "no city" }])).toBe("bad_state");
     expect(leftOutLine({ bad_state: 2, too_long: 1 })).toBe("3 left out: 2 with a state that isn't a US state, 1 with an address line too long to mail");
+    expect(leftOutLine({ same_address: 2, no_address: 1 })).toBe("3 left out: 2 at an address another client's card goes to, 1 with no complete mailing address");
   });
 
   it("uses the billing address when it's complete, else the first property that is, and says why when none is", () => {
