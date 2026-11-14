@@ -25,6 +25,7 @@ import { processCampaigns } from "./services/campaigns";
 import { syncDueReviews } from "./services/googleReviews";
 import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/social";
 import { postcardsTask } from "./services/postcards";
+import { tidyShowcaseCopies } from "./services/showcases";
 import { refreshDueComparisons } from "./services/reviewCompare";
 import { sendDueReminders } from "./services/reviews";
 import { deliverNotifications } from "./services/delivery";
@@ -115,6 +116,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
         photos: await tidyUnrecordedFiles(admin),
         // Social posts' pictures whose links ran out, and each Page's sign-in, read from Meta.
         social: await tidySocialImages(admin),
+        // Showcase photos' public copies that are no longer shown (taken down, unpublished or deleted).
+        showcases: await tidyShowcaseCopies(admin),
         meta: await checkMetaAccess(env, admin),
       };
     }

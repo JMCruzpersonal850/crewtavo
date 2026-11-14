@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 import type { Env } from "../src/env";
+import { tidyShowcaseCopies } from "../src/services/showcases";
 
 const current = vi.hoisted(() => ({ db: null as unknown, files: {} as Record<string, Uint8Array> }));
 vi.mock("../src/lib/supabase", async (original) => ({ ...(await original<typeof import("../src/lib/supabase")>()), adminClient: () => current.db, userClient: () => current.db }));
@@ -116,5 +117,32 @@ describe("a showcase's photos", () => {
     current.files[`${CO}/showcases/s1/copy.jpg`] = new TextEncoder().encode("<html>not a photo</html>");
     fakeDb(published, { showcase_photos: { public_path: `${CO}/showcases/s1/copy.jpg` } });
     expect((await get(`/public/showcases/${TOKEN}/7.jpg`)).status).toBe(404);
+  });
+});
+
+describe("copies that are no longer shown", () => {
+  it("are deleted from storage once the database lists them, never one still on a page", async () => {
+    const listed = [
+      { id: 1, path: `${CO}/showcases/s1/gone-a.jpg` },
+      { id: 2, path: `${CO}/showcases/s1/gone-b.jpg` },
+      { id: 3, path: `${CO}/showcases/s2/still-shown.jpg` },
+    ];
+    const removed: string[] = [];
+    const cleared: number[] = [];
+    const admin = {
+      from: (table: string) => ({
+        select: () =>
+          table === "stale_public_files"
+            ? { order: () => ({ limit: async () => ({ data: listed.filter((r) => !cleared.includes(r.id)), error: null }) }) }
+            : { in: async () => ({ data: [{ public_path: `${CO}/showcases/s2/still-shown.jpg` }], error: null }) },
+        delete: () => ({ in: async (_column: string, ids: number[]) => (cleared.push(...ids), { error: null }) }),
+      }),
+      storage: { from: () => ({ remove: async (paths: string[]) => (removed.push(...paths), { error: null }) }) },
+    };
+    await expect(tidyShowcaseCopies(admin as never)).resolves.toBe(2);
+    expect(removed).toEqual([`${CO}/showcases/s1/gone-a.jpg`, `${CO}/showcases/s1/gone-b.jpg`]);
+    expect(cleared).toEqual([1, 2, 3]);
+    // Nothing listed: nothing done.
+    await expect(tidyShowcaseCopies(admin as never)).resolves.toBe(0);
   });
 });
