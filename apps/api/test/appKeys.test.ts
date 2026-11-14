@@ -243,3 +243,32 @@ describe("a business's own Meta app", () => {
     expect(await db.secret("meta")).toEqual({ extra: { client_id: "1234567890123", client_secret: "meta-secret", config_id: "987654321" } });
   });
 });
+
+describe("Lob's key", () => {
+  const saveLob = (key: string) => app.request("/api/apps/lob/key", { method: "PUT", headers, body: JSON.stringify({ api_key: key }) }, env);
+
+  it("is kept before Apps says which kind it is", async () => {
+    const db = fakeDb();
+    vi.stubGlobal("fetch", async () => Response.json({ data: [] }));
+    expect((await saveLob("test_0123456789abcdef0123")).status).toBe(200);
+    const writes = db.queries.filter((q) => verb(q) === "upsert").map((q) => `${q.table}:${call(q, "upsert")![1].status ?? "key"}`);
+    expect(writes).toEqual(["integrations:disconnected", "integration_secrets:key", "integrations:connected"]);
+    expect(await db.secret("lob")).toEqual({ api_key: "test_0123456789abcdef0123" });
+    expect(db.integrations.get("lob")).toMatchObject({ status: "connected", settings: { mode: "test" }, account_label: "Test key ending 0123" });
+  });
+
+  it("goes on saying a live key is saved when a test key pasted over it couldn't be kept", async () => {
+    const db = fakeDb();
+    await db.keep("lob", { api_key: "live_0123456789abcdef9999" });
+    db.integrations.set("lob", { company_id: COMPANY, provider: "lob", status: "connected", settings: { mode: "live" }, account_label: "Live key ending 9999" });
+    vi.stubGlobal("fetch", async () => Response.json({ data: [] }));
+    const fake = db.db as unknown as { from: (table: string) => unknown };
+    const from = fake.from.bind(fake);
+    fake.from = (table) => (table === "integration_secrets" ? { upsert: async () => ({ error: { message: "disk full" } }) } : from(table));
+    const res = await saveLob("test_0123456789abcdef0123");
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    // The key on file is still the live one, and Apps still says so.
+    expect(await db.secret("lob")).toEqual({ api_key: "live_0123456789abcdef9999" });
+    expect(db.integrations.get("lob")).toMatchObject({ settings: { mode: "live" }, account_label: "Live key ending 9999" });
+  });
+});

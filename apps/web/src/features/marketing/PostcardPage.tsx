@@ -47,7 +47,8 @@ interface Draft {
 }
 
 interface Setup {
-  lob: { mode: "test" | "live" } | null;
+  /** `mode` is the key's own kind, read from the key; `problem` when Apps says it's the other kind. */
+  lob: { mode: "test" | "live"; problem?: string | null } | null;
   public_address: boolean;
   return_address: string | null;
   /** What {{link}} prints. */
@@ -143,7 +144,8 @@ function PostcardScreen() {
   };
   const send = useMutation({
     meta: { success: (r: { recipients: number; mode: string }) => (r.mode === "live" ? `Mailing ${r.recipients.toLocaleString("en-US")} postcards` : `Making ${r.recipients.toLocaleString("en-US")} test postcards`) },
-    mutationFn: (count: number) => api.post<{ recipients: number; mode: string }>(`/postcards/${id}/send`, { confirm: count }),
+    // `mode` is the kind of key this page said it is: the server sends nothing if the key on file is the other kind.
+    mutationFn: (sent: { count: number; mode: "test" | "live" }) => api.post<{ recipients: number; mode: string }>(`/postcards/${id}/send`, { confirm: sent.count, mode: sent.mode }),
     onSuccess: refresh,
   });
   const stop = useMutation({
@@ -192,6 +194,7 @@ function PostcardScreen() {
   const message = postcardMessage(shown.message, vars);
   const problems = [
     !s?.lob && "Lob isn't connected.",
+    s?.lob?.problem,
     s && !s.public_address && "Crewtavo's address isn't public, so Lob can't fetch the front picture.",
     s && !s.return_address && "Add your company's full address in Settings → Company. It's the card's return address.",
     !draft.front_attachment_id && !draft.front_path && "Pick a picture for the front.",
@@ -211,7 +214,7 @@ function PostcardScreen() {
           typeToConfirm: String(count),
         })
       : await confirm({ title: `Make ${n} test ${cards}?`, body: "This is a test key: Lob makes each card so you can see it in your Lob dashboard, but nothing is printed or mailed, and nothing is charged.", confirmLabel: `Make ${n} test ${cards}` });
-    if (ok) send.mutate(count);
+    if (ok && mode) send.mutate({ count, mode });
   };
 
   return (

@@ -15,7 +15,7 @@ import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
 import { clientIp } from "../lib/visitor";
 import { isJpeg } from "../services/photos";
-import { bookingLink, companyLob, frontImage, returnAddress, startPostcards, stopPostcards } from "../services/postcards";
+import { bookingLink, companyLob, frontImage, keyLabelProblem, returnAddress, startPostcards, stopPostcards } from "../services/postcards";
 import { imagesPublic } from "../services/social";
 
 export const postcards = new Hono<AppEnv>();
@@ -32,7 +32,8 @@ postcards.get("/postcards/setup", requireUser, requireCompany(OFFICE, "marketing
   ]);
   const from = company.data ? returnAddress(company.data) : null;
   return c.json({
-    lob: lob ? { mode: lob.mode } : null,
+    // The key's own kind, read from the key; `problem` when Apps says it's the other kind.
+    lob: lob ? { mode: lob.mode, problem: keyLabelProblem(lob) } : null,
     public_address: imagesPublic(c.env),
     return_address: from ? addressLine(from) : null,
     link: company.data ? await bookingLink(c.env, admin, c.var.companyId, company.data) : "",
@@ -44,9 +45,9 @@ postcards.get("/postcards/setup", requireUser, requireCompany(OFFICE, "marketing
 
 /** Send: for a live key, `confirm` is the number of cards the office was asked to confirm. */
 postcards.post("/postcards/:id/send", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
-  const body = await readJson(c, z.object({ confirm: z.number().int().min(0).nullable().optional() }));
+  const body = await readJson(c, z.object({ confirm: z.number().int().min(0).nullable().optional(), mode: z.enum(["test", "live"]).optional() }));
   const id = param(c, "id");
-  const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, body.confirm ?? null);
+  const result = await startPostcards(c.env, c.var.db, c.var.companyId, id, body.confirm ?? null, body.mode ?? null);
   kickPostcards(c, id);
   return c.json(result);
 });

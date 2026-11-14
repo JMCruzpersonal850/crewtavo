@@ -783,6 +783,15 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
       throw error;
     }
   }
+  // Lob's key is kept before the row says which kind it is: if keeping it fails, Apps goes on
+  // describing the key that's really there, never "Test key" while a live one is still on file.
+  // A first connection needs its row to hang the key on, so that starts as not connected.
+  // (Postcards read the kind from the key itself in any case: services/postcards.ts.)
+  if (lob) {
+    const { error: placed } = await admin.from("integrations").upsert({ company_id: c.var.companyId, provider, status: "disconnected" }, { onConflict: "company_id,provider", ignoreDuplicates: true });
+    if (placed) throw dbError(placed);
+    await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
+  }
   const { error } = await admin.from("integrations").upsert({
     company_id: c.var.companyId,
     provider,
@@ -793,7 +802,7 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
     ...(lob ? { settings: asJson(lob), last_error: null } : {}),
   });
   if (error) throw dbError(error);
-  await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
+  if (!lob) await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
   return c.json({ provider, status: "connected", ...(lob ? { lob } : {}) });
 });
 

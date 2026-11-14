@@ -8,8 +8,10 @@
  *                 before the request, as campaign emails are; each request carries the recipient's
  *                 own idempotency key, so a card tried again after a timeout or a restart is the one
  *                 Lob already made, never a second.
- *   Test or live  The campaign keeps the mode of the key it was sent with. If the key is changed to
- *                 the other kind meanwhile, the campaign stops rather than mail (or not mail) cards
+ *   Test or live  Which it is is read from the key itself each time it's used (lobMode), never from
+ *                 what Apps says about it. Send refuses when the key isn't the kind the page said,
+ *                 and the campaign keeps the kind it was sent with: if the key is the other kind
+ *                 when a batch starts, the campaign stops rather than mail (or not mail) cards
  *                 nobody asked for.
  *   Never mailed  A client who opts out of marketing or is archived after Send is skipped, checked
  *                 right before their card. Uninstalling Marketing or disconnecting Lob stops the
@@ -23,7 +25,7 @@ import { renderTemplate } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { backHtml, frontHtml, mailable, messageProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
 import type { Env } from "../env";
-import { createPostcard, lobAddress, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
+import { createPostcard, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
 import { loadSecret } from "../integrations/tokens";
 import { randomId } from "../lib/crypto";
 import { companyAddress, firstName } from "../lib/email";
@@ -51,14 +53,34 @@ export const LOB_NOT_CONNECTED = "Lob isn't connected, so postcards can't be mai
 export const PRIVATE_ADDRESS_POSTCARDS = "Crewtavo's address isn't public, so Lob can't fetch the picture for the front. Postcards need Crewtavo on a public https address.";
 const MARKETING_OFF = "Marketing is off, so postcards can't be mailed. An owner or admin can install it again in Apps.";
 
-/** The company's Lob key and which kind it is, or null when Lob isn't connected. */
-export async function companyLob(env: Env, admin: Db, companyId: string): Promise<{ key: string; mode: LobMode } | null> {
+export interface CompanyLob {
+  key: string;
+  /** What the key itself is: the only thing that decides whether cards are mailed. */
+  mode: LobMode;
+  /** What Apps → Lob says it is (integrations.settings.mode), which Send checks against the key. */
+  labelled: LobMode | null;
+}
+
+/**
+ * The company's Lob key, or null when Lob isn't connected. Test or live is the key's own (its
+ * prefix), read from the very key that's handed back: the label kept beside it is written
+ * separately, so it can be wrong after a save that half-failed, and is only ever compared.
+ */
+export async function companyLob(env: Env, admin: Db, companyId: string): Promise<CompanyLob | null> {
   const { data: row, error } = await admin.from("integrations").select("status, settings").eq("company_id", companyId).eq("provider", "lob").maybeSingle();
   if (error) throw new Error(error.message);
-  const mode = (row?.settings as unknown as LobSettings | null)?.mode;
-  if (!row || row.status === "disconnected" || !mode) return null;
+  if (!row || row.status === "disconnected") return null;
   const secret = await loadSecret(env, admin, companyId, "lob");
-  return secret?.api_key ? { key: secret.api_key, mode } : null;
+  const mode = secret?.api_key ? lobMode(secret.api_key) : null;
+  return mode ? { key: secret!.api_key!, mode, labelled: (row.settings as unknown as LobSettings | null)?.mode ?? null } : null;
+}
+
+const keyKind = (mode: LobMode | null) => (mode === "live" ? "a live key" : mode === "test" ? "a test key" : "no key");
+
+/** Why Send can't trust the key on file, or null: Apps says one kind and the key is the other. */
+export function keyLabelProblem(lob: Pick<CompanyLob, "mode" | "labelled">): string | null {
+  if (lob.labelled === lob.mode) return null;
+  return `Apps → Lob says ${keyKind(lob.labelled)} is saved, but the key on file is ${keyKind(lob.mode)}, so nothing was sent. An owner or admin should connect Lob again in Apps.`;
 }
 
 type Company = { name: string; phone: string | null; website: string | null; address: unknown; slug: string | null; settings: unknown };
@@ -137,9 +159,11 @@ export function sendProblem(input: { marketing: boolean; lob: boolean; publicAdd
 /**
  * Send: checks everything first, makes the front's public copy, then the database takes the audience
  * as it is now. A live key's campaign goes only with `confirm` naming how many cards it mails, the
- * number the office was shown, so a segment that grew meanwhile isn't mailed unasked.
+ * number the office was shown, so a segment that grew meanwhile isn't mailed unasked. `shown` is the
+ * kind of key the page said it is, test or live: when the key on file is the other kind, or isn't
+ * what Apps says, nothing is sent.
  */
-export async function startPostcards(env: Env, db: Db, companyId: string, id: string, confirm: number | null) {
+export async function startPostcards(env: Env, db: Db, companyId: string, id: string, confirm: number | null, shown: LobMode | null = null) {
   const admin = adminClient(env);
   const campaign = must(
     await db.from("postcard_campaigns").select("id, status, size, message, audience, front_attachment_id, front_marked, front_path").eq("company_id", companyId).eq("id", id).maybeSingle(),
@@ -158,6 +182,11 @@ export async function startPostcards(env: Env, db: Db, companyId: string, id: st
     size: campaign.size as PostcardSize,
   });
   if (problem) throw new HttpError(problem === LOB_NOT_CONNECTED || problem === MARKETING_OFF ? 409 : 400, problem);
+  const mislabelled = keyLabelProblem(lob!);
+  if (mislabelled) throw new HttpError(409, mislabelled);
+  if (shown && shown !== lob!.mode) {
+    throw new HttpError(409, `This page said ${keyKind(shown)}, but the Lob key on file is ${keyKind(lob!.mode)}, so nothing was sent. Reload the page and check before sending.`);
+  }
   const summary = must(await db.rpc("postcard_audience_summary", { p_company: companyId, p_audience: campaign.audience })) as unknown as { count: number };
   if (!summary.count) throw new HttpError(400, "No one in this audience has a complete mailing address.");
   if (summary.count > MAX_POSTCARDS) throw new HttpError(400, `Postcard campaigns are limited to ${MAX_POSTCARDS.toLocaleString("en-US")} cards. Narrow the audience.`);

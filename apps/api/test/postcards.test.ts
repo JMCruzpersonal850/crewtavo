@@ -8,9 +8,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
-import { processPostcards, sendProblem } from "../src/services/postcards";
+import { processPostcards, sendProblem, startPostcards } from "../src/services/postcards";
 
 const current = vi.hoisted(() => ({ db: null as unknown, key: "test_0123456789abcdef0123" as string | null }));
+// The front's picture: any bytes stand in for the stored file and its copy without EXIF.
+vi.mock("../src/lib/storedFile", () => ({ storedFile: async () => new Uint8Array([0xff, 0xd8, 0xff]) }));
+vi.mock("../src/lib/shareImage", async (original) => ({ ...(await original<typeof import("../src/lib/shareImage")>()), shareJpeg: async () => ({ body: new Uint8Array([0xff, 0xd8, 0xff]), width: 1875, height: 1275 }) }));
 vi.mock("../src/lib/supabase", async (original) => ({ ...(await original<typeof import("../src/lib/supabase")>()), adminClient: () => current.db }));
 vi.mock("../src/integrations/tokens", async (original) => ({
   ...(await original<typeof import("../src/integrations/tokens")>()),
@@ -56,6 +59,14 @@ function memoryDb(tables: Record<string, Row[]>) {
       for (const r of recipients()) if (r.campaign_id === p_campaign && r.status === "pending") Object.assign(r, { status: "skipped", error: p_reason });
       return null;
     },
+    // Send's: everyone in `clients` is in the audience, each with the same address.
+    postcard_audience_summary: () => ({ count: tables.clients!.length }),
+    start_postcard_campaign: ({ p_campaign, p_mode, p_image_token }) => {
+      const campaign = tables.postcard_campaigns!.find((c) => c.id === p_campaign && c.status === "draft");
+      if (!campaign) throw new Error("already sent");
+      Object.assign(campaign, { status: "sending", mode: p_mode, image_token: p_image_token });
+      return tables.clients!.length;
+    },
     count_postcard_campaign: ({ p_campaign }) => {
       const mine = recipients().filter((r) => r.campaign_id === p_campaign);
       const left = mine.filter((r) => ["pending", "sending"].includes(r.status)).length;
@@ -96,6 +107,7 @@ function memoryDb(tables: Record<string, Row[]>) {
   }
   return {
     calls,
+    storage: { from: () => ({ upload: async () => ({ error: null }), remove: async () => ({ error: null }) }) },
     from: (table: string) => query(table),
     rpc: async (fn: string, args: Row) => {
       calls.push(fn);
@@ -218,6 +230,17 @@ describe("making a campaign's cards", () => {
     expect(tables.postcard_recipients.every((r) => r.status === "skipped")).toBe(true);
   });
 
+  it("goes by the key that's really on file, not by what Apps says it is: a test campaign mails nothing with a live key labelled test", async () => {
+    const tables = world("test");
+    // The label still says test (a save that half-failed), the key is live.
+    current.key = "live_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    await run();
+    expect(sent).toHaveLength(0);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "cancelled" });
+    expect(tables.postcard_campaigns[0]!.stopped_reason).toMatch(/changed to a live key/);
+  });
+
   it("stops when Marketing is uninstalled or Lob disconnected, and mails nothing", async () => {
     const off = world("live");
     off.companies[0]!.settings = { marketing: { enabled: false } };
@@ -242,6 +265,52 @@ describe("making a campaign's cards", () => {
     expect(tables.integrations[0]).toMatchObject({ status: "error" });
     expect(tables.postcard_campaigns[0]!.status).toBe("cancelled");
     expect(tables.postcard_recipients.every((r) => r.status === "skipped")).toBe(true);
+  });
+});
+
+describe("Send", () => {
+  const draft = () => {
+    const tables = world("test");
+    Object.assign(tables.postcard_campaigns[0]!, { status: "draft", mode: null, image_token: null, audience: {}, front_attachment_id: null, front_marked: true, front_path: `${CO}/postcards/${CAMPAIGN}/front.jpg` });
+    tables.postcard_recipients = [];
+    return tables;
+  };
+
+  it("starts a test campaign with a test key, as the kind the key itself is", async () => {
+    const tables = draft();
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "test")).resolves.toMatchObject({ status: "sending", mode: "test", recipients: 3 });
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "sending", mode: "test" });
+  });
+
+  it("sends nothing when Apps says test key and the key on file is live, with or without the count confirmed", async () => {
+    const tables = draft();
+    current.key = "live_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3, "test")).rejects.toThrow(/Apps → Lob says a test key is saved, but the key on file is a live key/);
+    // A page from before this check sends no kind: still nothing goes.
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3)).rejects.toThrow(/key on file is a live key/);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft", mode: null });
+    expect((current.db as ReturnType<typeof memoryDb>).calls).not.toContain("start_postcard_campaign");
+  });
+
+  it("sends nothing when the page said test and the key has become live since", async () => {
+    const tables = draft();
+    tables.integrations[0]!.settings = { mode: "live" };
+    current.key = "live_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3, "test")).rejects.toThrow(/This page said a test key, but the Lob key on file is a live key/);
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "draft" });
+  });
+
+  it("mails with a live key only once the number of cards is confirmed", async () => {
+    const tables = draft();
+    tables.integrations[0]!.settings = { mode: "live" };
+    current.key = "live_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, null, "live")).rejects.toThrow(/Confirm that number/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 2, "live")).rejects.toThrow(/Confirm that number/);
+    await expect(startPostcards(env, current.db as never, CO, CAMPAIGN, 3, "live")).resolves.toMatchObject({ mode: "live", recipients: 3 });
   });
 });
 
