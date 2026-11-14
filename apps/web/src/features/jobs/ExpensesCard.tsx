@@ -290,7 +290,8 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
       const lineItems = lines.length ? lines : null;
       const job = jobId ?? draft?.job_id ?? (jobNumber ? jobLookup.data?.id : pickedJob?.id) ?? null;
       const materials = logMaterials && onJob ? toLog.map(({ estimated: _, ...m }) => m) : [];
-      if (expense) unwrap(await supabase().from("expenses").update(row).eq("id", expense.id));
+      // An expense with no job (Finance → Profit lists them) can be put on one here: its Job # is asked. One opened from its job stays there.
+      if (expense) unwrap(await supabase().from("expenses").update(jobId || !job ? row : { ...row, job_id: job }).eq("id", expense.id));
       else if (draft || materials.length) {
         // The expense, the materials and the draft's removal at once (save_read_expense).
         unwrap(await supabase().rpc("save_read_expense", { p_expense: { ...row, line_items: lineItems, company_id: session.company.id, job_id: job } as never, p_materials: materials as never, p_draft: draft?.id }));

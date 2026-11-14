@@ -22,6 +22,7 @@ import { localDate } from "@crewtavo/core/time";
 import { Breakdown, Change, Kpi, KpiStrip, ReportCard, ReportTable, TrendChart, type Column, type Part } from "./Charts";
 import { agingBuckets, previousRange, serviceFigures } from "@crewtavo/core/reports";
 import { ReceiptDrafts } from "../jobs/ReceiptDrafts";
+import { CostsWithoutJob, costsWithoutJobKey } from "./CostsWithoutJob";
 import { byJobs, jobRates, loadProfit } from "./jobCosts";
 import { bucketize, bucketizeShifted, bucketsFor, resolveRange, shortDate, type Range } from "./range";
 import { both, pct, plural, RangeHeader, rangeQuery, SectionHead, sum, TabBody, useRangeParams } from "./shared";
@@ -644,7 +645,13 @@ function Profit({ range }: { range: Range }) {
             {/* Receipts for any job, or none: each waits as a draft until it's checked and saved as an expense. */}
             {costs && hasRole(session, "admin", "office") && (
               <ReportCard title="Receipts and supplier invoices" subtitle="Several at once: each is read, then waits here to be checked and saved as an expense on its job">
-                <ReceiptDrafts onSaved={() => queryClient.invalidateQueries({ queryKey: ["finance", cid, "profit"] })} />
+                <ReceiptDrafts onSaved={() => Promise.all([queryClient.invalidateQueries({ queryKey: ["finance", cid, "profit"] }), queryClient.invalidateQueries({ queryKey: costsWithoutJobKey(cid) })])} />
+              </ReportCard>
+            )}
+            {/* The ones saved with no job: nothing else lists them, so they're kept findable here. */}
+            {costs && hasRole(session, "admin", "office") && (
+              <ReportCard title="Costs that aren't on a job" subtitle="Expenses saved without a job. Open one to change it, put it on a job, mark it reimbursed or delete it">
+                <CostsWithoutJob onChanged={() => queryClient.invalidateQueries({ queryKey: ["finance", cid, "profit"] })} />
               </ReportCard>
             )}
             {costs && (
