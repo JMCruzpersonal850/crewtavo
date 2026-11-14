@@ -12,6 +12,7 @@ import {
   ROLE_GROUP_LABELS,
   STATUS_ACTION_CHOICES,
   statusChoices,
+  textQuietHint,
   TRIGGERS,
   triggerAllowed,
   triggerDef,
@@ -557,6 +558,7 @@ function ActionEditor({ index, count, subject, verb, value, onChange, onRemove, 
             <textarea ref={bodyRef} className="textarea" style={{ minHeight: 80 }} value={value.body} maxLength={640} onChange={(e) => onChange({ ...value, body: e.target.value })} />
           </Field>
           <Tokens verb={verb} target={bodyRef} onInsert={(text) => onChange({ ...value, body: text })} />
+          {textQuietHint(verb) && <span className="muted small">{textQuietHint(verb)}</span>}
         </>
       )}
 

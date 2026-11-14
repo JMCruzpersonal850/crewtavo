@@ -19,6 +19,8 @@ import {
   ASK_WHEN,
   DEFAULT_REMINDER_MESSAGE,
   inQuietHours,
+  inTextQuietHours,
+  textQuietHoursEnd,
   marketingOn,
   nextReminder,
   notAsked,
@@ -120,6 +122,16 @@ describe("times", () => {
     expect(inQuietHours(at("2026-11-05T01:59:00Z"), NY)).toBe(false); // 8:59pm
     expect(inQuietHours(at("2026-11-05T02:00:00Z"), NY)).toBe(true); // 9:00pm
     expect(inQuietHours(at("2026-11-05T14:00:00Z"), NY)).toBe(false); // 9:00am
+  });
+
+  it("holds a rule's texts from 9pm to 8am in the company's time zone, until the next 8am", () => {
+    expect(inTextQuietHours(at("2026-10-30T00:59:00Z"), NY)).toBe(false); // 8:59pm
+    expect(inTextQuietHours(at("2026-10-30T01:00:00Z"), NY)).toBe(true); // 9:00pm
+    expect(inTextQuietHours(at("2026-10-30T11:59:00Z"), NY)).toBe(true); // 7:59am
+    expect(inTextQuietHours(at("2026-10-30T12:00:00Z"), NY)).toBe(false); // 8:00am
+    expect(textQuietHoursEnd(at("2026-10-30T02:30:00Z"), NY).toISOString()).toBe("2026-10-30T12:00:00.000Z"); // 10:30pm EDT → 8am EDT
+    expect(textQuietHoursEnd(at("2026-10-30T10:00:00Z"), NY).toISOString()).toBe("2026-10-30T12:00:00.000Z"); // 6am → 8am the same day
+    expect(textQuietHoursEnd(at("2026-11-01T02:30:00Z"), NY).toISOString()).toBe("2026-11-01T13:00:00.000Z"); // Oct 31 10:30pm EDT → Nov 1 8am EST
   });
 
   it("ends quiet hours at the next 9am, across the change back to standard time", () => {

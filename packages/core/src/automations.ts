@@ -155,6 +155,30 @@ export const VISIT_NOTICE_STARTERS = ["visit_scheduled", "visit_rescheduled", "v
 export const visitNoticesPending = (settings: Record<string, unknown> | null | undefined) =>
   (settings?.visit_notices as { pending?: unknown } | null | undefined)?.pending === true;
 
+/**
+ * What the client themselves just did: a text a rule sends right then answers them, so it goes at
+ * any hour, as a booking's confirmation does. Only with no delay on the rule.
+ */
+export const CLIENTS_OWN_ACTS = ["request.created", "quote.approved", "quote.changes_requested", "quote.range_accepted", "visit.reschedule_requested", "visit.cancel_requested"] as const;
+
+/**
+ * Whether a rule's text to a client goes at any hour, instead of waiting for 8am when it's between
+ * 9pm and 8am: "on my way" (the crew is coming now), and an answer to something the client just
+ * did, when the rule has no delay.
+ */
+export function textsAtAnyHour(verb: string | null | undefined, delayed: boolean): boolean {
+  if (verb === "visit.en_route") return true;
+  return !delayed && (CLIENTS_OWN_ACTS as readonly string[]).includes(verb ?? "");
+}
+
+/** When a rule's text waits for morning, said under its message in the rule editor. Null for on-my-way, which never waits. */
+export function textQuietHint(verb: string): string | null {
+  if (verb === "visit.en_route") return null;
+  if (textsAtAnyHour(verb, false)) return "Sent right away with no delay on the rule. With a delay, a text that comes due between 9pm and 8am waits until 8am.";
+  const stale = isVisitNotice(verb) ? " News of a visit that's before 8am isn't texted late: it goes by email." : "";
+  return `Between 9pm and 8am your time, this text waits until 8am.${stale}`;
+}
+
 /** Whether a trigger is about autopay: its rules' emails and texts are kept from the crew, and it never adds a client note. */
 export const isAutopayTrigger = (verb: string | null | undefined) => Boolean(verb && (verb.startsWith("autopay.") || verb.startsWith("payment_method.")));
 

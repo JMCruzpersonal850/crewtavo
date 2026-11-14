@@ -8,6 +8,12 @@
  * action that has to wait (an automatic review ask during quiet hours: WaitUntil) puts the run back
  * until then, and one with nothing to do says so (Skip) without failing the run.
  *
+ * A rule's text to a client waits the same way between 9pm and 8am in the company's time zone
+ * (quietTexts), until 8am. "On my way" goes at any hour, and so does an answer to something the
+ * client just did. A visit booked, moved or cancelled that would be old news by 8am (the visit is
+ * before then) isn't texted late: the rule's own email has told them, or the text's words go by
+ * email instead, or with no address it's skipped, saying so.
+ *
  * A rule that's an automated campaign (Marketing → Campaigns, services/automatedCampaigns.ts) sends
  * its email as one, tracked. Re-engage past clients (any rule on client.inactive) and Win back lost
  * quotes are marketing: their runs are skipped while Marketing is off and for clients who opted out
@@ -30,6 +36,7 @@ import {
   STATUS_ACTION_CHOICES,
   statusChoices,
   taskVars,
+  textsAtAnyHour,
   triggerDef,
   type Action,
   type Condition,
@@ -40,7 +47,7 @@ import {
 } from "@crewtavo/core";
 import { daysSinceVisit, type AutomatedCampaign } from "@crewtavo/core/campaigns";
 import { hidesExactPrice } from "@crewtavo/core/estimates";
-import { marketingOn, REFERRAL_GAP_DAYS, REVIEW_GAP_DAYS, textsOffReason } from "@crewtavo/core/marketing";
+import { inTextQuietHours, marketingOn, REFERRAL_GAP_DAYS, REVIEW_GAP_DAYS, textQuietHoursEnd, textsOffReason } from "@crewtavo/core/marketing";
 import { clientRecipients, type Recipient } from "@crewtavo/core/recipients";
 import { countsOn } from "@crewtavo/core/money";
 import type { Env } from "../env";
@@ -121,6 +128,10 @@ export interface RunContext {
   campaign?: AutomatedCampaign;
   /** The run, for recording its campaign email once, and which of its actions this is (from 0). */
   run?: { id: number; activity_id: number | null; action?: number };
+  /** The rule waits before it acts (its delay), so its text isn't an answer to what just happened. */
+  delayed?: boolean;
+  /** The rule emails the client as well as texting them. */
+  emailsToo?: boolean;
 }
 
 const SUBJECTS: SubjectKind[] = ["client", "request", "quote", "job", "visit", "invoice"];
@@ -642,6 +653,38 @@ export async function previewRecipients(admin: Db, ctx: RunContext, trigger: str
   return (await peopleFor(admin, { ...ctx, trigger, campaign: campaignRuleOf({ trigger }) ?? undefined }, ctx.client, channel)).map((person) => person.to);
 }
 
+/** What a visit notice's email is called when it goes in place of a text that would arrive too late. */
+const NOTICE_SUBJECTS: Record<string, string> = {
+  "visit.scheduled": "Your visit with {{company.name}} is booked",
+  "visit.rescheduled": "Your visit with {{company.name}} has moved",
+  "visit.cancelled": "Your visit with {{company.name}} is cancelled",
+};
+
+/**
+ * Whether the visit a notice is about comes before `morning`, when a text held for quiet hours
+ * would go: by then it would be old news. A cancelled visit goes by when it was to be. An anytime
+ * visit counts by its day.
+ */
+export function staleByMorning(ctx: Pick<RunContext, "visit" | "was" | "company">, trigger: string, morning: Date): boolean {
+  const at = trigger === "visit.cancelled" ? ctx.was : ctx.visit;
+  if (!at) return false;
+  if (at.starts_at) return Date.parse(at.starts_at) <= morning.getTime();
+  return Boolean(at.scheduled_on) && at.scheduled_on! < localDate(morning, ctx.company.timezone || "UTC");
+}
+
+/**
+ * Quiet hours for a rule's text to a client (9pm to 8am in the company's time zone): throws
+ * WaitUntil so the run waits for 8am, unless the text goes at any hour (core textsAtAnyHour).
+ * Returns "stale" for a visit notice that would be old news by then, which isn't texted at all.
+ */
+export function quietTexts(ctx: Pick<RunContext, "trigger" | "delayed" | "visit" | "was" | "company">, now = new Date()): "stale" | null {
+  const timeZone = ctx.company.timezone || "UTC";
+  if (textsAtAnyHour(ctx.trigger, ctx.delayed === true) || !inTextQuietHours(now, timeZone)) return null;
+  const morning = textQuietHoursEnd(now, timeZone);
+  if (ctx.trigger && isVisitNotice(ctx.trigger) && staleByMorning(ctx, ctx.trigger, morning)) return "stale";
+  throw new WaitUntil(morning, "Quiet hours: texts to clients wait until 8am");
+}
+
 /** For an action's result when it reached some but not all: "; didn't reach bo@example.com (why)". */
 const missed = (delivery: Delivery) => (delivery.failed.length ? `; didn't reach ${addressList(delivery.failed)} (${delivery.failed[0]!.reason.replace(/\.$/, "")})` : "");
 
@@ -715,6 +758,18 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
     }
     case "send_sms": {
       if (!client) throw new Error("There's no client on this record.");
+      // Between 9pm and 8am it waits for 8am (the run is put back). A visit notice that would be
+      // old news by then isn't texted: the rule's email has it, or its words go by email instead.
+      if (quietTexts(ctx) === "stale") {
+        const why = "Not texted: it's quiet hours (9pm to 8am) and the visit is before 8am";
+        if (ctx.emailsToo) return new Skip(`${why}. This rule's email tells them`);
+        try {
+          const emailed = await performAction(env, admin, ctx, { type: "send_email", subject: NOTICE_SUBJECTS[ctx.trigger ?? ""] ?? "About your visit with {{company.name}}", body: action.body }, ruleName, baseUrl);
+          return emailed instanceof Skip ? emailed : `${emailed} instead of texting: it's quiet hours (9pm to 8am) and the visit is before 8am`;
+        } catch (error) {
+          return new Skip(`${why}, and it couldn't go by email instead (${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")})`);
+        }
+      }
       const people = await peopleFor(admin, ctx, client, "sms");
       if (!people.length) {
         if (!client.phone) throw new Error(`${client.display_name} has no phone number.`);
@@ -806,6 +861,8 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
     }
     case "invite_autopay": {
       if (!client) throw new Error("There's no client on this record.");
+      // An invite by text keeps quiet hours as any rule's text does.
+      if (action.channel === "sms") quietTexts({ ...ctx, trigger: undefined });
       // Skips (already on autopay, invited in the last week) are fine; a reason it can't go out fails the action.
       const result = await sendAutopayInvite(env, admin, {
         companyId: ctx.company.id, clientId: client.id, channel: action.channel === "sms" ? "sms" : "email", baseUrl, createdBy: null, skipIfRecentDays: 7,
@@ -873,7 +930,7 @@ interface RunNotes {
 
 export async function executeRun(env: Env, admin: Db, run: RunRow, baseUrl: string | null, notes: RunNotes = { busy: false }): Promise<"done" | "skipped" | "failed" | "waiting" | "lost"> {
   try {
-    const { data: rule } = await admin.from("automation_rules").select("id, name, trigger, enabled, conditions, actions, run_count, template_key").eq("id", run.rule_id).maybeSingle();
+    const { data: rule } = await admin.from("automation_rules").select("id, name, trigger, enabled, delay_minutes, conditions, actions, run_count, template_key").eq("id", run.rule_id).maybeSingle();
     if (!rule || !rule.enabled) return calledOff(admin, run, rule?.trigger === "client.inactive", "The rule was turned off or deleted.");
     if (!run.subject_type || !run.subject_id) return finish(admin, run, "skipped", [], "There was nothing to act on.");
     let loaded = await buildContext(env, admin, run.company_id, run.subject_type, run.subject_id, baseUrl);
@@ -932,6 +989,8 @@ export async function executeRun(env: Env, admin: Db, run: RunRow, baseUrl: stri
     const prior = Array.isArray(run.result) ? (run.result as ActionResult[]) : [];
     const results: ActionResult[] = [];
     const actions = (rule.actions ?? []) as unknown as Action[];
+    // For a text's quiet hours: whether the rule answers something that just happened, and whether it emails too.
+    ctx = { ...ctx, delayed: Number(rule.delay_minutes ?? 0) > 0, emailsToo: actions.some((a) => a.type === "send_email") };
     let acted = false;
     for (const [i, action] of actions.entries()) {
       if (prior[i]?.ok && prior[i].type === action.type) {

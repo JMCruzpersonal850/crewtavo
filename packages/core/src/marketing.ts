@@ -92,6 +92,22 @@ export function quietHoursEnd(at: Date, timeZone: string): Date {
   return zonedTimeToUtc(localTime(at, timeZone) < "09:00" ? day : addDays(day, 1), "09:00", timeZone);
 }
 
+/**
+ * Between 9pm and 8am in the company's time zone, when a rule's text to a client waits for morning
+ * (47 CFR 64.1200(c)(1) keeps solicitations to 8am to 9pm at the called party's location; nobody
+ * wants a reminder at midnight either). Review asks keep their own, longer wait (inQuietHours).
+ */
+export function inTextQuietHours(at: Date, timeZone: string): boolean {
+  const time = localTime(at, timeZone);
+  return time >= "21:00" || time < "08:00";
+}
+
+/** The next 8am in the company's time zone. */
+export function textQuietHoursEnd(at: Date, timeZone: string): Date {
+  const day = localDate(at, timeZone);
+  return zonedTimeToUtc(localTime(at, timeZone) < "08:00" ? day : addDays(day, 1), "08:00", timeZone);
+}
+
 /** 1:30pm, `days` days after the ask, in the company's time zone. */
 export function reminderAt(sentAt: Date, days: number, timeZone: string): Date {
   return zonedTimeToUtc(addDays(localDate(sentAt, timeZone), days), REMINDER_TIME, timeZone);

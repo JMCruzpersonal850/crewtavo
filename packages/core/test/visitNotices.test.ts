@@ -9,6 +9,8 @@ import {
   describeRuleSentence,
   isVisitNotice,
   renderTemplate,
+  textQuietHint,
+  textsAtAnyHour,
   TRIGGERS,
   triggerAllowed,
   triggerDef,
@@ -77,6 +79,20 @@ describe("a visit booked, moved or cancelled", () => {
     // Answered, a business made since (nothing saved), and anything that isn't the setting.
     for (const settings of [{ visit_notices: { pending: false, answered_at: "2026-11-13T12:00:00Z" } }, {}, null, undefined, { visit_notices: null }, { visit_notices: "pending" }, { visit_notices: { pending: "true" } }]) {
       expect(visitNoticesPending(settings)).toBe(false);
+    }
+  });
+
+  it("says under a rule's text when it waits for morning", () => {
+    // On my way never waits, whatever the rule's delay.
+    expect([textsAtAnyHour("visit.en_route", false), textsAtAnyHour("visit.en_route", true), textQuietHint("visit.en_route")]).toEqual([true, true, null]);
+    // An answer to what the client just did goes right away, unless the rule waits first.
+    expect([textsAtAnyHour("quote.approved", false), textsAtAnyHour("quote.approved", true)]).toEqual([true, false]);
+    expect(textQuietHint("quote.approved")).toBe("Sent right away with no delay on the rule. With a delay, a text that comes due between 9pm and 8am waits until 8am.");
+    // Everything else waits, and news of a visit that's before 8am goes by email.
+    expect(textsAtAnyHour("visit.reminder", false)).toBe(false);
+    expect(textQuietHint("visit.reminder")).toBe("Between 9pm and 8am your time, this text waits until 8am.");
+    for (const verb of VISIT_NOTICE_TRIGGERS) {
+      expect(textQuietHint(verb)).toBe("Between 9pm and 8am your time, this text waits until 8am. News of a visit that's before 8am isn't texted late: it goes by email.");
     }
   });
 
