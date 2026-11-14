@@ -30,8 +30,8 @@ export const ERRORS: PatternTable = [
   // The clock and logged work (private.time_entry_*, private.job_material_time_guard, private.equipment_log_date_guard)
   ["Only the office can move time to someone else", "Solo la oficina puede pasarle tiempo a otra persona"],
   ["Where someone clocked in or out is saved by the clock as it starts or stops", "El lugar donde alguien marcó entrada o salida lo guarda el reloj al iniciar o parar"],
-  ["That time is in the future", "Esa hora es en el futuro"],
-  ["That date is in the future", "Esa fecha es en el futuro"],
+  ["That time is in the future", "Esa hora todavía no llega"],
+  ["That date is in the future", "Esa fecha todavía no llega"],
   ["The office or a crew lead changes when material was logged", "La oficina o un jefe de cuadrilla cambia cuándo se registró el material"],
 
   // Adding work on a visit (public.add_field_line)
@@ -47,14 +47,14 @@ export const ERRORS: PatternTable = [
   ["We can't find that job offer.", "No encontramos esa oferta de trabajo."],
   ["This offer is from another company you work for. Switch to it to answer.", "Esta oferta es de otra empresa con la que trabajas. Cambia a esa empresa para responder."],
   ["We don't have your liability insurance on file. We'll check the new one you sent.", "No tenemos tu seguro de responsabilidad civil. Vamos a revisar el nuevo que enviaste."],
-  ["We don't have your workers' comp certificate or exemption on file. We'll check the new one you sent.", "No tenemos tu certificado o exención de compensación laboral. Vamos a revisar el nuevo que enviaste."],
+  ["We don't have your workers' comp certificate or exemption on file. We'll check the new one you sent.", "No tenemos tu certificado o exención de compensación laboral. Vamos a revisar el documento nuevo que enviaste."],
   ["We don't have your liability insurance on file.", "No tenemos tu seguro de responsabilidad civil."],
   ["We don't have your workers' comp certificate or exemption on file.", "No tenemos tu certificado o exención de compensación laboral."],
-  ["Your {wordDoc} on file has run out. We'll check the new one you sent.", "Tu {wordDoc} que tenemos venció. Vamos a revisar el nuevo que enviaste."],
+  ["Your {wordDoc} on file has run out. We'll check the new one you sent.", "Tu {wordDoc} que tenemos venció. Vamos a revisar el documento nuevo que enviaste."],
   ["Your {wordDoc} on file has run out.", "Tu {wordDoc} que tenemos venció."],
-  ["Your {wordDoc} on file ends before this job. We'll check the new one you sent.", "Tu {wordDoc} que tenemos vence antes de este trabajo. Vamos a revisar el nuevo que enviaste."],
+  ["Your {wordDoc} on file ends before this job. We'll check the new one you sent.", "Tu {wordDoc} que tenemos vence antes de este trabajo. Vamos a revisar el documento nuevo que enviaste."],
   ["Your {wordDoc} on file ends before this job.", "Tu {wordDoc} que tenemos vence antes de este trabajo."],
-  ["We haven't checked the {wordDoc} you sent yet.", "Todavía no revisamos el {wordDoc} que enviaste."],
+  ["We haven't checked the {wordDoc} you sent yet.", "Todavía no revisamos tu {wordDoc} que enviaste."],
 
   // Reading a receipt (routes/receipts.ts, core receipts.ts readingProblems)
   ["No total was found. Enter what it cost.", "No se encontró el total. Escribe cuánto costó."],

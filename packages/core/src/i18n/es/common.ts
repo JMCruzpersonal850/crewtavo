@@ -165,7 +165,7 @@ export default {
 
   // Buttons, dialogs and forms (components/ui)
   "Saved": "Guardado",
-  "Still working. Check your signal.": "Sigue trabajando. Revisa tu señal.",
+  "Still working. Check your signal.": "Todavía en proceso. Revisa tu señal.",
   "Type <word>{typed}</word> to confirm": "Escribe <word>{typed}</word> para confirmar",
   "Confirm": "Confirmar",
   "Close": "Cerrar",
@@ -406,7 +406,7 @@ export default {
   "<b>On a team?</b> Ask the owner or an admin for a reset link. They make one under <b>Settings → People</b>, next to your name.": "<b>¿Eres parte de un equipo?</b> Pídele al dueño o a un administrador un enlace para restablecer la contraseña. Lo hacen en <b>Configuración → Personas</b>, junto a tu nombre.",
   "<b>The owner?</b> Upload the key file you saved when you set up Crewtavo.": "<b>¿Eres el dueño?</b> Sube el archivo de llaves que guardaste cuando configuraste Crewtavo.",
   "I'm the owner: use my key file": "Soy el dueño: usar mi archivo de llaves",
-  "Back to sign in": "Volver a iniciar sesión",
+  "Back to sign in": "Volver al inicio de sesión",
   "Check your email": "Revisa tu correo",
   "Sign-in link sent to <b>{email}</b>": "Enlace para iniciar sesión enviado a <b>{email}</b>",
   "Reset link sent to <b>{email}</b>": "Enlace para restablecer enviado a <b>{email}</b>",
@@ -561,7 +561,7 @@ export default {
   "For subcontractors. We'll text a {digits}-digit code to the number the office has for you.": "Para subcontratistas. Te mandamos por mensaje de texto un código de {digits} dígitos al número que la oficina tiene de ti.",
   "Text me a code": "Mándame un código por mensaje",
   "Use a different number": "Usar otro número",
-  "Get a code by text instead": "Mejor recibir el código por mensaje de texto",
+  "Get a code by text instead": "Mejor recibir un código por mensaje",
   "For subcontractors. We'll email a {digits}-digit code to the address the office has for you.": "Para subcontratistas. Te mandamos por correo un código de {digits} dígitos a la dirección que la oficina tiene de ti.",
   "Email me a code": "Mándame un código por correo",
   "Use a different email": "Usar otro correo",

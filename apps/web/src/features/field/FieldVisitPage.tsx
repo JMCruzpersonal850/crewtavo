@@ -230,7 +230,7 @@ export function FieldVisitPage() {
         {left > 0 && (
           <>
             <span className="sr-only">, </span>
-            <span className="field-commit-left"><T text="{count} required left" count={<AnimatedNumber value={left} />} /></span>
+            <span className="field-commit-left"><T text={left === 1 ? msg("{count} required left", "one") : "{count} required left"} count={<AnimatedNumber value={left} />} /></span>
           </>
         )}
       </Button>

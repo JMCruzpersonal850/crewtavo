@@ -372,7 +372,28 @@ describe("notifications to the team, in Spanish", () => {
   it("reads the errors a crew member can meet", () => {
     expect(translateError("es", "You can change a visit's status and notes. Ask the office about anything else.")).toBe("Puedes cambiar el estado y las notas de una visita. Pregúntale a la oficina por lo demás.");
     expect(translateError("es", "Your workers' comp certificate on file has run out.")).toBe("Tu certificado de compensación laboral que tenemos venció.");
+    // "The new one" is the document, so it reads right after "tu licencia" or "tu exención" as after "tu seguro".
+    expect(translateError("es", "Your license on file has run out. We'll check the new one you sent.")).toBe("Tu licencia que tenemos venció. Vamos a revisar el documento nuevo que enviaste.");
+    expect(translateError("es", "We haven't checked the workers' comp exemption you sent yet.")).toBe("Todavía no revisamos tu exención de compensación laboral que enviaste.");
     expect(translateError("es", "The lines and tax come to $86.40, not the $90.00 total. Check them.")).toBe("Las líneas y el impuesto suman $86.40, no el total de $90.00. Revísalos.");
+  });
+});
+
+describe("Spanish as it's said", () => {
+  installSpanish();
+  const es = translator("es");
+
+  it("counts one required answer as one: \"falta 1 obligatorio\", \"faltan 3 obligatorios\"", () => {
+    expect(es(msg("{count} required left", "one"), { count: 1 })).toBe("falta 1 obligatorio");
+    expect(es("{count} required left", { count: 3 })).toBe("faltan 3 obligatorios");
+  });
+
+  it("says \"antes del\" before a date, names driving as a noun, and the hour of one as \"la 1\"", () => {
+    expect(es("Answer by {when}", { when: "jue, 15 de oct, 5:00 p.m." })).toBe("Responde antes del jue, 15 de oct, 5:00 p.m.");
+    expect(es("You left {place}, so your clock is on driving", { place: "12 Oak St" })).toBe("Saliste de 12 Oak St, así que tu reloj ahora cuenta como manejo");
+    expect(es("Switch to driving")).toBe("Cambiar a manejo");
+    expect(es("{when} at {time}", { when: "jue, 15 de oct", time: "1:30 p.m." })).toBe("jue, 15 de oct a la 1:30 p.m.");
+    expect(es("{when} at {time}", { when: "jue, 15 de oct", time: "11:30 a.m." })).toBe("jue, 15 de oct a las 11:30 a.m.");
   });
 });
 
