@@ -3,6 +3,7 @@
  * your maps app), who it's for, the crew and people, equipment, gate code and instructions. Edit
  * opens the visit form; nothing changes from here by accident. A sheet on phones.
  */
+import { marketingOn } from "@crewtavo/core/marketing";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
@@ -15,7 +16,7 @@ import { EntityStatus, statusLabel } from "@/components/ui/StatusPill";
 import { supabase, unwrap, unwrapOne } from "@/lib/api";
 import { addressLine, formatTime } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
-import { hasRole, useSession } from "@/lib/session";
+import { can, hasRole, useSession } from "@/lib/session";
 import { useVisitExtraScope } from "../field/FieldExtras";
 import { usePendingChanges } from "./changeRequests";
 import { lengthLabel } from "./VisitDialog";
@@ -26,6 +27,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
   const session = useSession();
   const tz = session.company.timezone;
   const office = hasRole(session, "admin", "office", "estimator");
+  const showcases = hasRole(session, "admin", "office") && can(session, "marketing") && marketingOn(session.company.settings);
   const visit = useQuery({
     queryKey: ["visit-details", visitId],
     queryFn: async () =>
@@ -177,6 +179,10 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
               {client?.phone && <a className="btn" href={`tel:${client.phone}`}><Icon name="phone" size={16} />Call</a>}
               {client?.phone && <a className="btn" href={`sms:${client.phone}`}><Icon name="messages" size={16} />Text</a>}
               {office && v.job && <Link className="btn" to={`/jobs/${v.job.id}`} onClick={onClose}><Icon name="job" size={16} />Open job</Link>}
+              {/* A finished visit's before and after photos, on a page to share (Marketing → Showcases). */}
+              {showcases && v.job && v.status === "completed" && (
+                <Link className="btn" to={`/marketing?tab=showcases&job=${v.job.id}&visit=${v.id}`} onClick={onClose}><Icon name="image" size={16} />Make a showcase</Link>
+              )}
               {!office && <Link className="btn" to={`/field/visits/${v.id}`} onClick={onClose}><Icon name="clipboard" size={16} />Open visit</Link>}
             </div>
           </>

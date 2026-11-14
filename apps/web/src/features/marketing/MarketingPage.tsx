@@ -1,6 +1,7 @@
 /**
  * Marketing (Apps → Crewtavo - Marketing): campaigns (the automated ones, AutomatedCampaigns, and
- * one-off emails to client segments, with what each brought in), social posts (Social), promo codes, Google review requests
+ * one-off emails to client segments, with what each brought in, and postcards), social posts (Social), job showcases
+ * (Showcases), promo codes, Google review requests
  * (Reviews) and referral credits and asks (Referrals), and visits to the business's website once
  * Website Analytics is installed (WebsiteSection). Uninstalled, the page says so, and still shows website
  * visits when Website Analytics is installed (Home and Website Analytics open them here).
@@ -30,10 +31,11 @@ import { PostcardCampaigns } from "./PostcardCampaigns";
 import { PromoCodes } from "./PromoCodes";
 import { EARNED_HINT, Referrals } from "./Referrals";
 import { Reviews } from "./Reviews";
+import { Showcases } from "./Showcases";
 import { Social } from "./Social";
 import { analyticsOn } from "./website";
 
-type Tab = "campaigns" | "social" | "promos" | "reviews" | "referrals" | "website";
+type Tab = "campaigns" | "social" | "showcases" | "promos" | "reviews" | "referrals" | "website";
 // Charts load with the tab, not with the rest of Marketing.
 const WebsiteSection = lazy(() => import("./WebsiteSection").then((m) => ({ default: m.WebsiteSection })));
 
@@ -82,6 +84,7 @@ export function MarketingPage() {
       <div ref={tabs} className="underline-tabs underline-tabs-compact" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "campaigns"} onClick={() => setTab("campaigns")}><Icon name="mail" size={16} />Campaigns</button>
         <button type="button" role="tab" aria-selected={tab === "social"} onClick={() => setTab("social")}><Icon name="share" size={16} />Social</button>
+        <button type="button" role="tab" aria-selected={tab === "showcases"} onClick={() => setTab("showcases")}><Icon name="image" size={16} />Showcases</button>
         <button type="button" role="tab" aria-selected={tab === "promos"} onClick={() => setTab("promos")}><Icon name="tag" size={16} />Promo codes</button>
         <button type="button" role="tab" aria-selected={tab === "reviews"} onClick={() => setTab("reviews")}><Icon name="star" size={16} />Reviews</button>
         <button type="button" role="tab" aria-selected={tab === "referrals"} onClick={() => setTab("referrals")}><Icon name="gift" size={16} />Referrals</button>
@@ -89,6 +92,7 @@ export function MarketingPage() {
       </div>
       {tab === "campaigns" && <Campaigns />}
       {tab === "social" && <Social />}
+      {tab === "showcases" && <Showcases />}
       {tab === "promos" && <PromoCodes />}
       {tab === "reviews" && <Reviews />}
       {tab === "referrals" && <Referrals />}

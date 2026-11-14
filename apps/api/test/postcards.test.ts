@@ -110,7 +110,7 @@ function world(mode: "test" | "live" = "test") {
     companies: [{ id: CO, name: "Sketchy Gutters", phone: "(540) 555-0100", website: "https://sketchy.example.com", slug: "sketchy", address: { line1: "1 Main St", city: "Springfield", region: "IL", postal_code: "62701" }, settings: { marketing: { enabled: true } } }],
     integrations: [{ company_id: CO, provider: "lob", status: "connected", settings: { mode } }],
     intake_forms: [{ company_id: CO, slug: "spring", active: true }],
-    postcard_campaigns: [{ id: CAMPAIGN, company_id: CO, name: "Spring cards", size: "4x6", message: "Hi {{client.first_name}}, book at {{link}}", mode, status: "sending", image_token: "t".repeat(32), made_count: 0 }],
+    postcard_campaigns: [{ id: CAMPAIGN, company_id: CO, name: "Spring cards", size: "4x6", message: "Hi {{client.first_name}}, book at {{link}}", mode, status: "sending", image_token: "t".repeat(32), made_count: 0, stopped_reason: null as string | null }],
     clients: [
       { id: "ann", status: "active", marketing_opt_out: false },
       { id: "bob", status: "active", marketing_opt_out: true },

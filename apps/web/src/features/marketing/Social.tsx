@@ -51,14 +51,15 @@ export function Social() {
     }, { replace: true });
   }, [params, setParams]);
 
-  // Opened from a job's photos or a review: a new post with them picked.
+  // Opened from a job's photos or a review: a new post with them picked. A showcase's comes with
+  // its caption (its title, write-up and link) too.
   useEffect(() => {
     const compose = params.get("compose");
     if (!compose || !state.data) return;
     setComposing({
       start: compose === "review"
         ? { source: "review", review: params.get("review") ?? undefined }
-        : { source: "photos", photos: (params.get("photos") ?? "").split(",").filter(Boolean), job: params.get("job") ?? undefined },
+        : { source: "photos", photos: (params.get("photos") ?? "").split(",").filter(Boolean), job: params.get("job") ?? undefined, caption: params.get("caption") ?? undefined },
     });
     setParams({ tab: "social" }, { replace: true });
   }, [params, state.data, setParams]);

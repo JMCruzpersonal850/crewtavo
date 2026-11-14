@@ -419,7 +419,12 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   a note with the campaign merge fields on the back, previewed at its real size, printed and mailed
   by Lob through the business's own Lob account (Apps → Lob; a test key makes the cards without
   mailing anything) to the clients in the segment with a full mailing address, never archived or
-  opted-out ones, with what each card brought in.
+  opted-out ones, with what each card brought in. A finished job or visit becomes a showcase:
+  before and after photos (their drawn-on copies, if any) and a few lines about the work (written
+  by hand or with Claude), on a page in the business's logo and colour with Get a quote to its
+  booking form. It never shows the client's name or address (the town only if chosen), asks before
+  showing photos nobody marked OK to share, and can't show a client's who asked that their property
+  not be posted. Copy its link, post it to Facebook or Instagram, or unpublish it.
 - **Claude and ChatGPT:** a built-in connector that can look things up or run the business:
   import customers and recurring services (with a preview first, and no duplicates on a second
   run), manage the schedule, quotes, invoices and payments, read the money figures, invite people

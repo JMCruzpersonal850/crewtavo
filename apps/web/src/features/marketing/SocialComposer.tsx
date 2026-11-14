@@ -50,6 +50,8 @@ export interface ComposerStart {
   photos?: string[];
   review?: string;
   job?: string;
+  /** What the caption starts as (a showcase's). */
+  caption?: string;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -75,7 +77,7 @@ export function SocialComposer({ open, onClose, state, post, start }: { open: bo
   const [takenOut, setTakenOut] = useState<string | null>(null);
   const [review, setReview] = useState<string | null>(post?.review_id ?? start?.review ?? null);
   const [job, setJob] = useState<string>(start?.job ?? "");
-  const [caption, setCaption] = useState(post?.caption ?? "");
+  const [caption, setCaption] = useState(post?.caption ?? start?.caption?.slice(0, 2200) ?? "");
   const [captionBy, setCaptionBy] = useState<"person" | "ai">("person");
   const choices = networkChoices(state, source);
   // A post being changed keeps its networks that can still post; the rest are taken off, saying why.

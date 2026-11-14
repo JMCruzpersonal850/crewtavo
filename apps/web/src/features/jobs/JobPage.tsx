@@ -35,6 +35,7 @@ import { ExpensesCard, useJobExpenses } from "./ExpensesCard";
 import { useReceiptDrafts } from "./ReceiptDrafts";
 import { MaterialsCard, useJobMaterials } from "./JobMaterials";
 import { PhotosCard } from "../files/PhotosCard";
+import { ShowcaseDialog } from "../marketing/ShowcaseDialog";
 import { JobChecklists } from "./FilledChecklists";
 import { PlansCard } from "../plans/PlansCard";
 import { WorksheetsCard } from "../paving/WorksheetsCard";
@@ -72,7 +73,7 @@ export function JobPage() {
   const [visit, setVisit] = useState<VisitInput | null>(null);
   // ?invoice=1 (from a paving project's Invoice step) opens Create invoice straight away.
   const [params] = useSearchParams();
-  const [dialog, setDialog] = useState<null | "details" | "invoice" | "pause">(() => (params.get("invoice") ? "invoice" : null));
+  const [dialog, setDialog] = useState<null | "details" | "invoice" | "pause" | "showcase">(() => (params.get("invoice") ? "invoice" : null));
   // The invoice just made, while its next step offers the job's logged hours and materials.
   const [madeInvoice, setMadeInvoice] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
@@ -363,6 +364,12 @@ export function JobPage() {
                     label: j.client?.reviewed_at ? "Already left a Google review" : reviewBy === "sms" ? "Ask for a review by text" : "Ask for a review", icon: "star",
                     hidden: !marketingOn(session.company.settings) || !j.client, disabled: !reviewBy, onSelect: () => review.mutate(reviewBy!),
                   },
+                  {
+                    // A finished job's before and after photos, on a page to share (Marketing → Showcases).
+                    label: "Make a showcase", icon: "image",
+                    hidden: !marketingOn(session.company.settings) || !isOffice || !can(session, "marketing") || !(["requires_invoicing", "completed"].includes(j.status) || visits.some((v) => v.status === "completed")),
+                    onSelect: () => setDialog("showcase"),
+                  },
                   { separator: true },
                   { label: "Pause job", icon: "pause", hidden: j.status !== "active" || j.kind !== "recurring" || Boolean(j.paused_at), onSelect: () => setDialog("pause") },
                   { label: "Resume job", icon: "play", hidden: !j.paused_at, onSelect: () => resume.mutate() },
@@ -633,6 +640,7 @@ export function JobPage() {
       {visit && <VisitDialog visit={visit} onClose={() => setVisit(null)} onSaved={refresh} />}
       {extraVisit && <ExtraWorkDialog visit={extraVisit} jobId={j.id} onClose={() => setExtraVisit(null)} />}
       {dialog === "details" && <JobDetailsDialog job={j as unknown as JobRecord} onClose={() => setDialog(null)} onSaved={refresh} />}
+      {dialog === "showcase" && <ShowcaseDialog jobId={j.id} onClose={() => setDialog(null)} />}
       {dialog === "pause" && <PauseJobDialog jobId={j.id} canSchedule={canDispatch} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "invoice" && (
         <InvoiceJobDialog
