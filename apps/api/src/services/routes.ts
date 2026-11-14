@@ -71,7 +71,8 @@ const minutesOf = (iso: string, tz: string) => {
   return h! * 60 + m!;
 };
 const toMinutes = (hhmm: string | undefined, fallback: number) => {
-  const [h, m] = (hhmm ?? "").split(":").map(Number);
+  // A time that was never set is the fallback: Number("") is 0, which would read as midnight.
+  const [h, m] = hhmm ? hhmm.split(":").map(Number) : [];
   return Number.isFinite(h) ? h! * 60 + (m || 0) : fallback;
 };
 const hhmm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(Math.round(minutes) % 60).padStart(2, "0")}`;

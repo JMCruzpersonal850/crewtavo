@@ -8,7 +8,7 @@ import { decryptJson, encryptJson, signToken } from "../src/lib/crypto";
 import { readClientLink } from "../src/lib/links";
 import type { Db } from "../src/lib/supabase";
 import { processAutomations, visitTime } from "../src/services/automations";
-import { arrivalTime } from "../src/services/routes";
+import { arrivalTime, planDay } from "../src/services/routes";
 import { updateVisit } from "../src/services/schedule";
 import { materializeJob, runTask } from "../src/tasks";
 
@@ -1513,5 +1513,21 @@ describe("when a crew on its way should arrive", () => {
     const other = world(null);
     await updateVisit({ db: other.db, companyId: COMPANY, role: "field_crew", permissions: ["schedule"], userId: "u1" }, "visit-1", { status: "in_progress", forward_only: true });
     expect(call(other.queries.find((q) => verb(q) === "update")!, "update")![1]).toEqual({ status: "in_progress" });
+  });
+});
+
+describe("a day's route", () => {
+  it("works 7 to 6 for a business that never set its hours, not from midnight", () => {
+    const visit = {
+      id: "visit-1", title: "Weekly mow", kind: "job", status: "scheduled", starts_at: null, ends_at: null, route_order: null, time_fixed: false,
+      property: { id: "property-1", line1: "12 Oak St", line2: null, city: "Radford", region: "VA", postal_code: null, country: "US", lat: 37.13, lng: -80.57 },
+      job: { number: 1, visit_duration_min: 60, client: { display_name: "Pat Lee" } },
+    };
+    const now = new Date("2026-10-16T15:00:00Z");
+    const plan = planDay([visit], { tz: "America/New_York", settings: {} }, "2026-10-19", { now });
+    expect([plan.stops[0]!.planned.start, plan.workEnd]).toEqual([7 * 60, 18 * 60]);
+    // Hours that were set are the hours.
+    const set = planDay([visit], { tz: "America/New_York", settings: { working_hours: { start: "08:30", end: "16:00" } } }, "2026-10-19", { now });
+    expect([set.stops[0]!.planned.start, set.workEnd]).toEqual([8 * 60 + 30, 16 * 60]);
   });
 });

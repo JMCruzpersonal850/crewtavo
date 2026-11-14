@@ -97,7 +97,8 @@ const label = (date: string, opts: Intl.DateTimeFormatOptions) => new Date(`${da
 const hhmm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 const lengthLabel = (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} ${m === 60 ? "hour" : "hours"}`);
 const toMinutes = (t: string | undefined, fallback: number) => {
-  const [h, m] = (t ?? "").split(":").map(Number);
+  // A time that was never set is the fallback: Number("") is 0, which would read as midnight.
+  const [h, m] = t ? t.split(":").map(Number) : [];
   return Number.isFinite(h) ? h * 60 + (m || 0) : fallback;
 };
 const sameTime = (a: string | null | undefined, b: string | null | undefined) => (a && b ? Date.parse(a) === Date.parse(b) : (a ?? null) === (b ?? null));
