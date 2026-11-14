@@ -26,6 +26,8 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/favicon.svg"];
 // Shared with src/lib/offline.ts (SYNC_TAG, WAITING_CACHE).
 const SYNC_TAG = "crewtavo-field-sync";
 const WAITING = "crewtavo-waiting";
+/** The waiting notification's words in the app's language (src/lib/offline.ts WORDS_CACHE). */
+const WORDS = "crewtavo-words";
 /** Pages for clients (Client Hub, booking forms, referrals): they don't run the crew's app. */
 const CLIENT_PAGES = /^\/(hub|book|u|refer)(\/|$)/;
 /**
@@ -51,8 +53,8 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      // The count of waiting updates belongs to the app, not to this worker's version: it stays.
-      await Promise.all(keys.filter((k) => k !== WAITING && (k !== CACHE || !OFFLINE)).map((k) => caches.delete(k)));
+      // The count of waiting updates, and the words to say it in, belong to the app, not to this worker's version: they stay.
+      await Promise.all(keys.filter((k) => k !== WAITING && k !== WORDS && (k !== CACHE || !OFFLINE)).map((k) => caches.delete(k)));
       await self.clients.claim();
     })(),
   );
@@ -276,7 +278,7 @@ self.addEventListener("sync", (event) => {
 /** The waiting notification's words in the app's language, or null for English. */
 async function waitingWords() {
   try {
-    const words = await (await (await caches.open("crewtavo-words")).match("/waiting"))?.json();
+    const words = await (await (await caches.open(WORDS)).match("/waiting"))?.json();
     return typeof words?.one === "string" && typeof words?.other === "string" ? words : null;
   } catch {
     return null;

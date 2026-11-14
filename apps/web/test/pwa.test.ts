@@ -543,6 +543,17 @@ describe("the service worker, offline (production builds)", () => {
     expect(Object.keys(caches.entries("crewtavo-app-v2"))).toEqual(["/icon-192.png"]);
   });
 
+  it("keeps the words of the \"updates waiting\" notice when a new version takes over, so it's still in Spanish for someone using Spanish", async () => {
+    const caches = new FakeCaches();
+    await (await caches.open("crewtavo-words")).put("/waiting", new Response(JSON.stringify({ one: "1 novedad pendiente de enviar. Abre Crewtavo para enviarla.", other: "{count} novedades pendientes de enviar. Abre Crewtavo para enviarlas." })));
+    await (await caches.open("crewtavo-waiting")).put("/waiting/u1", new Response("2"));
+    const sw = loadServiceWorker({ caches, offline: true, windows: [] });
+    await sw.dispatch("activate");
+    expect(await caches.keys()).toEqual(expect.arrayContaining(["crewtavo-words", "crewtavo-waiting"]));
+    await sw.dispatch("sync", { tag: "crewtavo-field-sync" });
+    expect(sw.showNotification).toHaveBeenCalledWith("Crewtavo", expect.objectContaining({ body: "2 novedades pendientes de enviar. Abre Crewtavo para enviarlas." }));
+  });
+
   it("empties what the last version kept when this one takes over (stored pictures among it)", async () => {
     const caches = new FakeCaches();
     await (await caches.open("crewtavo-app-v1")).put("/storage/v1/object/sign/files/c1/visit/v1/p.png", new Response("old"));
