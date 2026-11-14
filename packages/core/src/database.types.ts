@@ -1062,14 +1062,14 @@ isOneToOne: false
                   ]
                 },"expenses": {
                   Row: {
-                    "amount": number,"category": string | null,"company_id": string,"created_at": string,"description": string | null,"equipment_id": string | null,"id": string,"in_line_costs": boolean,"incurred_on": string,"job_id": string | null,"line_items": Json | null,"receipt_path": string | null,"reimbursable": boolean,"reimbursed_at": string | null,"tax_amount": number | null,"updated_at": string,"user_id": string | null,"vendor": string | null
+                    "amount": number,"category": string | null,"company_id": string,"created_at": string,"description": string | null,"equipment_id": string | null,"id": string,"in_line_costs": boolean,"incurred_on": string,"invoice_number": string | null,"job_id": string | null,"line_items": Json | null,"receipt_path": string | null,"receipt_total": number | null,"reimbursable": boolean,"reimbursed_at": string | null,"tax_amount": number | null,"updated_at": string,"user_id": string | null,"vendor": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount": number,"category"?: string | null,"company_id": string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"in_line_costs"?: boolean,"incurred_on"?: string,"job_id"?: string | null,"line_items"?: Json | null,"receipt_path"?: string | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"tax_amount"?: number | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
+                    "amount": number,"category"?: string | null,"company_id": string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"in_line_costs"?: boolean,"incurred_on"?: string,"invoice_number"?: string | null,"job_id"?: string | null,"line_items"?: Json | null,"receipt_path"?: string | null,"receipt_total"?: number | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"tax_amount"?: number | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
                   }
                   Update: {
-                    "amount"?: number,"category"?: string | null,"company_id"?: string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"in_line_costs"?: boolean,"incurred_on"?: string,"job_id"?: string | null,"line_items"?: Json | null,"receipt_path"?: string | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"tax_amount"?: number | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
+                    "amount"?: number,"category"?: string | null,"company_id"?: string,"created_at"?: string,"description"?: string | null,"equipment_id"?: string | null,"id"?: string,"in_line_costs"?: boolean,"incurred_on"?: string,"invoice_number"?: string | null,"job_id"?: string | null,"line_items"?: Json | null,"receipt_path"?: string | null,"receipt_total"?: number | null,"reimbursable"?: boolean,"reimbursed_at"?: string | null,"tax_amount"?: number | null,"updated_at"?: string,"user_id"?: string | null,"vendor"?: string | null
                   }
                   Relationships: [
                     {
@@ -1360,14 +1360,14 @@ isOneToOne: true
                   ]
                 },"job_installments": {
                   Row: {
-                    "amount": number,"company_id": string,"count": number,"created_at": string,"due": string,"due_on": string | null,"id": string,"invoice_id": string | null,"job_id": string,"made_at": string | null,"percent": number | null,"position": number,"problem": string | null,"quote_id": string | null,"send_claimed_at": string | null,"send_error": string | null,"send_state": string | null
+                    "amount": number,"attempts": number,"company_id": string,"count": number,"created_at": string,"due": string,"due_on": string | null,"id": string,"invoice_id": string | null,"job_id": string,"made_at": string | null,"percent": number | null,"position": number,"problem": string | null,"quote_id": string | null,"send_claimed_at": string | null,"send_error": string | null,"send_state": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount": number,"company_id": string,"count": number,"created_at"?: string,"due": string,"due_on"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id": string,"made_at"?: string | null,"percent"?: number | null,"position": number,"problem"?: string | null,"quote_id"?: string | null,"send_claimed_at"?: string | null,"send_error"?: string | null,"send_state"?: string | null
+                    "amount": number,"attempts"?: number,"company_id": string,"count": number,"created_at"?: string,"due": string,"due_on"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id": string,"made_at"?: string | null,"percent"?: number | null,"position": number,"problem"?: string | null,"quote_id"?: string | null,"send_claimed_at"?: string | null,"send_error"?: string | null,"send_state"?: string | null
                   }
                   Update: {
-                    "amount"?: number,"company_id"?: string,"count"?: number,"created_at"?: string,"due"?: string,"due_on"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string,"made_at"?: string | null,"percent"?: number | null,"position"?: number,"problem"?: string | null,"quote_id"?: string | null,"send_claimed_at"?: string | null,"send_error"?: string | null,"send_state"?: string | null
+                    "amount"?: number,"attempts"?: number,"company_id"?: string,"count"?: number,"created_at"?: string,"due"?: string,"due_on"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string,"made_at"?: string | null,"percent"?: number | null,"position"?: number,"problem"?: string | null,"quote_id"?: string | null,"send_claimed_at"?: string | null,"send_error"?: string | null,"send_state"?: string | null
                   }
                   Relationships: [
                     {
@@ -4353,6 +4353,9 @@ isOneToOne: false
               "archived": boolean,"client_id": string,"client_name": string,"content_type": string,"created_at": string,"created_by": string,"created_by_name": string,"crew_visible": boolean,"file_name": string,"folder_id": string,"folder_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"notes": string,"path": string,"property_id": string,"property_label": string,"quote_id": string,"quote_number": number,"quote_title": string,"replaces_id": string,"request_id": string,"request_title": string,"revision": string,"size_bytes": number,"title": string,"updated_at": string,"versions": number
             }[]
                            },
+"drop_unmade_installments":
+{ Args: { "p_job": string }; Returns: number
+                           },
 "duplicate_quote":
 { Args: { "p_client"?: string,"p_custom_fields"?: Json,"p_property"?: string,"p_quote": string,"p_template_name"?: string,"p_title"?: string }; Returns: string
                            },
@@ -4451,6 +4454,9 @@ isOneToOne: false
                            },
 "inactive_client_count":
 { Args: { "p_company": string,"p_days": number }; Returns: number
+                           },
+"installment_send_called_off":
+{ Args: { "p_installment": string }; Returns: undefined
                            },
 "installment_sent":
 { Args: { "p_error"?: string,"p_installment": string,"p_sent": boolean }; Returns: undefined
@@ -4555,6 +4561,11 @@ isOneToOne: false
       } },
 "job_pay_costs":
 { Args: { "p_jobs": (string)[] }; Returns: {
+              "amount": number,"job_id": string,"payees": number
+            }[]
+                           },
+"job_pay_costs_for_check":
+{ Args: { "p_company": string,"p_jobs": (string)[] }; Returns: {
               "amount": number,"job_id": string,"payees": number
             }[]
                            },
@@ -4856,6 +4867,9 @@ isOneToOne: false
                            },
 "quote_exact_sent":
 { Args: { "p_quote": string }; Returns: undefined
+                           },
+"quote_send_problem":
+{ Args: { "p_quote": string }; Returns: string
                            },
 "raise_past_due_notices":
 { Args: Record<PropertyKey, never>; Returns: number
