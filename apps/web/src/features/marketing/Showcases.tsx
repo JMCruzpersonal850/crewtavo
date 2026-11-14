@@ -18,6 +18,7 @@ import { copyText } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { ShowcaseDialog, showcaseLink, socialPostPath } from "./ShowcaseDialog";
+import { takenDownWords } from "./showcaseWords";
 
 type Open = { jobId: string; visitId?: string | null; showcaseId?: string | null };
 
@@ -41,7 +42,7 @@ export function Showcases() {
       unwrap(
         await supabase()
           .from("showcases")
-          .select("id, job_id, visit_id, title, description, status, token, published_at, created_at, job:jobs(number, title), photos:showcase_photos(attachment_id, sort)")
+          .select("id, job_id, visit_id, title, description, status, token, published_at, unpublished_reason, created_at, job:jobs(number, title), photos:showcase_photos(attachment_id, sort)")
           .eq("company_id", session.company.id)
           .order("created_at", { ascending: false })
           .limit(200),
@@ -81,8 +82,10 @@ export function Showcases() {
                   <span className="muted small ellipsis" style={{ display: "block" }}>
                     {job ? `Job #${job.number} · ${job.title}` : "Job"} · {photoIds.length} {photoIds.length === 1 ? "photo" : "photos"}{live && s.published_at ? ` · Published ${formatDate(s.published_at)}` : ""}
                   </span>
+                  {/* It came down by itself: said here, as on the bell, so nobody wonders where the page went. */}
+                  {takenDownWords(s) && <span className="small" style={{ display: "block", color: "var(--warning)", fontWeight: 600 }}>{takenDownWords(s)}</span>}
                 </button>
-                <StatusPill label={live ? "Published" : s.status === "unpublished" ? "Unpublished" : "Draft"} tone={live ? "good" : "muted"} />
+                <StatusPill label={live ? "Published" : takenDownWords(s) ? "Taken down" : s.status === "unpublished" ? "Unpublished" : "Draft"} tone={live ? "good" : "muted"} />
                 <Menu
                   triggerClassName="btn btn-sm btn-ghost btn-icon"
                   items={[

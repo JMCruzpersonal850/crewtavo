@@ -148,7 +148,7 @@ showcases.post("/showcases/:id/publish", requireUser, requireCompany(OFFICE, "ma
   }
   const { error: published } = await admin
     .from("showcases")
-    .update({ status: "published", published_at: new Date().toISOString(), published_by: c.var.userId, unpublished_at: null })
+    .update({ status: "published", published_at: new Date().toISOString(), published_by: c.var.userId, unpublished_at: null, unpublished_reason: null })
     .eq("id", id);
   if (published) throw dbError(published);
   return c.json({ status: "published", url: showcaseUrl(appUrl(c), showcase.token), marked_ok: check.unshared });
@@ -159,7 +159,8 @@ showcases.post("/showcases/:id/unpublish", requireUser, requireCompany(OFFICE, "
   const id = param(c, "id");
   must(await c.var.db.from("showcases").select("id").eq("company_id", c.var.companyId).eq("id", id).maybeSingle(), "Showcase not found.");
   const admin = adminClient(c.env);
-  const { error } = await admin.from("showcases").update({ status: "unpublished", unpublished_at: new Date().toISOString() }).eq("id", id);
+  // Unpublished by someone, not taken down by itself: no reason to show.
+  const { error } = await admin.from("showcases").update({ status: "unpublished", unpublished_at: new Date().toISOString(), unpublished_reason: null }).eq("id", id);
   if (error) throw dbError(error);
   await removeCopies(admin, id);
   return c.json({ status: "unpublished" });

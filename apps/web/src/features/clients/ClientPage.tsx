@@ -18,6 +18,7 @@ import { copyText } from "@/lib/clipboard";
 import { addressLine, formatDate, formatMoney } from "@/lib/format";
 import { useRememberRecent } from "@/lib/recent";
 import { can, hasRole, useSession } from "@/lib/session";
+import { ClientShowcaseChip, ClientShowcaseNote } from "../marketing/ClientShowcases";
 import { toast } from "@/lib/toast";
 import { undoable } from "@/lib/undo";
 import { PlansCard } from "../plans/PlansCard";
@@ -125,6 +126,9 @@ export function ClientPage() {
       if (patch.social_photos_opt_out !== undefined) {
         queryClient.invalidateQueries({ queryKey: ["record-photos", session.company.id] });
         queryClient.invalidateQueries({ queryKey: socialKey(session.company.id) });
+        // Their showcases come down when photos are turned off (the database does it), so read them again.
+        queryClient.invalidateQueries({ queryKey: ["client-showcases", id] });
+        queryClient.invalidateQueries({ queryKey: ["showcases", session.company.id] });
       }
     },
   });
@@ -297,6 +301,7 @@ export function ClientPage() {
         {c.marketing_opt_out && <span className="chip chip-amber">Unsubscribed from marketing</span>}
         {c.review_opt_out && <span className="chip chip-amber">No review asks</span>}
         {c.social_photos_opt_out && <span className="chip chip-amber">No social photos</span>}
+        <ClientShowcaseChip clientId={c.id} />
         {c.reviewed_at && <ReviewedChip clientId={c.id} />}
         {stopped && <span className="chip chip-amber">Texts off</span>}
       </div>
@@ -494,6 +499,7 @@ export function ClientPage() {
                       Can be posted on social pages
                     </label>
                     {c.social_photos_opt_out && <span className="muted small" style={{ display: "block" }}>Photos of their property aren't offered for posts</span>}
+                    <ClientShowcaseNote clientId={c.id} optedOut={c.social_photos_opt_out} />
                   </dd>
                 </>
               )}

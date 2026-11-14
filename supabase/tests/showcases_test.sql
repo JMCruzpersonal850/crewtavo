@@ -44,6 +44,9 @@ select tmksc.as_user(:'pat');
 select public.create_company('Sketchy Gutters', 'general') as co \gset
 reset role;
 insert into public.memberships (company_id, user_id, role) values (:'co', :'olive', 'office'), (:'co', :'ray', 'field_crew');
+-- Marketing is installed: a showcase's page answers only while it is.
+select tmksc.as_nobody();
+update public.companies set settings = jsonb_set(coalesce(settings, '{}'), '{marketing}', '{"enabled": true}') where id = :'co';
 insert into public.clients (company_id, display_name, billing_address) values (:'co', 'Ann Oak', '{"line1": "12 Oak St", "city": "Springfield", "region": "IL", "postal_code": "62701"}') returning id as client \gset
 insert into public.properties (company_id, client_id, line1, city, region, postal_code) values (:'co', :'client', '12 Oak St', 'Springfield', 'IL', '62701') returning id as prop \gset
 insert into public.jobs (company_id, client_id, title, property_id, status) values (:'co', :'client', 'Gutters', :'prop', 'completed') returning id as job \gset
@@ -83,7 +86,7 @@ reset role;
 \o /dev/null
 set local role anon;
 select tmksc.as_nobody();
-select tmksc.check(public.showcase_view(:'tok') is null, 'a draft isn''t there for anyone');
+select tmksc.check(tmksc.error_of(format('select public.showcase_view(%L)', :'tok')) like '42501:%', 'only the server reads a showcase for a visitor: nobody calls showcase_view from outside');
 select tmksc.check(tmksc.error_of('select count(*) from public.showcases') like '42501:%', 'the table isn''t readable without signing in');
 select tmksc.check(tmksc.error_of('select count(*) from public.showcase_photos') like '42501:%', 'nor its photos');
 reset role;
@@ -94,7 +97,7 @@ select tmksc.as_nobody();
 update public.showcases set status = 'published', published_at = now() where id = :'sc';
 update public.showcase_photos set public_path = :'co' || '/showcases/' || :'sc' || '/a.jpg' where showcase_id = :'sc' and attachment_id = :'after_photo';
 reset role;
-set local role anon;
+set local role service_role;
 select tmksc.as_nobody();
 select tmksc.check((select v ->> 'title' = 'Gutters cleared and flushed' and v -> 'town' = 'null'::jsonb and jsonb_array_length(v -> 'photos') = 1 and v -> 'photos' -> 0 ->> 'role' = 'after'
   from public.showcase_view(:'tok') v), 'published: the write-up and the photos with a copy, without the town unless chosen');
@@ -120,7 +123,7 @@ set local role authenticated;
 select tmksc.as_user(:'olive');
 update public.showcases set show_town = true where id = :'sc';
 reset role;
-set local role anon;
+set local role service_role;
 select tmksc.as_nobody();
 select tmksc.check(public.showcase_view(:'tok') is null, 'unpublished, the link finds nothing');
 reset role;
@@ -129,7 +132,7 @@ select tmksc.as_nobody();
 update public.showcases set status = 'published' where id = :'sc';
 update public.showcase_photos set public_path = 'x.jpg' where showcase_id = :'sc';
 reset role;
-set local role anon;
+set local role service_role;
 select tmksc.as_nobody();
 select tmksc.check((select v ->> 'town' = 'Springfield' and v ->> 'region' = 'IL' from public.showcase_view(:'tok') v), 'published again with the town chosen: the town, never the street');
 reset role;
