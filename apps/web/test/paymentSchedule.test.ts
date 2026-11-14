@@ -4,6 +4,7 @@
  * (jobs/JobPaymentSchedule.tsx): open, it follows the total; signed, it's what was kept with the
  * approval; on the job, each payment says where it is.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { quoteDocument, quoteSchedule } from "@/features/documents/build";
 import { billsOutsideSchedule, canInvoiceNow, dropPaymentsQuestion, installmentState } from "@/features/jobs/JobPaymentSchedule";
@@ -15,6 +16,13 @@ const rows = [
   { kind: "amount", value: 300, due: "date", on: "2027-03-01" },
   { kind: "rest", due: "work_done" },
 ];
+
+describe("the schedule editor", () => {
+  it("says under the payments that some states cap deposits on home-improvement contracts", () => {
+    const editor = readFileSync(new URL("../src/features/quotes/PaymentSchedule.tsx", import.meta.url), "utf8");
+    expect(editor).toContain("The one due when they approve is the deposit. {DEPOSIT_LAW_NOTE}");
+  });
+});
 
 describe("a quote's payment schedule as it prints", () => {
   it("works out an open quote's payments on the total shown", () => {

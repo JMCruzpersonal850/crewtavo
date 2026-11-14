@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scheduleAmounts, scheduleDateProblem, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleRow } from "../src/money";
+import { DEPOSIT_LAW_NOTE, scheduleAmounts, scheduleDateProblem, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleRow } from "../src/money";
 
 // The database's private.schedule_amounts and private.schedule_problem do these sums
 // (supabase/tests/payment_schedule_test.sql checks the same cases there).
@@ -8,6 +8,21 @@ const thirds: ScheduleRow[] = [
   { kind: "percent", value: 30, due: "work_starts" },
   { kind: "rest", due: "work_done" },
 ];
+
+describe("what the schedule editor says about deposits", () => {
+  it("says some states cap them, with California's and Maryland's figures as the laws give them", () => {
+    // Cal. Bus. & Prof. Code 7159.5(a)(3): "one thousand dollars ($1,000) or 10 percent of the contract amount, whichever amount is less".
+    expect(DEPOSIT_LAW_NOTE).toContain("California at $1,000 or 10% of the contract price, whichever is less");
+    // Md. Bus. Reg. 8-617(b): "a deposit of more than one-third of the home improvement contract price".
+    expect(DEPOSIT_LAW_NOTE).toContain("Maryland at one-third of it");
+    expect(DEPOSIT_LAW_NOTE).toMatch(/^Some states cap the deposit on a home-improvement contract/);
+    expect(DEPOSIT_LAW_NOTE).toContain("Check your state's rules");
+  });
+
+  it("changes nothing a schedule may ask for: any share when they approve is still taken", () => {
+    expect(scheduleProblem([{ kind: "percent", value: 60, due: "approval" }, { kind: "rest", due: "work_done" }], 10000)).toBeNull();
+  });
+});
 
 describe("payment schedule sums", () => {
   it("works out percents of the total, and the rest as what's left", () => {

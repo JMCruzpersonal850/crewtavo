@@ -10,7 +10,7 @@
  * (20261113001640_schedule_dates.sql). A copy or a quote from a template has its days to set again,
  * and a day already gone has to be changed before the quote is sent: both are flagged here.
  */
-import { SCHEDULE_AFTER_MAX, SCHEDULE_DUE, scheduleAmounts, scheduleDateProblem, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleDue, type ScheduleRow } from "@crewtavo/core/money";
+import { DEPOSIT_LAW_NOTE, SCHEDULE_AFTER_MAX, SCHEDULE_DUE, scheduleAmounts, scheduleDateProblem, scheduleDueText, scheduleProblem, scheduleRows, type ScheduleDue, type ScheduleRow } from "@crewtavo/core/money";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -111,7 +111,7 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
     return (
       <div className="card card-pad stack-sm">
         <strong>Payment schedule</strong>
-        <p className="muted small">The payments have to come to the total, {formatMoneyCents(Number(quote.total ?? 0))}. The one due when they approve is the deposit.</p>
+        <p className="muted small">The payments have to come to the total, {formatMoneyCents(Number(quote.total ?? 0))}. The one due when they approve is the deposit. {DEPOSIT_LAW_NOTE}</p>
         {draft.map((d, i) => {
           const last = i === draft.length - 1;
           return (

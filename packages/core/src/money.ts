@@ -423,6 +423,17 @@ export function scheduleAmounts<T extends ScheduleRow>(rows: readonly T[], total
 }
 
 /**
+ * Said in the schedule editor. A schedule takes any share when they approve, and some states cap
+ * what a contractor may take up front on home-improvement work: the limit is the business's to
+ * know. California: a down payment "shall not exceed one thousand dollars ($1,000) or 10 percent of
+ * the contract amount, whichever amount is less" (Bus. & Prof. Code 7159.5(a)(3)). Maryland: "A
+ * person may not receive a deposit of more than one-third of the home improvement contract price
+ * before or at the time of execution" (Bus. Reg. 8-617(b)).
+ */
+export const DEPOSIT_LAW_NOTE =
+  "Some states cap the deposit on a home-improvement contract: California at $1,000 or 10% of the contract price, whichever is less, and Maryland at one-third of it, for example. Check your state's rules before you ask for more.";
+
+/**
  * What's wrong with a schedule, in the editor's words (the database refuses to save it with the
  * same ones), or null. `total` is the quote's total, which the payments have to come to.
  */
