@@ -5,7 +5,7 @@
  * refusals turned into words that say what to do. Lob answers what each test gives it.
  */
 import { describe, expect, it, vi } from "vitest";
-import { checkLobKey, createPostcard, LobProblem, lobAddress, lobMode, postcardBody, type PostcardRequest } from "../src/integrations/lob";
+import { checkLobKey, createPostcard, failureWords, listCards, LobProblem, lobAddress, lobMode, postcardBody, type PostcardRequest } from "../src/integrations/lob";
 
 const TEST_KEY = "test_0123456789abcdef0123";
 const LIVE_KEY = "live_0123456789abcdef0123";
@@ -154,6 +154,45 @@ describe("making a postcard", () => {
   });
 
   it("keeps names, lines and metadata within Lob's limits", () => {
+    expect(lobAddress("Ann", address).address_state).toBe("IL");
+  });
+
+  it("finds the cards Lob failed after accepting them: its list, by campaign and status, a page at a time", async () => {
+    const asked: URL[] = [];
+    const fetcher = vi.fn(async (url: string) => {
+      asked.push(new URL(url));
+      return asked.length === 1
+        ? answer(200, { object: "list", next_url: "https://api.lob.com/v1/postcards?limit=100&after=tok_2", data: [{ id: "psc_1", status: "failed", failure_reason: { code: "INVALID_FILE_URL", message: "The file URL when creating this resource is invalid." }, metadata: { crewtavo_campaign: "c1", crewtavo_recipient: "7" } }] })
+        : answer(200, { object: "list", next_url: null, data: [{ id: "psc_2", status: "failed", failure_reason: "Asset could not be fetched", metadata: { crewtavo_campaign: "c1", crewtavo_recipient: "8" } }, { nonsense: true }] });
+    });
+    const found = await listCards(TEST_KEY, { campaign: "c1", failed: true }, fetcher as unknown as typeof fetch);
+    expect(found.complete).toBe(true);
+    expect(found.cards).toEqual([
+      { id: "psc_1", status: "failed", failure: "The file URL when creating this resource is invalid.", metadata: { crewtavo_campaign: "c1", crewtavo_recipient: "7" }, url: null },
+      { id: "psc_2", status: "failed", failure: "Asset could not be fetched", metadata: { crewtavo_campaign: "c1", crewtavo_recipient: "8" }, url: null },
+    ]);
+    expect(asked[0]!.pathname).toBe("/v1/postcards");
+    expect(Object.fromEntries(asked[0]!.searchParams)).toEqual({ limit: "100", status: "failed", "metadata[crewtavo_campaign]": "c1" });
+    expect(asked[1]!.searchParams.get("after")).toBe("tok_2");
+  });
+
+  it("lists without the campaign filter when Lob won't take it, and says when a listing was cut short", async () => {
+    const asked: URL[] = [];
+    const fetcher = vi.fn(async (url: string) => {
+      asked.push(new URL(url));
+      return asked.length === 1 ? answer(422, { error: { message: "metadata is invalid" } }) : answer(200, { data: [{ id: "psc_9", status: "failed", metadata: { crewtavo_campaign: "other" } }], next_url: null });
+    });
+    const found = await listCards(TEST_KEY, { campaign: "c1", failed: true }, fetcher as unknown as typeof fetch);
+    expect(asked[1]!.searchParams.has("metadata[crewtavo_campaign]")).toBe(false);
+    // Another campaign's card comes back too: it's the caller that matches cards, by id or metadata.
+    expect(found).toMatchObject({ complete: true, cards: [{ id: "psc_9", metadata: { crewtavo_campaign: "other" } }] });
+    const cut = await listCards(TEST_KEY, { campaign: "c1" }, (async () => { throw new Error("socket hang up"); }) as typeof fetch);
+    expect(cut).toEqual({ cards: [], complete: false });
+    expect(failureWords({ code: "X" })).toBe("X");
+    expect(failureWords(null)).toBeNull();
+  });
+
+  it("keeps long names and lines to what Lob takes", () => {
     const long = lobAddress("A".repeat(60), { ...address, line1: "B".repeat(80) });
     expect(long.name).toHaveLength(40);
     expect(long.address_line1).toHaveLength(64);

@@ -15,6 +15,17 @@ export const POSTCARD_SIZES = ["4x6", "6x9", "6x11"] as const;
 export type PostcardSize = (typeof POSTCARD_SIZES)[number];
 export const isPostcardSize = (value: unknown): value is PostcardSize => typeof value === "string" && (POSTCARD_SIZES as readonly string[]).includes(value);
 
+/**
+ * How long after a campaign's last card its front picture stays up and Lob is asked whether any
+ * card failed. Lob fetches the picture from this server when it draws each card, soon after it
+ * accepts it, and holds a card for its cancellation window before printing; a week covers both with
+ * room to spare. The database keeps the campaign from being deleted for as long
+ * (postcard_campaign_guard, 20261113001555_postcard_proofs_and_failures.sql).
+ */
+export const POSTCARD_KEEP_DAYS = 7;
+/** Lob's link to its picture of a card stops working this long after it's given (docs.lob.com, the postcard object's `url`). */
+export const LOB_PROOF_DAYS = 30;
+
 /** What's printed past the edge on every side, so a picture runs to the edge once the card is cut. */
 export const BLEED_IN = 0.125;
 

@@ -24,7 +24,7 @@ import { processAutomations } from "./services/automations";
 import { processCampaigns } from "./services/campaigns";
 import { syncDueReviews } from "./services/googleReviews";
 import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/social";
-import { processPostcards } from "./services/postcards";
+import { postcardsTask } from "./services/postcards";
 import { refreshDueComparisons } from "./services/reviewCompare";
 import { sendDueReminders } from "./services/reviews";
 import { deliverNotifications } from "./services/delivery";
@@ -43,7 +43,8 @@ export type TaskName = (typeof TASKS)[number];
 /** Cron expressions -> tasks, run by server.ts's scheduler. */
 export const CRON_TASKS: Record<string, TaskName[]> = {
   // Social posts whose time has come (services/social.ts), one claim at a time. Postcard campaigns
-  // being mailed make their next cards (services/postcards.ts).
+  // being mailed make their next cards, and Lob is asked once an hour whether any card it accepted
+  // in the last week failed (services/postcards.ts).
   "* * * * *": ["automations", "campaigns", "notify", "social", "postcards"],
   "*/2 * * * *": ["address"],
   // Review reminders go at 1:30pm in each company's time zone (services/reviews.ts). Autopay charges
@@ -140,7 +141,7 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
     case "installments":
       return sendScheduledPayments(env);
     case "postcards":
-      return processPostcards(env);
+      return postcardsTask(env);
     case "review_compare":
       return refreshDueComparisons(env, adminClient(env));
   }

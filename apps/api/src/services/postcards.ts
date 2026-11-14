@@ -25,7 +25,7 @@ import { marketingOn } from "@crewtavo/core/marketing";
 import { CANT_SHARE, type CantShare } from "@crewtavo/core/social";
 import { backFit, backHtml, frontHtml, mailable, messageProblem, POSTCARD_SIZE_INFO, postcardMessage, type AddressProblem, type MailingAddress, type PostcardSize } from "@crewtavo/core/postcards";
 import type { Env } from "../env";
-import { createPostcard, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
+import { createPostcard, listCards, lobAddress, lobMode, LobProblem, type LobMode, type LobSettings } from "../integrations/lob";
 import { loadSecret } from "../integrations/tokens";
 import { randomId } from "../lib/crypto";
 import { firstName } from "../lib/email";
@@ -407,6 +407,8 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
             idempotencyKey: r.idempotency_key,
           });
           await admin.rpc("finish_postcard_recipient", { p_id: r.id, p_token: token, p_status: "made", p_lob_id: made.id, p_expected: made.expected_delivery_date ?? undefined });
+          // Lob's own picture of the card, for the office to look at. Not worth failing a card over.
+          if (made.url?.startsWith("https://")) await admin.from("postcard_recipients").update({ proof_url: made.url.slice(0, 2000), proof_at: new Date().toISOString() }).eq("id", r.id).eq("lob_id", made.id);
           counts.made++;
         } catch (error) {
           if (!(error instanceof LobProblem)) throw error;
@@ -440,6 +442,64 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
     await admin.rpc("count_postcard_campaign", { p_campaign: campaign.id });
   }
   return counts;
+}
+
+// ---------------------------------------------------------------------------------------------
+// After Lob has accepted a card
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Asks Lob whether any card it accepted has failed since (it draws each card after saying it's
+ * made, and one it can't draw, because the front's picture couldn't be fetched, say, becomes
+ * `failed` there), and marks those failed here with Lob's reason, so the office isn't told a card
+ * was mailed that never will be. Each campaign with a card made in the last POSTCARD_KEEP_DAYS days
+ * is asked about once an hour (claim_postcard_checks), with the kind of key it was sent with: a
+ * test key can't see a live key's cards.
+ */
+export async function checkMailedCards(env: Env) {
+  const admin = adminClient(env);
+  const { data: due, error } = await admin.rpc("claim_postcard_checks", { p_limit: 5 });
+  if (error) throw new Error(error.message);
+  const counts = { checked: 0, lob_failed: 0 };
+  for (const campaign of due ?? []) {
+    try {
+      const lob = await companyLob(env, admin, campaign.company_id);
+      if (!lob || lob.mode !== campaign.mode) continue;
+      const { cards } = await listCards(lob.key, { campaign: campaign.id, failed: true });
+      counts.checked++;
+      let marked = 0;
+      for (const card of cards.filter((c) => c.status === "failed")) {
+        // By Lob's id, within this campaign: a card of another campaign that Lob listed matches nothing.
+        const { data: rows } = await admin
+          .from("postcard_recipients")
+          .update({ status: "failed", error: `Lob couldn't print this card after accepting it${card.failure ? `: ${card.failure}` : "."}`.slice(0, 1000), lob_failed_at: new Date().toISOString() })
+          .eq("campaign_id", campaign.id)
+          .eq("lob_id", card.id)
+          .eq("status", "made")
+          .select("id");
+        marked += rows?.length ?? 0;
+      }
+      if (marked) await admin.rpc("count_postcard_campaign", { p_campaign: campaign.id });
+      counts.lob_failed += marked;
+    } catch (error) {
+      // Lob busy, or the key refused: asked again in an hour.
+      if (!(error instanceof LobProblem)) reportError(error, { feature: "postcards" });
+    }
+  }
+  return counts;
+}
+
+/**
+ * The postcards task, every minute: the next cards of the campaigns being mailed, then what Lob did
+ * with the cards it accepted (each campaign once an hour). The second never holds up the first.
+ */
+export async function postcardsTask(env: Env) {
+  const made = await processPostcards(env);
+  const checked = await checkMailedCards(env).catch((error: unknown) => {
+    reportError(error, { feature: "postcards" });
+    return { checked: 0, lob_failed: 0 };
+  });
+  return { ...made, ...checked };
 }
 
 /** The front picture's public copy, for Lob to fetch: by its token alone, while the campaign is mailed or kept. */

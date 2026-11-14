@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { blockStyle, pickablePhotos } from "../src/features/marketing/postcardForm";
+import { blockStyle, deletableFrom, pickablePhotos, proofLink } from "../src/features/marketing/postcardForm";
 
 describe("the photos offered for a postcard's front", () => {
   it("are only those the database says may be shown, and of those only the ones the person can open", () => {
@@ -22,6 +22,29 @@ describe("the photos offered for a postcard's front", () => {
     const picker = page.slice(page.indexOf("function FrontPhotoPicker"), page.indexOf("export function PostcardPreview"));
     expect(picker).toContain('rpc("social_photos"');
     expect(picker).toContain("pickablePhotos(shared, readable)");
+  });
+});
+
+describe("a campaign after it's sent", () => {
+  const DAY = 86_400_000;
+  const now = Date.parse("2026-11-20T12:00:00Z");
+
+  it("can't be deleted until a week after its last card, while Lob may still fetch its picture", () => {
+    const sent = { status: "sent", started_at: "2026-11-18T10:00:00Z", finished_at: "2026-11-18T10:05:00Z", made_count: 40, failed_count: 1 };
+    expect(deletableFrom(sent, now)?.toISOString()).toBe("2026-11-25T10:05:00.000Z");
+    expect(deletableFrom(sent, now + 6 * DAY)).toBeNull();
+    // Stopped part-way: from when it stopped. A draft, or one none of whose cards reached Lob, any time.
+    expect(deletableFrom({ ...sent, status: "cancelled" }, now)).not.toBeNull();
+    expect(deletableFrom({ ...sent, status: "draft" }, now)).toBeNull();
+    expect(deletableFrom({ ...sent, made_count: 0, failed_count: 0 }, now)).toBeNull();
+  });
+
+  it("links to Lob's picture of a card only while Lob's link still works", () => {
+    const card = { proof_url: "https://lob-assets.com/postcards/psc_1.pdf?sig=abc", proof_at: "2026-11-18T10:00:00Z" };
+    expect(proofLink(card, now)).toBe(card.proof_url);
+    expect(proofLink(card, now + 29 * DAY)).toBeNull();
+    expect(proofLink({ proof_url: null, proof_at: null }, now)).toBeNull();
+    expect(proofLink({ proof_url: "javascript:alert(1)", proof_at: card.proof_at }, now)).toBeNull();
   });
 });
 

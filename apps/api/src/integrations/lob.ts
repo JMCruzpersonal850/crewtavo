@@ -182,6 +182,78 @@ export function postcardBody(input: PostcardRequest): Record<string, unknown> {
   };
 }
 
+/** A card as Lob lists it. */
+export interface LobCard {
+  /** Lob's id for the card (psc_...). */
+  id: string;
+  /** How Lob's drawing of it went: processed (under way), rendered, or failed. */
+  status: string | null;
+  /** Why it failed, in Lob's words, when it did. */
+  failure: string | null;
+  /** What was kept with the card when it was made (crewtavo_campaign, crewtavo_recipient). */
+  metadata: Record<string, string>;
+  /** Lob's PDF of the card. */
+  url: string | null;
+}
+
+/** Lob's failure_reason in words: Lob documents it only as "an object describing the reason", so whatever it holds is read. */
+export function failureWords(reason: unknown): string | null {
+  if (typeof reason === "string") return reason.trim().slice(0, 300) || null;
+  if (!reason || typeof reason !== "object") return null;
+  const r = reason as { message?: unknown; code?: unknown };
+  const words = [r.message, r.code].find((v): v is string => typeof v === "string" && v.trim() !== "");
+  return (words ?? JSON.stringify(reason)).trim().slice(0, 300);
+}
+
+const toCard = (raw: unknown): LobCard | null => {
+  const c = raw as { id?: unknown; status?: unknown; failure_reason?: unknown; metadata?: unknown; url?: unknown } | null;
+  if (!c || typeof c.id !== "string" || !c.id) return null;
+  const metadata = c.metadata && typeof c.metadata === "object" ? Object.fromEntries(Object.entries(c.metadata as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string")) : {};
+  return { id: c.id, status: typeof c.status === "string" ? c.status : null, failure: failureWords(c.failure_reason), metadata, url: typeof c.url === "string" && c.url.startsWith("https://") ? c.url : null };
+};
+
+/** The most pages of 100 cards one listing reads: plenty for a campaign, and an end to it if Lob ignores a filter. */
+const MAX_PAGES = 60;
+
+/**
+ * A campaign's cards as Lob has them now (GET /v1/postcards), newest first, optionally only those
+ * whose drawing failed. This is how a card that Lob failed after accepting it is found without
+ * webhooks: Lob sets its `status` to failed, with a `failure_reason`, and the list takes `status`
+ * and `metadata` filters (docs.lob.com, Postcards → List; help.lob.com → Failed order visibility:
+ * "poll the API for the status change").
+ *
+ * `complete` is false when the listing stopped early (too many pages, or Lob stopped answering), so
+ * a card not among `cards` can't be taken as never made. If Lob refuses the metadata filter, the
+ * account's cards are listed without it. Either way the cards may include other campaigns': the
+ * caller matches each by Lob's id or by the metadata on it, never by being listed.
+ */
+export async function listCards(key: string, about: { campaign: string; failed?: boolean }, fetcher: FetchLike = fetch): Promise<{ cards: LobCard[]; complete: boolean }> {
+  const read = async (byCampaign: boolean): Promise<{ cards: LobCard[]; complete: boolean; refused: boolean }> => {
+    const cards: LobCard[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const query = new URLSearchParams({ limit: "100" });
+      if (about.failed) query.set("status", "failed");
+      if (byCampaign) query.set("metadata[crewtavo_campaign]", about.campaign);
+      if (after) query.set("after", after);
+      const res = await fetcher(`${API}/postcards?${query}`, { headers: auth(key), signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null);
+      if (!res) return { cards, complete: false, refused: false };
+      if (res.status === 422 || res.status === 400) return { cards, complete: false, refused: true };
+      if (!res.ok) throw await problemOf(res);
+      const body = (await res.json().catch(() => null)) as { data?: unknown; next_url?: unknown } | null;
+      if (!body || !Array.isArray(body.data)) return { cards, complete: false, refused: false };
+      cards.push(...body.data.map(toCard).filter((c): c is LobCard => c !== null));
+      after = typeof body.next_url === "string" ? new URL(body.next_url, API).searchParams.get("after") : null;
+      if (!after) return { cards, complete: true, refused: false };
+    }
+    return { cards, complete: false, refused: false };
+  };
+  let found = await read(true);
+  // Lob wouldn't take the metadata filter: every card of the account is read instead.
+  if (found.refused) found = await read(false);
+  return { cards: found.cards, complete: found.complete && !found.refused };
+}
+
 export interface MadePostcard {
   /** Lob's id for the card (psc_...). */
   id: string;

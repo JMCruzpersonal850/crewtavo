@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
-import { processPostcards, returnAddressProblem, sendProblem, startPostcards } from "../src/services/postcards";
+import { checkMailedCards, processPostcards, returnAddressProblem, sendProblem, startPostcards } from "../src/services/postcards";
 import { backFit } from "@crewtavo/core/postcards";
 
 const current = vi.hoisted(() => ({ db: null as unknown, key: "test_0123456789abcdef0123" as string | null }));
@@ -60,6 +60,8 @@ function memoryDb(tables: Record<string, Row[]>) {
       for (const r of recipients()) if (r.campaign_id === p_campaign && r.status === "pending") Object.assign(r, { status: "skipped", error: p_reason });
       return null;
     },
+    // The campaigns whose cards Lob is asked about: here, every one that's been sent.
+    claim_postcard_checks: () => tables.postcard_campaigns!.filter((c) => c.status !== "draft").map((c) => ({ id: c.id, company_id: c.company_id, mode: c.mode })),
     // A photo's facts as social_photo_facts gives them: `shareable`, and `problem` when it can't be shown at all.
     social_photo_facts: ({ p_ids }) => (tables.attachments ?? []).filter((a) => p_ids.includes(a.id)).map((a) => ({ id: a.id, path: a.path, shareable: a.shareable, problem: a.problem ?? null })),
     // Send's: everyone in `clients` is in the audience, each with the same address.
@@ -91,7 +93,7 @@ function memoryDb(tables: Record<string, Row[]>) {
       const rows = (tables[table] ??= []).filter((r) => filters.every((f) => f(r))).slice(0, limit);
       if (update) {
         for (const r of rows) Object.assign(r, update);
-        return { data: null, error: null };
+        return { data: rows.map((r) => ({ ...r })), error: null };
       }
       const data = rows.map((r) => ({ ...r }));
       return { data: single ? (data[0] ?? null) : data, error: null };
@@ -153,19 +155,27 @@ const FULL_4X6 = (() => {
   return message(n);
 })();
 
-const lobAnswer = (status: number, body: unknown) =>new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const lobAnswer = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 let sent: Array<{ key: string; auth: string; body: Row }>;
 let answers: Array<() => Response>;
+/** Lob's list of cards (GET /v1/postcards): what it answers, and what it was asked. */
+let listed: { cards: Row[]; asked: Array<{ url: URL; auth: string }> };
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout"] });
   sent = [];
   answers = [];
+  listed = { cards: [], asked: [] };
   current.key = "test_0123456789abcdef0123";
-  vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     const headers = init.headers as Record<string, string>;
-    sent.push({ key: headers["Idempotency-Key"]!, auth: atob(headers.Authorization!.replace("Basic ", "")), body: JSON.parse(String(init.body)) });
-    return (answers.shift() ?? (() => lobAnswer(200, { id: `psc_${sent.length}`, expected_delivery_date: "2026-11-20" })))();
+    const auth = atob(headers.Authorization!.replace("Basic ", ""));
+    if (!init.method || init.method === "GET") {
+      listed.asked.push({ url: new URL(url), auth });
+      return lobAnswer(200, { object: "list", data: listed.cards, next_url: null });
+    }
+    sent.push({ key: headers["Idempotency-Key"]!, auth, body: JSON.parse(String(init.body)) });
+    return (answers.shift() ?? (() => lobAnswer(200, { id: `psc_${sent.length}`, expected_delivery_date: "2026-11-20", url: `https://lob-assets.com/postcards/psc_${sent.length}.pdf?sig=abc` })))();
   });
 });
 afterEach(() => {
@@ -340,6 +350,52 @@ describe("making a campaign's cards", () => {
     expect(tables.postcard_campaigns[0]!.stopped_reason).toMatch(/verified payment method.*Lob says: You must have a verified bank account or credit card/);
     expect(tables.postcard_campaigns[0]!.stopped_reason).not.toMatch(/API key/);
     expect(tables.postcard_recipients.every((r) => r.status === "skipped")).toBe(true);
+  });
+});
+
+describe("after Lob has accepted a card", () => {
+  it("keeps Lob's own picture of each card for the office to look at", async () => {
+    const tables = world();
+    tables.postcard_recipients = tables.postcard_recipients.slice(0, 1);
+    current.db = memoryDb(tables);
+    await run();
+    expect(tables.postcard_recipients[0]).toMatchObject({ status: "made", lob_id: "psc_1", proof_url: "https://lob-assets.com/postcards/psc_1.pdf?sig=abc" });
+    expect(tables.postcard_recipients[0]!.proof_at).toBeTruthy();
+  });
+
+  it("marks a card Lob failed afterwards as failed, with Lob's reason, and no longer counts it as mailed", async () => {
+    const tables = world("live");
+    current.key = "live_0123456789abcdef0123";
+    tables.clients[1]!.marketing_opt_out = false;
+    tables.clients[2]!.status = "active";
+    current.db = memoryDb(tables);
+    await run();
+    expect(tables.postcard_campaigns[0]).toMatchObject({ status: "sent", made_count: 3 });
+    // Lob drew two and failed the third: its front picture couldn't be fetched. A failed card of another campaign is listed too.
+    listed.cards = [
+      { id: "psc_2", status: "failed", failure_reason: { code: "INVALID_FILE_URL", message: "The file URL is invalid or could not be reached." }, metadata: { crewtavo_campaign: CAMPAIGN, crewtavo_recipient: "2" } },
+      { id: "psc_elsewhere", status: "failed", failure_reason: { message: "Something else" }, metadata: { crewtavo_campaign: "another" } },
+    ];
+    await expect(checkMailedCards(env)).resolves.toEqual({ checked: 1, lob_failed: 1 });
+    expect(Object.fromEntries(listed.asked[0]!.url.searchParams)).toMatchObject({ status: "failed", "metadata[crewtavo_campaign]": CAMPAIGN });
+    expect(listed.asked[0]!.auth).toBe("live_0123456789abcdef0123:");
+    const [ann, bob, cy] = tables.postcard_recipients;
+    expect(ann).toMatchObject({ status: "made" });
+    expect(bob).toMatchObject({ status: "failed", lob_id: "psc_2", error: "Lob couldn't print this card after accepting it: The file URL is invalid or could not be reached." });
+    expect(bob!.lob_failed_at).toBeTruthy();
+    expect(cy).toMatchObject({ status: "made" });
+    expect(tables.postcard_campaigns[0]).toMatchObject({ made_count: 2 });
+    // Asked again later, nothing is marked twice.
+    await expect(checkMailedCards(env)).resolves.toEqual({ checked: 1, lob_failed: 0 });
+  });
+
+  it("doesn't ask about a live campaign's cards with a test key, which can't see them", async () => {
+    const tables = world("live");
+    tables.postcard_campaigns[0]!.status = "sent";
+    current.key = "test_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    await expect(checkMailedCards(env)).resolves.toEqual({ checked: 0, lob_failed: 0 });
+    expect(listed.asked).toHaveLength(0);
   });
 });
 

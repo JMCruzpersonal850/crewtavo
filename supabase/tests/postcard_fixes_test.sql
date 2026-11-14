@@ -91,6 +91,58 @@ select tmkpf.check((select s -> 'count' = '2' and s -> 'left_out' ->> 'bad_state
   from public.postcard_audience_summary(:'co', '{"tags_any": ["mail"]}') s), 'and the count before Send is the two Lob will take');
 reset role;
 
+\o
+\echo 'After Lob has accepted the cards'
+\o /dev/null
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Spring', 'Hi {{client.first_name}}, book with us.', '{"tags_any": ["mail"]}') returning id as pc \gset
+set local role service_role;
+select tmkpf.as_nobody();
+select public.start_postcard_campaign(:'pc', 'live', repeat('a', 32), :'co' || '/postcards/' || :'pc' || '/front.jpg');
+select tmkpf.check(tmkpf.count_of('select 1 from public.claim_postcard_checks(5)') = 0, 'Lob isn''t asked about a campaign none of whose cards are made yet');
+select min(claim_token::text) as tok from public.claim_postcard_recipients(:'pc', 25) \gset
+select id as r_ann from public.postcard_recipients where client_id = :'ann' and campaign_id = :'pc' \gset
+select id as r_cal from public.postcard_recipients where client_id = :'cal' and campaign_id = :'pc' \gset
+select public.renew_postcard_recipient(:r_ann, :'tok'), public.renew_postcard_recipient(:r_cal, :'tok');
+select public.finish_postcard_recipient(:r_ann, :'tok', 'made', null, 'psc_ann', '2026-11-20'), public.finish_postcard_recipient(:r_cal, :'tok', 'made', null, 'psc_cal', '2026-11-20');
+update public.postcard_recipients set proof_url = 'https://lob-assets.com/postcards/psc_ann.pdf', proof_at = now() where id = :r_ann;
+select public.count_postcard_campaign(:'pc');
+select tmkpf.check((select count(*) = 1 and min(mode) = 'live' from public.claim_postcard_checks(5) where id = :'pc'), 'once cards are made, Lob is asked about the campaign');
+select tmkpf.check(tmkpf.count_of('select 1 from public.claim_postcard_checks(5)') = 0, 'and not again within the hour, by this server or another');
+update public.postcard_campaigns set lob_checked_at = now() - interval '61 minutes' where id = :'pc';
+select tmkpf.check(tmkpf.count_of('select 1 from public.claim_postcard_checks(5)') = 1, 'an hour later it''s asked again');
+select tmkpf.check(tmkpf.error_of(format('update public.postcard_recipients set proof_url = %L where id = %s', 'javascript:alert(1)', :r_ann)) like '23514:%', 'a proof link is an https link');
+reset role;
+
+set local role authenticated;
+select tmkpf.as_user(:'olive');
+select tmkpf.check((select proof_url = 'https://lob-assets.com/postcards/psc_ann.pdf' from public.postcard_recipients where id = :r_ann), 'the office reads Lob''s proof link for a card');
+select tmkpf.check(tmkpf.error_of(format('select * from public.claim_postcard_checks(%s)', 5)) like '42501:%', 'the office can''t claim the check');
+select tmkpf.check(tmkpf.error_of(format('delete from public.postcard_campaigns where id = %L', :'pc')) like '22023:%7 days ago%', 'a campaign whose cards were just made can''t be deleted: Lob may still need its picture');
+select tmkpf.check(tmkpf.count_of(format('select 1 from public.postcard_campaigns where id = %L and image_token is not null', :'pc')) = 1, 'so its picture stays up');
+reset role;
+select tmkpf.as_nobody();
+-- Eight days on.
+update public.postcard_recipients set made_at = now() - interval '8 days' where campaign_id = :'pc';
+set local role service_role;
+update public.postcard_campaigns set lob_checked_at = null where id = :'pc';
+select tmkpf.check(tmkpf.count_of('select 1 from public.claim_postcard_checks(5)') = 0, 'a week after its last card, Lob isn''t asked anymore');
+reset role;
+set local role authenticated;
+select tmkpf.as_user(:'olive');
+select tmkpf.check(tmkpf.error_of(format('delete from public.postcard_campaigns where id = %L', :'pc')) = 'none', 'and the campaign can be deleted');
+-- A campaign none of whose cards reached Lob has no picture to keep.
+insert into public.postcard_campaigns (company_id, name, message, audience) values (:'co', 'Never made', 'Hi there, book with us.', '{"tags_any": ["mail"]}') returning id as pc_none \gset
+reset role;
+set local role service_role;
+select tmkpf.as_nobody();
+select public.start_postcard_campaign(:'pc_none', 'live', repeat('b', 32), 'x');
+select public.stop_postcard_campaign(:'pc_none', 'Stopped');
+reset role;
+set local role authenticated;
+select tmkpf.as_user(:'olive');
+select tmkpf.check(tmkpf.error_of(format('delete from public.postcard_campaigns where id = %L', :'pc_none')) = 'none', 'one stopped before any card was made can be deleted at once');
+reset role;
+
 rollback;
 
 \o

@@ -8,7 +8,7 @@
  * After sending: what was made, what failed and why, and what the clients mailed have paid since.
  */
 import { audienceKeys, type CampaignAudience } from "@crewtavo/core/campaigns";
-import { backFit, backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
+import { addressLine, backFit, backHtml, BLEED_IN, frontHtml, leftOutLine, messageProblem, POSTCARD_KEEP_DAYS, POSTCARD_SIZE_INFO, POSTCARD_SIZES, POSTCARD_TOKENS, postcardMessage, type LeftOut, type PostcardSize } from "@crewtavo/core/postcards";
 import { greetingName } from "@crewtavo/core/automations";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent } from "react";
@@ -34,7 +34,7 @@ import { AudienceFields, useAudienceChoices } from "./AudienceFields";
 import { audienceSummary } from "./CampaignPage";
 import { MessageField } from "./EmailEditor";
 import { MarketingPage } from "./MarketingPage";
-import { blockStyle, pickablePhotos } from "./postcardForm";
+import { blockStyle, deletableFrom, pickablePhotos, proofLink } from "./postcardForm";
 import { LobMode } from "../apps/LobPanel";
 
 interface Draft {
@@ -234,7 +234,18 @@ function PostcardScreen() {
             <Menu
               items={[
                 { label: "Duplicate", icon: "copy", onSelect: () => duplicate.mutate() },
-                { label: "Delete", icon: "trash", danger: true, hidden: c.status === "sending", onSelect: async () => (await confirm({ title: "Delete this postcard campaign?", body: c.status === "draft" ? undefined : "Its list of who was mailed goes too. Cards already mailed aren't affected.", confirmLabel: "Delete", danger: true })) && remove.mutate() },
+                {
+                  label: "Delete",
+                  icon: "trash",
+                  danger: true,
+                  hidden: c.status === "sending",
+                  onSelect: async () => {
+                    // Lob may still fetch the front's picture, which deleting the campaign takes down.
+                    const wait = deletableFrom(c);
+                    if (wait) return void (await confirm({ title: "This campaign can't be deleted yet", body: `Lob fetches the picture on the front from Crewtavo while it draws the cards, and deleting the campaign takes the picture down. It can be deleted from ${formatDate(wait.toISOString())}, ${POSTCARD_KEEP_DAYS} days after its last card.`, confirmLabel: "OK" }));
+                    if (await confirm({ title: "Delete this postcard campaign?", body: c.status === "draft" ? undefined : "Its list of who was mailed goes too. Cards already mailed aren't affected.", confirmLabel: "Delete", danger: true })) remove.mutate();
+                  },
+                },
               ]}
             />
           </>
@@ -468,8 +479,8 @@ function PostcardStats({ id, mode, live }: { id: string; mode: "test" | "live"; 
   return (
     <div className="stack-sm">
       <div className="stat-row">
-        <div className="card stat"><div className="label">{mode === "live" ? "Mailed" : "Made in test mode"}</div><div className="value">{(r?.made ?? 0).toLocaleString("en-US")}</div><div className="hint">{mode === "live" ? "Printed and mailed by Lob" : "Not printed or mailed"}</div></div>
-        <div className="card stat"><div className="label">Failed</div><div className="value">{(r?.failed ?? 0).toLocaleString("en-US")}</div><div className="hint">Lob couldn't make them</div></div>
+        <div className="card stat"><div className="label">{mode === "live" ? "Mailed" : "Made in test mode"}</div><div className="value">{(r?.made ?? 0).toLocaleString("en-US")}</div><div className="hint">{mode === "live" ? "Accepted by Lob to print and mail" : "Not printed or mailed"}</div></div>
+        <div className="card stat"><div className="label">Failed</div><div className="value">{(r?.failed ?? 0).toLocaleString("en-US")}</div><div className="hint">Lob refused them or couldn't print them</div></div>
         <div className="card stat"><div className="label">Skipped</div><div className="value">{(r?.skipped ?? 0).toLocaleString("en-US")}</div><div className="hint">Stopped, opted out or archived</div></div>
         <div className="card stat">
           <div className="label">Revenue</div>
@@ -477,13 +488,25 @@ function PostcardStats({ id, mode, live }: { id: string; mode: "test" | "live"; 
           <div className="hint">{mode === "test" ? "Test cards weren't mailed" : r?.revenue == null ? "Needs the Invoices area" : `${(r.clients_paid ?? 0).toLocaleString("en-US")} ${r.clients_paid === 1 ? "client" : "clients"} paid, before tax`}</div>
         </div>
       </div>
+      <p className="muted small" style={{ margin: 0 }}>Lob draws each card after it accepts it. For {POSTCARD_KEEP_DAYS} days after the last card, Crewtavo asks Lob every hour whether any failed, and marks those failed below with Lob's reason.</p>
       {mode === "live" && <p className="muted small" style={{ margin: 0 }}>Revenue is paid invoices from clients this was mailed to, made after their card and within 90 days of it, before tax. A postcard has no link to follow, so it counts work they'd have booked anyway too.</p>}
     </div>
   );
 }
 
 const RECIPIENT_PAGE = 50;
-type Recipient = { id: number; name: string; address: { city?: string; region?: string } | null; status: string; error: string | null; lob_id: string | null; expected_delivery: string | null };
+type Recipient = {
+  id: number;
+  name: string;
+  address: { line1?: string; line2?: string | null; city?: string; region?: string; postal_code?: string } | null;
+  status: string;
+  error: string | null;
+  lob_id: string | null;
+  expected_delivery: string | null;
+  /** Lob's PDF of the card as it drew it, and when Lob gave the link (it works for 30 days). */
+  proof_url: string | null;
+  proof_at: string | null;
+};
 
 function PostcardRecipients({ id, mode, live }: { id: string; mode: "test" | "live"; live: boolean }) {
   const [failedOnly, setFailedOnly] = useState(false);
@@ -493,7 +516,7 @@ function PostcardRecipients({ id, mode, live }: { id: string; mode: "test" | "li
     initialPageParam: null as number | null,
     getNextPageParam: (last: Recipient[]) => (last.length === RECIPIENT_PAGE ? last.at(-1)!.id : null),
     queryFn: async ({ pageParam }) => {
-      let q = supabase().from("postcard_recipients").select("id, name, address, status, error, lob_id, expected_delivery").eq("campaign_id", id);
+      let q = supabase().from("postcard_recipients").select("id, name, address, status, error, lob_id, expected_delivery, proof_url, proof_at").eq("campaign_id", id);
       if (failedOnly) q = q.eq("status", "failed");
       if (pageParam) q = q.lt("id", pageParam);
       return unwrap(await q.order("id", { ascending: false }).limit(RECIPIENT_PAGE)) as unknown as Recipient[];
@@ -522,7 +545,8 @@ function PostcardRecipients({ id, mode, live }: { id: string; mode: "test" | "li
             <div key={r.id} className="card-row">
               <div className="grow" style={{ minWidth: 0 }}>
                 <strong className="ellipsis" style={{ display: "block" }}>{r.name}</strong>
-                <span className="muted small ellipsis" style={{ display: "block" }}>{[r.address?.city, r.address?.region].filter(Boolean).join(", ")}{r.lob_id ? ` · ${r.lob_id}` : ""}</span>
+                <span className="muted small" style={{ display: "block", overflowWrap: "anywhere" }}>{r.address?.line1 ? addressLine({ line1: r.address.line1, line2: r.address.line2, city: r.address.city ?? "", region: r.address.region ?? "", postal_code: r.address.postal_code ?? "" }) : ""}{r.lob_id ? ` · ${r.lob_id}` : ""}</span>
+                {proofLink(r) && <a className="small" href={proofLink(r)!} target="_blank" rel="noreferrer">See the card as Lob drew it <Icon name="external" size={12} /></a>}
               </div>
               <span className="small" style={r.status === "failed" ? { color: "var(--danger)", fontWeight: 600 } : undefined}>{words(r)}</span>
             </div>
