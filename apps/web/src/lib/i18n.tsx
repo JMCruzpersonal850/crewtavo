@@ -150,7 +150,7 @@ export async function startLocale() {
   }
   wanted = CLIENT_FACING.test(window.location.pathname) ? "en" : openingLocale(deviceLocale(), signedIn, picked);
   if (wanted === "es") await loadSpanish();
-  document.documentElement.lang = getLocale();
+  showScreenLang(window.location.pathname, window.location.search, signedIn);
 }
 
 /** Spanish was wanted and couldn't be loaded: the app is in English for now. */
@@ -299,6 +299,22 @@ export function onSpanishScreen(pathname: string, search = ""): boolean {
   // Settings opens on the person's own profile for everyone but an admin; the other tabs are the office's.
   if (first === "settings") return (new URLSearchParams(search).get("tab") ?? "profile") === "profile";
   return false;
+}
+
+/**
+ * The language a page says it's in (<html lang>), which is what a screen reader pronounces it in
+ * (WCAG 3.1.1): Spanish only on a screen that's in Spanish for someone using Spanish. Not signed
+ * in, that's the sign-in page, which is in the language picked on it. An office screen is still in
+ * English, and says so, with the app's own navigation around it marked as Spanish (the shell).
+ */
+export function screenLang(locale: Locale, pathname: string, search = "", signedIn = true): Locale {
+  if (locale !== "es" || CLIENT_FACING.test(pathname)) return "en";
+  return !signedIn || onSpanishScreen(pathname, search) ? "es" : "en";
+}
+
+/** Sets <html lang> for the screen showing: as the app opens, and at every move between screens (the app's shell). */
+export function showScreenLang(pathname: string, search = "", signedIn = true) {
+  if (typeof document !== "undefined") document.documentElement.lang = screenLang(getLocale(), pathname, search, signedIn);
 }
 
 /** How many inEnglish runs are under way: formats are English while any is. */

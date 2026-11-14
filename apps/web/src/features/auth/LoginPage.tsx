@@ -11,7 +11,7 @@ import { formatPhoneTyping } from "@/lib/validate";
 import styles from "./auth.module.css";
 import { BrandLockup } from "@/components/shell/BrandMark";
 import { afterAsking, ASK_THE_OFFICE, askFor, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
-import { getLocale, LOCALE_NAMES, msg, pickAtSignIn, T, t } from "@/lib/i18n";
+import { getLocale, LOCALE_NAMES, msg, pickAtSignIn, showScreenLang, T, t } from "@/lib/i18n";
 import { LOCALES } from "@crewtavo/core/i18n";
 import { translateError } from "@crewtavo/core/i18n/patterns";
 
@@ -118,6 +118,8 @@ function useSignInWhenConfirmed(pending: { email: string; password: string } | n
 }
 
 export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
+  // The sign-in page is in the language picked on it, and the page says so (it may follow an English office screen).
+  useEffect(() => showScreenLang(window.location.pathname, window.location.search, false), []);
   const settings = useAuthSettings();
   // Already loaded by SessionProvider: whether this Crewtavo can text or email a sub a code on a new phone.
   const config = useQuery({ queryKey: ["config"], queryFn: loadConfig, staleTime: Infinity, meta: { silent: true } });

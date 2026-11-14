@@ -22,7 +22,7 @@ import { HelpButton } from "./Help";
 import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
 import { RestartBanner } from "./RestartBanner";
-import { t } from "@/lib/i18n";
+import { getLocale, showScreenLang, t } from "@/lib/i18n";
 
 function useVisibleGroups(): NavItem[][] {
   const session = useSession();
@@ -120,6 +120,13 @@ export function AppShell() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  // The page says which language this screen is in, for screen readers: Spanish on the crew's
+  // screens for someone using Spanish, English on the office's (lib/i18n.tsx screenLang).
+  useEffect(() => {
+    showScreenLang(location.pathname, location.search);
+  }, [location.pathname, location.search]);
+  // The navigation is in the person's language on every screen: on an English one it says so itself.
+  const shellLang = getLocale() === "es" ? "es" : undefined;
   const navigate = useNavigate();
   const navigation = useNavigation();
   const online = useOnline();
@@ -196,7 +203,7 @@ export function AppShell() {
       {!online && <OfflinePill />}
       <RestartBanner />
 
-      <aside className="sidebar" aria-label={t("Primary")}>
+      <aside className="sidebar" aria-label={t("Primary")} lang={shellLang}>
         <Link to={sub ? "/field" : "/"} className="brand" aria-label={t("Crewtavo home")} viewTransition>
           <BrandLockup size={30} />
         </Link>
@@ -224,7 +231,7 @@ export function AppShell() {
       </aside>
 
       <div className="main">
-        <header className="topbar" data-scrolled={scrolled || undefined}>
+        <header className="topbar" data-scrolled={scrolled || undefined} lang={shellLang}>
           <div className="business">
             <BusinessTile name={session.company.name} settings={session.company.settings} />
             {session.companies.length > 1 ? (
@@ -267,7 +274,7 @@ export function AppShell() {
         <Screen key={location.pathname} />
       </div>
 
-      <nav className="mobile-nav" aria-label={t("Primary")} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, 1fr)` }}>
+      <nav className="mobile-nav" aria-label={t("Primary")} lang={shellLang} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, 1fr)` }}>
         {tabs.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => (active(item, isActive) ? "active" : "")} aria-current={current(item)} viewTransition>
             <span className="mobile-tab-icon">

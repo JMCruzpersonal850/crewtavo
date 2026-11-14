@@ -10,7 +10,7 @@ import { getToasts } from "../src/lib/toast";
 
 const {
   askedHere, canReloadInto, deviceLocale, followProfile, forgetLanguageAtSignOut, inEnglish, intlLocale, languageAtSignIn, loadSpanish, noteAsked, onSpanishScreen, openingLocale,
-  pickAtSignIn, pickedAtSignIn, PICK_LASTS_MS, screenIntlLocale, spanishDidntLoad, startLocale, switchLocale, tellIfSpanishDidntLoad,
+  pickAtSignIn, pickedAtSignIn, PICK_LASTS_MS, screenIntlLocale, screenLang, showScreenLang, spanishDidntLoad, startLocale, switchLocale, tellIfSpanishDidntLoad,
 } = await import("../src/lib/i18n");
 const { formatDay } = await import("../src/lib/format");
 
@@ -267,6 +267,63 @@ describe("a language the device can't keep", () => {
     // Into the other language, or a while later: fine.
     expect(canReloadInto("en", "en", `es:${now - 3_000}`, now)).toBe(true);
     expect(canReloadInto("es", "es", `es:${now - 60_000}`, now)).toBe(true);
+  });
+});
+
+describe("the language the page says it's in (<html lang>)", () => {
+  it("is Spanish on the crew's screens for someone using Spanish, and English on the office's, which still are", () => {
+    for (const path of ["/field", "/field/visits/v1", "/chat", "/kb/p1", "/schedule", "/timesheets", "/paperwork/tok"]) {
+      expect(screenLang("es", path), path).toBe("es");
+      expect(screenLang("en", path), path).toBe("en");
+    }
+    for (const path of ["/", "/jobs", "/invoices/i1", "/clients", "/finance", "/chat/settings", "/kb/new", "/marketing", "/roofing/r1/visit"]) expect(screenLang("es", path), path).toBe("en");
+    expect(screenLang("es", "/settings", "?tab=profile")).toBe("es");
+    expect(screenLang("es", "/settings", "?tab=company")).toBe("en");
+  });
+
+  it("is Spanish on the sign-in page for someone who picked Spanish there, whatever the address", () => {
+    expect(screenLang("es", "/", "", false)).toBe("es");
+    expect(screenLang("es", "/invoices/i1", "", false)).toBe("es");
+    expect(screenLang("en", "/", "", false)).toBe("en");
+  });
+
+  it("is always English on the pages clients open", () => {
+    for (const path of ["/hub/tok", "/book/acme/estimate", "/u/tok", "/refer/tok", "/s/tok"]) {
+      expect(screenLang("es", path), path).toBe("en");
+      expect(screenLang("es", path, "", false), path).toBe("en");
+    }
+  });
+
+  it("follows the screen as someone moves between them, and is right as the app opens", async () => {
+    setLocale("es");
+    showScreenLang("/field");
+    expect(document.documentElement.lang).toBe("es");
+    // Into the office: the words are English, and so is what a screen reader is told.
+    showScreenLang("/invoices");
+    expect(document.documentElement.lang).toBe("en");
+    showScreenLang("/timesheets");
+    expect(document.documentElement.lang).toBe("es");
+    // Opening straight onto an office screen, signed in with Spanish on the device.
+    device.set(SIGNED_IN, "{}");
+    device.set("crewtavo.locale", "es");
+    page.pathname = "/jobs";
+    await startLocale();
+    expect(getLocale()).toBe("es");
+    expect(document.documentElement.lang).toBe("en");
+    page.pathname = "/field";
+    await startLocale();
+    expect(document.documentElement.lang).toBe("es");
+  });
+
+  it("is set by the app's shell at every move, and the navigation says it's in Spanish on an English screen", async () => {
+    const { readFileSync } = await import("node:fs");
+    const shell = readFileSync(new URL("../src/components/shell/AppShell.tsx", import.meta.url), "utf8");
+    expect(shell).toContain("showScreenLang(location.pathname, location.search);");
+    expect(shell).toContain("}, [location.pathname, location.search]);");
+    expect(shell).toContain('const shellLang = getLocale() === "es" ? "es" : undefined;');
+    for (const part of ['<aside className="sidebar" aria-label={t("Primary")} lang={shellLang}>', '<header className="topbar" data-scrolled={scrolled || undefined} lang={shellLang}>', 'lang={shellLang} data-typing']) expect(shell).toContain(part);
+    // And the sign-in page says its own.
+    expect(readFileSync(new URL("../src/features/auth/LoginPage.tsx", import.meta.url), "utf8")).toContain("useEffect(() => showScreenLang(window.location.pathname, window.location.search, false), []);");
   });
 });
 
