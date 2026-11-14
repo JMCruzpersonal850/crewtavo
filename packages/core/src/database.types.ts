@@ -76,14 +76,14 @@ isOneToOne: false
                   ]
                 },"attachments": {
                   Row: {
-                    "caption": string | null,"company_id": string,"content_type": string | null,"created_at": string,"created_by": string | null,"file_name": string,"id": string,"marked_at": string | null,"marked_path": string | null,"owner_id": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string | null,"shareable_by": string | null,"size_bytes": number | null
+                    "caption": string | null,"company_id": string,"content_type": string | null,"created_at": string,"created_by": string | null,"file_name": string,"id": string,"marked_at": string | null,"marked_path": string | null,"marks": Json | null,"owner_id": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string | null,"shareable_by": string | null,"size_bytes": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "caption"?: string | null,"company_id": string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name": string,"id"?: string,"marked_at"?: string | null,"marked_path"?: string | null,"owner_id": string,"owner_type": string,"path": string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
+                    "caption"?: string | null,"company_id": string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name": string,"id"?: string,"marked_at"?: string | null,"marked_path"?: string | null,"marks"?: Json | null,"owner_id": string,"owner_type": string,"path": string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
                   }
                   Update: {
-                    "caption"?: string | null,"company_id"?: string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name"?: string,"id"?: string,"marked_at"?: string | null,"marked_path"?: string | null,"owner_id"?: string,"owner_type"?: string,"path"?: string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
+                    "caption"?: string | null,"company_id"?: string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"file_name"?: string,"id"?: string,"marked_at"?: string | null,"marked_path"?: string | null,"marks"?: Json | null,"owner_id"?: string,"owner_type"?: string,"path"?: string,"shareable"?: boolean,"shareable_at"?: string | null,"shareable_by"?: string | null,"size_bytes"?: number | null
                   }
                   Relationships: [
                     {
@@ -2022,14 +2022,14 @@ isOneToOne: false
                   ]
                 },"postcard_campaigns": {
                   Row: {
-                    "audience": NonNullable<Json>,"company_id": string,"created_at": string,"created_by": string | null,"failed_count": number,"finished_at": string | null,"front_attachment_id": string | null,"front_marked": boolean,"front_path": string | null,"id": string,"image_path": string | null,"image_token": string | null,"made_count": number,"message": string,"mode": string | null,"name": string,"recipients_count": number,"size": string,"started_at": string | null,"status": string,"stopped_reason": string | null,"updated_at": string
+                    "audience": NonNullable<Json>,"company_id": string,"created_at": string,"created_by": string | null,"failed_count": number,"finished_at": string | null,"front_attachment_id": string | null,"front_marked": boolean,"front_path": string | null,"id": string,"image_path": string | null,"image_token": string | null,"lob_checked_at": string | null,"made_count": number,"message": string,"mode": string | null,"name": string,"recipients_count": number,"size": string,"started_at": string | null,"status": string,"stopped_reason": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "audience"?: NonNullable<Json>,"company_id": string,"created_at"?: string,"created_by"?: string | null,"failed_count"?: number,"finished_at"?: string | null,"front_attachment_id"?: string | null,"front_marked"?: boolean,"front_path"?: string | null,"id"?: string,"image_path"?: string | null,"image_token"?: string | null,"made_count"?: number,"message"?: string,"mode"?: string | null,"name": string,"recipients_count"?: number,"size"?: string,"started_at"?: string | null,"status"?: string,"stopped_reason"?: string | null,"updated_at"?: string
+                    "audience"?: NonNullable<Json>,"company_id": string,"created_at"?: string,"created_by"?: string | null,"failed_count"?: number,"finished_at"?: string | null,"front_attachment_id"?: string | null,"front_marked"?: boolean,"front_path"?: string | null,"id"?: string,"image_path"?: string | null,"image_token"?: string | null,"lob_checked_at"?: string | null,"made_count"?: number,"message"?: string,"mode"?: string | null,"name": string,"recipients_count"?: number,"size"?: string,"started_at"?: string | null,"status"?: string,"stopped_reason"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "audience"?: NonNullable<Json>,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"failed_count"?: number,"finished_at"?: string | null,"front_attachment_id"?: string | null,"front_marked"?: boolean,"front_path"?: string | null,"id"?: string,"image_path"?: string | null,"image_token"?: string | null,"made_count"?: number,"message"?: string,"mode"?: string | null,"name"?: string,"recipients_count"?: number,"size"?: string,"started_at"?: string | null,"status"?: string,"stopped_reason"?: string | null,"updated_at"?: string
+                    "audience"?: NonNullable<Json>,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"failed_count"?: number,"finished_at"?: string | null,"front_attachment_id"?: string | null,"front_marked"?: boolean,"front_path"?: string | null,"id"?: string,"image_path"?: string | null,"image_token"?: string | null,"lob_checked_at"?: string | null,"made_count"?: number,"message"?: string,"mode"?: string | null,"name"?: string,"recipients_count"?: number,"size"?: string,"started_at"?: string | null,"status"?: string,"stopped_reason"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -2046,16 +2046,42 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"postcard_recipients": {
+                },"postcard_proofs": {
                   Row: {
-                    "address": NonNullable<Json>,"attempts": number,"campaign_id": string,"claim_token": string | null,"claimed_at": string | null,"client_id": string | null,"company_id": string,"created_at": string,"error": string | null,"expected_delivery": string | null,"id": number,"idempotency_key": string,"lob_id": string | null,"locked_until": string | null,"made_at": string | null,"name": string,"status": string
+                    "address": NonNullable<Json>,"campaign_id": string | null,"company_id": string,"created_at": string,"created_by": string | null,"error": string | null,"expected_delivery": string | null,"id": string,"idempotency_key": string,"image_path": string,"image_token": string,"lob_id": string | null,"mode": string,"proof_url": string | null,"size": string,"status": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address": NonNullable<Json>,"attempts"?: number,"campaign_id": string,"claim_token"?: string | null,"claimed_at"?: string | null,"client_id"?: string | null,"company_id": string,"created_at"?: string,"error"?: string | null,"expected_delivery"?: string | null,"id"?: never,"idempotency_key"?: string,"lob_id"?: string | null,"locked_until"?: string | null,"made_at"?: string | null,"name": string,"status"?: string
+                    "address": NonNullable<Json>,"campaign_id"?: string | null,"company_id": string,"created_at"?: string,"created_by"?: string | null,"error"?: string | null,"expected_delivery"?: string | null,"id"?: string,"idempotency_key"?: string,"image_path": string,"image_token": string,"lob_id"?: string | null,"mode": string,"proof_url"?: string | null,"size": string,"status"?: string
                   }
                   Update: {
-                    "address"?: NonNullable<Json>,"attempts"?: number,"campaign_id"?: string,"claim_token"?: string | null,"claimed_at"?: string | null,"client_id"?: string | null,"company_id"?: string,"created_at"?: string,"error"?: string | null,"expected_delivery"?: string | null,"id"?: never,"idempotency_key"?: string,"lob_id"?: string | null,"locked_until"?: string | null,"made_at"?: string | null,"name"?: string,"status"?: string
+                    "address"?: NonNullable<Json>,"campaign_id"?: string | null,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"error"?: string | null,"expected_delivery"?: string | null,"id"?: string,"idempotency_key"?: string,"image_path"?: string,"image_token"?: string,"lob_id"?: string | null,"mode"?: string,"proof_url"?: string | null,"size"?: string,"status"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "postcard_proofs_campaign_id_fkey"
+      columns: ["campaign_id"]
+isOneToOne: false
+      referencedRelation: "postcard_campaigns"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "postcard_proofs_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"postcard_recipients": {
+                  Row: {
+                    "address": NonNullable<Json>,"attempts": number,"campaign_id": string,"claim_token": string | null,"claimed_at": string | null,"client_id": string | null,"company_id": string,"created_at": string,"error": string | null,"expected_delivery": string | null,"id": number,"idempotency_key": string,"lob_failed_at": string | null,"lob_id": string | null,"locked_until": string | null,"made_at": string | null,"name": string,"proof_at": string | null,"proof_url": string | null,"status": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address": NonNullable<Json>,"attempts"?: number,"campaign_id": string,"claim_token"?: string | null,"claimed_at"?: string | null,"client_id"?: string | null,"company_id": string,"created_at"?: string,"error"?: string | null,"expected_delivery"?: string | null,"id"?: never,"idempotency_key"?: string,"lob_failed_at"?: string | null,"lob_id"?: string | null,"locked_until"?: string | null,"made_at"?: string | null,"name": string,"proof_at"?: string | null,"proof_url"?: string | null,"status"?: string
+                  }
+                  Update: {
+                    "address"?: NonNullable<Json>,"attempts"?: number,"campaign_id"?: string,"claim_token"?: string | null,"claimed_at"?: string | null,"client_id"?: string | null,"company_id"?: string,"created_at"?: string,"error"?: string | null,"expected_delivery"?: string | null,"id"?: never,"idempotency_key"?: string,"lob_failed_at"?: string | null,"lob_id"?: string | null,"locked_until"?: string | null,"made_at"?: string | null,"name"?: string,"proof_at"?: string | null,"proof_url"?: string | null,"status"?: string
                   }
                   Relationships: [
                     {
@@ -2584,14 +2610,14 @@ isOneToOne: false
                   ]
                 },"review_comparisons": {
                   Row: {
-                    "checked_at": string | null,"checked_by_hand_at": string | null,"company_id": string,"enabled": boolean,"enabled_by": string | null,"last_error": string | null,"lat": number | null,"lng": number | null,"updated_at": string
+                    "checked_at": string | null,"checked_by_hand_at": string | null,"company_id": string,"enabled": boolean,"enabled_by": string | null,"last_error": string | null,"lat": number | null,"lng": number | null,"located_at": string | null,"tried_at": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id": string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"updated_at"?: string
+                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id": string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"located_at"?: string | null,"tried_at"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id"?: string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"updated_at"?: string
+                    "checked_at"?: string | null,"checked_by_hand_at"?: string | null,"company_id"?: string,"enabled"?: boolean,"enabled_by"?: string | null,"last_error"?: string | null,"lat"?: number | null,"lng"?: number | null,"located_at"?: string | null,"tried_at"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -2630,14 +2656,14 @@ isOneToOne: false
                   ]
                 },"review_places": {
                   Row: {
-                    "address": string | null,"checked_at": string | null,"company_id": string,"created_at": string,"id": string,"is_own": boolean,"maps_url": string | null,"name": string,"place_id": string,"previous_checked_at": string | null,"previous_total": number | null,"rating": number | null,"ratings_total": number | null
+                    "address": string | null,"checked_at": string | null,"company_id": string,"created_at": string,"id": string,"is_own": boolean,"maps_url": string | null,"name": string,"place_id": string,"previous_checked_at": string | null,"previous_total": number | null,"problem": string | null,"rating": number | null,"ratings_total": number | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "address"?: string | null,"checked_at"?: string | null,"company_id": string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name": string,"place_id": string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"rating"?: number | null,"ratings_total"?: number | null
+                    "address"?: string | null,"checked_at"?: string | null,"company_id": string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name": string,"place_id": string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"problem"?: string | null,"rating"?: number | null,"ratings_total"?: number | null
                   }
                   Update: {
-                    "address"?: string | null,"checked_at"?: string | null,"company_id"?: string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name"?: string,"place_id"?: string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"rating"?: number | null,"ratings_total"?: number | null
+                    "address"?: string | null,"checked_at"?: string | null,"company_id"?: string,"created_at"?: string,"id"?: string,"is_own"?: boolean,"maps_url"?: string | null,"name"?: string,"place_id"?: string,"previous_checked_at"?: string | null,"previous_total"?: number | null,"problem"?: string | null,"rating"?: number | null,"ratings_total"?: number | null
                   }
                   Relationships: [
                     {
@@ -2936,14 +2962,14 @@ isOneToOne: false
                   ]
                 },"showcases": {
                   Row: {
-                    "company_id": string,"created_at": string,"created_by": string | null,"description": string,"id": string,"job_id": string,"published_at": string | null,"published_by": string | null,"show_town": boolean,"status": string,"title": string,"token": string,"unpublished_at": string | null,"updated_at": string,"visit_id": string | null
+                    "company_id": string,"created_at": string,"created_by": string | null,"description": string,"id": string,"job_id": string,"published_at": string | null,"published_by": string | null,"show_town": boolean,"status": string,"title": string,"token": string,"unpublished_at": string | null,"unpublished_reason": string | null,"updated_at": string,"visit_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "company_id": string,"created_at"?: string,"created_by"?: string | null,"description"?: string,"id"?: string,"job_id": string,"published_at"?: string | null,"published_by"?: string | null,"show_town"?: boolean,"status"?: string,"title": string,"token"?: string,"unpublished_at"?: string | null,"updated_at"?: string,"visit_id"?: string | null
+                    "company_id": string,"created_at"?: string,"created_by"?: string | null,"description"?: string,"id"?: string,"job_id": string,"published_at"?: string | null,"published_by"?: string | null,"show_town"?: boolean,"status"?: string,"title": string,"token"?: string,"unpublished_at"?: string | null,"unpublished_reason"?: string | null,"updated_at"?: string,"visit_id"?: string | null
                   }
                   Update: {
-                    "company_id"?: string,"created_at"?: string,"created_by"?: string | null,"description"?: string,"id"?: string,"job_id"?: string,"published_at"?: string | null,"published_by"?: string | null,"show_town"?: boolean,"status"?: string,"title"?: string,"token"?: string,"unpublished_at"?: string | null,"updated_at"?: string,"visit_id"?: string | null
+                    "company_id"?: string,"created_at"?: string,"created_by"?: string | null,"description"?: string,"id"?: string,"job_id"?: string,"published_at"?: string | null,"published_by"?: string | null,"show_town"?: boolean,"status"?: string,"title"?: string,"token"?: string,"unpublished_at"?: string | null,"unpublished_reason"?: string | null,"updated_at"?: string,"visit_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -3197,6 +3223,20 @@ isOneToOne: false
       referencedRelation: "companies"
       referencedColumns: ["id"]
     }
+                  ]
+                },"stale_public_files": {
+                  Row: {
+                    "company_id": string,"created_at": string,"id": number,"path": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"created_at"?: string,"id"?: never,"path": string
+                  }
+                  Update: {
+                    "company_id"?: string,"created_at"?: string,"id"?: never,"path"?: string
+                  }
+                  Relationships: [
+                    
                   ]
                 },"storage_allowances": {
                   Row: {
@@ -4152,6 +4192,11 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_postcard_checks":
+{ Args: { "p_limit"?: number }; Returns: {
+              "company_id": string,"id": string,"mode": string,"started_at": string
+            }[]
+                           },
 "claim_postcard_recipients":
 { Args: { "p_campaign": string,"p_limit"?: number }; Returns: {
               "address": NonNullable<Json>,
@@ -4166,10 +4211,13 @@ isOneToOne: false
 "expected_delivery": string | null,
 "id": number,
 "idempotency_key": string,
+"lob_failed_at": string | null,
 "lob_id": string | null,
 "locked_until": string | null,
 "made_at": string | null,
 "name": string,
+"proof_at": string | null,
+"proof_url": string | null,
 "status": string
             }[]
                           SetofOptions: {
@@ -4178,6 +4226,11 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_review_comparisons":
+{ Args: { "p_limit"?: number }; Returns: {
+              "company_id": string
+            }[]
+                           },
 "claim_review_notices":
 { Args: { "p_claim": string,"p_company": string }; Returns: number
                            },
@@ -4351,6 +4404,9 @@ isOneToOne: false
 { Args: { "p_company": string,"p_day": string,"p_ends": string,"p_equipment": (string)[],"p_except"?: string,"p_starts": string }; Returns: {
               "ends_at": string,"equipment_id": string,"starts_at": string,"title": string,"visit_id": string
             }[]
+                           },
+"expire_review_locations":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "expire_sub_offers":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -5013,6 +5069,9 @@ isOneToOne: false
 "settle_notification_deliveries":
 { Args: { "p_delivered": (string)[],"p_error"?: string,"p_failed"?: (string)[],"p_retry"?: (string)[],"p_token": string }; Returns: number
                            },
+"settle_postcard_recipient":
+{ Args: { "p_error"?: string,"p_id": number,"p_lob_id"?: string,"p_proof_url"?: string,"p_status": string }; Returns: boolean
+                           },
 "showcase_view":
 { Args: { "p_token": string }; Returns: Json
                            },
@@ -5097,6 +5156,11 @@ isOneToOne: false
                            },
 "stripe_import_invoice":
 { Args: { "p_company": string,"p_data": Json,"p_quiet"?: boolean }; Returns: string
+                           },
+"stuck_postcard_recipients":
+{ Args: { "p_limit"?: number }; Returns: {
+              "campaign_id": string,"claimed_at": string,"company_id": string,"id": number,"mode": string
+            }[]
                            },
 "sub_1099_totals":
 { Args: { "p_company": string,"p_year": number }; Returns: {
