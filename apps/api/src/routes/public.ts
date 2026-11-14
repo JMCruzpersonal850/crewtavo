@@ -1838,6 +1838,8 @@ publicRoutes.post("/public/unsubscribe/:token", async (c) => {
   const l = await link(c, ["unsub"]);
   const body = (await c.req.json().catch(() => null)) as { resubscribe?: unknown } | null;
   const resubscribe = body?.resubscribe === true;
+  // The opt-out is the address's: the database does the same for every client record of the company
+  // with this email (20261113001765_unsubscribe_by_address.sql), so another record can't bring them back.
   const { error } = await adminClient(c.env).from("clients").update({ marketing_opt_out: !resubscribe }).eq("company_id", l.c).eq("id", l.id);
   if (error) throw dbError(error);
   return c.json({ unsubscribed: !resubscribe });

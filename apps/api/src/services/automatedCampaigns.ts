@@ -9,8 +9,9 @@
  * client gets at most one re-engage email every 6 months and one win-back email for each quote
  * (begin_campaign_send holds to both, even at the same moment). Close pending quotes is the
  * quote_followup rule, a follow-up to a quote the client asked for: it keeps going while Marketing
- * is off and to clients who unsubscribed from marketing, with no unsubscribe link, as it always has,
- * and is only tracked.
+ * is off. Whether a nudge to approve a quote is commercial is arguable, so it takes the safe side
+ * of the FTC's CAN-SPAM guide: it carries the one-click unsubscribe link too, and isn't sent to a
+ * client who unsubscribed from marketing (their contacts' copies included).
  *
  * Clients who haven't had a visit in a while: the hourly "inactive" task (tasks.ts) asks the
  * database to queue each company's client.inactive runs (emit_inactive_clients), from 10am in its
@@ -196,6 +197,8 @@ export async function sendCampaignEmail(
     const reason = await winBackReason(admin, ctx);
     if (reason) return new Skip(reason);
   }
+  // A quote's follow-up respects the marketing opt-out as the marketing campaigns do (the engine skips their whole run).
+  if (!campaign.marketing && client.marketing_opt_out) return new Skip(`${client.display_name} unsubscribed from marketing`);
   if (campaign.marketing) {
     // The business's to fix, so the run fails rather than skips.
     if (!(await emailReady(env, ctx.company.id))) {
@@ -249,7 +252,8 @@ export async function sendCampaignEmail(
     baseUrl: baseUrl!,
     footer: companyFooter(ctx.company),
     track: trackedLinks(baseUrl!, row.track_token, links),
-    unsubscribe: campaign.marketing,
+    // Every campaign email has the link, the quote follow-up included.
+    unsubscribe: true,
     // {{link}} on its own line is a button named for where it goes: the Hub's home, or the quote.
     buttons: typeof ctx.vars.link === "string" ? { [ctx.vars.link]: linkButton(campaign.key) } : undefined,
   });

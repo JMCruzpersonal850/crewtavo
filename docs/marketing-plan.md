@@ -398,9 +398,10 @@ counted.
   active job or a newer job, sent a request, or been sent a newer quote. Once for each quote. Its
   `{{link}}` is the client's Client Hub home, where they can ask for work: a lost quote can't be
   approved.
-- **Close pending quotes is `quote_followup`, and it isn't marketing.** It follows up a quote the
-  client asked for, so it keeps today's behaviour: it keeps running while Marketing is uninstalled,
-  reaches clients who unsubscribed from marketing, and has no unsubscribe link. It's tracked and
+- **Close pending quotes is `quote_followup`.** It follows up a quote the client asked for, so it
+  keeps running while Marketing is uninstalled. Whether a nudge to approve a quote is commercial
+  is arguable, so it takes the safe side: it has the unsubscribe link every campaign email has, and
+  isn't sent to clients who unsubscribed from marketing. It's tracked and
   shown under Campaigns. Its starter name and description follow the days ("Follow up on quotes
   after 5 days"); a name someone wrote stays. A second email added to it in Automations goes too, as
   before: each email action of a run is its own send. Marketing's off screen and the uninstall
@@ -1021,8 +1022,8 @@ What was decided building it:
   clients who already qualify (and asks again each time it's turned on). A client gets it at most once every 6 months, never while you're
   working with them or for 6 months after a quote, and not if their last visit was over 3 years ago.
   Conditions you add to its rule in Automations count in its numbers too.
-- **Close pending quotes isn't marketing:** it keeps going while Marketing is uninstalled and reaches
-  clients who unsubscribed from marketing, as it always has.
+- **Close pending quotes keeps going while Marketing is uninstalled.** It has an unsubscribe link,
+  and isn't sent to clients who unsubscribed from marketing.
 - **Results for every campaign:** sent, opened, clicked, bookings and revenue, on each campaign and
   card, with who got it and what each did. Opens are approximate.
 - **More audiences:** city, services on past jobs and recurring work, picked from lists that say how

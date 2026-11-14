@@ -739,6 +739,8 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       // their contacts ticked for emails.
       if (ctx.campaign && (ctx.campaign.marketing || (baseUrl && (!client || isEmail(client.email))))) return sendCampaignEmail(env, admin, ctx, action, baseUrl);
       if (!client) throw new Error("There's no client on this record.");
+      // A quote's follow-up isn't sent for a client who unsubscribed from marketing, whichever way it goes.
+      if (ctx.campaign && client.marketing_opt_out) return new Skip(`${client.display_name} unsubscribed from marketing`);
       const people = await peopleFor(admin, ctx, client, "email");
       if (!people.length) throw new Error(`${client.display_name} has no email address.`);
       // The client's own address gets their own links; a contact's, and the timeline's copy, the

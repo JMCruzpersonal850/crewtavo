@@ -327,9 +327,11 @@ describe("the automated campaign cards", () => {
     expect(source("../src/features/marketing/useMarketingSwitch.tsx")).toContain("{waitingWords(winBacks)}");
   });
 
-  it("say what each leaves out, and that Close pending quotes isn't marketing", () => {
+  it("say what each leaves out, and that Close pending quotes keeps going without Marketing but has an unsubscribe link", () => {
     const cards = source("../src/features/marketing/AutomatedCampaigns.tsx");
-    expect(cards).toContain("so it isn't a marketing email: it keeps going while Marketing is uninstalled, reaches clients who unsubscribed from marketing, and has no unsubscribe link.");
+    expect(cards).toContain("so it keeps going while Marketing is uninstalled. It has an unsubscribe link like every campaign email, and isn't sent to clients who unsubscribed from marketing.");
+    // Its preview shows the link, as the email has it.
+    expect(cards).toContain("vars={vars} unsubscribe linkLabel={linkButton(key)} />");
     expect(cards).toContain("A year by default, so it reaches them at the same time of year as their last visit");
     expect(turnOffWords("close_quotes", 3)).toBe("3 quotes are waiting for a follow-up. Turning this off cancels them, and turning it back on won't send them.");
     expect(turnOffWords("win_back", 1)).toBe("1 quote is waiting for a win-back email. Turning this off cancels it, and turning it back on won't send it.");

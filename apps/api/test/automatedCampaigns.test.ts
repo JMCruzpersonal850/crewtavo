@@ -457,8 +457,8 @@ describe("Close pending quotes", () => {
       rpc: { begin_campaign_send: begun() },
     });
 
-  it("isn't marketing: it goes while Marketing is off, to a client who unsubscribed from marketing, with no unsubscribe link, and is tracked", async () => {
-    const calls = world({ settings: { marketing: { enabled: false } }, client: { ...ANA, marketing_opt_out: true } });
+  it("goes while Marketing is off, with an unsubscribe link like every campaign email, and is tracked", async () => {
+    const calls = world({ settings: { marketing: { enabled: false } } });
     expect(await executeRun(env, adminClient(env), run, env.APP_URL!)).toBe("done");
     expect(finished(calls)[0].p_result).toEqual([{ type: "send_email", ok: true, detail: "Emailed ana@example.com" }]);
     const [begin] = rpcCalls(calls, "begin_campaign_send");
@@ -466,10 +466,28 @@ describe("Close pending quotes", () => {
     expect(begin.p_gap_days).toBeUndefined();
     const [message] = sent();
     expect(message!.subject).toBe("Following up on your quote from Acme Lawn");
-    expect(message!.headers).toBeUndefined();
-    expect(message!.html).not.toContain("Unsubscribe");
+    // One-click unsubscribe, in the footer and the headers mail apps read, for this client.
+    expect(message!.html).toContain(">Unsubscribe</a>");
+    expect(message!.headers!["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+    const link = /<(https:\/\/ops\.example\.com\/api\/public\/unsubscribe\/[^>]+)>/.exec(message!.headers!["List-Unsubscribe"]!)![1]!;
+    expect(await readClientLink(env, link.split("/unsubscribe/")[1]!)).toMatchObject({ c: CO, t: "unsub", id: ANA_ID });
     expect(message!.html).toContain(`/api/public/o/${TOKEN}`);
     expect(message!.html).toContain(`href="https://ops.example.com/api/public/c/${TOKEN}/0"`);
+  });
+
+  it("isn't sent to a client who unsubscribed from marketing, whichever way it would have gone", async () => {
+    const out = { ...ANA, marketing_opt_out: true };
+    let calls = world({ client: out });
+    expect(await executeRun(env, adminClient(env), run, env.APP_URL!)).toBe("skipped");
+    expect(finished(calls)[0].p_result).toEqual([{ type: "send_email", ok: true, skipped: true, detail: "Ana Smith unsubscribed from marketing" }]);
+    expect(rpcCalls(calls, "begin_campaign_send")).toEqual([]);
+    // Without the app's address it goes the plain way, untracked: still not to them.
+    calls = world({ client: out });
+    expect(await executeRun(env, adminClient(env), run, null)).toBe("skipped");
+    // Nor to their contacts ticked for emails, when the client has no address of their own.
+    calls = world({ client: { ...out, email: null } });
+    expect(await executeRun(env, adminClient(env), run, env.APP_URL!)).toBe("skipped");
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it("emails the client their own quote link, and keeps the office's copy on the quote's timeline", async () => {
@@ -666,7 +684,8 @@ describe("Marketing → Campaigns' routes", () => {
     sendEmail.mockClear();
     routes([], {}, { profiles: [{ user_id: USER, email: "mia@acme.example", full_name: "Mia Owner" }] });
     await call("/campaigns/automated/close_quotes/test", { method: "POST", body: { subject: "Following up", body: "Hi {{client.first_name}}" } });
-    expect(sent()[0]!.html).not.toContain("Unsubscribe");
+    // The quote follow-up has the unsubscribe link too; a test's goes nowhere.
+    expect(sent()[0]!.html).toContain("/u/test");
     // Re-engage is about a client, so its {{title}} is their name, as the engine fills it in.
     sendEmail.mockClear();
     routes([], {}, { profiles: [{ user_id: USER, email: "mia@acme.example", full_name: "Mia Owner" }] });

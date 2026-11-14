@@ -48,7 +48,7 @@ export interface AutomatedCampaign {
   /** The card's name, and the automated campaign's. */
   name: string;
   trigger: string;
-  /** A marketing email: unsubscribe link, skipped while Marketing is off or for clients who opted out. */
+  /** A marketing email: skipped while Marketing is off. (Every campaign email has the unsubscribe link and skips clients who opted out, Close pending quotes too.) */
   marketing: boolean;
   days: { min: number; max: number; default: number };
   /** Where N lives: the rule's days_since_visit condition, or its wait. */

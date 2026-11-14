@@ -73,15 +73,16 @@ const requireMarketing = (c: Ctx) => requireCampaignsOn(c.var.db, c.var.companyI
 
 /**
  * Sends the signed-in person (or `to`) a test copy, with "[Test]" in the subject: no tracking, and
- * an unsubscribe link that goes nowhere when the real one would have one.
+ * an unsubscribe link that goes nowhere. `marketing`: held to the company's postal address, as the
+ * real email is.
  */
-async function sendTest(c: Ctx, d: { to?: string; subject: string; body: string; vars: Record<string, unknown>; unsubscribe: boolean; button: string }) {
+async function sendTest(c: Ctx, d: { to?: string; subject: string; body: string; vars: Record<string, unknown>; marketing: boolean; button: string }) {
   const me = must(await c.var.db.from("profiles").select("email, full_name").eq("user_id", c.var.userId).maybeSingle());
   const to = d.to ?? me.email;
   if (!to || !isEmail(to)) throw new HttpError(400, "Add an email address to send the test to.");
   const company = must(await c.var.db.from("companies").select("name, phone, email, website, address, settings").eq("id", c.var.companyId).maybeSingle());
   // A test of a marketing email is held to what the real one is: no postal address, no email.
-  const noAddress = d.unsubscribe ? senderAddressProblem(company) : null;
+  const noAddress = d.marketing ? senderAddressProblem(company) : null;
   if (noAddress) throw new HttpError(400, noAddress);
   // {{title}} is the client's name for an email about a client (Re-engage), as the engine has it.
   const vars = {
@@ -96,7 +97,8 @@ async function sendTest(c: Ctx, d: { to?: string; subject: string; body: string;
     logo: logoImage(appUrl(c), c.var.companyId, company.settings),
     text: renderTemplate(d.body, vars),
     footer: [company.name, companyAddress(company.address as Record<string, string>)].filter(Boolean).join(" · "),
-    unsubscribeUrl: d.unsubscribe ? `${appUrl(c)}/u/test` : null,
+    // Every campaign email has the link; a test's goes nowhere.
+    unsubscribeUrl: `${appUrl(c)}/u/test`,
     // {{link}} on its own line is the same button the real email has.
     buttons: { [String(vars.link)]: d.button },
   });
@@ -121,7 +123,7 @@ marketing.post("/campaigns/:id/test", requireUser, requireCompany(OFFICE, "marke
   await requireEmail(c);
   const body = await readJson(c, z.object({ to: z.email().optional() }));
   const campaign = await loadCampaign(c.var.db, c.var.companyId, param(c, "id"));
-  return sendTest(c, { to: body.to, subject: campaign.subject, body: campaign.body, vars: {}, unsubscribe: true, button: HUB_HOME_BUTTON });
+  return sendTest(c, { to: body.to, subject: campaign.subject, body: campaign.body, vars: {}, marketing: true, button: HUB_HOME_BUTTON });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -256,7 +258,7 @@ marketing.post("/campaigns/automated/:key/test", requireUser, requireCompany(OFF
     status: key === "close_quotes" ? "Awaiting response" : key === "win_back" ? "Lost" : "Active",
     last_visit: new Date(`${lastVisit}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }),
   };
-  return sendTest(c, { to: body.to, subject: body.subject, body: body.body, vars, unsubscribe: campaign.marketing, button: linkButton(key) });
+  return sendTest(c, { to: body.to, subject: body.subject, body: body.body, vars, marketing: campaign.marketing, button: linkButton(key) });
 });
 
 /** Draft a campaign with Claude from a short goal. */

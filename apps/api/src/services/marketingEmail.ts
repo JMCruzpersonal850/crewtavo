@@ -4,8 +4,8 @@
  * (clients.marketing_opt_out stops every one of them, as it stops campaigns) in the footer and the
  * List-Unsubscribe headers, and the company's name and postal address in the footer (`footer`:
  * every sender passes lib/email.ts companyFooter). A campaign email also carries its tracked links
- * and pixel (services/automatedCampaigns.ts). Close pending quotes isn't marketing, so it goes
- * without the unsubscribe link (`unsubscribe: false`), as quote follow-ups always have.
+ * and pixel (services/automatedCampaigns.ts). Close pending quotes carries the link as well; only
+ * the copies of it that go to a client's contacts don't (`unsubscribe: false`).
  */
 import type { Env } from "../env";
 import { renderEmail } from "../lib/email";

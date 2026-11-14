@@ -49,7 +49,7 @@ const NOTES: Record<AutomatedKey, string> = {
     "Not sent to clients you're working with (recurring work, a job or visit still to do, an open request, or a quote approved or waiting on them), or anyone sent a quote in the last 6 months, which Win back looks after. Nor to anyone emailed this in the last 6 months, or whose last visit was over 3 years ago. Up to 100 a day, those who passed it most recently first.",
   win_back: "Not if the quote isn't lost anymore, or they've since approved another quote, had a job, sent a request or been sent a newer quote. Once for each quote.",
   close_quotes:
-    "It follows up a quote they asked for, so it isn't a marketing email: it keeps going while Marketing is uninstalled, reaches clients who unsubscribed from marketing, and has no unsubscribe link.",
+    "It follows up a quote they asked for, so it keeps going while Marketing is uninstalled. It has an unsubscribe link like every campaign email, and isn't sent to clients who unsubscribed from marketing.",
 };
 /** Beside the days in Edit email. */
 const DAYS_HINTS: Record<AutomatedKey, string> = {
@@ -342,10 +342,10 @@ function EditEmailDialog({ card, backlog, onClose }: { card: AutomatedCard; back
           value={draft.body}
           onChange={(body) => set({ body })}
           tokens={tokens}
-          hint={campaign.marketing ? `${hasAddress ? "Your address and an unsubscribe link are added at the bottom." : "An unsubscribe link is added at the bottom. Your address goes there too, once it's filled in: until then this isn't sent."} Client Hub link is theirs, where they can ask for work.` : hasAddress ? "Your address is added at the bottom." : "Your address is added at the bottom once it's filled in (Settings → Company)."}
+          hint={campaign.marketing ? `${hasAddress ? "Your address and an unsubscribe link are added at the bottom." : "An unsubscribe link is added at the bottom. Your address goes there too, once it's filled in: until then this isn't sent."} Client Hub link is theirs, where they can ask for work.` : hasAddress ? "Your address and an unsubscribe link are added at the bottom." : "An unsubscribe link is added at the bottom, and your address once it's filled in (Settings → Company)."}
         />
         {!hasTrackableLink(draft.body) && NO_LINK}
-        <EmailPreview companyName={session.company.name} address={companyAddressLine(session.company.address)} subject={draft.subject} body={draft.body} vars={vars} unsubscribe={campaign.marketing} linkLabel={linkButton(key)} />
+        <EmailPreview companyName={session.company.name} address={companyAddressLine(session.company.address)} subject={draft.subject} body={draft.body} vars={vars} unsubscribe linkLabel={linkButton(key)} />
         <FormError error={save.error ?? counted} />
         {!emailReady && <p className="muted small" style={{ margin: 0 }}>Email isn't connected yet, so a test can't be sent.<ConnectEmailHint then="to send one" /></p>}
         {testedTo && <p className="small" role="status" style={{ margin: 0 }}><Icon name="check" size={14} /> Test sent to {testedTo}.</p>}
