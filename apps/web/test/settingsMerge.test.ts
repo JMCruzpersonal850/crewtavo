@@ -44,6 +44,18 @@ describe("saving company settings", () => {
     expect(sql).toContain("c.settings -> 'clock' ->> 'mode'");
   });
 
+  it("says under Breaks what each choice does, from the one text the tests hold to the federal rule's own words", () => {
+    const code = source("CompanySettings.tsx");
+    expect(code).toContain("hint={BREAK_PAY_HINTS[f.breaks as BreakPay]}");
+    // The claim that the 20-minute cutoff "follows federal rules" is gone from the screen.
+    expect(code).not.toMatch(/follows federal rules/i);
+  });
+
+  it("says under each pay period that state daily overtime isn't worked out", () => {
+    const pay = readFileSync(fileURLToPath(new URL("../src/features/timesheets/PayPeriods.tsx", import.meta.url)), "utf8");
+    expect(pay).toContain("{STATE_OVERTIME_NOTE}");
+  });
+
   it("saves the workdays with the workday hours", () => {
     expect(source("CompanySettings.tsx")).toContain(`working_hours: { start: v.hours_start, end: v.hours_end, days: v.workdays.split(",").map(Number) }`);
   });

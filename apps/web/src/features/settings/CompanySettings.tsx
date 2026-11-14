@@ -1,5 +1,5 @@
 import { lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
-import { BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
+import { BREAK_PAY_HINTS, BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
 import { CLOCK_MODE_HINTS, CLOCK_MODE_LABELS, clockMode, type ClockMode } from "@crewtavo/core/clock";
 import { FT_PER_M } from "@crewtavo/core/geo";
 import { GEOFENCE_MODE_HINTS, GEOFENCE_MODE_LABELS, GEOFENCE_NOTE, GEOFENCE_RADIUS, geofence, geofenceRadius, type GeofenceMode } from "@crewtavo/core/geofence";
@@ -24,11 +24,6 @@ import { JobCostSettings } from "./JobCostSettings";
 import { NextNumbers } from "./NextNumbers";
 import { QuoteSettings } from "./QuoteSettings";
 
-const BREAK_HINTS: Record<BreakPay, string> = {
-  short_paid: "Breaks of 20 minutes or less count as paid time; longer ones, like lunch, don't. This follows federal rules.",
-  paid: "Every break counts as paid time, lunch included.",
-  unpaid: "No break counts as paid time. Federal rules say rest breaks of 20 minutes or less must be paid, so check before choosing this.",
-};
 // The clock at the property's choices of how close counts as there, in meters, said in feet too.
 const RADII = [100, 150, 200, 300, 400, 500];
 const radiusLabel = (m: number) => `${m} m (${(Math.round((m * FT_PER_M) / 10) * 10).toLocaleString("en-US")} ft)`;
@@ -286,7 +281,7 @@ export function CompanySettings() {
               </select>
             </Field>
           )}
-          <Field label="Breaks" hint={BREAK_HINTS[f.breaks as BreakPay]}>
+          <Field label="Breaks" hint={BREAK_PAY_HINTS[f.breaks as BreakPay]}>
             <select className="select" value={f.breaks} onChange={set("breaks")}>
               {(Object.keys(BREAK_PAY_LABELS) as BreakPay[]).map((b) => <option key={b} value={b}>{BREAK_PAY_LABELS[b]}</option>)}
             </select>
