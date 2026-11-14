@@ -4,7 +4,7 @@ import { costedExtras, extrasByVisit, takesExtras, visitTakesExtras } from "@cre
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { askRefusal, marketingOn } from "@crewtavo/core/marketing";
 import { contractDiscountNote } from "@crewtavo/core/promos";
-import { belowProfitLine, expenseCosts, profitAlertPercent } from "@crewtavo/core/reports";
+import { belowProfitLine, profitAlertPercent } from "@crewtavo/core/reports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -43,7 +43,7 @@ import { PropertyEquipment } from "../clients/PropertyEquipment";
 import { InvoiceJobDialog, JobDetailsDialog, PauseJobDialog, type JobRecord } from "./JobDialogs";
 import { JobDiscountNote } from "./JobDiscountNote";
 import { FieldAddedLines } from "./FieldAddedLines";
-import { jobCosts } from "./jobCosts";
+import { jobPageCosts } from "./jobCosts";
 import { JobPayCard, seesJobPay } from "./JobPayCard";
 import { JobPaymentSchedule } from "./JobPaymentSchedule";
 import { repeatText } from "./repeatText";
@@ -193,9 +193,8 @@ export function JobPage() {
       ]);
       const entries = unwrap(time);
       const hours = entries.reduce((s, t) => s + (t.ended_at ? (Date.parse(t.ended_at) - Date.parse(t.started_at)) / 3_600_000 : 0), 0);
-      const labor = entries.reduce((s, t) => s + (t.ended_at ? ((Date.parse(t.ended_at) - Date.parse(t.started_at)) / 3_600_000) * Number(rates[t.id] ?? 0) : 0), 0);
-      // An expense marked as already in the line items' costs isn't counted on top of them.
-      return { hours, labor, crewPay: unwrap(crewPay), expenses: expenseCosts(unwrap(expenses)) };
+      // The rows as they are: jobPageCosts adds them up, as the hourly profit check does.
+      return { hours, time: entries, rates, pay: unwrap(crewPay), expenses: unwrap(expenses) };
     },
   });
 
@@ -266,7 +265,7 @@ export function JobPage() {
   const contract = Number(j.financials?.contract_total ?? 0);
   const visits = j.visits;
   const visitExtras = extrasByVisit(extras.data ?? []);
-  const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses.counted ?? 0, expensesInLines: costs.data?.expenses.in_lines ?? 0, logged: materialRows.data ?? [], crewPay: costs.data?.crewPay ?? [], extras: costedExtras(extras.data ?? [], visits) });
+  const cost = jobPageCosts({ price: contract, lines: j.lines, time: costs.data?.time ?? [], rates: costs.data?.rates ?? {}, expenses: costs.data?.expenses ?? [], logged: materialRows.data ?? [], pay: costs.data?.pay ?? [], extras: costedExtras(extras.data ?? [], visits) });
   const { materials, labor, crew, expenses, profit, margin } = cost;
   // The company's profit line (Settings → Company → Job costing), as the hourly check holds the job to it.
   const profitLine = profitAlertPercent(session.company.settings);

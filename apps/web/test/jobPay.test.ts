@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { jobCosts } from "../src/features/jobs/jobCosts";
+import { costJobRows } from "@crewtavo/core/reports";
+import { jobCosts, jobPageCosts } from "../src/features/jobs/jobCosts";
 import {
   actionLabel,
   agreedToast,
@@ -329,6 +330,23 @@ describe("the job's costs", () => {
     expect(c).toMatchObject({ materials: 4910, expenses: 100, total: 5010 });
     expect(c.expenseNote).toBe("$4,875.50 of expenses are marked as already in the line item costs, so they aren't counted again.");
     expect(jobCosts({ contract: 10000, lines, labor: 0, expenses: 100, crewPay: [] }).expenseNote).toBeNull();
+  });
+  it("costs the job page from the job's rows with the function the hourly profit check uses", () => {
+    // The same job apps/api/test/profitAlerts.test.ts feeds the check: a sub agreed at $7,500 with a new price waiting.
+    const rows = {
+      price: 10000,
+      lines: [{ quantity: 2, unit_cost: 400, unit_labor_cost: 50, service_id: "s-rock", unit: "ton" }, { quantity: 1, unit_cost: 200 }],
+      time: [{ id: "t20", started_at: "2026-11-10T13:00:00Z", ended_at: "2026-11-10T21:00:00Z" }, { id: "t21", started_at: "2026-11-11T13:00:00Z", ended_at: null }],
+      rates: { t20: 50, t21: 50 },
+      pay: [{ amount: 7500, payees: 1 }],
+      expenses: [{ amount: "200.00", in_line_costs: false }, { amount: "640.00", in_line_costs: true }],
+      logged: [{ service_id: "s-rock", name: "Rock", unit: "ton", quantity: 3 }],
+    };
+    const page = jobPageCosts(rows);
+    const check = costJobRows(rows);
+    expect([page.total, page.profit, page.crew, page.labor, page.expenses, page.materials]).toEqual([check.cost, check.profit, check.crew, check.labor, check.expenses, check.materials]);
+    expect(page).toMatchObject({ total: 9350, crew: 7500, labor: 400, expenses: 200, materials: 1250, margin: Math.round(check.margin!) });
+    expect(page.expenseNote).toBe("$640.00 of expenses are marked as already in the line item costs, so they aren't counted again.");
   });
 });
 

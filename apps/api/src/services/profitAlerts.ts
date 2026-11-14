@@ -1,12 +1,13 @@
 /**
  * Job profit alerts (supabase/migrations/20261113001200_job_profit_alerts.sql): every hour, each
  * company with a profit line (settings.profit_alert_percent) has the one-off jobs whose costs changed
- * since the last look costed with core's jobCost, as the job page and Finance cost them, and the
+ * since the last look costed with core's costJobRows, the function the job page costs a job with,
+ * from the same rows (sub and crew pay from the database's one sum of it), and the
  * people who see job costs are told once as a job goes below the line. Right after the line changes,
  * every open one-off job is looked at quietly instead, and they get one note saying how many are below.
  * Repeating jobs aren't checked (belowProfitLine says why).
  */
-import { belowProfitLine, jobCost, laborCost, profitAlertDecision, profitAlertText, type CostedLine } from "@crewtavo/core";
+import { belowProfitLine, costJobRows, profitAlertDecision, profitAlertText, type CostedLine } from "@crewtavo/core";
 import { reportError } from "../lib/monitoring";
 import type { Db } from "../lib/supabase";
 import { timeRates } from "./payRates";
@@ -56,18 +57,23 @@ export async function costJobs(admin: Db, companyId: string, ids: readonly strin
     everyPage((f, t) => admin.from("time_entries").select("id, job_id, user_id, started_at, ended_at").eq("company_id", companyId).in("job_id", [...ids]).order("id").range(f, t)),
     everyPage((f, t) => admin.from("expenses").select("job_id, amount, in_line_costs").eq("company_id", companyId).in("job_id", [...ids]).order("id").range(f, t)),
     everyPage((f, t) => admin.from("job_materials").select("job_id, service_id, name, unit, quantity").eq("company_id", companyId).in("job_id", [...ids]).order("id").range(f, t)),
-    // Sub and crew pay as public.job_pay_costs counts it: agreed, done or paid (what was paid, once it is).
-    everyPage((f, t) => admin.from("job_pay").select("job_id, status, total, paid_amount").eq("company_id", companyId).in("job_id", [...ids]).in("status", ["accepted", "done", "paid"]).order("id").range(f, t)),
+    // Sub and crew pay as the job page reads it: the database's own sum (job_pay_costs, here for the
+    // server), which counts a new price still waiting for an answer at the one already agreed.
+    admin.rpc("job_pay_costs_for_check", { p_company: companyId, p_jobs: [...ids] }).then(({ data, error }) => {
+      if (error) throw new Error(error.message);
+      return (data ?? []) as Array<{ job_id: string; amount: number | string | null; payees: number }>;
+    }),
     timeRates(admin, companyId, { job_ids: ids }),
   ]);
   const [times, spends, logs, pays] = [group(time), group(expenses), group(materials), group(pay)];
   return jobs.map((job) => ({
     job,
-    cost: jobCost({
+    cost: costJobRows({
       price: Number(job.financials?.contract_total ?? 0),
       lines: job.lines ?? [],
-      labor: laborCost(times.get(job.id) ?? [], (e) => rates[e.id] ?? 0),
-      crewPay: (pays.get(job.id) ?? []).map((p) => ({ amount: p.status === "paid" ? p.paid_amount : p.total })),
+      time: times.get(job.id) ?? [],
+      rates,
+      pay: pays.get(job.id) ?? [],
       expenses: spends.get(job.id) ?? [],
       logged: logs.get(job.id) ?? [],
     }),

@@ -3,9 +3,11 @@
  * that eq and in filter, and the check's functions answering from `state`. What those functions do
  * in the database is tested in supabase/tests/job_profit_alerts_test.sql.
  */
+import { costJobRows } from "@crewtavo/core";
 import { describe, expect, it } from "vitest";
 import type { Db } from "../src/lib/supabase";
-import { checkJobProfits } from "../src/services/profitAlerts";
+import { timeRates } from "../src/services/payRates";
+import { checkJobProfits, costJobs } from "../src/services/profitAlerts";
 
 type Row = Record<string, unknown>;
 const CO = "00000000-0000-4000-8000-0000000000c1";
@@ -29,6 +31,8 @@ function fakeDb(tables: Record<string, Row[]>, companies: Row[], jobs: Row[]) {
   const rpc = async (fn: string, args: Row) => {
     if (fn === "profit_alert_companies") return { data: companies, error: null };
     if (fn === "profit_alert_jobs") return { data: jobs, error: null };
+    // The database's one sum of a job's sub and crew pay (job_pay_cost_rows), as it answers the check.
+    if (fn === "job_pay_costs_for_check") return { data: (tables.job_pay_costs ?? []).filter((r) => r.company_id === args.p_company && (args.p_jobs as string[]).includes(r.job_id as string)), error: null };
     if (fn === "record_profit_checks") {
       recorded.push({ args });
       return { data: (args.p_checks as Row[]).filter((c) => c.tell).length, error: null };
@@ -58,6 +62,59 @@ const tables = (): Record<string, Row[]> => ({
   job_materials: [],
   job_pay: [],
   job_profit_alerts: [],
+});
+
+describe("one job, costed by the hourly check and by the job page", () => {
+  // Job #20: $10,000, lines that cost $1,000 to make, 8 hours at $50, a $200 expense and one already in
+  // the lines, 3 tons logged against 2 estimated, and a sub agreed at $7,500 who has been re-offered
+  // $6,500 and hasn't answered: the database still counts the $7,500 agreed.
+  const job20 = (): Record<string, Row[]> => ({
+    jobs: [{
+      id: "j20", company_id: CO, number: 20, kind: "one_off", status: "active", client: { display_name: "Pat Hill" }, financials: { contract_total: "10000.00" },
+      lines: [{ quantity: 2, unit_cost: 400, unit_labor_cost: 50, service_id: "s-rock", unit: "ton", parts: null }, { quantity: 1, unit_cost: 200, unit_labor_cost: null, service_id: null, unit: "ea", parts: null }],
+    }],
+    time_entries: [
+      { id: "t20", company_id: CO, job_id: "j20", user_id: "u1", started_at: "2026-11-10T13:00:00Z", ended_at: "2026-11-10T21:00:00Z", labor_rate: null },
+      { id: "t21", company_id: CO, job_id: "j20", user_id: "u1", started_at: "2026-11-11T13:00:00Z", ended_at: null, labor_rate: null },
+    ],
+    memberships: [{ company_id: CO, user_id: "u1", labor_rate: 50 }],
+    expenses: [{ company_id: CO, job_id: "j20", amount: "200.00", in_line_costs: false }, { company_id: CO, job_id: "j20", amount: "640.00", in_line_costs: true }],
+    job_materials: [{ company_id: CO, job_id: "j20", service_id: "s-rock", name: "Rock", unit: "ton", quantity: 3 }],
+    // The row itself: offered again, with what was agreed kept.
+    job_pay: [{ company_id: CO, job_id: "j20", status: "offered", total: 6500, paid_amount: null, accepted_snapshot: { total: 7500 } }],
+    job_pay_costs: [{ company_id: CO, job_id: "j20", amount: 7500, payees: 1 }],
+    job_profit_alerts: [],
+  });
+
+  it("comes to the same cost and the same margin, sub pay included", async () => {
+    const t = job20();
+    const { db } = fakeDb(t, [], []);
+    const [checked] = await costJobs(db, CO, ["j20"]);
+    // The job page: the same rows as it reads them (its time, the rates the server gives it, the
+    // database's sum of the pay, its expenses and logged materials), through the same function.
+    const page = costJobRows({
+      price: 10000,
+      lines: t.jobs![0]!.lines as never,
+      time: t.time_entries!.map((e) => ({ id: e.id as string, started_at: e.started_at as string, ended_at: e.ended_at as string | null })),
+      rates: await timeRates(db, CO, { job_ids: ["j20"] }),
+      pay: t.job_pay_costs!.map((p) => ({ amount: p.amount as number, payees: p.payees })),
+      expenses: t.expenses!.map((e) => ({ amount: e.amount as string, in_line_costs: e.in_line_costs as boolean })),
+      logged: t.job_materials as never,
+    });
+    expect(checked!.cost).toEqual(page);
+    // And what that is: the sub at the $7,500 agreed, the rock as logged with its labor estimate left
+    // out (3 tons at $350, and the $200 line), 8 hours at $50, the $200 expense.
+    expect(page).toMatchObject({ crew: 7500, labor: 400, expenses: 200, expenses_in_lines: 640, materials: 1250, cost: 9350, margin: 6.5 });
+  });
+
+  it("keeps a job with a re-offered sub price below the line, and tells nobody again when the sub answers", async () => {
+    const t = job20();
+    t.job_profit_alerts = [{ company_id: CO, job_id: "j20", below: true }];
+    const { db, recorded } = fakeDb(t, [{ company_id: CO, line: 10, sweep: false }], [{ job_id: "j20", changed_at: "2026-11-13T10:00:00Z" }]);
+    expect(await checkJobProfits(db)).toMatchObject({ checked: 1, told: 0 });
+    // Still below, as the job page says: it never left the list, so there's nothing to tell twice.
+    expect((recorded[0]!.args.p_checks as Row[])[0]).toMatchObject({ job_id: "j20", below: true, tell: false, margin: 6.5 });
+  });
 });
 
 describe("the hourly job profit check", () => {

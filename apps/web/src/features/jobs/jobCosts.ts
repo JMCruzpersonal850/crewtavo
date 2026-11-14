@@ -12,7 +12,7 @@
  * (materialUse), and an expense marked as already in the line items' costs (the supplier's invoice
  * for materials the estimate covers) isn't added on top of them.
  */
-import { jobCost, type CostedLine, type CostedMaterial } from "@crewtavo/core/reports";
+import { costJobRows, jobCost, type CostedLine, type CostedMaterial, type JobCost, type JobCostRows } from "@crewtavo/core/reports";
 import { formatMoneyCents } from "@/lib/format";
 
 export interface JobCostInput {
@@ -42,7 +42,21 @@ export function jobCosts(input: JobCostInput) {
   const inLines = input.expensesInLines ?? 0;
   // The page has its expenses summed already: as rows, the ones that count and the ones already in the lines.
   const expenses = [...(input.expenses ? [{ amount: input.expenses }] : []), ...(inLines ? [{ amount: inLines, in_line_costs: true }] : [])];
-  const c = jobCost({ price: input.contract, lines: input.lines, labor: input.labor, crewPay: input.crewPay, expenses, logged: input.logged, extras: input.extras });
+  return described(jobCost({ price: input.contract, lines: input.lines, labor: input.labor, crewPay: input.crewPay, expenses, logged: input.logged, extras: input.extras }));
+}
+
+/**
+ * The job page's costs from the job's own rows as the page reads them: core's costJobRows, the
+ * function the hourly profit check costs the job with too (apps/api/src/services/profitAlerts.ts),
+ * so the page's "below your margin" and the check's notice are one answer.
+ */
+export function jobPageCosts(rows: JobCostRows) {
+  return described(costJobRows(rows));
+}
+
+/** A job's costs as the costing card shows them, with the notes under it. */
+function described(c: JobCost) {
+  const inLines = c.expenses_in_lines;
   const compared = c.material_rows.filter((r) => r.estimated !== null);
   return {
     materials: c.materials,

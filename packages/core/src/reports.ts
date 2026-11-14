@@ -405,6 +405,42 @@ export function jobCost(input: JobCostInput) {
 }
 export type JobCost = ReturnType<typeof jobCost>;
 
+/** One job's own rows, as they're read from the database, before anything is added up. */
+export interface JobCostRows {
+  /** The job's price: its contract total. */
+  price: number;
+  lines: readonly CostedLine[];
+  /** The time on the job (time_entries). A clock still running costs nothing yet. */
+  time: ReadonlyArray<Pick<CostedTime, "id" | "started_at" | "ended_at">>;
+  /** The rate each of those entries is costed at, by entry id (the server's timeRates). One with no rate costs nothing. */
+  rates: Readonly<Record<string, number>>;
+  /** The job's expenses (expenses), each with whether it's already in the line items' costs. */
+  expenses: ReadonlyArray<Pick<CostedExpense, "amount" | "in_line_costs">>;
+  /** Materials logged on the job (job_materials). */
+  logged?: readonly CostedMaterial[];
+  /** What public.job_pay_costs says its sub and crew pay costs (the hourly check: job_pay_costs_for_check, the same sum): nothing when there's none. */
+  pay: ReadonlyArray<{ amount: number | string | null }>;
+  extras?: JobCostInput["extras"];
+}
+
+/**
+ * A job's costs from its own rows: the one way they're put together, for the job page and for the
+ * hourly profit check alike, so the page that warns "below your margin" and the check that tells
+ * people about it can't disagree. Time is costed at its rates, pay as the database sums it, and
+ * the rest is jobCost.
+ */
+export function costJobRows(rows: JobCostRows): JobCost {
+  return jobCost({
+    price: rows.price,
+    lines: rows.lines,
+    labor: laborCost(rows.time as readonly CostedTime[], (entry) => rows.rates[entry.id] ?? 0),
+    crewPay: rows.pay,
+    expenses: rows.expenses,
+    logged: rows.logged,
+    extras: rows.extras,
+  });
+}
+
 // ---------------------------------------------------------------------------------------------
 // Job profit alerts
 // ---------------------------------------------------------------------------------------------
