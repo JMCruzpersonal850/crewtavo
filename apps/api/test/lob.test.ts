@@ -103,9 +103,9 @@ describe("making a postcard", () => {
 
   it("turns Lob's refusals into what to do: the key, slowing down, the address, and an answer with no card", async () => {
     const once = (status: number, body: unknown) => (async () => answer(status, body)) as typeof fetch;
-    const refused = (await createPostcard(LIVE_KEY, request(), once(401, {})).catch((e: unknown) => e)) as LobProblem;
-    expect(refused.key).toBe(true);
-    expect(refused.retry).toBe(false);
+    const refused = (await createPostcard(LIVE_KEY, request(), once(401, { error: { message: "Your API key is not valid. Please sign up on lob.com to get a valid api key.", status_code: 401, code: "invalid_api_key" } })).catch((e: unknown) => e)) as LobProblem;
+    expect(refused).toMatchObject({ key: true, account: false, retry: false });
+    expect(refused.message).toMatch(/Lob says this API key isn't valid/);
     const slow = (await createPostcard(LIVE_KEY, request(), once(429, {})).catch((e: unknown) => e)) as LobProblem;
     expect(slow.retry).toBe(true);
     const bad = (await createPostcard(LIVE_KEY, request(), once(422, { error: { message: "address_zip must be a valid US zip code", status_code: 422 } })).catch((e: unknown) => e)) as LobProblem;
@@ -115,6 +115,42 @@ describe("making a postcard", () => {
     expect(empty.retry).toBe(true);
     const gone = (await createPostcard(LIVE_KEY, request(), (async () => { throw new Error("socket hang up"); }) as typeof fetch).catch((e: unknown) => e)) as LobProblem;
     expect(gone.retry).toBe(true);
+  });
+
+  it("says Lob's own reason when it refuses the account, and doesn't call a good key bad", async () => {
+    const once = (status: number, body: unknown) => (async () => answer(status, body)) as typeof fetch;
+    // Lob's error reference: these come back 401 and 403, like a bad key, and aren't one.
+    const unpaid = (await createPostcard(LIVE_KEY, request(), once(401, { error: { message: "You must have a verified bank account or credit card to submit live requests.", status_code: 401, code: "payment_method_unverified" } })).catch((e: unknown) => e)) as LobProblem;
+    expect(unpaid).toMatchObject({ key: false, account: true, retry: false });
+    expect(unpaid.message).toBe("Lob needs a verified payment method on your account before it mails cards. Add a card or bank account in your Lob dashboard. Lob says: You must have a verified bank account or credit card to submit live requests.");
+    const limit = (await createPostcard(LIVE_KEY, request(), once(403, { error: { message: "You have reached the maximum number of postcards for your plan.", status_code: 403, code: "feature_limit_reached" } })).catch((e: unknown) => e)) as LobProblem;
+    expect(limit).toMatchObject({ key: false, account: true });
+    expect(limit.message).toMatch(/Your Lob plan has reached its limit\..* Lob says: You have reached the maximum number of postcards for your plan\./);
+    const email = (await createPostcard(LIVE_KEY, request(), once(401, { error: { message: "Please verify your email.", code: "EMAIL_REQUIRED" } })).catch((e: unknown) => e)) as LobProblem;
+    expect(email).toMatchObject({ key: false, account: true });
+    // A refusal Lob gives no reason for isn't put down to the key either.
+    const bare = (await createPostcard(LIVE_KEY, request(), once(403, {})).catch((e: unknown) => e)) as LobProblem;
+    expect(bare).toMatchObject({ key: false, account: true });
+    expect(bare.message).toMatch(/Lob says: error 403/);
+    // No code, but Lob's words say it's the key.
+    const worded = (await createPostcard(LIVE_KEY, request(), once(401, { error: { message: "Your API key is not valid." } })).catch((e: unknown) => e)) as LobProblem;
+    expect(worded).toMatchObject({ key: true, account: false });
+  });
+
+  it("has words for a card that was tried for the last time, which don't promise another try", async () => {
+    const once = (status: number, body: unknown) => (async () => answer(status, body)) as typeof fetch;
+    const busy = (await createPostcard(LIVE_KEY, request(), once(503, {})).catch((e: unknown) => e)) as LobProblem;
+    expect(busy.message).toMatch(/tried again shortly/);
+    expect(busy.final).toBe("Lob had a problem on its end each time this card was tried, so it wasn't made.");
+    const slow = (await createPostcard(LIVE_KEY, request(), once(429, {})).catch((e: unknown) => e)) as LobProblem;
+    expect(slow.final).not.toMatch(/again|minute/);
+    const gone = (await createPostcard(LIVE_KEY, request(), (async () => { throw new Error("socket hang up"); }) as typeof fetch).catch((e: unknown) => e)) as LobProblem;
+    expect(gone.final).not.toMatch(/again shortly/);
+  });
+
+  it("tells a new account its payment method is missing when the key is checked, not that the key is wrong", async () => {
+    await expect(checkLobKey(LIVE_KEY, (async () => answer(401, { error: { message: "You must have a verified bank account or credit card to submit live requests.", code: "payment_method_unverified" } })) as typeof fetch)).rejects.toThrow(/verified payment method/);
+    await expect(checkLobKey(LIVE_KEY, (async () => answer(401, { error: { message: "Your API key is not valid.", code: "invalid_api_key" } })) as typeof fetch)).rejects.toThrow(/didn't accept that key/);
   });
 
   it("keeps names, lines and metadata within Lob's limits", () => {

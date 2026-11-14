@@ -218,7 +218,8 @@ describe("making a campaign's cards", () => {
     for (let i = 0; i < 5; i++) answers.push(() => lobAnswer(500, {}));
     for (let i = 0; i < 5; i++) await run();
     expect(tables.postcard_recipients[0]).toMatchObject({ status: "failed", attempts: 5 });
-    expect(tables.postcard_recipients[0]!.error).toMatch(/Lob had a problem/);
+    // Given up: it doesn't go on saying it'll be tried again.
+    expect(tables.postcard_recipients[0]!.error).toBe("Lob had a problem on its end each time this card was tried, so it wasn't made.");
     expect(new Set(sent.map((s) => s.key))).toEqual(new Set(["key-ann"]));
   });
 
@@ -296,11 +297,27 @@ describe("making a campaign's cards", () => {
     const tables = world("live");
     current.key = "live_0123456789abcdef0123";
     current.db = memoryDb(tables);
-    answers.push(() => lobAnswer(401, {}));
+    answers.push(() => lobAnswer(401, { error: { message: "Your API key is not valid.", status_code: 401, code: "invalid_api_key" } }));
     await run();
     expect(sent).toHaveLength(1);
     expect(tables.integrations[0]).toMatchObject({ status: "error" });
     expect(tables.postcard_campaigns[0]!.status).toBe("cancelled");
+    expect(tables.postcard_recipients.every((r) => r.status === "skipped")).toBe(true);
+  });
+
+  it("stops with Lob's own reason when the account has no payment method, and leaves Lob connected", async () => {
+    const tables = world("live");
+    tables.clients[1]!.marketing_opt_out = false;
+    current.key = "live_0123456789abcdef0123";
+    current.db = memoryDb(tables);
+    answers.push(() => lobAnswer(401, { error: { message: "You must have a verified bank account or credit card to submit live requests.", status_code: 401, code: "payment_method_unverified" } }));
+    await run();
+    expect(sent).toHaveLength(1);
+    // The key is fine: Apps doesn't say to connect again.
+    expect(tables.integrations[0]).toMatchObject({ status: "connected" });
+    expect(tables.postcard_campaigns[0]!.status).toBe("cancelled");
+    expect(tables.postcard_campaigns[0]!.stopped_reason).toMatch(/verified payment method.*Lob says: You must have a verified bank account or credit card/);
+    expect(tables.postcard_campaigns[0]!.stopped_reason).not.toMatch(/API key/);
     expect(tables.postcard_recipients.every((r) => r.status === "skipped")).toBe(true);
   });
 });

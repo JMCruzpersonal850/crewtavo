@@ -40,34 +40,73 @@ export interface LobSettings {
   mode: LobMode;
 }
 
-/** Why Lob refused, in words for the office. `retry`: the same request may work later. `key`: the key itself was refused. */
+/**
+ * Why Lob refused, in words for the office.
+ *   retry    the same request may work later (Lob busy, or not answering);
+ *   final    what to say instead once it's been tried for the last time, so a card that has given
+ *            up doesn't go on saying it will be tried again;
+ *   key      Lob called the key itself invalid: nothing will go until Lob is connected again;
+ *   account  Lob refused the account, not this card (no verified payment method, a plan's limit):
+ *            the next card would be refused too, but the key is fine.
+ */
 export class LobProblem extends Error {
-  constructor(
-    message: string,
-    readonly status: number | null = null,
-    readonly retry = false,
-    readonly key = false,
-  ) {
+  readonly status: number | null;
+  readonly retry: boolean;
+  readonly final: string | null;
+  readonly key: boolean;
+  readonly account: boolean;
+  constructor(message: string, about: { status?: number | null; retry?: boolean; final?: string; key?: boolean; account?: boolean } = {}) {
     super(message);
+    this.status = about.status ?? null;
+    this.retry = about.retry ?? false;
+    this.final = about.final ?? null;
+    this.key = about.key ?? false;
+    this.account = about.account ?? false;
   }
 }
 
 const auth = (key: string) => ({ Authorization: `Basic ${btoa(`${key.trim()}:`)}` });
 
-/** Lob's own message from an error answer ({"error": {"message": ...}}), or "". */
-async function lobMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: unknown } } | null;
-  return typeof body?.error?.message === "string" ? body.error.message.slice(0, 300) : "";
+/** Lob's own message and error code from an error answer ({"error": {"message", "code", "status_code"}}). */
+async function lobSaid(res: Response): Promise<{ said: string; code: string }> {
+  const body = (await res.json().catch(() => null)) as { error?: { message?: unknown; code?: unknown } } | null;
+  return {
+    said: typeof body?.error?.message === "string" ? body.error.message.trim().slice(0, 300) : "",
+    code: typeof body?.error?.code === "string" ? body.error.code.trim().toLowerCase() : "",
+  };
 }
+
+/** Lob calls the key itself invalid: by its code, or in its words when it gives no code. */
+const keyInvalid = (code: string, said: string) => code === "invalid_api_key" || (!code && /api key/i.test(said) && /not valid|invalid/i.test(said));
+
+/**
+ * Lob's refusals of the account rather than the key or the card (its error reference,
+ * help.lob.com/developer-docs/error-reference): what to do about each, in our words. Lob answers
+ * these with 401 or 403 like a bad key, which they are not.
+ */
+const ACCOUNT_WORDS: Record<string, string> = {
+  payment_method_unverified: "Lob needs a verified payment method on your account before it mails cards. Add a card or bank account in your Lob dashboard.",
+  email_required: "Lob needs the email address on your account verified before it mails cards. Check your Lob account's email.",
+  billing_address_required: "Lob needs a billing address on your account before it mails cards. Add one in your Lob dashboard.",
+  feature_limit_reached: "Your Lob plan has reached its limit. Upgrade or raise the limit in your Lob dashboard.",
+};
+
+/** Our words for it, then Lob's own, so nothing Lob said is lost. */
+const withLobs = (words: string, said: string) => (said ? `${words} Lob says: ${said}` : words);
 
 /** A refused request in words: what to fix, and whether trying again could work. */
 async function problemOf(res: Response): Promise<LobProblem> {
-  const said = await lobMessage(res);
-  if (res.status === 401 || res.status === 403) return new LobProblem("Lob didn't accept the API key. Connect Lob again in Apps with a key from Settings → API Keys in your Lob dashboard.", res.status, false, true);
-  if (res.status === 429) return new LobProblem("Lob asked us to slow down. The rest go in a minute.", res.status, true);
-  if (res.status >= 500) return new LobProblem("Lob had a problem on its end. It's tried again shortly.", res.status, true);
-  if (res.status === 402) return new LobProblem("Lob wants a payment method on your account before it mails cards. Add one in your Lob dashboard.", res.status);
-  return new LobProblem(said ? `Lob refused this card: ${said}` : `Lob refused this card (error ${res.status}).`, res.status);
+  const { said, code } = await lobSaid(res);
+  const status = res.status;
+  if (status === 429) return new LobProblem("Lob asked us to slow down. The rest go in a minute.", { status, retry: true, final: "Lob kept asking us to slow down, so this card wasn't made." });
+  if (status >= 500 || status === 408) return new LobProblem("Lob had a problem on its end. It's tried again shortly.", { status, retry: true, final: "Lob had a problem on its end each time this card was tried, so it wasn't made." });
+  if (keyInvalid(code, said)) {
+    return new LobProblem("Lob says this API key isn't valid. Connect Lob again in Apps with a key from Settings → API Keys in your Lob dashboard.", { status, key: true });
+  }
+  if (status === 401 || status === 402 || status === 403 || code in ACCOUNT_WORDS) {
+    return new LobProblem(withLobs(ACCOUNT_WORDS[code] ?? "Lob refused the request, and would refuse the next card too.", said || `error ${status}`), { status, account: true });
+  }
+  return new LobProblem(said ? `Lob refused this card: ${said}` : `Lob refused this card (error ${status}).`, { status });
 }
 
 /** Checks a key with Lob before it's kept. The key's mode, or a LobProblem saying what to fix. */
@@ -76,9 +115,14 @@ export async function checkLobKey(key: string, fetcher: FetchLike = fetch): Prom
   if (!mode) throw new LobProblem("That doesn't look like a Lob secret API key. It starts with test_ or live_, under Settings → API Keys in your Lob dashboard.");
   const res = await fetcher(`${API}/addresses?limit=1`, { headers: auth(key), signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null);
   if (!res) throw new LobProblem("Couldn't reach Lob to check the key. Try again in a minute.");
-  if (res.status === 401 || res.status === 403) throw new LobProblem("Lob didn't accept that key. Copy the whole secret key again from Settings → API Keys in your Lob dashboard.");
-  if (!res.ok) throw new LobProblem(`Lob couldn't check the key right now (error ${res.status}). Try again in a minute.`);
-  return { mode };
+  if (res.ok) return { mode };
+  const { said, code } = await lobSaid(res);
+  // The account's own trouble (no payment method, an unverified email) is said as Lob says it, not as a bad key.
+  if (code in ACCOUNT_WORDS) throw new LobProblem(withLobs(ACCOUNT_WORDS[code]!, said), { status: res.status, account: true });
+  if (res.status === 401 || res.status === 403 || keyInvalid(code, said)) {
+    throw new LobProblem("Lob didn't accept that key. Copy the whole secret key again from Settings → API Keys in your Lob dashboard.", { status: res.status, key: true });
+  }
+  throw new LobProblem(`Lob couldn't check the key right now (error ${res.status}). Try again in a minute.`, { status: res.status, retry: true });
 }
 
 export interface LobAddress {
@@ -158,10 +202,12 @@ export async function createPostcard(key: string, input: PostcardRequest, fetche
     body: JSON.stringify(postcardBody(input)),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   }).catch(() => null);
-  if (!res) throw new LobProblem("Couldn't reach Lob. It's tried again shortly.", null, true);
+  if (!res) throw new LobProblem("Couldn't reach Lob. It's tried again shortly.", { retry: true, final: "Lob couldn't be reached each time this card was tried, so it wasn't made." });
   if (!res.ok) throw await problemOf(res);
   const body = (await res.json().catch(() => ({}))) as { id?: unknown; expected_delivery_date?: unknown; url?: unknown };
-  if (typeof body.id !== "string" || !body.id) throw new LobProblem("Lob's answer didn't say which card it made. It's tried again shortly.", res.status, true);
+  if (typeof body.id !== "string" || !body.id) {
+    throw new LobProblem("Lob's answer didn't say which card it made. It's tried again shortly.", { status: res.status, retry: true, final: "Lob's answers never said which card it made. Look for this client's card in your Lob dashboard before mailing them again." });
+  }
   return {
     id: body.id,
     expected_delivery_date: typeof body.expected_delivery_date === "string" && /^\d{4}-\d{2}-\d{2}/.test(body.expected_delivery_date) ? body.expected_delivery_date.slice(0, 10) : null,

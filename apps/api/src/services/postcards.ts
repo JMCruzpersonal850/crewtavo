@@ -364,11 +364,14 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
           counts.made++;
         } catch (error) {
           if (!(error instanceof LobProblem)) throw error;
-          if (error.key) {
-            // Lob turned the key down: nothing else will go either.
-            await admin.from("integrations").update({ status: "error", last_error: error.message }).match({ company_id: campaign.company_id, provider: "lob" });
+          if (error.key || error.account) {
+            // Lob turned down the key, or the account (no payment method, a plan's limit): the next
+            // card would be refused too, so the campaign stops with Lob's reason. Only a key Lob
+            // calls invalid marks Lob as needing to be connected again: an account that needs a
+            // payment method has a perfectly good key.
+            if (error.key) await admin.from("integrations").update({ status: "error", last_error: error.message }).match({ company_id: campaign.company_id, provider: "lob" });
             await admin.rpc("release_postcard_recipients", { p_token: token, p_ids: batch.slice(index).map((x) => x.id) });
-            await stop(error.message);
+            await stop(`${error.message} The cards not made yet weren't mailed.`);
             next = batch.length;
             break;
           }
@@ -378,7 +381,8 @@ export async function processPostcards(env: Env, options: { campaignId?: string 
             next = index + 1;
             break;
           }
-          await admin.rpc("finish_postcard_recipient", { p_id: r.id, p_token: token, p_status: "failed", p_error: error.message });
+          // Tried for the last time: said as over, not as "tried again shortly".
+          await admin.rpc("finish_postcard_recipient", { p_id: r.id, p_token: token, p_status: "failed", p_error: error.retry ? (error.final ?? error.message) : error.message });
           counts.failed++;
         }
       }
