@@ -278,6 +278,7 @@ export function HubPage() {
             {d.kind === "client" && <ClientPortal token={token} data={d} hubFetch={hubFetch} onMessage={(visit) => setMessaging({ visit })} onChanged={() => view.refetch()} />}
             <footer className="public-foot hub-foot">
               <span><Icon name="lock" size={12} /> Private link{clientName ? ` for ${clientName}` : ""}. Keep it to yourself.</span>
+              {d.company.privacy_url && <span><PrivacyLink url={d.company.privacy_url} /></span>}
               <span className="hub-powered">Powered by <BrandMark size={13} /> <strong>Crewtavo</strong></span>
             </footer>
           </>

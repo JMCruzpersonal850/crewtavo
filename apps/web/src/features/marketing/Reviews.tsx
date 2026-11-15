@@ -367,7 +367,7 @@ function ReviewLink({ google }: { google: GoogleState | undefined }) {
       <Field label="Google review URL" error={url && !validUrl ? "Paste the full link, starting with https://" : null} hint={<a href="https://support.google.com/business/answer/3474122" target="_blank" rel="noreferrer">Where to find it</a>}>
         <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://g.page/r/…/review" disabled={!canSave} />
       </Field>
-      <Field label="Message" hint={<>{`{{link}} is replaced with your review link. Texts end with “${STOP_LINE}” unless yours says STOP.`} {REVIEW_ASK_RULES} <a href={REVIEW_ASK_POLICY_URL} target="_blank" rel="noreferrer">Google's policy</a></>}>
+      <Field label="Message" hint={<>{`{{link}} is replaced with your review link. Texts end with “${STOP_LINE}” unless yours says STOP.`} {REVIEW_ASK_RULES} <a href={REVIEW_ASK_POLICY_URL} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>Google's policy</a></>}>
         <textarea className="textarea" style={{ minHeight: 110 }} value={message} maxLength={1000} onChange={(e) => setMessage(e.target.value)} disabled={!canSave} />
       </Field>
       <Field label="Reminder message" hint="Sent to anyone who hasn't opened the link, with the same link.">

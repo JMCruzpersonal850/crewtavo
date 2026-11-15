@@ -41,7 +41,7 @@ export interface PortalVisit {
 type ChangeKind = "reschedule" | "cancel";
 export interface ClientView {
   kind: "client";
-  company: { name: string; phone: string | null; email: string | null; website: string | null; timezone?: string | null; branding?: { color?: string } | null };
+  company: { name: string; phone: string | null; email: string | null; website: string | null; timezone?: string | null; branding?: { color?: string } | null; privacy_url?: string | null };
   /** Minutes after a visit's start the crew may arrive (0: no window). Servers that don't send it give none. */
   arrival_window_min?: number;
   /** The office's look at the page: it shows, and nothing on it can be done. */

@@ -166,7 +166,7 @@ function CompareCard() {
         <div className="stack-sm">
           <span className="muted small">
             See your Google rating and number of reviews next to up to five nearby competitors'. Your browser reads them from Google Places with{" "}
-            {ownKey ? <>your Google key from <Link to="/settings?tab=maps">Settings → Maps</Link></> : googleKey ? "the Google key this Crewtavo was set up with" : "a Google key"} when you press Compare now: one lookup for each place every time, which Google may bill to the key's account. Crewtavo doesn't keep what Google says.
+            {ownKey ? <>your Google key from <Link to="/settings?tab=maps" style={{ textDecoration: "underline" }}>Settings → Maps</Link></> : googleKey ? "the Google key this Crewtavo was set up with" : "a Google key"} when you press Compare now: one lookup for each place every time, which Google may bill to the key's account. Crewtavo doesn't keep what Google says.
           </span>
           {!googleKey && <NoKey />}
           {!s.can_switch && <span className="muted small">An owner or admin can turn it on here.</span>}
@@ -220,7 +220,7 @@ function CompareCard() {
 
 const NoKey = () => (
   <span className="small" style={{ color: "var(--warning)", fontWeight: 600 }}>
-    Add a Google key in <Link to="/settings?tab=maps">Settings → Maps</Link> first, with Places API (New) turned on for it.
+    Add a Google key in <Link to="/settings?tab=maps" style={{ textDecoration: "underline" }}>Settings → Maps</Link> first, with Places API (New) turned on for it.
   </span>
 );
 
@@ -309,7 +309,7 @@ export function GoogleNotice({ providers }: { providers: Provider[] }) {
     <div className="google-notice">
       <GoogleAttribution providers={providers} />
       <span className="muted small">
-        {GOOGLE_REVIEW_NOTICE} <a href={GOOGLE_REVIEW_POLICY_URL} target="_blank" rel="noreferrer">{GOOGLE_REVIEW_POLICY_LABEL}</a>
+        {GOOGLE_REVIEW_NOTICE} <a href={GOOGLE_REVIEW_POLICY_URL} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>{GOOGLE_REVIEW_POLICY_LABEL}</a>
       </span>
     </div>
   );
@@ -321,7 +321,7 @@ export function SearchNotice({ providers }: { providers: Provider[] }) {
     <div className="google-notice">
       <GoogleAttribution providers={providers} />
       <span className="muted small">
-        {GOOGLE_SEARCH_NOTICE} <a href={GOOGLE_SEARCH_NOTICE_URL} target="_blank" rel="noreferrer">{GOOGLE_SEARCH_NOTICE_LABEL}</a>
+        {GOOGLE_SEARCH_NOTICE} <a href={GOOGLE_SEARCH_NOTICE_URL} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>{GOOGLE_SEARCH_NOTICE_LABEL}</a>
       </span>
     </div>
   );
