@@ -328,7 +328,7 @@ export function TeamPlansSwitch() {
         Let everyone on my team use their own ChatGPT plan
       </label>
       <span className="muted small">
-        Each person connects theirs under <Link to="/settings?tab=assistants">Settings → AI assistants</Link>. What they ask Crewtavo's AI themselves then goes to OpenAI on their own ChatGPT account, and their plan pays for it.
+        Each person connects theirs under <Link to="/settings?tab=assistants" style={{ textDecoration: "underline" }}>Settings → AI assistants</Link>. What they ask Crewtavo's AI themselves then goes to OpenAI on their own ChatGPT account, and their plan pays for it.
         Off, only owners and admins can connect one. Subcontractors never can.
       </span>
     </section>

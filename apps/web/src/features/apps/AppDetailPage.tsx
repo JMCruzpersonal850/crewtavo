@@ -477,7 +477,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
         <div className="callout" role="note">
           <Icon name="info" size={20} />
           <div className="grow" style={{ fontWeight: 400 }}>
-            To use Crewtavo from inside {app.name}, add the connector in <Link to="/settings?tab=assistants">Settings → AI assistants</Link>.
+            To use Crewtavo from inside {app.name}, add the connector in <Link to="/settings?tab=assistants" style={{ textDecoration: "underline" }}>Settings → AI assistants</Link>.
           </div>
         </div>
       )}
