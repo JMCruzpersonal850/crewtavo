@@ -701,6 +701,37 @@ Email**). Until then, the sign-in page says it can't send email, and there are t
 
 After any password reset, Crewtavo signs that account out everywhere else.
 
+## Crewtavo's own AI: Claude, OpenAI or a ChatGPT plan
+
+The drafts, rewrites, answers from guides and receipt reading inside Crewtavo ask one service, chosen
+for each ask in this order:
+
+1. **The asking person's own ChatGPT plan**, if they connected one (Apps > ChatGPT > Continue with
+   ChatGPT, or Settings > AI assistants once an owner or admin turns on "Let everyone on my team use
+   their own ChatGPT plan"). Only for what that person asks for themselves while signed in. Never
+   for anyone else's ask, and never for what Crewtavo does by itself (a quote drafted as a request
+   comes in, a receipt someone else left waiting).
+2. **The company's own key**: an Anthropic key (Apps > Claude) or an OpenAI key (Apps > ChatGPT,
+   checked with OpenAI before it's saved). With both, the company picks one on either page; until it
+   does, Claude is used, so a company that had a Claude key keeps what it had.
+3. **This server's `ANTHROPIC_API_KEY`**, for a company with no key. There is no server-wide OpenAI
+   key.
+
+When a plan can't take an ask (its usage limit, a sign-in that ended, something the plan route
+doesn't support), the ask goes on to 2 and 3, and the person's page says what stopped the plan.
+
+The OpenAI model is picked on the page from the models OpenAI lists for the key or the plan.
+`OPENAI_MODEL` overrides it for everyone on the server.
+
+Continue with ChatGPT uses OpenAI's Sign in with ChatGPT for open-source apps. OpenAI only sends the
+browser back to `http://127.0.0.1:1455/auth/callback`, an address on the person's own computer, so
+the page that opens there can't be reached: the person copies that address from the address bar
+and pastes it into Crewtavo, which checks it belongs to the sign-in they just started and finishes
+it on the server. Nothing needs opening on the server for this, and port 1455 is not a port of
+Crewtavo's. The sign-in's tokens are kept encrypted like the other apps' keys, one set per person,
+and never reach the browser. When someone leaves the team or is turned off, their connection ends
+at once and a background task (`chatgpt_plans`) signs their tokens out at OpenAI and deletes them.
+
 ## Connecting Claude and ChatGPT
 
 Instances come with this turned on. Open **Settings > AI assistants** in Crewtavo and copy the
@@ -708,6 +739,10 @@ connector address (`https://your-domain/mcp`):
 
 - **Claude**: Settings > Connectors > Add custom connector.
 - **ChatGPT**: Settings > Apps and connectors > Add (developer mode).
+
+Settings > AI assistants is the one place the connector is added and managed. The Claude and
+ChatGPT pages under Apps are about something else, what powers Crewtavo's own AI (below), and only
+point here.
 
 Each person signs in to Crewtavo and approves access on `/oauth/consent`. The assistant can then
 look up whatever that person can see, but can't add or change anything until they choose what it

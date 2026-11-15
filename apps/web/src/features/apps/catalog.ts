@@ -14,7 +14,11 @@ export interface AppRow {
   name: string;
   category: "Team" | "Marketing" | "Calendar" | "AI" | "Accounting" | "Payments" | "Pricing" | "Messaging" | "Website";
   description: string;
-  /** builtin: part of Crewtavo, turned on or off here (team chat). site: the website's editor, by its address (Sveltia CMS). */
+  /**
+   * builtin: part of Crewtavo, turned on or off here (team chat). site: the website's editor, by its
+   * address (Sveltia CMS). connector: what a server from before Claude's and ChatGPT's pages were
+   * about their keys still calls ChatGPT.
+   */
   auth: "oauth" | "api_key" | "link" | "connector" | "builtin" | "site";
   docs: string;
   available: boolean;
@@ -182,6 +186,7 @@ export const isFullSecretKey = (key: string) => key.trim().startsWith("sk_live_"
 export const importRunning = (state: StripeImport | null | undefined) => state?.status === "running" && Date.now() - Date.parse(state.started_at) < 30 * 60_000;
 
 export interface AppsData {
+  /** The connector's address, which the app pages showed once. Settings → AI assistants shows it now, from the page's own address. */
   mcp_url: string;
   /** Not there from a server older than this page. */
   ai?: AiState;
@@ -582,16 +587,22 @@ export const APP_INFO: Record<string, AppInfo> = {
   },
   anthropic: {
     developer: "Anthropic",
-    tagline: "Use Crewtavo from Claude",
+    tagline: "Crewtavo's AI on your own Anthropic key",
     about:
-      "Ask Claude about your clients and schedule, log requests and notes, or have it set up your price list, crews, checklists, booking forms, guides and automations, right from a chat. Each person signs in with their own Crewtavo account, and Claude can only see and do what that person's role allows. Add your own Anthropic key to power Crewtavo's writing help and answers from your guides.",
+      "Power Crewtavo's own AI with Claude: rewriting a message, drafting a quote, a campaign, a caption or a reply to a review, answering a crew's question from your guides, and reading receipts. Add your Anthropic API key and everyone's asks, and anything Crewtavo drafts by itself, use it; Anthropic bills your account for what's used. Only what an ask is about goes to Anthropic: the message to rewrite, the request and price list a quote is drafted from, the review a reply answers, the parts of your guides that match a question, the receipt to read. To use Crewtavo from inside Claude instead, add the connector in Settings → AI assistants.",
     highlights: [
-      { icon: "search", title: "Look things up", text: "Clients, requests and the schedule, asked in plain words." },
-      { icon: "plus", title: "Get things done", text: "Log a request, add a note, or set up your price list and booking forms without opening Crewtavo." },
-      { icon: "lock", title: "Your rules", text: "It only looks things up until you choose what it can change. Turn it off any time." },
+      { icon: "sparkle", title: "Drafts and answers", text: "Rewrites, quote and campaign drafts, captions, review replies and answers from your guides." },
+      { icon: "receipt", title: "Receipts read for you", text: "A photo or a supplier's invoice fills in the expense for you to check, once you turn reading on." },
+      { icon: "dollar", title: "Billed to you", text: "Anthropic bills your own account for what Crewtavo's AI uses." },
     ],
-    access: ["Search clients and see their details", "See requests, the schedule, your guides and your setup", "Log requests and add notes, once you allow it", "Change company details, the price list, crews, checklists, booking forms, guides and automations, once you allow it", "Delete things, only with full access"],
-    connectsWith: "Connector link",
+    access: [
+      "Send Anthropic what an ask is about: the message to rewrite, the request and price list a quote is drafted from, the review a reply answers, the receipt to read",
+      "Send the parts of your guides that match a question, to answer it",
+      "Nothing else: it can't look things up in Crewtavo or change anything",
+      "Anthropic bills your account directly for what's used",
+      "Uninstalling removes your key from Crewtavo",
+    ],
+    connectsWith: "Key from Anthropic",
     website: "https://claude.ai/",
   },
   fal: {
@@ -611,16 +622,23 @@ export const APP_INFO: Record<string, AppInfo> = {
   },
   chatgpt: {
     developer: "OpenAI",
-    tagline: "Use Crewtavo from ChatGPT",
+    tagline: "Crewtavo's AI on your OpenAI key or your ChatGPT plan",
     about:
-      "Ask ChatGPT about your clients and schedule, log requests and notes, or have it set up your price list, crews, checklists, booking forms, guides and automations, from a chat. Each person signs in with their own Crewtavo account, and ChatGPT can only see and do what that person's role allows.",
+      "Power Crewtavo's own AI with OpenAI: rewriting a message, drafting a quote, a campaign, a caption or a reply to a review, answering a crew's question from your guides, and reading receipts. There are two ways, and you can use both. An OpenAI API key is for the whole company: everyone's asks, and anything Crewtavo drafts by itself, use it, and OpenAI bills your API account for what's used. Continue with ChatGPT is each person's own: sign in with your ChatGPT account and what you ask the AI yourself is answered on your ChatGPT Plus or Pro plan, never anyone else's asks. Only what an ask is about goes to OpenAI: the message to rewrite, the request and price list a quote is drafted from, the review a reply answers, the parts of your guides that match a question, the receipt to read. To use Crewtavo from inside ChatGPT instead, add the connector in Settings → AI assistants.",
     highlights: [
-      { icon: "search", title: "Look things up", text: "Clients, requests and the schedule, asked in plain words." },
-      { icon: "plus", title: "Get things done", text: "Log a request, add a note, or set up your price list and booking forms without opening Crewtavo." },
-      { icon: "lock", title: "Your rules", text: "It only looks things up until you choose what it can change. Turn it off any time." },
+      { icon: "sparkle", title: "Drafts and answers", text: "Rewrites, quote and campaign drafts, captions, review replies and answers from your guides." },
+      { icon: "receipt", title: "Receipts read for you", text: "A photo or a supplier's invoice fills in the expense for you to check, once you turn reading on." },
+      { icon: "user", title: "A key, or your own plan", text: "One OpenAI key for the whole company, or each person's ChatGPT plan for what they ask themselves." },
     ],
-    access: ["Search clients and see their details", "See requests, the schedule, your guides and your setup", "Log requests and add notes, once you allow it", "Change company details, the price list, crews, checklists, booking forms, guides and automations, once you allow it", "Delete things, only with full access"],
-    connectsWith: "Connector link",
+    access: [
+      "Send OpenAI what an ask is about: the message to rewrite, the request and price list a quote is drafted from, the review a reply answers, the receipt to read",
+      "Send the parts of your guides that match a question, to answer it",
+      "Nothing else: it can't look things up in Crewtavo or change anything",
+      "With an API key, OpenAI bills your API account directly for what's used",
+      "With Continue with ChatGPT, your own ChatGPT plan pays for what you ask yourself, and what you ask goes to OpenAI on your own account",
+      "Uninstalling removes your key from Crewtavo and signs your ChatGPT plan out",
+    ],
+    connectsWith: "OpenAI key or ChatGPT sign-in",
     website: "https://chatgpt.com/",
   },
   quickbooks: {

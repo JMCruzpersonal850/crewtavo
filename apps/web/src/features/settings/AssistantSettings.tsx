@@ -1,7 +1,11 @@
 /**
- * Settings → AI assistants, for everyone: the link that connects Claude or ChatGPT to Crewtavo, the
- * assistants you've connected and what each can change, and, for owners and admins, the company's
- * own limits and what assistants did (features/apps/AssistantAccess.tsx).
+ * Settings → AI assistants, for everyone: the one place to add Crewtavo to Claude or ChatGPT (the
+ * connector link and the steps for each), the assistants you've connected and what each can change,
+ * and, for owners and admins, the company's own limits and what assistants did
+ * (features/apps/AssistantAccess.tsx). The Claude and ChatGPT pages under Apps point here.
+ *
+ * Also here, because it's each person's own: using your ChatGPT plan for Crewtavo's own AI
+ * (features/apps/ChatGptPlan.tsx).
  */
 import { Button } from "@/components/ui/Button";
 import { copyText } from "@/lib/clipboard";

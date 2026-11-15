@@ -379,7 +379,7 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   → Company → Job costing) and the people who see job costs are told when a one-off job's profit
   falls below it, once, and the job's page warns while it stays there; after you change the margin,
   the jobs already below it are listed under Below your margin on the Jobs page. Turn on reading
-  receipts (Settings → Company → Receipts, with your own Claude key) and a receipt photo or a
+  receipts (Settings → Company → Receipts, with your own Claude or OpenAI key) and a receipt photo or a
   supplier's invoice fills in the expense for you to check, with its tax and lines, suggests the job
   it names and the job's materials its lines match (to log as materials used in the same save), and
   the office can drop a stack at once to check and save one by one. A supplier's invoice logged that
@@ -445,7 +445,15 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   read from Google in the browser when someone presses Compare now and shown as they are at that
   moment; Crewtavo keeps only each place's Google ID, as Google's terms require, so there's no
   history of them. It's off until an owner or admin turns it on with a Google key that has Places.
-- **Claude and ChatGPT:** a built-in connector that can look things up or run the business:
+- **Crewtavo's own AI, on your key or plan:** the drafts, rewrites, answers from your guides and
+  receipt reading run on Claude or OpenAI, whichever you set up under Apps: your own Anthropic key,
+  your own OpenAI key (checked with OpenAI before it's saved, with the model picked from the ones
+  OpenAI lists for it), or the server's Claude key. With both keys you choose which one is used.
+  Each person can also Continue with ChatGPT (Apps → ChatGPT, or Settings → AI assistants once an
+  owner or admin lets the team) so their own ChatGPT Plus or Pro plan pays for what they ask
+  themselves; everyone else's asks, anything Crewtavo drafts by itself and whatever the plan can't
+  take stay on the company's key.
+- **Claude and ChatGPT:** a built-in connector, added in Settings → AI assistants, that can look things up or run the business:
   import customers and recurring services (with a preview first, and no duplicates on a second
   run), manage the schedule, quotes, invoices and payments, read the money figures, invite people
   and change roles, approve time and mark people paid. Each person signs in with their own account;

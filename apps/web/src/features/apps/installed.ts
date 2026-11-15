@@ -1,28 +1,25 @@
 /**
  * Whether an app is installed, like an app store: turned on, signed in to, a key, a calendar or a
- * website's address added, or (Claude and ChatGPT) connected. Installed apps get a check on the Apps grid, and their
- * pages show the setup and an Uninstall button instead of the listing's Install.
+ * website's address added, or (ChatGPT) the person's own plan connected. Installed apps get a check
+ * on the Apps grid, and their pages show the setup and an Uninstall button instead of the listing's
+ * Install. An AI assistant connected to Crewtavo (Settings → AI assistants) isn't an app here.
  */
-import { useAssistantConnections } from "./AssistantAccess";
-import { assistantAppFor } from "./assistantConnections";
 import type { AppRow } from "./catalog";
 
-/** `assistants`: the apps the person looking has connected an assistant from ("chatgpt", "anthropic"). */
-export function isInstalled(app: AppRow, assistants: ReadonlySet<string>): boolean {
+export function isInstalled(app: AppRow): boolean {
   if (app.auth === "builtin" || app.auth === "site") return app.status === "connected";
-  // Calendars added by link, Google's by secret address too; Stripe and Twilio, also when the server set them up.
-  // ChatGPT is installed for someone who connected their own plan, with or without a company key.
-  if (app.calendars || app.stripe || app.twilio?.own || app.twilio?.server || app.my_plan || assistants.has(app.id)) return true;
+  // Calendars added by link, Google's by secret address too; Stripe and Twilio, also when the server
+  // set them up; ChatGPT for someone who connected their own plan, with or without a company key.
+  if (app.calendars || app.stripe || app.twilio?.own || app.twilio?.server || app.my_plan) return true;
   // A Twilio key saved before accounts could be connected never sent anything.
   if (app.id === "twilio") return false;
+  // "connector": what Claude and ChatGPT were on a server from before their keys were all they are here.
   if (app.auth === "link" || app.auth === "connector") return false;
-  // Signed in or a key added, including one that needs reconnecting. Claude's key counts.
+  // Signed in or a key added, including one that needs reconnecting. Claude's and OpenAI's keys count.
   return app.status !== "disconnected";
 }
 
-/** isInstalled, with the assistants the signed-in person has connected. AI assistants are each person's own. */
+/** isInstalled, as a hook: the pages that use it were written when it needed the person's own connections. */
 export function useIsInstalled() {
-  const connections = useAssistantConnections();
-  const assistants = new Set((connections.data ?? []).map((c) => assistantAppFor(c.name)).filter((id): id is NonNullable<typeof id> => id !== null));
-  return { isInstalled: (app: AppRow) => isInstalled(app, assistants), connections: connections.data ?? [] };
+  return { isInstalled };
 }

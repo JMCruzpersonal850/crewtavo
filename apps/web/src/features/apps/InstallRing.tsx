@@ -1,7 +1,7 @@
 /**
  * What Install turns into once pressed, like an app store's: a ring that fills while the app
  * installs ("working"), then completes ("done") before Uninstall takes its place. While the setup
- * below waits on the person (a key, a calendar link, an assistant connecting) it spins instead
+ * below waits on the person (a key, a calendar link, a sign-in) it spins instead
  * ("waiting"), with a square in the middle that stops installing.
  */
 import { useEffect, useState } from "react";

@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { supabase, unwrap } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import { assistantAppFor, disconnect, endTeamConnection, loadConnections, loadTeamConnections, setAccess, type AssistantConnection, type TeamConnection } from "./assistantConnections";
+import { disconnect, endTeamConnection, loadConnections, loadTeamConnections, setAccess, type AssistantConnection, type TeamConnection } from "./assistantConnections";
 
 /** The assistants the signed-in person has connected; `poll` checks again every so many milliseconds. */
 export function useAssistantConnections(poll: number | false = false) {
@@ -147,10 +147,9 @@ export function TeamAssistants() {
 
 /**
  * The assistants this person has connected, with what each can change. Everyone has it in Settings
- * → AI assistants, whatever their role; owners and admins also see it on the Claude and ChatGPT
- * pages, under the steps to connect, with only that app's own (`app`) and ones that are neither's.
+ * → AI assistants, whatever their role: the one place assistants are connected and managed.
  */
-export function ConnectedAssistants({ card = false, app }: { card?: boolean; app?: string }) {
+export function ConnectedAssistants({ card = false }: { card?: boolean }) {
   const session = useSession();
   const queryClient = useQueryClient();
   const key = ["assistant-connections", session.userId];
@@ -163,7 +162,7 @@ export function ConnectedAssistants({ card = false, app }: { card?: boolean; app
         ? `For now ${session.company.name} only lets assistants look things up, whatever you choose here.`
         : null;
   const connections = useAssistantConnections();
-  const shown = (connections.data ?? []).filter((c) => !app || (assistantAppFor(c.name) ?? app) === app);
+  const shown = connections.data ?? [];
   const [editing, setEditing] = useState<AssistantConnection | null>(null);
   const remove = useMutation({
     meta: { success: "Disconnected" },
