@@ -175,7 +175,7 @@ export function textsAtAnyHour(verb: string | null | undefined, delayed: boolean
 export function textQuietHint(verb: string): string | null {
   if (verb === "visit.en_route") return null;
   if (textsAtAnyHour(verb, false)) return "Sent right away with no delay on the rule. With a delay, a text that comes due between 9pm and 8am waits until 8am.";
-  const stale = isVisitNotice(verb) ? " News of a visit that's before 8am isn't texted late: it goes by email." : "";
+  const stale = isVisitNotice(verb) ? " News of a visit that's before 8am goes by email instead, or by text when there's no email address." : "";
   return `Between 9pm and 8am your time, this text waits until 8am.${stale}`;
 }
 

@@ -2,8 +2,8 @@
  * Quiet hours for a rule's text to a client (services/automations.ts quietTexts): between 9pm and
  * 8am in the company's time zone the run waits for 8am, with what it had done so far. "On my way"
  * and an answer to something the client just did go at any hour. A visit booked, moved or cancelled
- * that would be old news by 8am isn't texted late: the rule's own email has told them, or the
- * text's words go by email instead. PostgREST is a stand-in answering over fetch, sending is mocked,
+ * that would be old news by 8am goes by email when it can: the rule's own email has told them, or the
+ * text's words go by email instead; with no email it's texted after all. PostgREST is a stand-in answering over fetch, sending is mocked,
  * and the clock is the test's.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -200,13 +200,13 @@ describe("a rule that texts a client at 10:40pm", () => {
     ]);
   });
 
-  it("says so when the rule's email couldn't tell them either, for want of an address", async () => {
+  it("texts after all when the rule's email couldn't tell them, for want of an address", async () => {
     const calls = engine(rule({ actions: [email, text] }), { visits: [early], clients: [{ ...ANA, email: null }] });
     expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("failed");
-    expect(sendSms).not.toHaveBeenCalled();
+    expect(sendSms).toHaveBeenCalledTimes(1);
     expect(finished(calls)[0].p_result).toEqual([
       { type: "send_email", ok: false, detail: "Ana Smith has no email address." },
-      { type: "send_sms", ok: true, skipped: true, detail: "Not texted: it's quiet hours (9pm to 8am) and the visit is before 8am, and Ana Smith has no email address to tell them by instead" },
+      { type: "send_sms", ok: true, detail: `Texted ${ANA.phone}, in quiet hours: the visit is before 8am and there was no email to tell them by` },
     ]);
   });
 
@@ -221,13 +221,13 @@ describe("a rule that texts a client at 10:40pm", () => {
     ]);
   });
 
-  it("skips it, saying why, when there's no email address to use instead", async () => {
+  it("texts after all when there's no email address to use instead", async () => {
     const calls = engine(rule(), { visits: [early], clients: [{ ...ANA, email: null }] });
-    expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("skipped");
-    expect(sendSms).not.toHaveBeenCalled();
+    expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("done");
+    expect(sendSms).toHaveBeenCalledTimes(1);
     expect(sendEmail).not.toHaveBeenCalled();
     expect(finished(calls)[0].p_result).toEqual([
-      { type: "send_sms", ok: true, skipped: true, detail: "Not texted: it's quiet hours (9pm to 8am) and the visit is before 8am, and it couldn't go by email instead (Ana Smith has no email address)" },
+      { type: "send_sms", ok: true, detail: `Texted ${ANA.phone}, in quiet hours: the visit is before 8am and there was no email to tell them by` },
     ]);
   });
 

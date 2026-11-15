@@ -92,7 +92,7 @@ describe("a visit booked, moved or cancelled", () => {
     expect(textsAtAnyHour("visit.reminder", false)).toBe(false);
     expect(textQuietHint("visit.reminder")).toBe("Between 9pm and 8am your time, this text waits until 8am.");
     for (const verb of VISIT_NOTICE_TRIGGERS) {
-      expect(textQuietHint(verb)).toBe("Between 9pm and 8am your time, this text waits until 8am. News of a visit that's before 8am isn't texted late: it goes by email.");
+      expect(textQuietHint(verb)).toBe("Between 9pm and 8am your time, this text waits until 8am. News of a visit that's before 8am goes by email instead, or by text when there's no email address.");
     }
   });
 

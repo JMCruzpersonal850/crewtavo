@@ -11,8 +11,8 @@
  * A rule's text to a client waits the same way between 9pm and 8am in the company's time zone
  * (quietTexts), until 8am. "On my way" goes at any hour, and so does an answer to something the
  * client just did. A visit booked, moved or cancelled that would be old news by 8am (the visit is
- * before then) isn't texted late: the rule's own email has told them, or the text's words go by
- * email instead, or with no address it's skipped, saying so.
+ * before then) isn't texted late when an email can tell them: the rule's own, or the text's words
+ * by email instead. With no email to carry it, the text goes after all.
  *
  * A rule that's an automated campaign (Marketing → Campaigns, services/automatedCampaigns.ts) sends
  * its email as one, tracked. Re-engage past clients (any rule on client.inactive) and Win back lost
@@ -675,7 +675,7 @@ export function staleByMorning(ctx: Pick<RunContext, "visit" | "was" | "company"
 /**
  * Quiet hours for a rule's text to a client (9pm to 8am in the company's time zone): throws
  * WaitUntil so the run waits for 8am, unless the text goes at any hour (core textsAtAnyHour).
- * Returns "stale" for a visit notice that would be old news by then, which isn't texted at all.
+ * Returns "stale" for a visit notice that would be old news by then: it goes by email when it can.
  */
 export function quietTexts(ctx: Pick<RunContext, "trigger" | "delayed" | "visit" | "was" | "company">, now = new Date()): "stale" | null {
   const timeZone = ctx.company.timezone || "UTC";
@@ -761,17 +761,22 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
     case "send_sms": {
       if (!client) throw new Error("There's no client on this record.");
       // Between 9pm and 8am it waits for 8am (the run is put back). A visit notice that would be
-      // old news by then isn't texted: the rule's email has it, or its words go by email instead.
+      // old news by then goes by email: the rule's own, or the text's words. With no email to
+      // carry it, it's texted after all: news of their own early visit, and the only way to tell them.
+      let late = "";
       if (quietTexts(ctx) === "stale") {
-        const why = "Not texted: it's quiet hours (9pm to 8am) and the visit is before 8am";
-        // The rule's own email tells them, when there's an address for it to go to.
-        if (ctx.emailsToo) return new Skip((await peopleFor(admin, ctx, client, "email")).length ? `${why}. This rule's email tells them` : `${why}, and ${client.display_name} has no email address to tell them by instead`);
-        try {
-          const emailed = await performAction(env, admin, ctx, { type: "send_email", subject: NOTICE_SUBJECTS[ctx.trigger ?? ""] ?? "About your visit with {{company.name}}", body: action.body }, ruleName, baseUrl);
-          return emailed instanceof Skip ? emailed : `${emailed} instead of texting: it's quiet hours (9pm to 8am) and the visit is before 8am`;
-        } catch (error) {
-          return new Skip(`${why}, and it couldn't go by email instead (${(error instanceof Error ? error.message : String(error)).replace(/\.$/, "")})`);
+        const why = "it's quiet hours (9pm to 8am) and the visit is before 8am";
+        if (ctx.emailsToo) {
+          if ((await peopleFor(admin, ctx, client, "email")).length) return new Skip(`Not texted: ${why}. This rule's email tells them`);
+        } else {
+          try {
+            const emailed = await performAction(env, admin, ctx, { type: "send_email", subject: NOTICE_SUBJECTS[ctx.trigger ?? ""] ?? "About your visit with {{company.name}}", body: action.body }, ruleName, baseUrl);
+            if (!(emailed instanceof Skip)) return `${emailed} instead of texting: ${why}`;
+          } catch {
+            // No address, or email isn't set up: the text is the only way left.
+          }
         }
+        late = `, in quiet hours: the visit is before 8am and there was no email to tell them by`;
       }
       const people = await peopleFor(admin, ctx, client, "sms");
       if (!people.length) {
@@ -796,7 +801,7 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
         company_id: ctx.company.id, client_id: client.id, channel: "sms", direction: "out", body: render(action.body, kept),
         ...messageAbout(ctx, client.id), external_id: delivery.id, sent_by: null, recipients: recipientsColumn(delivery),
       });
-      return `Texted ${addressList(delivery.went)}${missed(delivery)}`;
+      return `Texted ${addressList(delivery.went)}${late}${missed(delivery)}`;
     }
     case "add_tag":
     case "remove_tag": {
