@@ -35,7 +35,7 @@ describe("hints for the business", () => {
   it("say under the review ask's message not to offer anything for a review or ask only happy clients, with Google's policy", () => {
     expect(REVIEW_ASK_RULES).toBe("Don't offer anything for a review, and don't ask only your happy clients: Google doesn't allow either.");
     expect(REVIEW_ASK_POLICY_URL).toBe("https://support.google.com/contributionpolicy/answer/7400114");
-    expect(source("../src/features/marketing/Reviews.tsx")).toContain('{REVIEW_ASK_RULES} <a href={REVIEW_ASK_POLICY_URL} target="_blank" rel="noreferrer">Google\'s policy</a>');
+    expect(source("../src/features/marketing/Reviews.tsx")).toContain('{REVIEW_ASK_RULES} <a href={REVIEW_ASK_POLICY_URL} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>Google\'s policy</a>');
   });
 
   it("say by the shop address that marketing emails show it and can't go out without it", () => {

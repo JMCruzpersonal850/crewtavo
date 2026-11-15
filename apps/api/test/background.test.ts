@@ -1,5 +1,5 @@
 import { addDays, driveBetween, etaWords, VISIT_HORIZON_DAYS } from "@crewtavo/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 import type { Env } from "../src/env";
 import { runAccountingJob, SentButUnrecorded } from "../src/integrations/accounting";
@@ -1086,6 +1086,9 @@ describe("accounting sync", () => {
 });
 
 describe("automation runs", () => {
+  // Midday, whatever the hour the tests run at: a rule's text to a client waits for 8am between 9pm and 8am.
+  beforeEach(() => void vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-17T15:00:00Z") }));
+
   const run = (id: number) => ({
     id, company_id: COMPANY, rule_id: `rule-${id}`, subject_type: "client", subject_id: "client-1", result: [], status: "running", attempts: 1, locked_until: "2026-10-17T15:05:00.123456+00:00", claim_token: "claim-1",
   });

@@ -169,7 +169,7 @@ describe("Compare now", () => {
     expect(table).toContain(">300<");
     expect(table).toContain('<span class="google-attribution" translate="no">Google Maps</span>');
     expect(table).toContain("Reviews aren&#x27;t verified by Google, but Google checks for and removes fake content when it&#x27;s identified.");
-    expect(table).toContain(`<a href="${GOOGLE_REVIEW_POLICY_URL}" target="_blank" rel="noreferrer">${GOOGLE_REVIEW_POLICY_LABEL}</a>`);
+    expect(table).toContain(`<a href="${GOOGLE_REVIEW_POLICY_URL}" target="_blank" rel="noreferrer" style="text-decoration:underline">${GOOGLE_REVIEW_POLICY_LABEL}</a>`);
     // In the same box as the figures, after them.
     expect(table.startsWith('<div class="google-box">')).toBe(true);
     expect(table.indexOf("google-attribution")).toBeGreaterThan(table.indexOf("</table>"));
@@ -294,7 +294,7 @@ describe("adding a business", () => {
     expect(list).toContain("1 Elm St, Springfield, IL");
     expect(list).toContain('<span class="google-attribution" translate="no">Google Maps</span>');
     expect(list).toContain("Several factors — primarily relevance, distance and prominence — are combined to help find the best results for a search.");
-    expect(list).toContain(`<a href="${GOOGLE_SEARCH_NOTICE_URL.replace(/&/g, "&amp;")}" target="_blank" rel="noreferrer">Learn more</a>`);
+    expect(list).toContain(`<a href="${GOOGLE_SEARCH_NOTICE_URL.replace(/&/g, "&amp;")}" target="_blank" rel="noreferrer" style="text-decoration:underline">Learn more</a>`);
     // One already on the card isn't offered again; the other can be added, or picked as the business itself.
     expect(list).toContain("On the card");
     expect(list.match(/>Add</g)).toHaveLength(1);
