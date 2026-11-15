@@ -266,7 +266,12 @@ check(Boolean(visit.id), "the foreman schedules a visit for his crew");
   const allVisits = must(await employee.db.from("visits").select("id").eq("company_id", companyId), "employee visits");
   const mine = must(await employee.db.from("visit_assignees").select("visit_id").eq("user_id", employee.userId), "mine");
   const mineIds = new Set(mine.map((m) => m.visit_id));
-  check(allVisits.every((v) => mineIds.has(v.id)), "the employee sees only their own visits on the schedule", { visible: allVisits.length, assigned: mineIds.size });
+  // The people on a visit are the people listed on it, or its crew's members when nobody is listed
+  // (20261113000210_visit_people.sql), so the employee also sees their crew's visits with nobody listed.
+  const listed = must(await owner.db.from("visits").select("id, crew_id, visit_assignees(user_id)").eq("company_id", companyId), "who's on each visit");
+  const crews = new Set(must(await owner.db.from("crew_members").select("crew_id").eq("user_id", employee.userId), "the employee's crews").map((m) => m.crew_id));
+  const crewsOwn = new Set(listed.filter((v) => !v.visit_assignees.length && crews.has(v.crew_id)).map((v) => v.id));
+  check(allVisits.every((v) => mineIds.has(v.id) || crewsOwn.has(v.id)), "the employee sees only the visits they're on: listed on them, or their crew's with nobody listed", { visible: allVisits.length, assigned: mineIds.size, crews: crewsOwn.size });
   const fVisits = must(await foreman.db.from("visits").select("id").eq("company_id", companyId), "foreman visits");
   check(fVisits.length > allVisits.length, "the foreman sees the whole team's schedule");
   // Two days after the visit, so it's always a real change (the guard lets an unchanged date through).
