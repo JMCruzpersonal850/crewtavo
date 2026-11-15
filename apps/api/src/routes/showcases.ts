@@ -24,7 +24,7 @@ import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
 import { adminClient, type Db } from "../lib/supabase";
 import { clientIp } from "../lib/visitor";
-import { companyAnthropicKey, complete, countAiAsk } from "../services/ai";
+import { askerOf, complete, countAiAsk } from "../services/ai";
 import { logoImage } from "../services/logo";
 import { isJpeg } from "../services/photos";
 import { clientWords, jobServices, photoFacts } from "../services/social";
@@ -75,7 +75,7 @@ showcases.post("/showcases/draft", requireUser, requireCompany(OFFICE, "marketin
     clientWords(admin, c.var.companyId, [job.client_id]),
   ]);
   const text = await complete(c.env, {
-    apiKey: await companyAnthropicKey(c.env, admin, c.var.companyId),
+    asker: askerOf(c),
     system:
       "You write the short write-up for a local service business's before-and-after project page (lawn care, paving, roofing and similar). " +
       "Write plainly, like the owner would: what the problem was, what the crew did and how it turned out, in two or three short sentences, with no hype, no emoji, no prices and no placeholders. " +

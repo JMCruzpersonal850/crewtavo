@@ -51,6 +51,25 @@ export interface AppRow {
   twilio?: TwilioState | null;
   /** Lob, once connected: whether its key is a test key (nothing mailed) or a live one. */
   lob?: { mode: "test" | "live" | null } | null;
+  /** ChatGPT, once the company's OpenAI key is saved: the model it uses and the ones to pick from. */
+  openai?: OpenAiState;
+}
+
+export interface OpenAiState {
+  model: string | null;
+  models: Array<{ slug: string; display_name: string }>;
+  /** The server sets the model (OPENAI_MODEL), so it isn't picked on the page. */
+  model_locked: boolean;
+}
+
+/** Crewtavo's own AI: the keys the company added, the one it chose with both, and the service that answers now. */
+export interface AiState {
+  claude: boolean;
+  chatgpt: boolean;
+  choice: "claude" | "chatgpt" | null;
+  /** The server has a Claude key of its own, used by a company with no key. */
+  server: boolean;
+  service: "claude" | "chatgpt" | null;
 }
 
 export interface TwilioState {
@@ -162,6 +181,8 @@ export const importRunning = (state: StripeImport | null | undefined) => state?.
 
 export interface AppsData {
   mcp_url: string;
+  /** Not there from a server older than this page. */
+  ai?: AiState;
   apps: AppRow[];
 }
 

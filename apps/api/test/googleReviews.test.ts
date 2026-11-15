@@ -995,7 +995,7 @@ describe("replies", () => {
   });
 
   describe("Suggest a reply", () => {
-    it("drafts with the company's own key, from the review's name, stars and words, and never more", async () => {
+    it("drafts for the person who asked, from the review's name, stars and words, and never more", async () => {
       const tables = await connected();
       tables.integration_secrets.push({ company_id: CO, provider: "anthropic", ciphertext: await encryptJson(env, { api_key: "sk-ant-radford" }) });
       serve({ tables: { ...tables, reviews: [theReview()] } });
@@ -1003,7 +1003,7 @@ describe("replies", () => {
       const res = await request(`/reviews/${ID}/suggest`, { method: "POST", body: {} });
       expect(await res.json()).toEqual({ text: "Hi Ana, we're sorry we missed the back yard. Please call us at 540-555-0100 so we can make it right." });
       const asked = complete.mock.calls[0]![1];
-      expect(asked.apiKey).toBe("sk-ant-radford");
+      expect(asked.asker).toEqual({ companyId: CO, userId: USER });
       expect(asked.prompt).toContain("Reviewer: Ana Smith");
       expect(asked.prompt).toContain("Stars: 2 out of 5");
       expect(asked.prompt).toContain("They missed the back yard.");
@@ -1033,7 +1033,7 @@ describe("replies", () => {
     it("says AI isn't turned on without a key, and waits while Marketing is off", async () => {
       serve({ tables: { ...(await connected()), reviews: [theReview()] } });
       const res = await request(`/reviews/${ID}/suggest`, { method: "POST", body: {} });
-      expect([res.status, await res.json()]).toEqual([501, { error: "AI isn't turned on yet. An admin can add a Claude key on the Apps page." }]);
+      expect([res.status, await res.json()]).toEqual([501, { error: "AI isn't turned on yet. An admin can add a Claude or OpenAI key on the Apps page." }]);
       serve({ tables: { ...(await connected({ company: { marketing: { enabled: false } } })), reviews: [theReview()] } });
       expect((await request(`/reviews/${ID}/suggest`, { method: "POST", body: {} })).status).toBe(409);
     });

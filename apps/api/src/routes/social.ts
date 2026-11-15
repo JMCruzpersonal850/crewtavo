@@ -32,7 +32,7 @@ import { renderReviewCard } from "../lib/reviewCard";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
 import { adminClient } from "../lib/supabase";
-import { companyAnthropicKey, countAiAsk } from "../services/ai";
+import { aiAvailable, askerOf, countAiAsk } from "../services/ai";
 import {
   cardInput,
   checkPost,
@@ -77,8 +77,7 @@ async function requireMarketing(c: Ctx, message = MARKETING_OFF_POSTS) {
 social.get("/social", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
   const admin = adminClient(c.env);
   const state = await socialState(c.env, admin, c.var.companyId);
-  const key = await companyAnthropicKey(c.env, admin, c.var.companyId);
-  return c.json({ ...state, can_connect: ADMINS.includes(c.var.role) && c.var.permissions.includes("apps"), ai: Boolean(key || c.env.ANTHROPIC_API_KEY) });
+  return c.json({ ...state, can_connect: ADMINS.includes(c.var.role) && c.var.permissions.includes("apps"), ai: await aiAvailable(c.env, admin, askerOf(c)) });
 });
 
 /** The photos OK to share, newest first, 48 at a time, with their paths. `job` narrows them to one job's. */
@@ -350,7 +349,7 @@ social.post("/social/caption", requireUser, requireCompany(OFFICE, "marketing"),
   await countAiAsk(c.env, c.var.companyId, c.var.userId);
   try {
     const result = await suggestCaption(c.env, {
-      apiKey: await companyAnthropicKey(c.env, admin, c.var.companyId),
+      asker: askerOf(c),
       company: company.name,
       source: body.source,
       review,
@@ -361,7 +360,7 @@ social.post("/social/caption", requireUser, requireCompany(OFFICE, "marketing"),
     });
     return c.json(result);
   } catch (error) {
-    if (error instanceof HttpError && error.status === 501) throw new HttpError(501, "Suggest a caption needs a Claude key. An owner or admin can add one in Apps → Claude.");
+    if (error instanceof HttpError && error.status === 501) throw new HttpError(501, "Suggest a caption needs AI turned on. An owner or admin can add a Claude or OpenAI key on the Apps page.");
     throw error;
   }
 });

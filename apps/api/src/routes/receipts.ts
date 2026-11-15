@@ -1,7 +1,7 @@
 /**
- * Receipts and supplier invoices read with Claude (services/receipts.ts):
+ * Receipts and supplier invoices read with AI (services/receipts.ts):
  *
- *   PUT  /receipts/reading            owners and admins turn it on (once the Claude key answers) or off.
+ *   PUT  /receipts/reading            owners and admins turn it on (once the company's AI key answers) or off.
  *   POST /receipts/read               a photo or PDF just picked in Add expense (the office's, or the
  *                                     crew's receipt from a visit): what it says, which job it seems
  *                                     to be for, and for the office which of the job's materials its
@@ -26,7 +26,7 @@ import type { AppEnv } from "../env";
 import { requireCompany, requireUser } from "../lib/auth";
 import { asJson, dbError, HttpError, param, readJson, uuid } from "../lib/http";
 import { adminClient } from "../lib/supabase";
-import { allowReceiptRead, checkAnthropicKey, companyAnthropicKey } from "../services/ai";
+import { allowReceiptRead, askerOf, checkCompanyAi } from "../services/ai";
 import { READ_MAX_BYTES, readReceipt } from "../services/receipts";
 
 export const receipts = new Hono<AppEnv>();
@@ -44,15 +44,12 @@ async function companySettings(c: Ctx) {
   return (data?.settings ?? {}) as Record<string, unknown>;
 }
 
-/** The Claude key reading spends: the company's own, or else the deployment's. */
-const keyFor = async (c: Ctx) => (await companyAnthropicKey(c.env, adminClient(c.env), c.var.companyId)) ?? c.env.ANTHROPIC_API_KEY ?? null;
-
 receipts.put("/receipts/reading", requireUser, requireCompany(ADMINS), async (c) => {
   const body = await readJson(c, z.object({ on: z.boolean() }));
   if (body.on) {
-    const key = await keyFor(c);
-    if (!key) throw new HttpError(400, "Add your Claude key on the Apps page first, then turn this on.");
-    const problem = await checkAnthropicKey(c.env, key);
+    // The key reading spends when nobody's own ChatGPT plan pays for it: the company's Claude or
+    // OpenAI key, or else the deployment's. Checked with whichever service it's for.
+    const problem = await checkCompanyAi(c.env, adminClient(c.env), c.var.companyId);
     if (problem) throw new HttpError(400, problem);
   }
   // As the owner or admin, so the database checks who may change the company's settings.
@@ -129,13 +126,13 @@ receipts.post("/receipts/read", requireUser, requireCompany(STAFF), async (c) =>
   const body = await readJson(c, z.object({ file: base64, job_id: uuid.nullish() }));
   if (!readingOn(await companySettings(c))) throw new HttpError(409, OFF);
   if (!(await allowReceiptRead(c.env, c.var.companyId, c.var.userId))) throw new HttpError(429, USED_UP);
-  const reading = await readReceipt(c.env, { bytes: new Uint8Array(Buffer.from(body.file, "base64")) }, await keyFor(c));
+  const reading = await readReceipt(c.env, { bytes: new Uint8Array(Buffer.from(body.file, "base64")) }, askerOf(c));
   return c.json(await answerFor(c, reading, body.job_id ?? null));
 });
 
 receipts.post("/receipts/drafts/:id/read", requireUser, requireCompany(OFFICE, "job_costs"), async (c) => {
   const id = param(c, "id");
-  const { data: draft, error } = await c.var.db.from("expense_drafts").select("id, job_id, receipt_path").eq("id", id).eq("company_id", c.var.companyId).maybeSingle();
+  const { data: draft, error } = await c.var.db.from("expense_drafts").select("id, job_id, user_id, receipt_path").eq("id", id).eq("company_id", c.var.companyId).maybeSingle();
   if (error) throw dbError(error);
   if (!draft) throw new HttpError(404, "This draft is gone: someone may have saved or discarded it already.");
   const save = async (patch: { status: "read" | "failed" | "to_fill" | "waiting"; read?: unknown; error?: string | null }) => {
@@ -156,7 +153,9 @@ receipts.post("/receipts/drafts/:id/read", requireUser, requireCompany(OFFICE, "
     // As the person: the receipts folder is theirs to read only with job costs (as the expense's is).
     const file = await c.var.db.storage.from("files").download(draft.receipt_path);
     if (file.error || !file.data) throw new HttpError(404, "The file couldn't be opened. Fill it in by hand.");
-    const reading = await readReceipt(c.env, { bytes: new Uint8Array(await file.data.arrayBuffer()) }, await keyFor(c));
+    // Asked for by whoever dropped it in, when that's the person whose page is reading it now: a
+    // draft someone else left waiting is read for the company, not on this person's own account.
+    const reading = await readReceipt(c.env, { bytes: new Uint8Array(await file.data.arrayBuffer()) }, { companyId: c.var.companyId, userId: draft.user_id === c.var.userId ? c.var.userId : null });
     return c.json({ draft: await save({ status: "read", read: await answerFor(c, reading, draft.job_id) }) });
   } catch (err) {
     if (!(err instanceof HttpError)) throw err;

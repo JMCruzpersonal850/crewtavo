@@ -298,9 +298,9 @@ describe("Draft quotes with Claude, the switch", () => {
   it("turns on only once Claude answers, and says what to fix when it doesn't", async () => {
     let calls = serve({});
     ai.complete.mockRejectedValueOnce(new HttpError(501, "AI isn't turned on yet. An admin can add a Claude key on the Apps page."));
-    await expect(setQuoteAi(env, "co-1", "u-1", true)).rejects.toThrow("Add a Claude key in Apps → Claude first, then turn this on.");
+    await expect(setQuoteAi(env, "co-1", "u-1", true)).rejects.toThrow("Add a Claude or OpenAI key on the Apps page first, then turn this on.");
     ai.complete.mockRejectedValueOnce(new HttpError(502, "The Claude key on the Apps page didn't work. Check that it was copied correctly."));
-    await expect(setQuoteAi(env, "co-1", "u-1", true)).rejects.toThrow("Claude didn't answer, so this is still off. The Claude key on the Apps page didn't work. Check that it was copied correctly.");
+    await expect(setQuoteAi(env, "co-1", "u-1", true)).rejects.toThrow("The AI didn't answer, so this is still off. The Claude key on the Apps page didn't work. Check that it was copied correctly.");
     expect(calls.some((c) => c.path === "rpc/set_quote_ai")).toBe(false);
 
     calls = serve({});

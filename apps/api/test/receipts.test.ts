@@ -9,7 +9,9 @@ import type { Env } from "../src/env";
 import { HttpError } from "../src/lib/http";
 import { parseReading, readableType, readReceipt, RECEIPT_SCHEMA } from "../src/services/receipts";
 
-const env = { SUPABASE_URL: "https://example.supabase.co", ANTHROPIC_API_KEY: "sk-ant-test" } as Env;
+const env = { SUPABASE_URL: "https://example.supabase.co", SUPABASE_SECRET_KEY: "sb_secret_test", ANTHROPIC_API_KEY: "sk-ant-test" } as Env;
+// Read for the company, which has no key of its own: the server's Claude key answers (ai.test.ts covers who gets which service).
+const COMPANY = { companyId: "00000000-0000-4000-8000-0000000000c1", userId: null };
 // What a JPEG and a PDF start with.
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
 const PDF = new TextEncoder().encode("%PDF-1.7\n%âãÏÓ\n");
@@ -17,7 +19,9 @@ const PDF = new TextEncoder().encode("%PDF-1.7\n%âãÏÓ\n");
 /** Anthropic answers with this text; the requests it got come back. */
 function claude(text: string) {
   const asked: Array<Record<string, any>> = [];
-  vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    // The database has no keys or settings for the company.
+    if (String(input instanceof Request ? input.url : input).startsWith(env.SUPABASE_URL)) return Response.json([]);
     asked.push(JSON.parse(String(init?.body ?? "{}")));
     return Response.json({
       id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5",
@@ -46,7 +50,7 @@ const invoice = {
 describe("reading a document", () => {
   it("sends the file with the fixed schema and a system prompt that treats the document as data", async () => {
     const asked = claude(JSON.stringify(invoice));
-    const r = await readReceipt(env, { bytes: PDF }, "sk-ant-company");
+    const r = await readReceipt(env, { bytes: PDF }, COMPANY);
     expect(r).toMatchObject({ kind: "supplier_invoice", vendor: "Valley Asphalt Supply", total: 4048, category: "Materials" });
     expect(r.lines).toEqual([{ description: "Hot-mix asphalt surface", quantity: 44, unit: "TN", unit_price: 92, amount: 4048 }]);
     const body = asked[0]!;
@@ -58,10 +62,10 @@ describe("reading a document", () => {
 
   it("sends a photo as an image, by what its bytes are rather than what it's called", async () => {
     const asked = claude(JSON.stringify(invoice));
-    await readReceipt(env, { bytes: JPEG }, null);
+    await readReceipt(env, { bytes: JPEG }, COMPANY);
     expect(asked[0]!.messages[0].content[0]).toMatchObject({ type: "image", source: { media_type: "image/jpeg" } });
     expect(readableType(new TextEncoder().encode("<html>"))).toBeNull();
-    await expect(readReceipt(env, { bytes: new TextEncoder().encode("....ftypheic") }, null)).rejects.toMatchObject({ status: 415 });
+    await expect(readReceipt(env, { bytes: new TextEncoder().encode("....ftypheic") }, COMPANY)).rejects.toMatchObject({ status: 415 });
   });
 
   it("takes a document that tries to give instructions as nothing but the fields it can fill", async () => {
@@ -78,7 +82,7 @@ describe("reading a document", () => {
       approve: true,
       tool_calls: [{ name: "delete_job" }],
     }));
-    const r = await readReceipt(env, { bytes: JPEG }, null);
+    const r = await readReceipt(env, { bytes: JPEG }, COMPANY);
     expect(Object.keys(r).sort()).toEqual(["category", "date", "invoice_number", "job_reference", "kind", "lines", "subtotal", "tax", "total", "vendor"]);
     // The text is kept as text, cut short, for the person to see and change: it never does anything.
     expect(r.vendor!.length).toBeLessThanOrEqual(120);
@@ -90,14 +94,14 @@ describe("reading a document", () => {
 
   it("says it couldn't be read when the answer isn't the form", async () => {
     claude("Sure! The total is $40.");
-    await expect(readReceipt(env, { bytes: JPEG }, null)).rejects.toBeInstanceOf(HttpError);
+    await expect(readReceipt(env, { bytes: JPEG }, COMPANY)).rejects.toBeInstanceOf(HttpError);
     expect(parseReading("[1, 2]")).toBeNull();
     expect(parseReading("null")).toBeNull();
   });
 
   it("refuses a file too large to read without asking Claude", async () => {
     const asked = claude(JSON.stringify(invoice));
-    await expect(readReceipt(env, { bytes: new Uint8Array(9 * 1024 * 1024) }, null)).rejects.toMatchObject({ status: 413 });
+    await expect(readReceipt(env, { bytes: new Uint8Array(9 * 1024 * 1024) }, COMPANY)).rejects.toMatchObject({ status: 413 });
     expect(asked).toEqual([]);
   });
 });

@@ -35,7 +35,7 @@ import type { Env } from "../env";
 import { HttpError } from "../lib/http";
 import { reportError } from "../lib/monitoring";
 import { adminClient, type Db } from "../lib/supabase";
-import { companyAnthropicKey, complete, countAiAsk } from "./ai";
+import { complete, countAiAsk } from "./ai";
 import { quoteFromRequest, type SalesScope } from "./sales";
 
 /** A price list item (services) as a draft reads it. */
@@ -276,7 +276,7 @@ async function makeDraft(s: SalesScope, requestId: string, userId: string | null
         photos: request.photos,
         items: priceList,
       });
-      const text = await complete(s.env, { apiKey: await companyAnthropicKey(s.env, adminClient(s.env), s.companyId), system, prompt, effort: "low", maxTokens: 3000 });
+      const text = await complete(s.env, { asker: { companyId: s.companyId, userId }, system, prompt, effort: "low", maxTokens: 3000 });
       const proposed = validateDraft(readJsonAnswer(text), priceList);
       lines = proposed.lines;
       description = proposed.description;
@@ -380,10 +380,10 @@ export async function setQuoteAi(env: Env, companyId: string, userId: string, on
   if (on) {
     await countAiAsk(env, companyId, userId);
     try {
-      await complete(env, { apiKey: await companyAnthropicKey(env, admin, companyId), system: "Reply with the word OK.", prompt: "Are you there?", effort: "low", maxTokens: 20 });
+      await complete(env, { asker: { companyId, userId: null }, system: "Reply with the word OK.", prompt: "Are you there?", effort: "low", maxTokens: 20 });
     } catch (error) {
-      if (error instanceof HttpError && error.status === 501) throw new HttpError(400, "Add a Claude key in Apps → Claude first, then turn this on.");
-      if (error instanceof HttpError) throw new HttpError(400, `Claude didn't answer, so this is still off. ${error.message}`);
+      if (error instanceof HttpError && error.status === 501) throw new HttpError(400, "Add a Claude or OpenAI key on the Apps page first, then turn this on.");
+      if (error instanceof HttpError) throw new HttpError(400, `The AI didn't answer, so this is still off. ${error.message}`);
       throw error;
     }
   }

@@ -3,7 +3,6 @@
  *   oauth     - the company signs in to the provider; tokens are stored encrypted (integration_secrets)
  *   api_key   - the company pastes a key (or the deployment provides one in env)
  *   link      - calendars added by their ICS link (calendar_sources; see integrations/calendars.ts)
- *   connector - the app connects to us (Claude and ChatGPT via MCP at /mcp)
  *   builtin   - part of Crewtavo, turned on or off for the company (team chat: companies.settings.team_chat;
  *               website analytics: companies.settings.website_analytics, routes/analytics.ts; website
  *               forms: companies.settings.website_forms, routes/websiteForms.ts; careers:
@@ -21,15 +20,18 @@
  * on its page): there's no server-wide Meta app. Its sign-in differs from the others' (a GET for the
  * token, no refresh token, a long-lived token and a Page token), so integrations/meta.ts handles it;
  * only the catalog entry and the sign-in page's address are here (services/social.ts posts).
+ * Claude and ChatGPT are api_key apps whose key powers Crewtavo's own AI (services/ai.ts); ChatGPT also lets
+ * each person sign in with their own ChatGPT plan (integrations/chatgptPlan.ts). Using Crewtavo from inside
+ * either chat app is the MCP connector at /mcp, added in Settings → AI assistants, and no app here.
  */
 import type { Env } from "../env";
 import { DIALOG, GRAPH_VERSION, META_SCOPES } from "./metaConfig";
 
 /** Apps with a row in integrations (and maybe integration_secrets). */
-export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "fal" | "railway" | "abc_supply" | "lob";
+export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "chatgpt" | "fal" | "railway" | "abc_supply" | "lob";
 /** Apps whose calendars are added by link. They're also the calendar_sources.app values (with google_calendar). */
 export type LinkApp = "zoho_calendar" | "outlook_calendar" | "apple_calendar" | "ics_calendar";
-export type AppId = Provider | LinkApp | "chatgpt" | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "sveltia";
+export type AppId = Provider | LinkApp | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "sveltia";
 export type CalendarApp = LinkApp | "google_calendar";
 export const CALENDAR_APPS: readonly CalendarApp[] = ["google_calendar", "zoho_calendar", "outlook_calendar", "apple_calendar", "ics_calendar"];
 
@@ -193,7 +195,7 @@ export const CATALOG: CatalogEntry[] = [
     id: "anthropic",
     name: "Claude",
     category: "AI",
-    description: "Use Crewtavo from Claude, and power Crewtavo's writing help and SOP answers with your own Anthropic key.",
+    description: "Power Crewtavo's writing help, SOP answers and receipt reading with your own Anthropic key.",
     auth: "api_key",
     docs: "https://docs.claude.com/",
     available: () => true,
@@ -211,9 +213,9 @@ export const CATALOG: CatalogEntry[] = [
     id: "chatgpt",
     name: "ChatGPT",
     category: "AI",
-    description: "Look up clients, check the schedule and log requests from ChatGPT.",
-    auth: "connector",
-    docs: "https://chatgpt.com/",
+    description: "Power Crewtavo's writing help, SOP answers and receipt reading with your own OpenAI key or ChatGPT plan.",
+    auth: "api_key",
+    docs: "https://platform.openai.com/docs/",
     available: () => true,
   },
   {

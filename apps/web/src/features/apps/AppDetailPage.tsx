@@ -27,13 +27,14 @@ import { useDriveSwitch } from "../drive/useDriveSwitch";
 import { useMarketingSwitch } from "../marketing/useMarketingSwitch";
 import { CalendarFeedCard } from "../settings/CalendarFeedCard";
 import { AbcSupplyPanel } from "./AbcSupplyPanel";
+import { AiServiceChoice, OpenAiModelCard } from "./AiPanels";
 import { AnalyticsPanel, useAnalyticsSwitch } from "./AnalyticsPanel";
 import { AppIcon, AppTile } from "./AppIcon";
 import { AppKeysCard } from "./AppKeysCard";
 import { AssistantAccess, ConnectedAssistants, useAssistantConnections } from "./AssistantAccess";
 import { assistantAppFor, CONNECTOR_STEPS, disconnect as disconnectAssistant } from "./assistantConnections";
 import { CalendarRow, GoogleCalendarPanel, LinkCalendarsPanel, AddCalendarForm, useCalendars, type CalendarSource } from "./CalendarPanels";
-import { categoryName, infoFor, isFullSecretKey, LINK_ACCESS, MORE_LABELS, PASSWORD_HINT, STRIPE_NEW_KEY, useApps, usesMarketing, type AppInfo, type AppRow } from "./catalog";
+import { categoryName, infoFor, isFullSecretKey, LINK_ACCESS, MORE_LABELS, PASSWORD_HINT, STRIPE_NEW_KEY, useApps, usesMarketing, type AiState, type AppInfo, type AppRow } from "./catalog";
 import { DrivePanel } from "./DrivePanel";
 import { GoogleBeforeSignIn, GoogleBusinessPanel } from "./GoogleBusinessPanel";
 import { InstallRing, type InstallPhase } from "./InstallRing";
@@ -50,6 +51,9 @@ import { WebsiteFormsPanel, useWebsiteFormsSwitch } from "./WebsiteFormsPanel";
 import { WebsitePanel } from "./WebsitePanel";
 
 const GOOGLE_SETTINGS = "https://calendar.google.com/calendar/r/settings";
+// OpenAI: where a key is made, and where its credit is added.
+const OPENAI_KEYS = "https://platform.openai.com/api-keys";
+const OPENAI_BILLING = "https://platform.openai.com/settings/organization/billing";
 // fal.ai: where a key is made, and where credit is added.
 const FAL_KEYS = "https://fal.ai/dashboard/keys";
 const FAL_BILLING = "https://fal.ai/dashboard/billing";
@@ -122,10 +126,10 @@ export function AppDetailPage() {
       </>
     );
   }
-  return <AppListing key={app.id} app={app} all={apps.data!.apps} mcpUrl={apps.data!.mcp_url} />;
+  return <AppListing key={app.id} app={app} all={apps.data!.apps} mcpUrl={apps.data!.mcp_url} ai={apps.data!.ai} />;
 }
 
-function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: string }) {
+function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpUrl: string; ai: AiState | undefined }) {
   const info = infoFor(app);
   const session = useSession();
   const queryClient = useQueryClient();
@@ -141,10 +145,10 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
   const setup = phase === "waiting";
   const refresh = () => {
     for (const key of ["apps", "calendars", "google-calendars"]) queryClient.invalidateQueries({ queryKey: [key] });
-    // The company's own Anthropic key turns on Ask and the other AI buttons, a fal.ai key Find paving
-    // on the measuring map, its Twilio account texting (lib/session.tsx), and the website's editor
-    // puts Website in the menu.
-    if (app.id === "anthropic" || app.id === "fal" || app.id === "twilio" || app.auth === "site") session.refresh();
+    // The company's own Anthropic or OpenAI key turns on Ask and the other AI buttons, a fal.ai key
+    // Find paving on the measuring map, its Twilio account texting (lib/session.tsx), and the
+    // website's editor puts Website in the menu.
+    if (app.id === "anthropic" || app.id === "chatgpt" || app.id === "fal" || app.id === "twilio" || app.auth === "site") session.refresh();
   };
   const connect = useMutation({
     mutationFn: () => api.post<{ authorization_url: string }>(`/apps/${app.id}/connect`),
@@ -418,10 +422,10 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
             <TwilioPanel app={app} onChanged={refresh} />
           ) : app.id === "lob" ? (
             <LobPanel app={app} onChanged={refresh} />
-          ) : app.auth === "connector" || app.id === "anthropic" ? (
+          ) : app.auth === "connector" || app.id === "anthropic" || app.id === "chatgpt" ? (
             <>
               <ConnectorCard app={app} mcpUrl={mcpUrl} setup />
-              {app.id === "anthropic" && <KeyCard app={app} onSaved={refresh} />}
+              {app.auth === "api_key" && <KeyCard app={app} onSaved={refresh} />}
             </>
           ) : (
             <KeyCard app={app} onSaved={refresh} />
@@ -441,9 +445,11 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           {app.id === "google_calendar" && app.status === "connected" && <GoogleCalendarPanel />}
           {app.id === "google_calendar" && app.available && googleByAddress}
           {app.auth === "link" && <LinkCalendarsPanel app={app.id} appName={app.name} steps={info.steps} />}
-          {(app.auth === "connector" || app.id === "anthropic") && <ConnectorCard app={app} mcpUrl={mcpUrl} />}
+          {(app.auth === "connector" || app.id === "anthropic" || app.id === "chatgpt") && <ConnectorCard app={app} mcpUrl={mcpUrl} />}
+          {(app.id === "anthropic" || app.id === "chatgpt") && <AiServiceChoice ai={ai} onChanged={refresh} />}
           {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
           {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
+          {app.id === "chatgpt" && app.status !== "disconnected" && <OpenAiModelCard app={app} onChanged={refresh} />}
           {app.id === "lob" && <LobPanel app={app} onChanged={refresh} />}
           {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
           {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
@@ -601,7 +607,7 @@ function uninstallBody(app: AppRow, counts: { assistants: number; calendars: num
   if (app.category === "AI") {
     const parts = [];
     if (counts.assistants) parts.push(`${app.name} stops working with your Crewtavo account. Anyone else on your team who connected it keeps theirs.`);
-    if (hasAccount(app)) parts.push("Your Anthropic key is removed, so Crewtavo's writing help stops using it.");
+    if (hasAccount(app)) parts.push(`Your ${app.id === "chatgpt" ? "OpenAI" : "Anthropic"} key is removed, so Crewtavo's AI stops using it.`);
     return `${parts.join(" ")} ${again}`;
   }
   if (app.id === "twilio") return `Texts stop going out from your number, and your Twilio account's keys are removed from Crewtavo. Nothing already sent is deleted, and your Twilio account isn't changed. ${again}`;
@@ -756,7 +762,7 @@ function ConnectorCard({ app, mcpUrl, setup = false }: { app: AppRow; mcpUrl: st
   );
 }
 
-/** Apps that use a key (a company's own Anthropic key, for example). The key is never shown again. */
+/** Apps that use a key (a company's own Anthropic or OpenAI key, for example). The key is never shown again. */
 export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) {
   const [key, setKey] = useState("");
   const [show, setShow] = useState(false);
@@ -764,7 +770,7 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
   // Stripe decides where clients' payments go: changing its key asks for the person's password too.
   const [password, setPassword] = useState("");
   const save = useMutation({
-    meta: { inline: true, success: stripe ? "Stripe connected" : `${app.name} key saved` },
+    meta: { inline: true, success: stripe ? "Stripe connected" : app.id === "chatgpt" ? "OpenAI key saved" : `${app.name} key saved` },
     mutationFn: () => api.put(`/apps/${app.id}/key`, stripe ? { api_key: key.trim(), password } : { api_key: key.trim() }),
     onSuccess: () => {
       setKey("");
@@ -782,10 +788,12 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
   const stripeSteps = stripe && !app.stripe?.own;
   const fal = app.id === "fal";
   const falSteps = fal && app.status !== "connected";
+  const openai = app.id === "chatgpt";
+  const openaiSteps = openai && app.status !== "connected";
   return (
     <section id="app-setup" className="card card-pad stack-sm" aria-labelledby="key-title" style={{ gap: 10 }}>
       <h2 id="key-title" className="section-title" style={{ fontSize: 16 }}>
-        {app.id === "anthropic" ? "Your own Anthropic key (optional)" : stripe ? (app.stripe?.own ? "Stripe key" : app.stripe ? "Use your own Stripe account" : "Connect your Stripe account") : fal ? (falSteps ? "Connect your fal.ai account" : "fal.ai key") : `${app.name} key`}
+        {app.id === "anthropic" ? "Your own Anthropic key (optional)" : openai ? (openaiSteps ? "Use an OpenAI API key" : "OpenAI key") : stripe ? (app.stripe?.own ? "Stripe key" : app.stripe ? "Use your own Stripe account" : "Connect your Stripe account") : fal ? (falSteps ? "Connect your fal.ai account" : "fal.ai key") : `${app.name} key`}
       </h2>
       {stripeSteps && (
         <>
@@ -815,8 +823,24 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
           </a>
         </>
       )}
+      {openaiSteps && (
+        <>
+          <span className="muted small">For the whole company: everyone's drafts, answers from your guides and receipts use this key, and so does anything Crewtavo drafts by itself. OpenAI bills you directly for what's used.</span>
+          <ol className="app-steps">
+            <li>Click <strong>Get a key from OpenAI</strong> and sign in to OpenAI's API platform (it's separate from a ChatGPT plan).</li>
+            <li>Click <strong>Create new secret key</strong>, name it Crewtavo, and copy the key. OpenAI only shows it once.</li>
+            <li>Add credit under <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Billing</a> if the account has none.</li>
+            <li>Paste the key below. Crewtavo checks it with OpenAI before saving, at no cost.</li>
+          </ol>
+          <a className="btn btn-primary" style={{ justifySelf: "start" }} href={OPENAI_KEYS} target="_blank" rel="noreferrer">
+            <Icon name="external" size={16} />
+            Get a key from OpenAI
+          </a>
+        </>
+      )}
       <span className="muted small">
-        {app.id === "anthropic" ? "Crewtavo's writing help and answers from your guides use this key when you add one. " : null}
+        {app.id === "anthropic" ? "Crewtavo's writing help, answers from your guides and receipt reading use this key when you add one. " : null}
+        {openai && !openaiSteps ? <>Crewtavo's writing help, answers from your guides and receipt reading use this key. <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Check your OpenAI credit</a>. </> : null}
         {fal && !falSteps ? <>Find paving is on the measuring map, next to the takeoff items. <a href={FAL_BILLING} target="_blank" rel="noreferrer">Check your fal.ai credit</a>. </> : null}
         {stripe ? "Crewtavo adds the webhook it needs to your Stripe account. " : null}
         {app.status === "connected" && app.account_label && (!stripe || app.stripe?.own) ? `Saved: ${app.account_label}.` : "It's stored encrypted and never shown again."}
@@ -825,7 +849,7 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
       <form className="stack-sm" onSubmit={submit}>
         <div className="row" style={{ gap: 8 }}>
           <div className="input-group grow">
-            <input className="input" type={show ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder={(stripe ? app.stripe?.own : app.status === "connected") ? "Paste a new key to replace it" : stripe ? "Paste the key from Stripe" : "Paste your key"} value={key} onChange={(e) => { setKey(e.target.value); save.reset(); }} aria-label={stripe ? "Key from Stripe" : `${app.name} API key`} style={{ paddingLeft: 12, paddingRight: 36 }} />
+            <input className="input" type={show ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder={(stripe ? app.stripe?.own : app.status === "connected") ? "Paste a new key to replace it" : stripe ? "Paste the key from Stripe" : "Paste your key"} value={key} onChange={(e) => { setKey(e.target.value); save.reset(); }} aria-label={stripe ? "Key from Stripe" : openai ? "OpenAI API key" : `${app.name} API key`} style={{ paddingLeft: 12, paddingRight: 36 }} />
             <button type="button" className="icon-btn addon-right" style={{ position: "absolute", right: 2, pointerEvents: "auto" }} aria-label={show ? "Hide key" : "Show key"} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={14} /></button>
           </div>
           {!stripe && saveButton}

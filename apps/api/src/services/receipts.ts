@@ -14,7 +14,7 @@ import { EXPENSE_CATEGORIES, type ReceiptReading } from "@crewtavo/core";
 import { z } from "zod";
 import type { Env } from "../env";
 import { HttpError } from "../lib/http";
-import { readDocument } from "./ai";
+import { readDocument, type Asker } from "./ai";
 
 /** What Claude reads from: a photo as a phone or scanner makes it, or a PDF. */
 export const READABLE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"] as const;
@@ -135,12 +135,12 @@ export function readableType(bytes: Uint8Array): (typeof READABLE_TYPES)[number]
 }
 
 /** Read one file: what Claude found, checked. Throws an HttpError when it can't be read. */
-export async function readReceipt(env: Env, file: { bytes: Uint8Array }, apiKey: string | null): Promise<ReceiptReading> {
+export async function readReceipt(env: Env, file: { bytes: Uint8Array }, asker: Asker): Promise<ReceiptReading> {
   if (file.bytes.length > READ_MAX_BYTES) throw new HttpError(413, "That file is too large to read. Fill it in by hand.");
   const mediaType = readableType(file.bytes);
   if (!mediaType) throw new HttpError(415, "Only photos (JPEG, PNG, GIF, WebP) and PDFs can be read. Fill it in by hand.");
   const answer = await readDocument(env, {
-    apiKey,
+    asker,
     system: RECEIPT_SYSTEM,
     prompt: RECEIPT_PROMPT,
     file: { data: Buffer.from(file.bytes).toString("base64"), mediaType },

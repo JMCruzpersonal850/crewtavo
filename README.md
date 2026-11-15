@@ -509,7 +509,8 @@ Everything an instance needs is generated. These optional settings turn on extra
 | --- | --- |
 | `APP_URL` | Your own domain. **Settings → Web address** sets it on Railway. Defaults to the instance's address. |
 | `ENCRYPTION_KEY` | A separate key for app tokens and client links (32+ characters). Keep it stable once set: changing it disconnects every app and invalidates links already sent. |
-| `ANTHROPIC_API_KEY`, `AI_MODEL` | AI rewriting and answers from your SOPs. Companies can also add their own key on the Apps page. |
+| `ANTHROPIC_API_KEY`, `AI_MODEL` | AI rewriting and answers from your SOPs, with Claude. Companies can also add their own Claude or OpenAI key on the Apps page. |
+| `OPENAI_MODEL` | The OpenAI model used with a company's own OpenAI key or a person's ChatGPT plan, instead of the one picked on Apps → ChatGPT. There is no server-wide OpenAI key. |
 | `GOOGLE_MAPS_BROWSER_KEY`, `GOOGLE_MAPS_SERVER_KEY` | Optional: Google satellite on the measuring map (Map Tiles API), and roof pitch suggestions (Solar API). Measuring needs no key: it uses free US and state imagery. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | A Stripe account shared by every company on the server. Usually not needed: each business connects its own Stripe on the Apps page. |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | A Twilio account shared by every company on the server. Usually not needed: each business connects its own Twilio account on the Apps page. |

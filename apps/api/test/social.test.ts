@@ -1448,13 +1448,13 @@ describe("the pictures' public links", () => {
 });
 
 describe("Suggest a caption", () => {
-  it("needs a Claude key, and says where to add one", async () => {
+  it("needs AI turned on, and says where to add a key", async () => {
     const c = await connected();
     serve({ tables: c.tables, files: c.files });
     complete.mockRejectedValueOnce(new (await import("../src/lib/http")).HttpError(501, "AI isn't turned on yet."));
     const res = await request("/social/caption", { method: "POST", body: { source: "photos", attachment_ids: [c.ids[0]] } });
     expect(res.status).toBe(501);
-    expect(((await res.json()) as { error: string }).error).toBe("Suggest a caption needs a Claude key. An owner or admin can add one in Apps → Claude.");
+    expect(((await res.json()) as { error: string }).error).toBe("Suggest a caption needs AI turned on. An owner or admin can add a Claude or OpenAI key on the Apps page.");
   });
 
   it("drafts from the jobs' services, never their titles, and asks again when it names the client", async () => {

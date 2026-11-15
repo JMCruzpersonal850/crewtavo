@@ -17,13 +17,14 @@ import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } fro
 import { emailReady, sendEmail, sendingWorks } from "../lib/notify";
 import { checkTwilio, companyTwilio, forgetTwilio, serverTwilio, setSmsWebhook, TwilioProblem, type TwilioSettings } from "../lib/twilio";
 import { adminClient, type Db } from "../lib/supabase";
-import { companyAnthropicKey, complete, countAiAsk } from "../services/ai";
+import { aiChoice, askerOf, complete, countAiAsk, type OpenAiSettings } from "../services/ai";
 import { analyticsSettings } from "../services/analytics";
 import { AbcProblem, chooseAbcAccount, connectAbc, settingsOf as abcSettingsOf } from "../integrations/abcSupply";
 import { describeAccount, retryAccounting } from "../integrations/accounting";
 import { deleteVisitsCalendar, describeGoogleAccount, pushUpcomingVisits } from "../integrations/calendars";
 import { checkFalKey } from "../integrations/fal";
 import { checkLobKey, LobProblem, type LobSettings } from "../integrations/lob";
+import { checkOpenAiKey, pickModel } from "../integrations/openai";
 import { describeGoogleBusiness, findLocation, GoogleBusinessError } from "../integrations/googleBusiness";
 import { badKeys, MetaError, metaAuthorizeUrl, type MetaKeys } from "../integrations/meta";
 import { CATALOG, catalogEntry, isCalendarApp, OAUTH, UntrustedServerError, zohoAccountsServer, type Provider } from "../integrations/registry";
@@ -120,8 +121,24 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const lob = lobRow ? { mode: (lobRow.settings as unknown as LobSettings | null)?.mode ?? null } : null;
   // Without the company's email or the server's, the owners hear about Stripe changes on the bell only.
   const ownersEmailed = await emailReady(c.env, c.var.companyId);
+  // Crewtavo's own AI (services/ai.ts): which keys the company added, the one it chose when it has
+  // both, and the service that answers now. The ChatGPT page also shows the model its key uses.
+  const hasKey = (provider: string) => integrations.some((r) => r.provider === provider && r.status !== "disconnected");
+  const aiKeys = { claude: hasKey("anthropic"), chatgpt: hasKey("chatgpt") };
+  const choice = aiChoice(company.data?.settings);
+  const ai = {
+    ...aiKeys,
+    choice,
+    server: Boolean(c.env.ANTHROPIC_API_KEY),
+    service: aiKeys.claude && aiKeys.chatgpt ? (choice ?? "claude") : aiKeys.chatgpt ? "chatgpt" : aiKeys.claude || c.env.ANTHROPIC_API_KEY ? "claude" : null,
+  };
+  const openaiSettings = (integrations.find((r) => r.provider === "chatgpt")?.settings ?? {}) as OpenAiSettings;
+  const openai = aiKeys.chatgpt
+    ? { model: pickModel(c.env, openaiSettings.models ?? [], openaiSettings.model) ?? openaiSettings.model ?? null, models: openaiSettings.models ?? [], model_locked: Boolean(c.env.OPENAI_MODEL) }
+    : null;
   return c.json({
     mcp_url: `${appUrl(c)}/mcp`,
+    ai,
     apps: CATALOG.map(({ available, appKeys: takesKeys, ...entry }) => {
       const own = calendarRows.filter((s) => s.app === entry.id);
       const linked = isCalendarApp(entry.id) ? { calendars: own.length, calendar_errors: own.filter((s) => s.last_error).length } : {};
@@ -142,6 +159,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
+        ...(entry.id === "chatgpt" && openai ? { openai } : {}),
         ...(takesKeys ? { takes_app_keys: true, app_keys: ownKeys } : {}),
       };
     }),
@@ -750,7 +768,7 @@ export async function emailOwners(
   }
 }
 
-/** API-key apps (a company's own Anthropic key, for example). The key is encrypted and never returned. */
+/** API-key apps (a company's own Anthropic or OpenAI key, for example). The key is encrypted and never returned. */
 apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const provider = c.req.param("provider") as Provider;
   const entry = catalogEntry(provider);
@@ -772,6 +790,15 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
   if (provider === "fal") {
     const problem = await checkFalKey(body.api_key);
     if (problem) throw new HttpError(400, problem);
+  }
+  // OpenAI: checked by listing the models the key can use (free). The list is kept for the admin to
+  // pick from, with one picked to begin with: the one picked before, if it's still there.
+  let openai: OpenAiSettings | null = null;
+  if (provider === "chatgpt") {
+    const checked = await checkOpenAiKey(body.api_key);
+    if ("problem" in checked) throw new HttpError(400, checked.problem);
+    const { data: was } = await admin.from("integrations").select("settings").match({ company_id: c.var.companyId, provider }).maybeSingle();
+    openai = { model: pickModel(c.env, checked.models, (was?.settings as OpenAiSettings | null)?.model), models: checked.models };
   }
   // Lob: checked with Lob first (a free read), and kept with whether it's a test key or a live one.
   let lob: LobSettings | null = null;
@@ -800,10 +827,11 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
     connected_by: c.var.userId,
     connected_at: new Date().toISOString(),
     ...(lob ? { settings: asJson(lob), last_error: null } : {}),
+    ...(openai ? { settings: asJson(openai), last_error: null } : {}),
   });
   if (error) throw dbError(error);
   if (!lob) await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
-  return c.json({ provider, status: "connected", ...(lob ? { lob } : {}) });
+  return c.json({ provider, status: "connected", ...(lob ? { lob } : {}), ...(openai ? { openai: { model: openai.model, models: openai.models, model_locked: Boolean(c.env.OPENAI_MODEL) } } : {}) });
 });
 
 /**
@@ -830,7 +858,7 @@ apps.delete("/apps/sveltia/site", requireUser, requireCompany(ADMINS, "apps"), a
 });
 
 // ---------------------------------------------------------------------------------------------
-// AI helpers (use the company's own Anthropic key when it has one)
+// AI helpers (services/ai.ts decides which service answers)
 // ---------------------------------------------------------------------------------------------
 
 apps.post("/ai/rewrite", requireUser, requireCompany(), async (c) => {
@@ -843,7 +871,7 @@ apps.post("/ai/rewrite", requireUser, requireCompany(), async (c) => {
   );
   await countAiAsk(c.env, c.var.companyId, c.var.userId);
   const text = await complete(c.env, {
-    apiKey: await companyAnthropicKey(c.env, adminClient(c.env), c.var.companyId),
+    asker: askerOf(c),
     system:
       "You edit short messages a home-services business sends to its customers. Return only the rewritten message, " +
       "with no preamble. Never add prices, dates or promises that aren't in the original.",
@@ -867,7 +895,7 @@ apps.post("/kb/ask", requireUser, requireCompany(), async (c) => {
 
   const excerpts = hits.map((h, i) => `[${i + 1}] ${h.title}\n${h.body_text.slice(0, 6000)}`).join("\n\n");
   const answer = await complete(c.env, {
-    apiKey: await companyAnthropicKey(c.env, adminClient(c.env), c.var.companyId),
+    asker: askerOf(c),
     system:
       "You answer questions for a field-service crew using only the SOP excerpts provided. Cite sources inline as [1], [2]. " +
       "If the excerpts don't answer the question, say so plainly. Keep answers short and practical; safety steps come first.",

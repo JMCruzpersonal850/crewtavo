@@ -79,7 +79,7 @@ import { renderReviewCard, type CardInput } from "../lib/reviewCard";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
 import { adminClient, type Db } from "../lib/supabase";
-import { complete } from "./ai";
+import { complete, type Asker } from "./ai";
 import { LOGO_MAX_BYTES, logoOf, pngSize } from "./logo";
 import { storageWritesPaused } from "./storageBucket";
 
@@ -916,7 +916,7 @@ export function captionPrompt(company: string): string {
  * that names a client is asked for again once; if it still does, it comes back with a warning.
  */
 export async function suggestCaption(env: Env, input: {
-  apiKey: string | null;
+  asker: Asker;
   company: string;
   source: "photos" | "review" | "text";
   review?: { rating: number | null; comment: string | null } | null;
@@ -930,7 +930,7 @@ export async function suggestCaption(env: Env, input: {
   if (input.source === "review" && input.review) lines.push(`The post shows a ${input.review.rating ?? 5}-star Google review from a client:\n${cardText(input.review.comment)}`);
   if (input.source === "text") lines.push("The post is words alone, an update from the business.");
   if (input.draft?.trim()) lines.push(`\nTheir draft caption:\n${input.draft.trim()}\n\nRewrite it: ${input.instruction?.trim() || "make it clear, warm and short"}.`);
-  const ask = (extra = "") => complete(env, { apiKey: input.apiKey, system: captionPrompt(input.company), prompt: lines.join("\n") + extra, effort: "low", maxTokens: 600 });
+  const ask = (extra = "") => complete(env, { asker: input.asker, system: captionPrompt(input.company), prompt: lines.join("\n") + extra, effort: "low", maxTokens: 600 });
   let text = (await ask()).slice(0, 2200);
   if (mentionsClient(text, input.clients).blocked.length) {
     text = (await ask("\n\nYour last caption named the client or their street. Write it again without any name or address.")).slice(0, 2200);

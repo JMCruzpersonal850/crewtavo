@@ -18,7 +18,7 @@ import { runInBackground } from "../lib/background";
 import { dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
-import { companyAnthropicKey, countAiAsk } from "../services/ai";
+import { askerOf, countAiAsk } from "../services/ai";
 import {
   checkAccess,
   firstSyncProgress,
@@ -156,7 +156,7 @@ googleReviews.post("/reviews/:id/suggest", requireUser, requireCompany(OFFICE, "
   const review = await loadReview(admin, c.var.companyId, id);
   await countAiAsk(c.env, c.var.companyId, c.var.userId);
   const text = await suggestReply(c.env, admin, {
-    apiKey: await companyAnthropicKey(c.env, admin, c.var.companyId),
+    asker: askerOf(c),
     company: { name: company.name, phone: company.phone, email: company.email },
     review,
     draft: body.draft,

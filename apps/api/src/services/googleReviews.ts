@@ -57,7 +57,7 @@ import { appKeysOf, loadSecret, SignInRefused } from "../integrations/tokens";
 import { asJson, HttpError } from "../lib/http";
 import { reportError } from "../lib/monitoring";
 import { adminClient, type Db } from "../lib/supabase";
-import { complete } from "./ai";
+import { complete, type Asker } from "./ai";
 
 export const SYNC_EVERY_MINUTES = 30;
 export const SLOW_RETRY_HOURS = 6;
@@ -723,7 +723,7 @@ export function replyPrompt(company: { name: string; phone: string | null; email
 
 /** Drafts a reply with the company's Claude key (or the server's), as /ai/rewrite does. Nothing is posted. */
 export async function suggestReply(env: Env, admin: Db, input: {
-  apiKey: string | null;
+  asker: Asker;
   company: { name: string; phone: string | null; email: string | null };
   review: { reviewer_name: string | null; reviewer_anonymous: boolean; rating: number | null; comment: string | null };
   draft?: string;
@@ -737,7 +737,7 @@ export async function suggestReply(env: Env, admin: Db, input: {
     `Review:\n${review.comment?.trim() || "(No words, just the stars.)"}`,
   ];
   if (input.draft?.trim()) lines.push(`\nTheir draft reply:\n${input.draft.trim()}\n\nRewrite it: ${input.instruction?.trim() || "make it clear, warm and professional, about the same length"}.`);
-  const text = await complete(env, { apiKey: input.apiKey, system: replyPrompt(input.company), prompt: lines.join("\n"), effort: "low", maxTokens: 800 });
+  const text = await complete(env, { asker: input.asker, system: replyPrompt(input.company), prompt: lines.join("\n"), effort: "low", maxTokens: 800 });
   return text.slice(0, REPLY_MAX);
 }
 
