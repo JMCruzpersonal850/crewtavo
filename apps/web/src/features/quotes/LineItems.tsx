@@ -8,7 +8,12 @@
  * shows the ones on every option with the option being looked at (`optionId`). New lines go on that
  * option, or on every option, and a line can be moved between them; the money counts as core money.ts
  * counts it for that option. Jobs and invoices have no options.
+ *
+ * A line from a price-list item with a rule that reads only an area (Weekly mow at
+ * max(45, area_sqft / 1000 * 4.5)) is priced by its size: square feet typed on the line, or the area
+ * of a drawing saved for the property (`propertyId`). The rule sets what a drawing would on a quote.
  */
+import { evaluateFormula, formulaVariables } from "@crewtavo/core/formulas";
 import { countsOn, lineTotal, optionLabels, optionLines, toCents } from "@crewtavo/core/money";
 import { promoCodeOf, removedPromoWords } from "@crewtavo/core/promos";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -69,9 +74,38 @@ const COPY_FIELDS = ["name", "description", "quantity", "unit", "unit_price", "t
  * may see costs (Job costs and profit). Without it, a line they add from the price list goes on
  * with no cost and the database gives it the item's (20261112000420_rates_behind_job_costs.sql).
  */
-const PRICE_LIST_COLUMNS = "id, name, description, unit, unit_price, taxable, formula, category";
+const PRICE_LIST_COLUMNS = "id, name, description, unit, unit_price, taxable, formula, formula_target, category";
 export const priceListColumns = (seesCosts: boolean) => (seesCosts ? (`${PRICE_LIST_COLUMNS}, unit_cost` as const) : PRICE_LIST_COLUMNS);
-interface PriceListItem { id: string; name: string; description: string | null; unit: string; unit_price: number; unit_cost?: number | null; taxable: boolean; formula: string | null; category: string | null }
+interface PriceListItem { id: string; name: string; description: string | null; unit: string; unit_price: number; unit_cost?: number | null; taxable: boolean; formula: string | null; formula_target: string; category: string | null }
+
+/** A price-list rule on a line: its formula, and whether it sets the line's price or its quantity. */
+export interface SizeRule { formula: string; target: string | null | undefined }
+
+/**
+ * Whether a typed area is all a rule needs: it reads the area and nothing else.
+ * shortcut: a rule that reads a length, a count, a depth or a roof's or paving's own values is still
+ * filled from a drawing on a quote; give those their own fields here if a trade needs them typed.
+ */
+export function sizedBy(formula: string | null | undefined): boolean {
+  if (!formula) return false;
+  try {
+    const reads = [...formulaVariables(formula)];
+    return reads.length > 0 && reads.every((name) => name === "area_sqft" || name === "area_sqyd");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What a rule sets on a line for an area in square feet: its price to the cent, or its quantity to 3
+ * decimals, as a drawing fills them (applyMeasurement in apps/api/src/services/measurements.ts).
+ * Throws for a formula that doesn't work out, or comes to less than zero.
+ */
+export function sizedPatch(rule: SizeRule, sqft: number): Pick<Line, "unit_price"> | Pick<Line, "quantity"> {
+  const value = evaluateFormula(rule.formula, { area_sqft: sqft, area_sqyd: sqft / 9 });
+  if (value < 0) throw new Error("That size comes to less than zero. Check the item's formula in Settings.");
+  return rule.target === "unit_price" ? { unit_price: Math.round(value * 100) / 100 } : { quantity: Math.round(value * 1000) / 1000 };
+}
 /** The workflow color of the record the lines are on, for their toasts. */
 const TONES: Record<Table, ToastTone> = { quote_line_items: "quote", job_line_items: "job", invoice_line_items: "invoice" };
 
@@ -137,6 +171,7 @@ export function LineItems({
   onOfferOptions,
   promoJob = null,
   followMarkup = null,
+  propertyId = null,
 }: {
   table: Table;
   parent: Parent;
@@ -159,6 +194,8 @@ export function LineItems({
   followMarkup?: number | null;
   /** An invoice's job, for what the toast says when one of its promo lines is removed: where the discount went. */
   promoJob?: { id: string; repeats: boolean } | null;
+  /** The property the work is at: its drawings' areas are offered on a line priced by size. */
+  propertyId?: string | null;
 }) {
   const session = useSession();
   const { company } = session;
@@ -178,6 +215,18 @@ export function LineItems({
     enabled: editable,
     staleTime: 5 * 60_000,
     queryFn: async () => unwrap(await supabase().from("services").select(priceListColumns(seesCosts)).eq("company_id", company.id).eq("active", true).order("sort")) as unknown as PriceListItem[],
+  });
+  // A job's line has no formula of its own: its price-list item's is its rule. A quote's keeps the one it was added with.
+  const ruleOf = (line: Line): SizeRule | null => {
+    const item = services.data?.find((s) => s.id === line.service_id);
+    const formula = line.formula ?? item?.formula;
+    return formula && sizedBy(formula) ? { formula, target: item?.formula_target } : null;
+  };
+  const drawings = useQuery({
+    queryKey: ["measurements", "areas", propertyId],
+    enabled: editable && Boolean(propertyId),
+    staleTime: 60_000,
+    queryFn: async () => unwrap(await supabase().from("measurements").select("id, title, total_area_sqft").eq("property_id", propertyId!).gt("total_area_sqft", 0).order("created_at", { ascending: false }).limit(3)),
   });
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -200,11 +249,11 @@ export function LineItems({
       const followed = table === "quote_line_items" && s && followMarkup !== null ? await followedPriceOf(s.id, followMarkup) : null;
       if (followed !== null) row.unit_price = followed;
       if (offers) row.option_id = addToEvery ? null : viewing;
-      return { id: await insert([row]), custom: !s };
+      return { id: await insert([row]), open: !s || sizedBy(s.formula) };
     },
-    // A custom item opens for editing right away; a price-list item is ready as it is.
+    // A custom item opens for editing right away, and so does one priced by its size, to ask for it; any other price-list item is ready as it is.
     onSuccess: (r) => {
-      if (r.custom) setOpenId(r.id);
+      if (r.open) setOpenId(r.id);
       onChanged();
     },
   });
@@ -307,7 +356,7 @@ export function LineItems({
               />
             );
             return openId === line.id ? (
-              <LineRow key={line.id} table={table} line={line} editable withOptions={withOptions} showCosts={showCosts} place={place} viewing={viewing} addOn={chipOf(line)} saveStatus={saveStatus} onChanged={onChanged} onDone={() => setOpenId(null)} actions={actions} />
+              <LineRow key={line.id} table={table} line={line} editable withOptions={withOptions} showCosts={showCosts} place={place} viewing={viewing} addOn={chipOf(line)} saveStatus={saveStatus} onChanged={onChanged} onDone={() => setOpenId(null)} actions={actions} rule={ruleOf(line)} drawings={drawings.data} />
             ) : (
               <LineSummary key={line.id} line={line} withOptions={withOptions} shared={offers && line.option_id == null} addOn={chipOf(line)} onOpen={() => setOpenId(line.id)} actions={actions} />
             );
@@ -506,7 +555,7 @@ function LineSummary({ line, withOptions, shared, addOn, onOpen, actions }: { li
  * when it offers them, for where the line is; `viewing` is the option looked at. `addOn`: its add-on
  * chip (addOnLabel). `saveStatus`: the page header's, which each save reports to.
  */
-function LineRow({ table, line, editable, withOptions, showCosts, place, viewing, addOn, saveStatus, onChanged, onDone, actions }: {
+function LineRow({ table, line, editable, withOptions, showCosts, place, viewing, addOn, saveStatus, onChanged, onDone, actions, rule = null, drawings = [] }: {
   table: Table;
   line: Line;
   editable: boolean;
@@ -519,6 +568,10 @@ function LineRow({ table, line, editable, withOptions, showCosts, place, viewing
   onChanged: () => void;
   onDone?: () => void;
   actions?: React.ReactNode;
+  /** Its price-list rule, when a size is all it needs (sizedBy). */
+  rule?: SizeRule | null;
+  /** The property's drawings with an area, to price it from. */
+  drawings?: ReadonlyArray<{ id: string; title: string; total_area_sqft: number }>;
 }) {
   const [draft, setDraft] = useState(line);
   useEffect(() => setDraft(line), [line]);
@@ -566,6 +619,18 @@ function LineRow({ table, line, editable, withOptions, showCosts, place, viewing
     else unchanged();
   };
   const blurOnEnter = (e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && e.currentTarget.blur();
+  // Priced by its size: the rule's price (or quantity) for that many square feet, saved like one typed.
+  const [size, setSize] = useState("");
+  const sized = useRef("");
+  const bySize = (text: string) => {
+    sized.current = text;
+    if (!(Number(text) > 0)) return;
+    try {
+      set(sizedPatch(rule!, Number(text)));
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  };
   const excluded = withOptions && line.optional && !line.selected;
   const amount = lineTotal(draft.quantity, draft.unit_price);
 
@@ -652,7 +717,24 @@ function LineRow({ table, line, editable, withOptions, showCosts, place, viewing
               <span style={{ width: 96 }}><NumberField label="Unit cost" step="0.01" prefix="$" value={Number(draft.unit_cost ?? 0)} onEdit={edited} onUnchanged={unchanged} onCommit={(v) => set({ unit_cost: v })} /></span>
             </label>
           )}
-          {draft.formula && <span className="muted" title="Fills from a measurement">Formula: {draft.formula}</span>}
+          {rule && !promo ? (
+            <>
+              <label style={{ gap: 6 }} title={`${rule.target === "unit_price" ? "Price" : "Quantity"} = ${rule.formula}`}>
+                {rule.target === "unit_price" ? "Price by size" : "Quantity by size"}
+                <span className="input-group" style={{ width: 132 }}>
+                  <input className="input input-sm" aria-label="Size in square feet" inputMode="decimal" value={size} onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ""))} onBlur={() => size !== sized.current && bySize(size)} onKeyDown={blurOnEnter} />
+                  <span className="addon addon-right addon-unit">sq ft</span>
+                </span>
+              </label>
+              {drawings.map((d) => (
+                <Button key={d.id} size="sm" onClick={() => { setSize(String(Number(d.total_area_sqft))); bySize(String(Number(d.total_area_sqft))); }}>
+                  {d.title}: {formatNumber(Number(d.total_area_sqft), 0)} sq ft
+                </Button>
+              ))}
+            </>
+          ) : (
+            draft.formula && <span className="muted" title="Fills from a measurement">Formula: {draft.formula}</span>
+          )}
           {onDone && <Button size="sm" style={{ marginLeft: "auto" }} onClick={onDone}>Done</Button>}
         </div>
       </div>

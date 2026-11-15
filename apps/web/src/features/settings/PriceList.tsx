@@ -117,7 +117,7 @@ export function PriceList() {
       {importing && <ImportPriceListDialog existing={(services.data ?? []).map((x) => x.name)} onClose={() => setImporting(false)} />}
       <details className="muted small">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Using formulas</summary>
-        <p style={{ margin: "6px 0 0" }}>A formula fills in the quantity from a map measurement, for example <code>area_sqft * 1.1</code>. You can use area_sqft (square feet), area_sqyd (square yards), length_ft (feet), count, depth_in (inches), pitch_factor and waste, and for roofs eave_ft, rake_ft, ridge_ft, hip_ft and valley_ft (feet of lines marked as those edges on the map).</p>
+        <p style={{ margin: "6px 0 0" }}>A formula fills in the quantity from a map measurement, for example <code>area_sqft * 1.1</code>. One that uses only the area also prices a line on a job or a quote from a size you type there. You can use area_sqft (square feet), area_sqyd (square yards), length_ft (feet), count, depth_in (inches), pitch_factor and waste, and for roofs eave_ft, rake_ft, ridge_ft, hip_ft and valley_ft (feet of lines marked as those edges on the map).</p>
         <p style={{ margin: "6px 0 0" }}>Roofs add their surface and squares, each section at its own pitch:</p>
         <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
           {ROOFING_VARIABLE_NAMES.map((name) => <li key={name}><code>{name}</code> {ROOFING_VARIABLES[name]}</li>)}

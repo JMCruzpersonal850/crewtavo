@@ -6,7 +6,7 @@
  */
 import { optionLabels, optionTotals, quoteTotals } from "@crewtavo/core/money";
 import { describe, expect, it } from "vitest";
-import { addOnLabel, lineSums, movedSorts, nextSort, placeName, priceListColumns, visibleLines, type Line } from "../src/features/quotes/LineItems";
+import { addOnLabel, lineSums, movedSorts, nextSort, placeName, priceListColumns, sizedBy, sizedPatch, visibleLines, type Line } from "../src/features/quotes/LineItems";
 
 const A = "aaaaaaaa-0000-4000-8000-000000000001";
 const B = "bbbbbbbb-0000-4000-8000-000000000002";
@@ -180,6 +180,25 @@ describe("what the line editor reads of the price list", () => {
     expect(priceListColumns(false)).not.toMatch(/cost/);
   });
   it("and for everything else a new line needs either way", () => {
-    for (const seesCosts of [true, false]) expect(columns(seesCosts)).toEqual(expect.arrayContaining(["id", "name", "description", "unit", "unit_price", "taxable", "formula", "category"]));
+    for (const seesCosts of [true, false]) expect(columns(seesCosts)).toEqual(expect.arrayContaining(["id", "name", "description", "unit", "unit_price", "taxable", "formula", "formula_target", "category"]));
+  });
+});
+
+describe("a line priced by its size", () => {
+  const mow = "max(45, area_sqft / 1000 * 4.5)";
+  it("is one whose rule reads the area and nothing else", () => {
+    expect([mow, "area_sqyd * 2", "area_sqft * 1.1"].map(sizedBy)).toEqual([true, true, true]);
+    expect([null, "", "55", "area_sqft * depth_in / 324", "count", "roof_squares * 1.1", "area_sqft +"].map(sizedBy)).toEqual([false, false, false, false, false, false, false]);
+  });
+  it("gets its price from the rule, with the minimum under it", () => {
+    expect(sizedPatch({ formula: mow, target: "unit_price" }, 4000)).toEqual({ unit_price: 45 });
+    expect(sizedPatch({ formula: mow, target: "unit_price" }, 12345)).toEqual({ unit_price: 55.55 });
+  });
+  it("or its quantity, and square yards from the same square feet", () => {
+    expect(sizedPatch({ formula: "area_sqft * 1.1", target: "quantity" }, 1000.5)).toEqual({ quantity: 1100.55 });
+    expect(sizedPatch({ formula: "area_sqyd", target: undefined }, 900)).toEqual({ quantity: 100 });
+  });
+  it("is refused when the rule comes to less than zero", () => {
+    expect(() => sizedPatch({ formula: "area_sqft - 5000", target: "unit_price" }, 100)).toThrow(/less than zero/);
   });
 });

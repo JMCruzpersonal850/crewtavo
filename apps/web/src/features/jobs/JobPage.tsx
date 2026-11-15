@@ -447,7 +447,7 @@ export function JobPage() {
           {hasRole(session, "admin", "office", "estimator") && (
             <section className="stack">
               <h2 className="section-title">Line items</h2>
-              <LineItems table="job_line_items" parent="job_id" parentId={j.id} lines={j.lines} editable={canSell && ["active", "requires_invoicing"].includes(j.status)} onChanged={refresh} />
+              <LineItems table="job_line_items" parent="job_id" parentId={j.id} lines={j.lines} editable={canSell && ["active", "requires_invoicing"].includes(j.status)} onChanged={refresh} propertyId={j.property?.id} />
               <FieldAddedLines jobId={j.id} lines={j.lines} />
               {repeats && <JobDiscountNote jobId={j.id} lines={j.lines} seesInvoices={seesInvoices} canSwitch={canSell && j.status === "active"} onChanged={refresh} />}
               {addButtons}

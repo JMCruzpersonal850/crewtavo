@@ -732,6 +732,7 @@ export function QuotePage() {
                   options={options}
                   followMarkup={q.package?.price_mode === "follow" ? Number(q.package.markup_pct) : null}
                   saveStatus={save}
+                  propertyId={q.property?.id}
                   onOfferOptions={!offers && optionsOpen(q.status) ? () => setOffering(true) : undefined}
                 />
               )}
