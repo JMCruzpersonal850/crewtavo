@@ -622,14 +622,14 @@ isOneToOne: false
                   ]
                 },"client_contacts": {
                   Row: {
-                    "client_id": string,"company_id": string,"created_at": string,"email": string | null,"id": string,"is_primary": boolean,"name": string,"notify_email": boolean,"notify_sms": boolean,"phone": string | null,"role": string | null,"updated_at": string
+                    "client_id": string,"company_id": string,"created_at": string,"email": string | null,"id": string,"is_primary": boolean,"name": string,"notify_email": boolean,"notify_sms": boolean,"phone": string | null,"role": string | null,"sms_consent_at": string | null,"sms_consent_source": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "client_id": string,"company_id": string,"created_at"?: string,"email"?: string | null,"id"?: string,"is_primary"?: boolean,"name": string,"notify_email"?: boolean,"notify_sms"?: boolean,"phone"?: string | null,"role"?: string | null,"updated_at"?: string
+                    "client_id": string,"company_id": string,"created_at"?: string,"email"?: string | null,"id"?: string,"is_primary"?: boolean,"name": string,"notify_email"?: boolean,"notify_sms"?: boolean,"phone"?: string | null,"role"?: string | null,"sms_consent_at"?: string | null,"sms_consent_source"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "client_id"?: string,"company_id"?: string,"created_at"?: string,"email"?: string | null,"id"?: string,"is_primary"?: boolean,"name"?: string,"notify_email"?: boolean,"notify_sms"?: boolean,"phone"?: string | null,"role"?: string | null,"updated_at"?: string
+                    "client_id"?: string,"company_id"?: string,"created_at"?: string,"email"?: string | null,"id"?: string,"is_primary"?: boolean,"name"?: string,"notify_email"?: boolean,"notify_sms"?: boolean,"phone"?: string | null,"role"?: string | null,"sms_consent_at"?: string | null,"sms_consent_source"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -700,14 +700,14 @@ isOneToOne: false
                   ]
                 },"clients": {
                   Row: {
-                    "billing_address": NonNullable<Json>,"company_id": string,"company_name": string | null,"created_at": string,"custom_fields": NonNullable<Json>,"display_name": string,"email": string | null,"id": string,"lead_source": string | null,"links_reset_at": string | null,"marketing_opt_out": boolean,"name_key": string | null,"name_short": string | null,"notes": string | null,"payment_terms_days": number | null,"phone": string | null,"referred_by": string | null,"review_opt_out": boolean,"reviewed_at": string | null,"search": unknown,"sms_opt_out_at": string | null,"social_photos_opt_out": boolean,"status": string,"tags": (string)[],"tax_exempt": boolean,"tax_exempt_note": string | null,"updated_at": string
+                    "billing_address": NonNullable<Json>,"company_id": string,"company_name": string | null,"created_at": string,"custom_fields": NonNullable<Json>,"display_name": string,"email": string | null,"id": string,"lead_source": string | null,"links_reset_at": string | null,"marketing_opt_out": boolean,"name_key": string | null,"name_short": string | null,"notes": string | null,"payment_terms_days": number | null,"phone": string | null,"referred_by": string | null,"review_opt_out": boolean,"reviewed_at": string | null,"search": unknown,"sms_consent_at": string | null,"sms_consent_source": string | null,"sms_opt_out_at": string | null,"social_photos_opt_out": boolean,"status": string,"tags": (string)[],"tax_exempt": boolean,"tax_exempt_note": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "billing_address"?: NonNullable<Json>,"company_id": string,"company_name"?: string | null,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"display_name": string,"email"?: string | null,"id"?: string,"lead_source"?: string | null,"links_reset_at"?: string | null,"marketing_opt_out"?: boolean,"name_key"?: never,"name_short"?: never,"notes"?: string | null,"payment_terms_days"?: number | null,"phone"?: string | null,"referred_by"?: string | null,"review_opt_out"?: boolean,"reviewed_at"?: string | null,"search"?: never,"sms_opt_out_at"?: string | null,"social_photos_opt_out"?: boolean,"status"?: string,"tags"?: (string)[],"tax_exempt"?: boolean,"tax_exempt_note"?: string | null,"updated_at"?: string
+                    "billing_address"?: NonNullable<Json>,"company_id": string,"company_name"?: string | null,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"display_name": string,"email"?: string | null,"id"?: string,"lead_source"?: string | null,"links_reset_at"?: string | null,"marketing_opt_out"?: boolean,"name_key"?: never,"name_short"?: never,"notes"?: string | null,"payment_terms_days"?: number | null,"phone"?: string | null,"referred_by"?: string | null,"review_opt_out"?: boolean,"reviewed_at"?: string | null,"search"?: never,"sms_consent_at"?: string | null,"sms_consent_source"?: string | null,"sms_opt_out_at"?: string | null,"social_photos_opt_out"?: boolean,"status"?: string,"tags"?: (string)[],"tax_exempt"?: boolean,"tax_exempt_note"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "billing_address"?: NonNullable<Json>,"company_id"?: string,"company_name"?: string | null,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"display_name"?: string,"email"?: string | null,"id"?: string,"lead_source"?: string | null,"links_reset_at"?: string | null,"marketing_opt_out"?: boolean,"name_key"?: never,"name_short"?: never,"notes"?: string | null,"payment_terms_days"?: number | null,"phone"?: string | null,"referred_by"?: string | null,"review_opt_out"?: boolean,"reviewed_at"?: string | null,"search"?: never,"sms_opt_out_at"?: string | null,"social_photos_opt_out"?: boolean,"status"?: string,"tags"?: (string)[],"tax_exempt"?: boolean,"tax_exempt_note"?: string | null,"updated_at"?: string
+                    "billing_address"?: NonNullable<Json>,"company_id"?: string,"company_name"?: string | null,"created_at"?: string,"custom_fields"?: NonNullable<Json>,"display_name"?: string,"email"?: string | null,"id"?: string,"lead_source"?: string | null,"links_reset_at"?: string | null,"marketing_opt_out"?: boolean,"name_key"?: never,"name_short"?: never,"notes"?: string | null,"payment_terms_days"?: number | null,"phone"?: string | null,"referred_by"?: string | null,"review_opt_out"?: boolean,"reviewed_at"?: string | null,"search"?: never,"sms_consent_at"?: string | null,"sms_consent_source"?: string | null,"sms_opt_out_at"?: string | null,"social_photos_opt_out"?: boolean,"status"?: string,"tags"?: (string)[],"tax_exempt"?: boolean,"tax_exempt_note"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -2992,20 +2992,60 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"sms_stops": {
+                },"sms_stop_changes": {
                   Row: {
-                    "company_id": string,"phone": string,"phone_key": string,"stopped_at": string
+                    "company_id": string,"created_at": string,"how": string | null,"id": number,"note": string | null,"phone": string,"phone_key": string,"set_by": string | null,"set_by_name": string | null,"source": string,"texts_on": boolean
                   }
                   ComputedFields: never
                   Insert: {
-                    "company_id": string,"phone": string,"phone_key": string,"stopped_at"?: string
+                    "company_id": string,"created_at"?: string,"how"?: string | null,"id"?: never,"note"?: string | null,"phone": string,"phone_key": string,"set_by"?: string | null,"set_by_name"?: string | null,"source": string,"texts_on": boolean
                   }
                   Update: {
-                    "company_id"?: string,"phone"?: string,"phone_key"?: string,"stopped_at"?: string
+                    "company_id"?: string,"created_at"?: string,"how"?: string | null,"id"?: never,"note"?: string | null,"phone"?: string,"phone_key"?: string,"set_by"?: string | null,"set_by_name"?: string | null,"source"?: string,"texts_on"?: boolean
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sms_stop_changes_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"sms_stops": {
+                  Row: {
+                    "company_id": string,"how": string | null,"note": string | null,"phone": string,"phone_key": string,"set_by": string | null,"set_by_name": string | null,"source": string | null,"stopped_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"how"?: string | null,"note"?: string | null,"phone": string,"phone_key": string,"set_by"?: string | null,"set_by_name"?: string | null,"source"?: string | null,"stopped_at"?: string
+                  }
+                  Update: {
+                    "company_id"?: string,"how"?: string | null,"note"?: string | null,"phone"?: string,"phone_key"?: string,"set_by"?: string | null,"set_by_name"?: string | null,"source"?: string | null,"stopped_at"?: string
                   }
                   Relationships: [
                     {
       foreignKeyName: "sms_stops_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"sms_told": {
+                  Row: {
+                    "company_id": string,"phone_key": string,"told_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"phone_key": string,"told_at"?: string
+                  }
+                  Update: {
+                    "company_id"?: string,"phone_key"?: string,"told_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sms_told_company_id_fkey"
       columns: ["company_id"]
 isOneToOne: false
       referencedRelation: "companies"
@@ -3392,14 +3432,14 @@ isOneToOne: false
                   ]
                 },"time_entries": {
                   Row: {
-                    "approved_at": string | null,"approved_by": string | null,"auto_stopped_at": string | null,"category": string,"company_id": string,"created_at": string,"ended_at": string | null,"geofence_in": boolean,"geofence_out": boolean,"id": string,"in_place": Json | null,"job_id": string | null,"labor_rate": number | null,"notes": string | null,"out_place": Json | null,"reminded_at": string | null,"started_at": string,"updated_at": string,"user_id": string,"visit_id": string | null
+                    "approved_at": string | null,"approved_by": string | null,"auto_stopped_at": string | null,"category": string,"change_reason": string | null,"company_id": string,"created_at": string,"ended_at": string | null,"geofence_in": boolean,"geofence_out": boolean,"id": string,"in_place": Json | null,"job_id": string | null,"labor_rate": number | null,"notes": string | null,"out_place": Json | null,"reminded_at": string | null,"started_at": string,"updated_at": string,"user_id": string,"visit_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"company_id": string,"created_at"?: string,"ended_at"?: string | null,"geofence_in"?: boolean,"geofence_out"?: boolean,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at": string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
+                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"change_reason"?: string | null,"company_id": string,"created_at"?: string,"ended_at"?: string | null,"geofence_in"?: boolean,"geofence_out"?: boolean,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at": string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
                   }
                   Update: {
-                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"company_id"?: string,"created_at"?: string,"ended_at"?: string | null,"geofence_in"?: boolean,"geofence_out"?: boolean,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at"?: string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
+                    "approved_at"?: string | null,"approved_by"?: string | null,"auto_stopped_at"?: string | null,"category"?: string,"change_reason"?: string | null,"company_id"?: string,"created_at"?: string,"ended_at"?: string | null,"geofence_in"?: boolean,"geofence_out"?: boolean,"id"?: string,"in_place"?: Json | null,"job_id"?: string | null,"labor_rate"?: number | null,"notes"?: string | null,"out_place"?: Json | null,"reminded_at"?: string | null,"started_at"?: string,"updated_at"?: string,"user_id"?: string,"visit_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -3420,6 +3460,26 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "visits"
       referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"time_entry_changes": {
+                  Row: {
+                    "action": string,"changed_at": string,"changed_by": string | null,"company_id": string,"edit": boolean,"entry_id": string,"entry_started_at": string,"id": string,"new_category": string | null,"new_ended_at": string | null,"new_job_id": string | null,"new_notes": string | null,"new_started_at": string | null,"new_visit_id": string | null,"old_category": string | null,"old_ended_at": string | null,"old_job_id": string | null,"old_notes": string | null,"old_started_at": string | null,"old_visit_id": string | null,"reason": string | null,"source": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "action": string,"changed_at"?: string,"changed_by"?: string | null,"company_id": string,"edit": boolean,"entry_id": string,"entry_started_at": string,"id"?: string,"new_category"?: string | null,"new_ended_at"?: string | null,"new_job_id"?: string | null,"new_notes"?: string | null,"new_started_at"?: string | null,"new_visit_id"?: string | null,"old_category"?: string | null,"old_ended_at"?: string | null,"old_job_id"?: string | null,"old_notes"?: string | null,"old_started_at"?: string | null,"old_visit_id"?: string | null,"reason"?: string | null,"source": string,"user_id": string
+                  }
+                  Update: {
+                    "action"?: string,"changed_at"?: string,"changed_by"?: string | null,"company_id"?: string,"edit"?: boolean,"entry_id"?: string,"entry_started_at"?: string,"id"?: string,"new_category"?: string | null,"new_ended_at"?: string | null,"new_job_id"?: string | null,"new_notes"?: string | null,"new_started_at"?: string | null,"new_visit_id"?: string | null,"old_category"?: string | null,"old_ended_at"?: string | null,"old_job_id"?: string | null,"old_notes"?: string | null,"old_started_at"?: string | null,"old_visit_id"?: string | null,"reason"?: string | null,"source"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "time_entry_changes_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
     }
                   ]
                 },"trashed_files": {
@@ -3754,6 +3814,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"worker_notices": {
+                  Row: {
+                    "acknowledged_at": string,"company_id": string,"notice": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "acknowledged_at"?: string,"company_id": string,"notice": string,"user_id": string
+                  }
+                  Update: {
+                    "acknowledged_at"?: string,"company_id"?: string,"notice"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "worker_notices_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
@@ -3824,6 +3904,9 @@ isOneToOne: false
                            },
 "acknowledge_guide":
 { Args: { "p_answers"?: (number)[],"p_page": string }; Returns: (number)[]
+                           },
+"acknowledge_worker_notices":
+{ Args: { "p_at"?: string,"p_company": string,"p_notices": (string)[] }; Returns: Json
                            },
 "add_field_line":
 { Args: { "p_id"?: string,"p_quantity": number,"p_service": string,"p_visit": string }; Returns: string
@@ -4306,6 +4389,9 @@ isOneToOne: false
                            },
 "dashboard":
 { Args: { "p_company": string }; Returns: Json
+                           },
+"delete_time_entry":
+{ Args: { "p_entry": string,"p_reason"?: string }; Returns: boolean
                            },
 "depots_to_relocate":
 { Args: { "p_limit"?: number }; Returns: {
