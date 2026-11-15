@@ -600,7 +600,10 @@ select t1070.check(array(
   'search_sops(uuid, text, integer, boolean)', 'send_sub_offer(uuid, timestamp with time zone)',
   -- Runs as the caller: no rule lets a sub link a checklist to an item.
   'set_checklist_services(uuid, uuid[])', 'set_job_discount_billing(uuid, uuid, boolean)',
-  'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)', 'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
+  'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)',
+  -- The standard storm prices: the owner and the office, as for a snow customer's own prices, never a sub.
+  'set_snow_storm_prices(uuid, jsonb)',
+  'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',
   -- Where forecasts come from: the same people as the weather rules, never a sub.

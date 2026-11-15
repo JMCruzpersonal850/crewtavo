@@ -3,6 +3,7 @@
  * served (how soon, how often in a long storm), who works it, what a storm bills, and whether the
  * client hears about it. Saved to snow_sites and snow_site_people; the crew is the job's own.
  */
+import { standardTiers } from "@crewtavo/core/snow";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -13,14 +14,11 @@ import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
-import { addressLine } from "@/lib/format";
+import { addressLine, formatMoney } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { useCrews } from "../jobs/JobDialogs";
-import { customer, nameOf, PRIORITIES, tiersOf, type Member, type Site } from "./snowData";
-
-/** A whole number or a decimal typed into a field, or null for an empty one. */
-const amount = (text: string) => (text.trim() === "" ? null : Number(text));
-const within = (n: number | null, most: number) => n == null || (n > 0 && n <= most);
+import { bandsKey, customer, loadBands, loadPushPrice, nameOf, PRIORITIES, tiersOf, type Member, type Site } from "./snowData";
+import { amount, depthRow, DepthRows, readDepths, within } from "./SnowPrices";
 
 export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; team: Member[]; onClose: () => void }) {
   const { company } = useSession();
@@ -36,7 +34,10 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
   const [crewId, setCrewId] = useState(site?.job.default_crew_id ?? "");
   const [tellClient, setTellClient] = useState(site?.tell_client ?? false);
   // A storm's price by depth, as typed: the last row, with no "up to", covers anything deeper.
-  const [tiers, setTiers] = useState(() => (site ? tiersOf(site) : []).map((t) => ({ upTo: t.up_to_in == null ? "" : String(t.up_to_in), price: String(t.price) })));
+  const [tiers, setTiers] = useState(() => (site ? tiersOf(site) : []).map((t) => depthRow(t.up_to_in, t.price)));
+  // The business's standard, and what one push bills this job, to fill them from.
+  const bands = useQuery({ queryKey: bandsKey(company.id), queryFn: () => loadBands(company.id) });
+  const push = useQuery({ enabled: Boolean(jobId) && Boolean(bands.data?.length), queryKey: ["jobs", company.id, "push-price", jobId], queryFn: () => loadPushPrice(jobId) });
   const before = site?.people.map((p) => p.user_id) ?? [];
   const [people, setPeople] = useState<string[]>(before);
   const jobs = useQuery({
@@ -67,10 +68,8 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
       if (plow == null || !within(plow, 48)) throw new Error("The plow trigger is more than 0 and at most 48 inches.");
       if (!within(saltAt, 48) || (saltAt != null && saltAt >= plow)) throw new Error("Salting starts at less snow than the plow trigger.");
       if (!within(again, 48)) throw new Error("Pushing again is every so many inches: more than 0, at most 48.");
-      const priced = tiers.filter((t) => t.price.trim() !== "" || t.upTo.trim() !== "").map((t) => ({ up_to_in: amount(t.upTo), price: Number(t.price) }));
-      if (priced.some((t) => !(t.price >= 0) || !within(t.up_to_in, 100))) throw new Error("Each storm price needs an amount, and a depth above 0 if it has one.");
-      if (priced.filter((t) => t.up_to_in == null).length > 1) throw new Error("Only the last storm price can be left without a depth.");
-      const row = { trigger_in: plow, salt_trigger_in: saltAt, repeat_in: again, clear_by: clearBy || null, priority, tell_client: tellClient, tiers: priced.sort((a, b) => (a.up_to_in ?? Infinity) - (b.up_to_in ?? Infinity)) };
+      const priced = readDepths(tiers, "storm price").map((t) => ({ up_to_in: t.up_to_in, price: t.value }));
+      const row = { trigger_in: plow, salt_trigger_in: saltAt, repeat_in: again, clear_by: clearBy || null, priority, tell_client: tellClient, tiers: priced };
       unwrap(site ? await supabase().from("snow_sites").update(row).eq("job_id", jobId) : await supabase().from("snow_sites").insert({ ...row, company_id: company.id, job_id: jobId }));
       unwrap(await supabase().from("jobs").update({ default_crew_id: crewId || null }).eq("id", jobId));
       const added = people.filter((u) => !before.includes(u));
@@ -89,7 +88,6 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
     const ok = await confirm({ title: "Stop treating this as a snow customer?", body: "Nobody is told about snow for it any more. The job, its crew, its visits and its storm log stay as they are.", confirmLabel: "Remove", danger: true });
     if (ok) remove.mutate();
   };
-  const setTier = (i: number, change: Partial<{ upTo: string; price: string }>) => setTiers(tiers.map((t, n) => (n === i ? { ...t, ...change } : t)));
 
   return (
     <Dialog open onClose={onClose} title={site ? customer(site) : "Add snow customer"} size="lg">
@@ -160,23 +158,13 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
           </div>
         </Field>
         <Field label="What a storm bills" hint="By how much fell: the storm's first visit bills this, and more pushes that day are included. With no prices here, each push bills the job's own lines.">
-          <div style={{ display: "grid", gap: 8 }}>
-            {tiers.map((t, i) => (
-              <div key={i} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="muted small">Up to</span>
-                <div className="input-group" style={{ width: 120 }}>
-                  <input className="input" type="number" inputMode="decimal" min={0.1} max={100} step={0.1} value={t.upTo} onChange={(e) => setTier(i, { upTo: e.target.value })} placeholder="any" aria-label={`Storm price ${i + 1}: up to how many inches`} />
-                  <span className="addon addon-right addon-unit">in</span>
-                </div>
-                <div className="input-group" style={{ width: 130 }}>
-                  <span className="addon">$</span>
-                  <input className="input" type="number" inputMode="decimal" min={0} step={0.01} value={t.price} onChange={(e) => setTier(i, { price: e.target.value })} aria-label={`Storm price ${i + 1}: price`} />
-                </div>
-                <Button size="sm" variant="ghost" onClick={() => setTiers(tiers.filter((_, n) => n !== i))}>Remove</Button>
-              </div>
-            ))}
-            {tiers.length < 8 && <div><Button size="sm" icon="plus" onClick={() => setTiers([...tiers, { upTo: "", price: "" }])}>{tiers.length ? "Add another depth" : "Price storms by depth"}</Button></div>}
-          </div>
+          <DepthRows rows={tiers} onChange={setTiers} money what="Storm price" addLabel="Price storms by depth" />
+          {Boolean(bands.data?.length) && (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <Button size="sm" disabled={!push.data} loading={push.isFetching} onClick={() => setTiers(standardTiers(bands.data!, push.data!).map((t) => depthRow(t.up_to_in, t.price)))}>Use the standard prices</Button>
+              <span className="muted small">{!jobId ? "Pick the job first." : push.data === 0 ? "The job has no price on its lines yet." : push.data ? `From its push price, ${formatMoney(push.data)}.` : ""}</span>
+            </div>
+          )}
         </Field>
         <label className="row" style={{ gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
           <input type="checkbox" checked={tellClient} onChange={(e) => setTellClient(e.target.checked)} style={{ marginTop: 3 }} />

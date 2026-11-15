@@ -39,6 +39,25 @@ export function snowTierPrice(tiers: SnowTier[], depth: number): number | null {
   return (sorted.find((t) => t.up_to_in == null || depth <= t.up_to_in) ?? sorted[sorted.length - 1])?.price ?? null;
 }
 
+/**
+ * The business's standard storm prices (companies.settings.snow_storm_prices, set_snow_storm_prices):
+ * what a storm bills by how much fell, as a multiple of what one push bills that customer. The last
+ * band, with no depth, covers anything deeper.
+ */
+export interface SnowBand { up_to_in: number | null; times: number }
+
+/** The standard as saved, shallowest first, with anything that isn't a band left out. */
+export const snowBands = (saved: unknown): SnowBand[] =>
+  (Array.isArray(saved) ? saved : [])
+    .flatMap((b) => {
+      const band = b as { up_to_in?: unknown; times?: unknown } | null;
+      return band && typeof band.times === "number" && band.times > 0 ? [{ up_to_in: typeof band.up_to_in === "number" ? band.up_to_in : null, times: band.times }] : [];
+    })
+    .sort((a, b) => (a.up_to_in ?? Infinity) - (b.up_to_in ?? Infinity));
+
+/** A customer's storm prices from the standard: each band's multiple of what one push bills them, to the cent. */
+export const standardTiers = (bands: SnowBand[], push: number): SnowTier[] => bands.map((b) => ({ up_to_in: b.up_to_in, price: Math.round(push * b.times * 100) / 100 }));
+
 export const inchesText = (n: number) => `${Math.round(n * 10) / 10} in`;
 /** "07:00:00" as "7 AM", "13:30" as "1:30 PM". */
 export function clockText(time: string): string {

@@ -23,7 +23,8 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { api } from "@/lib/api";
 import { addressLine } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import { customer, inches, loadSites, located, nameOf, sitesKey, tiersOf, type Member, type Site } from "./snowData";
+import { bandsKey, customer, inches, loadBands, loadSites, located, nameOf, sitesKey, tiersOf, type Member, type Site } from "./snowData";
+import { StandardPricesDialog } from "./SnowPrices";
 import { SnowSiteDialog } from "./SnowSiteDialog";
 import { WeatherDialog } from "./SnowWeather";
 import { StormBoard } from "./StormBoard";
@@ -43,6 +44,7 @@ export function SnowPage() {
   const weatherAt = params.get("weather");
   const sites = useQuery({ queryKey: sitesKey(company.id), queryFn: () => loadSites(company.id) });
   const team = useQuery({ queryKey: ["team", company.id, "with-subs"], staleTime: 5 * 60_000, queryFn: () => api.get<Member[]>("/team?with_subs=1") });
+  const bands = useQuery({ queryKey: bandsKey(company.id), queryFn: () => loadBands(company.id) });
 
   if (sites.isPending) return <ListPageSkeleton columns={4} tabs={3} />;
   const all = sites.data ?? [];
@@ -54,6 +56,7 @@ export function SnowPage() {
         actions={
           <>
             {all.some(located) && <Button icon="cloudSnow" onClick={() => show({ weather: all.find(located)!.job_id })}>Weather</Button>}
+            {tab === "customers" && <Button icon="dollar" disabled={!bands.data} onClick={() => show({ prices: "1" })}>Standard storm prices</Button>}
             {/* The page's one green button, except on Storm with a storm to schedule: there that's the thing to do. */}
             <Button variant={tab === "storm" && all.length > 0 ? "secondary" : "primary"} icon="plus" onClick={() => show({ new: "1" })}>Add snow customer</Button>
           </>
@@ -74,6 +77,7 @@ export function SnowPage() {
       {editing && (editing === "new" || site) && (
         <SnowSiteDialog key={editing} site={site ?? null} team={(team.data ?? []).filter((m) => m.active || site?.people.some((p) => p.user_id === m.user_id))} onClose={() => show()} />
       )}
+      {params.get("prices") === "1" && bands.data && <StandardPricesDialog saved={bands.data} onClose={() => show()} />}
       {weatherAt && <WeatherDialog sites={all} jobId={weatherAt} onPick={(jobId) => show({ weather: jobId })} onClose={() => show()} />}
     </>
   );

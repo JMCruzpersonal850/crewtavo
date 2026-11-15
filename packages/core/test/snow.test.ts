@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { notificationTopic } from "../src/notifications";
-import { clockText, iceNotices, iceRisk, snowNotices, snowPlan, snowTierPrice, type SnowSite } from "../src/snow";
+import { clockText, iceNotices, iceRisk, snowBands, snowNotices, snowPlan, snowTierPrice, standardTiers, type SnowSite } from "../src/snow";
 import { weatherSourceOf } from "../src/weather";
 
 describe("snowPlan", () => {
@@ -91,6 +91,18 @@ describe("ice", () => {
     const notices = iceNotices([{ name: "First Bank", risk: { kind: "refreeze", at: "2026-01-16T02:00", low_f: 24 }, people: ["sam"] }, { name: "Maple Plaza", risk: { kind: "ice", at: "2026-01-15T22:00" }, people: ["sam"], priority: 1 }], ["otto"], from);
     expect(notices.find((n) => n.user_id === "sam")).toEqual({ user_id: "sam", office: false, title: "Ice by tomorrow: 2 properties to salt", body: "Maple Plaza: freezing rain around 10 PM tonight\nFirst Bank: wet, then 24° by 2 AM tomorrow: it will refreeze" });
     expect(iceNotices([{ name: "First Bank", risk: { kind: "ice", at: "2026-01-16T03:00" }, people: [] }], ["otto"], from)[0]!.title).toBe("Freezing rain by tomorrow at First Bank");
+  });
+});
+
+describe("the standard storm prices", () => {
+  it("reads the saved bands shallowest first, the open one last, and leaves out what isn't one", () => {
+    expect(snowBands([{ up_to_in: null, times: 2 }, { up_to_in: 6, times: 1.5 }, { times: 0 }, "x", null, { up_to_in: 3, times: 1 }])).toEqual([{ up_to_in: 3, times: 1 }, { up_to_in: 6, times: 1.5 }, { up_to_in: null, times: 2 }]);
+    expect(snowBands(undefined)).toEqual([]);
+  });
+  it("prices a customer's storms as multiples of their push price, to the cent", () => {
+    const tiers = standardTiers(snowBands([{ up_to_in: 3, times: 1 }, { up_to_in: 6, times: 1.5 }, { up_to_in: null, times: 2 }]), 72.25);
+    expect(tiers).toEqual([{ up_to_in: 3, price: 72.25 }, { up_to_in: 6, price: 108.38 }, { up_to_in: null, price: 144.5 }]);
+    expect([2, 5, 14].map((depth) => snowTierPrice(tiers, depth))).toEqual([72.25, 108.38, 144.5]);
   });
 });
 

@@ -250,6 +250,21 @@ select tsn.as_user(:'otto');
 select tsn.check(public.set_weather_source(:'co', 'open_meteo_commercial') = 'open_meteo_commercial', 'with the key on file, the paid service can be picked');
 commit;
 
+-- ===== The standard storm prices ==============================================================
+begin;
+set local role authenticated;
+select tsn.as_user(:'cole');
+select tsn.expect_error(format($q$select public.set_snow_storm_prices(%L, '[{"up_to_in": 3, "times": 1}]')$q$, :'co'), 'the crew can''t set the standard storm prices');
+select tsn.as_user(:'otto');
+select tsn.expect_error(format($q$select public.set_snow_storm_prices(%L, '{"times": 1}')$q$, :'co'), 'the standard is a list of depths');
+select tsn.expect_error(format($q$select public.set_snow_storm_prices(%L, '[{"up_to_in": 3, "times": 0}]')$q$, :'co'), 'a depth needs a multiple above zero');
+select tsn.expect_error(format($q$select public.set_snow_storm_prices(%L, '[{"up_to_in": "deep", "times": 1}]')$q$, :'co'), 'and inches that are a number');
+select tsn.expect_error(format($q$select public.set_snow_storm_prices(%L, '[{"times": 1}, {"up_to_in": null, "times": 2}]')$q$, :'co'), 'only one depth can be left open');
+select public.set_snow_storm_prices(:'co', '[{"up_to_in": 3, "times": 1}, {"up_to_in": 6, "times": 1.5}, {"up_to_in": null, "times": 2}]');
+select tsn.check((select jsonb_array_length(settings -> 'snow_storm_prices') = 3 and settings #>> '{snow_storm_prices,1,times}' = '1.5' and settings ->> 'weather_source' is not null
+  from public.companies where id = :'co'), 'the office sets them, and the other settings stay');
+commit;
+
 -- ===== Leaving =================================================================================
 update public.crews set active = false where id = :'crew';
 select tsn.check((select array_agg(user_id order by user_id) = array[:'otto', :'sam']::uuid[] from public.snow_recipients(array[:'job']::uuid[]) where not office),

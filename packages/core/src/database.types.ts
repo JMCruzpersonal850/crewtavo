@@ -4573,6 +4573,9 @@ isOneToOne: false
 "set_review_location":
 { Args: { "p_account": string,"p_company": string,"p_location_id": string }; Returns: Json
                            },
+"set_snow_storm_prices":
+{ Args: { "p_bands": Json,"p_company": string }; Returns: Json
+                           },
 "set_sub_reminders":
 { Args: { "p_company": string,"p_remind_subs": boolean }; Returns: undefined
                            },

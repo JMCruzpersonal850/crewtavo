@@ -1,5 +1,6 @@
 /** What the Snow screens share: the snow customers as they load them, and how they word things. */
-import type { SnowRules, SnowTier } from "@crewtavo/core/snow";
+import { visitPrice } from "@crewtavo/core/promos";
+import { snowBands, type SnowRules, type SnowTier } from "@crewtavo/core/snow";
 import { supabase, unwrap } from "@/lib/api";
 
 export { inchesText as inches } from "@crewtavo/core/snow";
@@ -28,6 +29,16 @@ export const tiersOf = (s: Pick<Site, "tiers">): SnowTier[] =>
     const tier = t as { up_to_in?: unknown; price?: unknown } | null;
     return tier && typeof tier.price === "number" ? [{ up_to_in: typeof tier.up_to_in === "number" ? tier.up_to_in : null, price: tier.price }] : [];
   });
+
+/** The business's standard storm prices (core snowBands), which a customer's own are filled from. */
+export const bandsKey = (companyId: string) => ["snow", companyId, "standard-prices"] as const;
+export const loadBands = async (companyId: string) =>
+  snowBands(unwrap(await supabase().from("companies").select("bands:settings->snow_storm_prices").eq("id", companyId).single()).bands);
+/** What one push bills a job: its own lines, as a visit of it costs (core visitPrice). */
+export const loadPushPrice = async (jobId: string) => {
+  const job = unwrap(await supabase().from("jobs").select("financials:job_financials(contract_total), lines:job_line_items(quantity, unit_price, discount_billing)").eq("id", jobId).single());
+  return visitPrice(job.financials?.contract_total, job.lines);
+};
 
 export interface Member { user_id: string; active: boolean; profile: { full_name: string } | null; sub?: { name: string } }
 export const nameOf = (m: Member | undefined) => (m ? `${m.profile?.full_name || "Someone"}${m.sub ? ` (${m.sub.name})` : ""}` : "Someone who left");
