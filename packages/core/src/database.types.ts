@@ -548,6 +548,60 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     }
                   ]
+                },"chatgpt_plan_secrets": {
+                  Row: {
+                    "ciphertext": string,"company_id": string,"expires_at": string | null,"refresh_claimed_until": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "ciphertext": string,"company_id": string,"expires_at"?: string | null,"refresh_claimed_until"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "ciphertext"?: string,"company_id"?: string,"expires_at"?: string | null,"refresh_claimed_until"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"chatgpt_plans": {
+                  Row: {
+                    "account_email": string | null,"account_sub": string | null,"client_id": string | null,"company_id": string,"connected_at": string | null,"host_id": string | null,"model": string | null,"models": NonNullable<Json>,"notice_seen_at": string | null,"problem": string | null,"problem_at": string | null,"retry_at": string | null,"status": string,"unsupported": (string)[],"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "account_email"?: string | null,"account_sub"?: string | null,"client_id"?: string | null,"company_id": string,"connected_at"?: string | null,"host_id"?: string | null,"model"?: string | null,"models"?: NonNullable<Json>,"notice_seen_at"?: string | null,"problem"?: string | null,"problem_at"?: string | null,"retry_at"?: string | null,"status"?: string,"unsupported"?: (string)[],"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "account_email"?: string | null,"account_sub"?: string | null,"client_id"?: string | null,"company_id"?: string,"connected_at"?: string | null,"host_id"?: string | null,"model"?: string | null,"models"?: NonNullable<Json>,"notice_seen_at"?: string | null,"problem"?: string | null,"problem_at"?: string | null,"retry_at"?: string | null,"status"?: string,"unsupported"?: (string)[],"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "chatgpt_plans_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"chatgpt_sign_ins": {
+                  Row: {
+                    "ciphertext": string,"company_id": string,"created_at": string,"expires_at": string,"state": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "ciphertext": string,"company_id": string,"created_at"?: string,"expires_at": string,"state": string,"user_id": string
+                  }
+                  Update: {
+                    "ciphertext"?: string,"company_id"?: string,"created_at"?: string,"expires_at"?: string,"state"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "chatgpt_sign_ins_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"checklist_responses": {
                   Row: {
                     "answers": NonNullable<Json>,"company_id": string,"completed_at": string | null,"completed_by": string | null,"created_at": string,"id": string,"template_id": string | null,"updated_at": string,"visit_id": string
@@ -4100,6 +4154,14 @@ isOneToOne: false
 "chat_set_enabled":
 { Args: { "p_company": string,"p_enabled": boolean }; Returns: boolean
                            },
+"chatgpt_host_id":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"chatgpt_plan_leftovers":
+{ Args: { "p_limit"?: number }; Returns: {
+              "ciphertext": string,"client_id": string,"company_id": string,"user_id": string
+            }[]
+                           },
 "check_promo_code":
 { Args: { "p_code": string,"p_company": string }; Returns: string
                            },
@@ -4198,6 +4260,9 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_chatgpt_plan_refresh":
+{ Args: { "p_company": string,"p_user": string }; Returns: string
+                           },
 "claim_installment_sends":
 { Args: { "p_limit"?: number }; Returns: {
               "company_id": string,"id": string,"invoice_id": string
