@@ -231,7 +231,7 @@ select set_config('request.jwt.claims', '', true);
 select public.clock_upkeep();
 select ttc.check((select ended_at is not null and auto_stopped_at is not null from public.time_entries where id = :'left_on'), 'the upkeep stopped a clock left running');
 select ttc.check(ttc.record(:'left_on') = 'changed/auto_stop/nobody', 'recorded as stopped by the upkeep, with nobody signed in');
-select ttc.check((select count(*) = 4 and count(*) filter (where edit) = 0 from public.time_entry_changes where source in ('next_clock', 'geofence', 'finished_visit', 'auto_stop')),
+select ttc.check((select count(*) = 4 and count(*) filter (where edit) = 0 from public.time_entry_changes where company_id = :'co' and source in ('next_clock', 'geofence', 'finished_visit', 'auto_stop')),
   'the clocks Crewtavo stopped by itself are the clock running its course, not edits');
 select ttc.check((select (c).edit and (c).entry_started_at = :'t0'::timestamptz + interval '5 hours' from ttc.last(:'added') c) and (select bool_and(c.edit) from public.time_entry_changes c where c.entry_id = :'own'),
   'time added for someone and every delete do');
