@@ -63,6 +63,8 @@ export interface PlanRow {
 }
 
 interface PlanTokens {
+  /** The client the tokens were issued to, kept with them so they can be signed out even after the plan's own row is gone. */
+  client_id?: string;
   access_token: string;
   refresh_token: string;
   /** ms since epoch */
@@ -117,7 +119,7 @@ function openAiAddress(value: unknown): string | null {
 /** Where OpenAI publishes its signing keys and takes sign-outs, from its discovery document (kept for an hour). */
 async function discovery(): Promise<Discovery> {
   if (discovered && Date.now() - discovered.at < 3_600_000) return discovered.value;
-  const response = await fetch(DISCOVERY, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(DISCOVERY, { headers: { Accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(15_000) });
   const json = (await response.json().catch(() => null)) as { issuer?: unknown; jwks_uri?: unknown; revocation_endpoint?: unknown } | null;
   const jwks_uri = openAiAddress(json?.jwks_uri);
   const revocation_endpoint = openAiAddress(json?.revocation_endpoint);
@@ -127,11 +129,12 @@ async function discovery(): Promise<Discovery> {
 }
 
 async function signingKey(kid: string | undefined): Promise<JsonWebKey | null> {
-  const find = (keys: JsonWebKey[]) => keys.find((k) => (k as { kid?: string }).kid === kid) ?? (kid ? null : (keys[0] ?? null));
+  // By the key id the token names. One that names none is only matched when OpenAI publishes a single key.
+  const find = (keys: JsonWebKey[]) => keys.find((k) => (k as { kid?: string }).kid === kid) ?? (!kid && keys.length === 1 ? keys[0]! : null);
   const kept = signingKeys && Date.now() - signingKeys.at < 3_600_000 ? find(signingKeys.keys) : null;
   if (kept) return kept;
   // Not one we have: OpenAI may have changed its keys, so they're read again.
-  const response = await fetch((await discovery()).jwks_uri, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  const response = await fetch((await discovery()).jwks_uri, { headers: { Accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(15_000) });
   const json = (await response.json().catch(() => null)) as { keys?: JsonWebKey[] } | null;
   if (!response.ok || !Array.isArray(json?.keys)) throw new Error("OpenAI's signing keys couldn't be read");
   signingKeys = { keys: json.keys, at: Date.now() };
@@ -204,6 +207,8 @@ async function tokenRequest(form: Record<string, string>): Promise<{ ok: boolean
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: new URLSearchParams(form),
+      // Never followed anywhere else: the form holds a code or a refresh token.
+      redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
     const json = (await response.json().catch(() => null)) as TokenAnswer | null;
@@ -228,6 +233,7 @@ async function revoke(refreshToken: string, clientId: string): Promise<boolean> 
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token", client_id: clientId }),
+        redirect: "error",
         signal: AbortSignal.timeout(15_000),
       });
       if (response.ok) return true;
@@ -442,10 +448,12 @@ export async function finishSignIn(env: Env, admin: Db, person: Person, pasted: 
     if (exchanged.code === "invalid_grant") throw new HttpError(400, `That sign-in code was used already or has run out. ${START_AGAIN}`);
     throw new HttpError(502, `ChatGPT didn't complete the sign-in. ${START_AGAIN}`);
   }
-  // From here on there are tokens: whatever stops the connection signs them out again.
+  const before = await loadPlan(admin, person);
+  // From here on there are tokens: whatever stops the connection signs them out again. A new
+  // registration is kept for next time, unless a connection is still live on the one before it.
   const giveUp = async (status: 400 | 502, message: string, keepRegistration: boolean): Promise<never> => {
     if (tokens.refresh_token) await revoke(tokens.refresh_token, clientId);
-    if (keepRegistration && first) await savePlan(admin, person, { client_id: clientId, host_id: attempt.host_id }).catch(() => undefined);
+    if (keepRegistration && first && before?.status !== "connected") await savePlan(admin, person, { client_id: clientId, host_id: attempt.host_id }).catch(() => undefined);
     throw new HttpError(status, message);
   };
 
@@ -456,11 +464,12 @@ export async function finishSignIn(env: Env, admin: Db, person: Person, pasted: 
     console.error("A ChatGPT sign-in couldn't be verified", (reason as Error).message);
     return giveUp(502, `ChatGPT's sign-in couldn't be checked, so nothing was connected. ${START_AGAIN}`, false);
   }
-  const before = await loadPlan(admin, person);
   if (!first && before?.account_sub && before.account_sub !== account.sub) {
     return giveUp(400, "That's a different ChatGPT account from the one you connected before. Sign in with that one, or choose Use a different account first.", false);
   }
-  const granted = (tokens.scope ?? params.get("scope") ?? "").split(/[\s+]+/);
+  // What was granted is what OpenAI's token endpoint says, never the pasted address, which the person
+  // could have changed. An answer that names no scope grants what was asked for (RFC 6749, 5.1).
+  const granted = (tokens.scope ?? SCOPE).split(/[\s+]+/);
   if (!granted.includes(PLAN_SCOPE) || !tokens.refresh_token) {
     return giveUp(400, "You signed in, but using your ChatGPT plan here wasn't allowed, so nothing was connected. Start again and allow it, or use an OpenAI API key instead.", true);
   }
@@ -480,7 +489,7 @@ export async function finishSignIn(env: Env, admin: Db, person: Person, pasted: 
     const old = await loadTokens(env, admin, person).catch(() => null);
     if (old?.refresh_token) await revoke(old.refresh_token, before.client_id);
   }
-  await saveTokens(env, admin, person, { access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at: Date.now() + (tokens.expires_in ?? 3600) * 1000, scope: granted.join(" ") });
+  await saveTokens(env, admin, person, { client_id: clientId, access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at: Date.now() + (tokens.expires_in ?? 3600) * 1000, scope: granted.join(" ") });
   await savePlan(admin, person, {
     status: "connected",
     client_id: clientId,
@@ -541,7 +550,11 @@ export function planAccess(env: Env, admin: Db, person: Person, renew = false): 
 
 async function readAccess(env: Env, admin: Db, person: Person, renew: boolean): Promise<string> {
   const stored = await loadTokens(env, admin, person);
-  if (!stored) throw new PlanTrouble("sign_in");
+  // Connected, but its tokens are gone: said plainly on the connection, rather than left looking as if the plan were in use.
+  if (!stored) {
+    await endSignIn(admin, person);
+    throw new PlanTrouble("sign_in");
+  }
   if (!renew && stillGood(stored)) return stored.access_token;
   for (let waited = 0; ; waited += 400) {
     const { data: claimed, error } = await loose(admin).rpc("claim_chatgpt_plan_refresh", { p_user: person.userId, p_company: person.companyId });
@@ -570,13 +583,14 @@ async function refresh(env: Env, admin: Db, person: Person, tokens: PlanTokens):
   const json = answered?.json;
   if (answered?.ok && json?.access_token) {
     const scope = json.scope ?? tokens.scope;
-    const next: PlanTokens = { access_token: json.access_token, refresh_token: json.refresh_token ?? tokens.refresh_token, expires_at: Date.now() + (json.expires_in ?? 3600) * 1000, scope };
+    const next: PlanTokens = { client_id: tokens.client_id ?? row?.client_id ?? undefined, access_token: json.access_token, refresh_token: json.refresh_token ?? tokens.refresh_token, expires_at: Date.now() + (json.expires_in ?? 3600) * 1000, scope };
     await saveTokens(env, admin, person, next);
     return next.access_token;
   }
-  // Only a definite no ends the sign-in: one of the refusals OpenAI names, or any other answer that
-  // says the request itself is wrong. An outage, a timeout or "slow down" leaves the tokens for the next try.
-  if (!answered || (answered.code && REFRESH_ENDED.has(answered.code)) || [400, 401, 403].includes(answered.status)) {
+  // Only a definite no from OpenAI ends the sign-in: one of the refusals it names, or another error
+  // it names for a request that is itself wrong. An outage, a timeout, "slow down", or an answer
+  // that isn't OpenAI's own (a proxy's error page) leaves the tokens for the next try.
+  if (!answered || (answered.code && (REFRESH_ENDED.has(answered.code) || [400, 401].includes(answered.status)))) {
     await endSignIn(admin, person, answered?.code === "invalid_client");
     throw new PlanTrouble("sign_in");
   }
@@ -625,14 +639,17 @@ export async function choosePlanModel(env: Env, admin: Db, person: Person, model
  */
 export async function disconnectPlan(env: Env, admin: Db, person: Person): Promise<{ revoked: boolean }> {
   const [row, tokens] = await Promise.all([loadPlan(admin, person), loadTokens(env, admin, person).catch(() => null)]);
-  const revoked = tokens?.refresh_token && row?.client_id ? await revoke(tokens.refresh_token, row.client_id) : true;
-  const dropped = await dropTokens(admin, person);
-  if (dropped.error) throw new Error(`Couldn't delete the ChatGPT plan sign-in: ${dropped.error.message}`);
-  await loose(admin).from("chatgpt_sign_ins").delete().match(who(person));
+  const client = tokens?.client_id ?? row?.client_id;
+  const revoked = tokens?.refresh_token && client ? await revoke(tokens.refresh_token, client) : true;
+  // The connection says disconnected before its tokens go, so it never says connected without them;
+  // tokens that then fail to delete are leftovers, which the task clears.
   if (row) {
     const { error } = await loose(admin).from("chatgpt_plans").update({ status: "disconnected", problem: null, problem_at: null, retry_at: null, unsupported: [] }).match(who(person));
     if (error) throw new Error(`Couldn't save the ChatGPT plan connection: ${error.message}`);
   }
+  const dropped = await dropTokens(admin, person);
+  if (dropped.error) throw new Error(`Couldn't delete the ChatGPT plan sign-in: ${dropped.error.message}`);
+  await loose(admin).from("chatgpt_sign_ins").delete().match(who(person));
   return { revoked };
 }
 
@@ -648,13 +665,15 @@ export async function tidyPlans(env: Env, admin: Db): Promise<{ signed_out: numb
   if (error) throw new Error(`Couldn't read leftover ChatGPT plan sign-ins: ${error.message}`);
   for (const left of (data ?? []) as Array<{ user_id: string; company_id: string; ciphertext: string; client_id: string | null; updated_at?: string }>) {
     const tokens = await decryptJson<PlanTokens>(env, left.ciphertext).catch(() => null);
-    const revoked = tokens?.refresh_token && left.client_id ? await revoke(tokens.refresh_token, left.client_id) : true;
+    const client = tokens?.client_id ?? left.client_id;
+    const revoked = tokens?.refresh_token && client ? await revoke(tokens.refresh_token, client) : !tokens?.refresh_token;
     // OpenAI couldn't be reached about it just now: kept to try again, for a day past its hour of use.
-    if (!revoked && tokens && tokens.expires_at + 86_400_000 > Date.now()) {
+    if (!revoked && tokens && client && tokens.expires_at + 86_400_000 > Date.now()) {
       done.waiting++;
       continue;
     }
-    await dropTokens(admin, { userId: left.user_id, companyId: left.company_id });
+    // Only the tokens that were read: someone who signed in again meanwhile keeps their new ones.
+    await dropTokens(admin, { userId: left.user_id, companyId: left.company_id }).eq("ciphertext", left.ciphertext);
     if (revoked) done.signed_out++;
     done.removed++;
   }

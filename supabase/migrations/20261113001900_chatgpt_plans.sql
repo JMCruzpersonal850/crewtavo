@@ -52,7 +52,7 @@ alter table public.chatgpt_plans enable row level security;
 -- A person on the team sees their own row. Not a sub, not anyone else's, and not an AI assistant
 -- acting for them. The server writes it, with the service key.
 create policy chatgpt_plans_read on public.chatgpt_plans for select to authenticated
-  using (user_id = (select auth.uid()) and (select private.is_member(company_id)) and (select private.assistant_client()) is null);
+  using (user_id = (select auth.uid()) and private.is_member(company_id) and (select private.assistant_client()) is null);
 revoke all on public.chatgpt_plans from anon, authenticated;
 grant select on public.chatgpt_plans to authenticated;
 
@@ -161,5 +161,44 @@ create trigger chatgpt_plan_leaves after delete on public.memberships
 create trigger chatgpt_plan_turned_off after update of active, role on public.memberships
   for each row when (old.active is distinct from new.active or old.role is distinct from new.role)
   execute function private.chatgpt_plan_leaves_with_member();
+
+-- Which key Crewtavo's AI uses, and whether the team may connect their own plans (settings.ai),
+-- decide who pays and where what people ask is sent: like the other apps' settings, only someone
+-- with the apps area changes them, whichever way the settings are written. (Beside
+-- settings_area_guard, 20261112000500, which this leaves as it is.)
+create function private.company_ai_settings_guard() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (select auth.uid()) is null or new.settings -> 'ai' is not distinct from old.settings -> 'ai' or private.has_perm(new.id, 'apps') then
+    return new;
+  end if;
+  new.settings := case when old.settings -> 'ai' is null then coalesce(new.settings, '{}') - 'ai'
+    else jsonb_set(coalesce(new.settings, '{}'), '{ai}', old.settings -> 'ai') end;
+  return new;
+end $$;
+revoke all on function private.company_ai_settings_guard() from public;
+create trigger ai_settings_guard before update of settings on public.companies
+  for each row execute function private.company_ai_settings_guard();
+
+-- A company that stops letting its whole team connect their own plans: everyone's but the owners'
+-- and admins' ends at once, however the setting was changed. Their tokens go on the server's next pass.
+create function private.chatgpt_team_plans_end() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  update public.chatgpt_plans p
+  set status = 'disconnected', problem = null, problem_at = null, retry_at = null
+  where p.company_id = new.id and p.status = 'connected'
+    and not exists (
+      select 1 from public.memberships m
+      where m.company_id = p.company_id and m.user_id = p.user_id and m.active and m.role in ('owner', 'admin'));
+  return null;
+end $$;
+revoke all on function private.chatgpt_team_plans_end() from public;
+create trigger chatgpt_team_plans_end after update of settings on public.companies
+  for each row when (old.settings -> 'ai' -> 'team_plans' = 'true'::jsonb and new.settings -> 'ai' -> 'team_plans' is distinct from 'true'::jsonb)
+  execute function private.chatgpt_team_plans_end();
+
+-- Its policy looks the person's memberships up once a query, not once a row (20261018000990_policy_lookups.sql).
+select private.fold_member_checks('public.chatgpt_plans');
 
 notify pgrst, 'reload schema';

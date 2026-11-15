@@ -89,6 +89,8 @@ export function problemOf(error: ErrorBody, status: number, route: "key" | "plan
 async function httpProblem(response: Response, route: "key" | "plan"): Promise<OpenAiProblem> {
   // Before a plan's stream opens the body can be {"detail": "..."} instead: then the status says it.
   const body = (await response.json().catch(() => null)) as { error?: ErrorBody } | null;
+  // A 403 that isn't OpenAI's own answer (a proxy's error page) says nothing about the plan.
+  if (route === "plan" && response.status === 403 && (!body || typeof body !== "object")) return new OpenAiProblem("unavailable", 403);
   return problemOf(body && typeof body.error === "object" ? body.error : null, response.status, route);
 }
 

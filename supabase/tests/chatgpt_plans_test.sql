@@ -118,6 +118,36 @@ update public.companies set settings = settings || '{"ai": {"team_plans": true}}
 update public.chatgpt_plans set status = 'connected' where user_id = :'ada';
 update public.memberships set role = 'estimator' where company_id = :'co' and user_id = :'ada';
 select t_cgp.check((select status = 'connected' from public.chatgpt_plans where user_id = :'ada'), 'but keeps it through a change of role once the company lets the whole team connect theirs');
+-- Who changes settings.ai: only someone with the apps area. Bea is an admin whose role doesn't have it.
+insert into auth.users (id, email, raw_user_meta_data) values ('c9a70000-0000-0000-0000-000000000006', 'bea@poplar.test', '{"full_name": "Bea Books"}');
+\set bea 'c9a70000-0000-0000-0000-000000000006'
+insert into public.company_roles (company_id, name, base_role, permissions) values (:'co', 'Bookkeeper', 'admin', '{invoices,reports}') returning id as books_role \gset
+insert into public.memberships (company_id, user_id, role, role_id) values (:'co', :'bea', 'admin', :'books_role');
+begin;
+set local role authenticated;
+select t_cgp.as_user(:'bea');
+update public.companies set settings = settings || '{"ai": {"team_plans": false, "service": "chatgpt"}}' where id = :'co';
+reset role;
+select t_cgp.check((select settings -> 'ai' = '{"team_plans": true}'::jsonb from public.companies where id = :'co'),
+  'an admin without the apps area can''t change which key the AI uses or whether the team may connect their plans');
+select t_cgp.check((select status = 'connected' from public.chatgpt_plans where user_id = :'olive'), 'so nobody''s connection ends over it');
+set local role authenticated;
+select t_cgp.as_user(:'pat');
+update public.companies set settings = settings || '{"ai": {"team_plans": true, "service": "chatgpt"}}' where id = :'co';
+reset role;
+select t_cgp.check((select settings -> 'ai' ->> 'service' = 'chatgpt' from public.companies where id = :'co'), 'the owner can');
+rollback;
+delete from public.memberships where company_id = :'co' and user_id = :'bea';
+delete from public.company_roles where id = :'books_role';
+
+-- The company stops letting the team connect theirs, by whatever way the setting is changed.
+begin;
+update public.companies set settings = jsonb_set(settings, '{ai,team_plans}', 'false') where id = :'co';
+select t_cgp.check((select array_agg(u.email || ':' || p.status order by u.email) from public.chatgpt_plans p join auth.users u on u.id = p.user_id where p.company_id = :'co' and u.id in (:'pat', :'ada', :'olive'))
+  = array['ada@poplar.test:disconnected', 'olive@poplar.test:disconnected', 'pat@poplar.test:connected'],
+  'turning it off ends everyone''s connection but the owners'' and admins'', at once');
+rollback;
+
 update public.memberships set labor_rate = 31 where company_id = :'co' and user_id = :'olive';
 select t_cgp.check((select status = 'connected' from public.chatgpt_plans where user_id = :'olive'), 'a change that isn''t to someone''s role or place on the team touches nothing');
 
@@ -150,7 +180,7 @@ delete from public.companies where id = :'co';
 select t_cgp.check((select count(*) = 0 from public.chatgpt_plans where company_id = :'co') and (select count(*) = 0 from public.chatgpt_sign_ins where company_id = :'co'),
   'a company that''s deleted takes its people''s connections and sign-ins with it');
 delete from public.chatgpt_plan_secrets where company_id = :'co';
-delete from auth.users where id in (:'pat', :'olive', :'cruz', :'sal');
+delete from auth.users where id in (:'pat', :'olive', :'cruz', :'sal', :'bea');
 select last_value as passed from t_cgp.passed \gset
 set client_min_messages = warning;
 drop schema t_cgp cascade;

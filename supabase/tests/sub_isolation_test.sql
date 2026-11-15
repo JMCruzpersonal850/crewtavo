@@ -276,6 +276,11 @@ insert into public.visit_extras (company_id, visit_id, name, unit_price) values 
 -- (20261113001210_receipt_reading.sql, 20261113001200_job_profit_alerts.sql): the office's with job costs.
 insert into public.expense_drafts (company_id, job_id, receipt_path, user_id) values (:'co', :'j1', :'co' || '/receipts/t1070.jpg', 'd1070000-0000-0000-0000-000000000001');
 insert into public.job_profit_alerts (company_id, job_id, below, margin, line) values (:'co', :'j1', true, 8, 20);
+-- The owner's own ChatGPT plan, its sealed tokens and a sign-in under way (20261113001900_chatgpt_plans.sql):
+-- each person's own connection, and the server's alone for the other two.
+insert into public.chatgpt_plans (user_id, company_id, status, client_id, account_email) values ('d1070000-0000-0000-0000-000000000001', :'co', 'connected', 'oaiapp_t1070', 'oz@oscar.test');
+insert into public.chatgpt_plan_secrets (user_id, company_id, ciphertext) values ('d1070000-0000-0000-0000-000000000001', :'co', 'sealed');
+insert into public.chatgpt_sign_ins (state, user_id, company_id, ciphertext, expires_at) values ('t1070-state-t1070-state-t1070', 'd1070000-0000-0000-0000-000000000001', :'co', 'sealed', now() + interval '10 minutes');
 -- A change of prices across repeating jobs, with each line's old and new price (20261113000950_price_changes.sql): the office's.
 insert into public.price_changes (id, company_id, change, summary, jobs, lines) values ('d1070000-0000-0000-0000-0000000000e1', :'co', '{"kind": "percent", "value": 5, "round": "cent"}', 'Up 5%', 1, 1);
 insert into public.price_change_lines (company_id, change_id, job_id, line_id, name, quantity, old_price, new_price) values (:'co', 'd1070000-0000-0000-0000-0000000000e1', :'jr', gen_random_uuid(), 'Gutter cleaning', 1, 120, 126);

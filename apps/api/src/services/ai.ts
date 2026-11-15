@@ -429,7 +429,10 @@ async function askPlan(env: Env, admin: Db, person: Person, ask: Ask): Promise<P
 
   const trouble = (error: unknown): PlanTry => {
     if (error instanceof PlanTrouble) return { instead: error.kind === "sign_in" ? PLAN_SAYS.sign_in() : PLAN_SAYS.unavailable() };
-    throw error;
+    // The tokens couldn't be read or saved (the database, or a changed encryption key): the ask goes
+    // on to the company's key rather than failing.
+    console.error("A ChatGPT plan's sign-in couldn't be used", person.companyId, error instanceof Error ? error.message : "");
+    return { instead: PLAN_SAYS.unavailable() };
   };
   let token: string;
   try {
@@ -496,7 +499,8 @@ async function askPlan(env: Env, admin: Db, person: Person, ask: Ask): Promise<P
         continue;
       }
       if (error.kind === "unsupported") {
-        const what = param.startsWith("text") ? "schema" : file;
+        // Remembered only when OpenAI points at what it won't take: the answer's schema, or the file in the input.
+        const what = param.startsWith("text") ? "schema" : param.startsWith("input") ? file : null;
         if (what) await notePlanUnsupported(admin, person, row, what);
         return { instead: PLAN_SAYS.unsupported() };
       }

@@ -20,6 +20,7 @@ vi.mock("../src/lib/supabase", async () => {
 const plans = await import("../src/integrations/chatgptPlan");
 const { adminClient } = await import("../src/lib/supabase");
 const { app } = await import("../src/app");
+const { CRON_TASKS, runTask, TASKS } = await import("../src/tasks");
 
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
@@ -360,9 +361,10 @@ describe("the access token", () => {
     }
   });
 
-  it("is left alone when OpenAI can't be reached or is busy: that isn't a sign-in that ended", async () => {
+  it("is left alone when OpenAI can't be reached or is busy, or the answer isn't OpenAI's own: that isn't a sign-in that ended", async () => {
     await expire();
-    for (const answer of [{ status: 503, body: {} }, { status: 429, body: { error: "slow_down" } }]) {
+    // The last one is a proxy's error page: a 403 with no OAuth error in it.
+    for (const answer of [{ status: 503, body: {} }, { status: 429, body: { error: "slow_down" } }, { status: 403, body: "<html>Forbidden</html>" }]) {
       ai.token = () => answer;
       const error = await plans.planAccess(env, admin, pat).catch((e: unknown) => e);
       expect(error instanceof plans.PlanTrouble && error.kind).toBe("unavailable");
@@ -371,6 +373,60 @@ describe("the access token", () => {
       // The next ask can try again right away.
       expect(world.db.tables.chatgpt_plan_secrets![0]!.refresh_claimed_until).toBeNull();
     }
+  });
+});
+
+describe("a connection whose tokens are gone", () => {
+  it("says Sign in again rather than going on looking connected", async () => {
+    await connect();
+    world.db.tables.chatgpt_plan_secrets = [];
+    const error = await plans.planAccess(env, admin, pat).catch((e: unknown) => e);
+    expect(error instanceof plans.PlanTrouble && error.kind).toBe("sign_in");
+    expect(planRow()).toMatchObject({ status: "disconnected", problem: "sign_in" });
+  });
+
+  it("keeps the client its tokens were issued to sealed with them, so they can be signed out once the account is gone", async () => {
+    await connect();
+    expect(await tokens()).toMatchObject({ client_id: "oaiapp_pat" });
+    // The account was deleted: its connection went with it, and only the sealed tokens are left.
+    world.db.tables.chatgpt_plans = [];
+    ai.calls.length = 0;
+    expect(await plans.tidyPlans(env, admin)).toEqual({ signed_out: 1, removed: 1, waiting: 0 });
+    expect(ai.calls.find((c) => c.url.endsWith("/oauth/revoke"))!.form).toEqual({ token: "refresh-token-1", token_type_hint: "refresh_token", client_id: "oaiapp_pat" });
+  });
+
+  it("aren't the tokens of someone who signed in again while the task was signing the old ones out", async () => {
+    await connect();
+    planRow()!.status = "disconnected";
+    // The task has read the old tokens; before it deletes them, the person signs in again.
+    const leftovers = world.db.rpc.chatgpt_plan_leftovers!;
+    world.db.rpc.chatgpt_plan_leftovers = (args, db) => {
+      const found = leftovers(args, db);
+      db.tables.chatgpt_plan_secrets![0]!.ciphertext = "v1.new-sign-in";
+      planRow()!.status = "connected";
+      return found;
+    };
+    expect(await plans.tidyPlans(env, admin)).toMatchObject({ signed_out: 1 });
+    expect(world.db.tables.chatgpt_plan_secrets!.map((r) => r.ciphertext)).toEqual(["v1.new-sign-in"]);
+  });
+});
+
+describe("a sign-in that fails after a new registration", () => {
+  it("doesn't change the registration of a connection that's still live", async () => {
+    await connect();
+    const { state, nonce } = await begin(pat, { fresh: true });
+    ai.token = async () => issued(2, nonce, { scope: "openid profile email offline_access", id_token: await idToken({ aud: "oaiapp_new", sub: "user-pat-at-openai", nonce }) });
+    expect((await refusal(plans.finishSignIn(env, admin, pat, landed(state, { client_id: "oaiapp_new" })))) as unknown[]).toEqual([400, expect.stringMatching(/wasn't allowed/)]);
+    expect(planRow()).toMatchObject({ status: "connected", client_id: "oaiapp_pat" });
+    expect(await tokens()).toMatchObject({ refresh_token: "refresh-token-1", client_id: "oaiapp_pat" });
+  });
+
+  it("goes by what OpenAI's token endpoint granted, never by what the pasted address claims", async () => {
+    const { state, nonce } = await begin();
+    ai.token = () => issued(1, nonce, { scope: "openid profile email offline_access" });
+    // The address says plan use was granted; the token endpoint says it wasn't.
+    expect((await refusal(plans.finishSignIn(env, admin, pat, landed(state)))) as unknown[]).toEqual([400, expect.stringMatching(/wasn't allowed/)]);
+    expect(await tokens()).toBeNull();
   });
 });
 
@@ -410,6 +466,22 @@ describe("tokens whose person is gone", () => {
     await connect();
     expect(await plans.tidyPlans(env, admin)).toEqual({ signed_out: 0, removed: 0, waiting: 0 });
     expect(await tokens()).not.toBeNull();
+  });
+
+  it("wait for the next pass when OpenAI can't be reached about them, rather than being forgotten unsigned-out", async () => {
+    await connect();
+    planRow()!.status = "disconnected";
+    ai.revoke = 503;
+    expect(await plans.tidyPlans(env, admin)).toEqual({ signed_out: 0, removed: 0, waiting: 1 });
+    expect(await tokens()).not.toBeNull();
+    ai.revoke = 200;
+    expect(await plans.tidyPlans(env, admin)).toEqual({ signed_out: 1, removed: 1, waiting: 0 });
+  });
+
+  it("are looked for every ten minutes by the chatgpt_plans task", async () => {
+    expect(TASKS.at(-1)).toBe("chatgpt_plans");
+    expect(CRON_TASKS["7-59/10 * * * *"]).toEqual(["chatgpt_plans"]);
+    expect(await runTask("chatgpt_plans", env)).toEqual({ signed_out: 0, removed: 0, waiting: 0 });
   });
 });
 

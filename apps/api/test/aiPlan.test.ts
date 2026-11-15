@@ -228,6 +228,27 @@ describe("when the plan can't take an ask", () => {
     }
   });
 
+  it("when the plan's tokens can't be read at all, the company's key answers rather than the ask failing", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Sealed with another key: the server's encryption key was changed.
+    world.db.tables.chatgpt_plan_secrets![0]!.ciphertext = "v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    expect(await ask()).toBe("From the company's key.");
+    expect(asked()).toEqual(["company claude"]);
+    vi.restoreAllMocks();
+  });
+
+  it("when a proxy in the way answers 403 with its own page, that says nothing about the plan", async () => {
+    ai.responses = () => ({ status: 403, body: "<html>Forbidden</html>" });
+    expect(await ask()).toBe("From the company's key.");
+    expect(plan()).toMatchObject({ status: "connected", problem: null });
+  });
+
+  it("when OpenAI turns an ask down as unsupported without saying what, nothing is held against files", async () => {
+    ai.responses = () => refuses(400, "subscription_sharing_unsupported_capability");
+    expect(await read("image/jpeg")).toBe("From the company's key.");
+    expect(plan().unsupported).toEqual([]);
+  });
+
   it("when the model picked is gone from the plan, moves to one OpenAI lists now", async () => {
     ai.responses = (call) => (call.json!.model === "gpt-6.1-sol" ? refuses(400, "subscription_sharing_unsupported_capability", "model") : says("On the newer model."));
     ai.models = { models: [{ slug: "gpt-7-nova", display_name: "GPT-7 Nova", visibility: "list" }] };
