@@ -16,14 +16,17 @@ jobs:
         with:
           fetch-depth: 0
       # Crewtavo takes no outside contributions (CONTRIBUTING.md): every commit is its owner's, with no
-      # co-authors. Merges made on GitHub keep the owner as author and GitHub as committer. A release
-      # counts as a push too (called from release.yml, the event is the tag's push), so the tagged
-      # commit's history is checked again before anything is published.
+      # co-authors. Merges made on GitHub keep the owner as author and GitHub as committer. Each push
+      # checks the commits since the last release (the newest version tag before it), or all of them
+      # when there isn't one. A release counts as a push too (called from release.yml, the event is
+      # the tag's push), so what it adds is checked again before anything is published.
       - name: Authorship
         if: github.event_name == 'push'
         run: |
-          others=$(git log --format='%an <%ae>%n%cn <%ce>' | grep -viE 'jviars|noreply@github\.com' | sort -u)
-          if [ -n "$others" ] || git log --format='%B' | grep -qi '^co-authored-by:'; then
+          since=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
+          range="${since:+$since..}HEAD"
+          others=$(git log --format='%an <%ae>%n%cn <%ce>' "$range" | grep -viE 'jviars|noreply@github\.com' | sort -u)
+          if [ -n "$others" ] || git log --format='%B' "$range" | grep -qi '^co-authored-by:'; then
             echo "Every commit must be the owner's, with no co-authors. Others found: $others" >&2
             exit 1
           fi
