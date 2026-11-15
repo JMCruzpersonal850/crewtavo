@@ -69,6 +69,9 @@ export const aiChoice = (settings: unknown): "claude" | "chatgpt" | null => {
   return service === "claude" || service === "chatgpt" ? service : null;
 };
 
+/** Whether a company lets everyone on its team connect their own ChatGPT plan (settings.ai.team_plans; off until an owner or admin turns it on). */
+export const teamPlans = (settings: unknown) => (settings as { ai?: { team_plans?: unknown } } | null)?.ai?.team_plans === true;
+
 export type CompanyAi =
   /** `own`: the company's key, not the deployment's. */
   | { service: "claude"; apiKey: string; own: boolean }

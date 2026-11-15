@@ -127,8 +127,11 @@ update public.memberships set active = false where company_id = :'co' and user_i
 select t_cgp.check((select status = 'disconnected' and problem is null and retry_at is null from public.chatgpt_plans where user_id = :'olive'),
   'someone turned off on the Team page loses their connection at once');
 set role service_role;
+select t_cgp.check((select count(*) = 0 from public.chatgpt_plan_leftovers() where company_id = :'co'),
+  'tokens saved a moment ago are left alone: their sign-in may be finishing right now');
+update public.chatgpt_plan_secrets set updated_at = now() - interval '5 minutes' where company_id = :'co';
 select t_cgp.check((select count(*) = 1 and bool_and(user_id = :'olive' and ciphertext = 'v1.sealed-olive' and client_id = 'oaiapp_olive') from public.chatgpt_plan_leftovers() where company_id = :'co'),
-  'and their tokens wait for the server to sign them out at OpenAI, with the client they were issued to');
+  'after that their tokens wait for the server to sign them out at OpenAI, with the client they were issued to');
 reset role;
 update public.memberships set active = true where company_id = :'co' and user_id = :'olive';
 select t_cgp.check((select status = 'disconnected' from public.chatgpt_plans where user_id = :'olive'), 'turned back on, they sign in again: the connection doesn''t come back by itself');

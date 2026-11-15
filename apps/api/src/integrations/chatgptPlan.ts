@@ -151,7 +151,14 @@ const ALGORITHMS: Record<string, { import: RsaHashedImportParams | EcKeyImportPa
 export async function verifyIdToken(idToken: string, expected: { clientId: string; nonce: string }): Promise<{ sub: string; email: string | null }> {
   const [head, body, signature] = idToken.split(".");
   if (!head || !body || !signature) throw new Error("not a token");
-  const decode = (part: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(part))) as Record<string, unknown>;
+  // What doesn't decode says only that, so no piece of a token ends up in an error (JSON.parse quotes what it was given).
+  const decode = (part: string) => {
+    try {
+      return JSON.parse(new TextDecoder().decode(fromBase64Url(part))) as Record<string, unknown>;
+    } catch {
+      throw new Error("not a token");
+    }
+  };
   const header = decode(head);
   const algorithm = ALGORITHMS[String(header.alg)];
   if (!algorithm) throw new Error("unexpected signing algorithm");

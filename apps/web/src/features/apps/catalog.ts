@@ -59,6 +59,8 @@ export interface AppRow {
   openai?: OpenAiState;
   /** ChatGPT: the person looking has connected their own ChatGPT plan (each person's own). */
   my_plan?: boolean;
+  /** ChatGPT: the company lets everyone on the team connect their own plan. */
+  team_plans?: boolean;
 }
 
 export interface OpenAiState {

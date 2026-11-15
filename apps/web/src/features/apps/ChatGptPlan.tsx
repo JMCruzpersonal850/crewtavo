@@ -311,6 +311,7 @@ export function TeamPlansSwitch() {
     mutationFn: (on: boolean) => api.put<{ team_plans: boolean }>("/ai/team-plans", { on }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: planKey(session.userId, session.company.id) });
+      queryClient.invalidateQueries({ queryKey: ["apps"] });
       session.refresh();
     },
   });

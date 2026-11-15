@@ -474,7 +474,7 @@ describe("who may connect a plan, and what comes back", () => {
   it("shows a person's plan as theirs alone: on their Apps page and their sign-in, not anyone else's", async () => {
     await connect(pat);
     const apps = (await (await request(PAT, "GET", "/apps")).json()) as { apps: Row[] };
-    expect(apps.apps.find((a) => a.id === "chatgpt")).toMatchObject({ status: "disconnected", my_plan: true });
+    expect(apps.apps.find((a) => a.id === "chatgpt")).toMatchObject({ status: "disconnected", my_plan: true, team_plans: false });
     world.db.tables.profiles = [PAT, OLIVE].map((user_id) => ({ user_id, email: `${user_id}@poplar.test`, full_name: "Someone", phone: null }));
     for (const m of world.db.tables.memberships!) m.company = world.db.tables.companies![0];
     const mine = (await (await request(PAT, "GET", "/me")).json()) as { memberships: Row[] };

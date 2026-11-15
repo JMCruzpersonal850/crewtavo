@@ -120,7 +120,8 @@ grant execute on function public.claim_chatgpt_plan_refresh(uuid, uuid) to servi
 /**
  * Tokens with nobody to use them: no connected plan for that person at that company (they signed
  * out, left, were turned off, or their account or the company is gone). The server signs each out
- * at OpenAI, then deletes it.
+ * at OpenAI, then deletes it. Not ones saved in the last two minutes: a sign-in being finished
+ * right now saves its tokens a moment before its plan says connected.
  */
 create function public.chatgpt_plan_leftovers(p_limit integer default 50)
 returns table (user_id uuid, company_id uuid, ciphertext text, client_id text)
@@ -128,7 +129,7 @@ language sql stable security definer set search_path = '' as $$
   select s.user_id, s.company_id, s.ciphertext, p.client_id
   from public.chatgpt_plan_secrets s
   left join public.chatgpt_plans p on p.user_id = s.user_id and p.company_id = s.company_id
-  where p.user_id is null or p.status <> 'connected'
+  where (p.user_id is null or p.status <> 'connected') and s.updated_at < now() - interval '2 minutes'
   order by s.updated_at
   limit greatest(1, least(coalesce(p_limit, 50), 200))
 $$;

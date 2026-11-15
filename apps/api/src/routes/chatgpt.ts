@@ -39,7 +39,7 @@ import { requireCompany, requireUser } from "../lib/auth";
 import { asJson, dbError, HttpError, readJson } from "../lib/http";
 import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
-import { companyAi, type OpenAiSettings } from "../services/ai";
+import { companyAi, teamPlans, type OpenAiSettings } from "../services/ai";
 
 export const chatgpt = new Hono<AppEnv>();
 
@@ -97,9 +97,6 @@ chatgpt.post("/apps/chatgpt/models", requireUser, requireCompany(ADMINS, "apps")
 
 type Ctx = Context<AppEnv>;
 const person = (c: Ctx): Person => ({ userId: c.var.userId, companyId: c.var.companyId });
-
-/** Whether a company lets everyone on its team connect their own ChatGPT plan (settings.ai.team_plans; off until an owner or admin turns it on). */
-export const teamPlans = (settings: unknown) => (settings as { ai?: { team_plans?: unknown } } | null)?.ai?.team_plans === true;
 
 async function companySettings(c: Ctx): Promise<unknown> {
   const { data, error } = await adminClient(c.env).from("companies").select("settings").eq("id", c.var.companyId).maybeSingle();

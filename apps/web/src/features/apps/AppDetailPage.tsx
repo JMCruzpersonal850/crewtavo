@@ -190,7 +190,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
         if (res?.revoked === false) toast.info(`Your Google sign-in stays, since ${app.id === "google_business" ? "Google Calendar" : "Google Business Profile"} uses it too. Remove Crewtavo in your Google account's security settings to end both.`);
       }
       if (app.id === "chatgpt") {
-        if (plan.data?.team_plans) await api.put("/ai/team-plans", { on: false });
+        if (app.team_plans || plan.data?.team_plans) await api.put("/ai/team-plans", { on: false });
         if (app.my_plan) await api.post("/ai/chatgpt/disconnect", {});
       }
       if (app.auth === "site") await api.delete(`/apps/${app.id}/site`);
@@ -206,7 +206,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
   });
-  const canUninstall = installed && (app.auth === "builtin" || app.auth === "site" || hasAccount(app) || Boolean(app.my_plan) || sources.length > 0);
+  const canUninstall = installed && (app.auth === "builtin" || app.auth === "site" || hasAccount(app) || Boolean(app.my_plan) || Boolean(app.team_plans) || sources.length > 0);
 
   const askUninstall = async () => {
     if (app.auth === "builtin") return builtinSwitch.turnOff();
@@ -217,7 +217,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
       if (await confirm({ title: `Uninstall ${app.name}?`, body, confirmLabel: "Uninstall", danger: true })) uninstall.mutate({ remove_reviews: choice.remove });
       return;
     }
-    const body = uninstallBody(app, { calendars: sources.length, teamPlans: plan.data?.team_plans });
+    const body = uninstallBody(app, { calendars: sources.length, teamPlans: app.team_plans || plan.data?.team_plans });
     if (await confirm({ title: `Uninstall ${app.name}?`, body, confirmLabel: "Uninstall", danger: true })) uninstall.mutate({});
   };
 
@@ -433,6 +433,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
             <>
               <KeyCard app={app} onSaved={refresh} />
               <ChatGptPlanCard where="app" />
+              <TeamPlansSwitch />
             </>
           ) : (
             <KeyCard app={app} onSaved={refresh} />

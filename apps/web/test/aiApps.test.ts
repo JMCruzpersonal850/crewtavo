@@ -49,6 +49,8 @@ describe("whether ChatGPT is installed", () => {
     expect(isInstalled(app({}))).toBe(false);
     expect(isInstalled(app({ status: "connected" }))).toBe(true);
     expect(isInstalled(app({ my_plan: true }))).toBe(true);
+    // Or at a company that lets its team connect theirs: there's something of ChatGPT's turned on to uninstall.
+    expect(isInstalled(app({ team_plans: true }))).toBe(true);
     expect(isInstalled(app({ id: "anthropic", status: "connected" }))).toBe(true);
     expect(isInstalled(app({ id: "anthropic" }))).toBe(false);
   });

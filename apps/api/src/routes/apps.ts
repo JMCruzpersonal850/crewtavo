@@ -17,7 +17,7 @@ import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } fro
 import { emailReady, sendEmail, sendingWorks } from "../lib/notify";
 import { checkTwilio, companyTwilio, forgetTwilio, serverTwilio, setSmsWebhook, TwilioProblem, type TwilioSettings } from "../lib/twilio";
 import { adminClient, type Db } from "../lib/supabase";
-import { aiChoice, askerOf, complete, countAiAsk, type OpenAiSettings } from "../services/ai";
+import { aiChoice, askerOf, complete, countAiAsk, teamPlans, type OpenAiSettings } from "../services/ai";
 import { analyticsSettings } from "../services/analytics";
 import { AbcProblem, chooseAbcAccount, connectAbc, settingsOf as abcSettingsOf } from "../integrations/abcSupply";
 import { describeAccount, retryAccounting } from "../integrations/accounting";
@@ -162,7 +162,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
-        ...(entry.id === "chatgpt" ? { ...(openai ? { openai } : {}), my_plan: myPlan } : {}),
+        ...(entry.id === "chatgpt" ? { ...(openai ? { openai } : {}), my_plan: myPlan, team_plans: teamPlans(company.data?.settings) } : {}),
         ...(takesKeys ? { takes_app_keys: true, app_keys: ownKeys } : {}),
       };
     }),
