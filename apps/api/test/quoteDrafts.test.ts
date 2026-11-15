@@ -221,7 +221,7 @@ describe("Draft a quote", () => {
     ai.complete.mockRejectedValueOnce(new HttpError(429, "The AI is busy right now. Try again in a minute."));
     const result = await draftQuote(scope(), "req-1", "u-1");
     expect(result.by).toBe("price_list");
-    expect(result.note).toBe("Claude couldn't draft this one (The AI is busy right now. Try again in a minute), so it was drafted from your price list.");
+    expect(result.note).toBe("The AI couldn't draft this one (The AI is busy right now. Try again in a minute), so it was drafted from your price list.");
     expect(drafted(calls).drafted.note).toBe(result.note);
   });
 
@@ -288,8 +288,8 @@ describe("Draft a quote", () => {
     expect(await draftArrivedRequest(env, "co-1", "req-1")).toMatchObject({ id: "q-1", by: "claude" });
     expect(ai.count).toHaveBeenCalledWith(env, "co-1", null);
     expect(calls.find((c) => c.path === "notifications")?.body).toEqual([
-      { company_id: "co-1", user_id: "u-owner", kind: "quote", title: "A draft quote is ready for request #12 from Pat Lee", body: "Claude drafted it from the request and your price list. Look it over before you send it.", link: "/quotes/q-1" },
-      { company_id: "co-1", user_id: "u-office", kind: "quote", title: "A draft quote is ready for request #12 from Pat Lee", body: "Claude drafted it from the request and your price list. Look it over before you send it.", link: "/quotes/q-1" },
+      { company_id: "co-1", user_id: "u-owner", kind: "quote", title: "A draft quote is ready for request #12 from Pat Lee", body: "AI drafted it from the request and your price list. Look it over before you send it.", link: "/quotes/q-1" },
+      { company_id: "co-1", user_id: "u-office", kind: "quote", title: "A draft quote is ready for request #12 from Pat Lee", body: "AI drafted it from the request and your price list. Look it over before you send it.", link: "/quotes/q-1" },
     ]);
   });
 });

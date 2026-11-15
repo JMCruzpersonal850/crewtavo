@@ -89,10 +89,10 @@ export function QuoteSettings() {
       </Field>
       <label className="switch-row" style={{ fontWeight: 400 }}>
         <input type="checkbox" className="switch" checked={ai.isPending ? Boolean(ai.variables) : aiOn} disabled={ai.isPending} onChange={(e) => ai.mutate(e.target.checked)} />
-        Draft quotes with Claude
+        Draft quotes with AI
       </label>
       <span className="muted small">
-        Draft a quote, on a request, has Claude read what the client asked for and pick lines from your price list, with quantities when they gave them. It never makes up an item or a price, and nothing is sent: you look it over. Each draft is an ask of your Claude key. Off, drafts take the price list items whose names match their answers. Saved as you switch it.
+        Draft a quote, on a request, has AI read what the client asked for and pick lines from your price list, with quantities when they gave them. It never makes up an item or a price, and nothing is sent: you look it over. Each draft is an ask of your Claude or OpenAI key from the Apps page (or, when someone presses Draft a quote themselves, of their own ChatGPT plan if they connected one). Off, drafts take the price list items whose names match their answers. Saved as you switch it.
       </span>
       <FormError error={ai.error} />
       <label className="switch-row" style={{ fontWeight: 400 }}>

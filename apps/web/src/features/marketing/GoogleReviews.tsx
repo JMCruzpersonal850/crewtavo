@@ -53,6 +53,7 @@ import {
   type SuggestedClient,
 } from "./googleReviewData";
 import { quotePickItem, QuoteReviewsCard, useQuoteReviews, useSetQuoteReviews } from "./QuoteReviews";
+import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
 const ReviewTrend = lazy(() => import("./ReviewTrend").then((m) => ({ default: m.ReviewTrend })));
 
@@ -531,9 +532,10 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
         <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setText(r.reply_comment ?? ""); }}>Cancel</Button>
         <span className="muted small grow" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{text.length.toLocaleString("en-US")} / {REPLY_MAX.toLocaleString("en-US")}</span>
       </div>
+      <UsingChatGptPlan />
       {!aiOn && (
         <span className="muted small">
-          {canAddKey ? <><Link to="/apps/anthropic">Add a Claude key in Apps</Link> to draft replies.</> : "An admin can add a Claude key on the Apps page to draft replies."}
+          {canAddKey ? <><Link to="/apps">Add a Claude or OpenAI key in Apps</Link> to draft replies.</> : "An admin can add a Claude or OpenAI key on the Apps page to draft replies."}
         </span>
       )}
       {/* The words above came from AI: said to whoever posts them. */}

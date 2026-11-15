@@ -19,14 +19,14 @@ describe("AI answers and drafts say they're AI's, and to check them", () => {
     expect((parts.team as Record<string, unknown>)[line]).toBe("Escrita por IA a partir de tus guías. Puede estar equivocada: revisa la guía antes de confiar en ella.");
   });
 
-  it("on a quote Claude drafted, and not on one drafted from the price list", () => {
+  it("on a quote AI drafted, and not on one drafted from the price list", () => {
     expect(draftedWords({ by: "claude", request_number: 12 }, [])[0]).toBe(
-      "Written by AI: Claude drafted this from request #12 and your price list. It can be wrong, so check every line, quantity and price before you send it.",
+      "Written by AI: this was drafted from request #12 and your price list. It can be wrong, so check every line, quantity and price before you send it.",
     );
     expect(draftedWords({ by: "price_list", request_number: 12 }, [])[0]).toBe("Drafted from request #12 and your price list. Look it over before you send it.");
     // And on the request it was drafted for.
     const request = source("requests/RequestPage.tsx");
-    expect(request).toContain('drafted.by === "claude" ? "by AI (Claude)" : "from your price list"');
+    expect(request).toContain('drafted.by === "claude" ? "by AI" : "from your price list"');
     expect(request).toContain('drafted.by === "claude" ? " It can be wrong: check it before you send it." : ""');
   });
 

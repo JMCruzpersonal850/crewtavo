@@ -281,10 +281,10 @@ async function makeDraft(s: SalesScope, requestId: string, userId: string | null
       lines = proposed.lines;
       description = proposed.description;
       by = "claude";
-      if (!lines.length) note = "Claude didn't find anything on your price list for this request. Add the lines yourself.";
+      if (!lines.length) note = "The AI didn't find anything on your price list for this request. Add the lines yourself.";
     } catch (error) {
       if (!(error instanceof HttpError)) reportError(error, { feature: "quote_draft", company: s.companyId });
-      note = `Claude couldn't draft this one (${error instanceof HttpError ? error.message.replace(/\.$/, "") : "it didn't answer"}), so it was drafted from your price list.`;
+      note = `The AI couldn't draft this one (${error instanceof HttpError ? error.message.replace(/\.$/, "") : "it didn't answer"}), so it was drafted from your price list.`;
     }
   }
   if (by === "price_list") {
@@ -356,7 +356,7 @@ export async function draftArrivedRequest(env: Env, companyId: string, requestId
       : await admin.from("memberships").select("user_id").eq("company_id", companyId).eq("active", true).in("role", ["owner", "admin", "office"]);
     const who = (request?.client as { display_name?: string } | null)?.display_name ?? "a client";
     const body = drafted.by === "claude"
-      ? `Claude drafted it from the request and your price list${drafted.check ? `. Check the quantity on ${drafted.check === 1 ? "1 line" : `${drafted.check} lines`}` : ""}. Look it over before you send it.`
+      ? `AI drafted it from the request and your price list${drafted.check ? `. Check the quantity on ${drafted.check === 1 ? "1 line" : `${drafted.check} lines`}` : ""}. Look it over before you send it.`
       : "It was drafted from your price list. Look it over before you send it.";
     if (people?.length) {
       await admin.from("notifications").insert(people.map((p) => ({

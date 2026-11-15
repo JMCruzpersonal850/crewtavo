@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { companyFeatures } from "../src/lib/api";
 import { APP_INFO, type AppRow } from "../src/features/apps/catalog";
 import { isInstalled } from "../src/features/apps/installed";
+import { parts } from "@crewtavo/core/i18n/es";
 
 const source = (path: string) => readFileSync(fileURLToPath(new URL(`../src/${path}`, import.meta.url)), "utf8");
 const app = (more: Partial<AppRow>) => ({ id: "chatgpt", auth: "api_key", status: "disconnected", ...more }) as AppRow;
@@ -66,5 +67,52 @@ describe("AI across the app", () => {
     expect(companyFeatures(features, {})).toMatchObject({ ai: false, chatgptPlan: false });
     expect(companyFeatures(features, { ai_connected: true })).toMatchObject({ ai: true, chatgptPlan: false });
     expect(companyFeatures(features, { ai_connected: true, chatgpt_plan: true })).toMatchObject({ ai: true, chatgptPlan: true });
+  });
+});
+
+describe("words that name the AI", () => {
+  const screens = ["kb/KnowledgeBasePage.tsx", "quotes/QuotePage.tsx", "quotes/DraftedCallout.tsx", "requests/RequestPage.tsx", "marketing/CampaignPage.tsx", "marketing/ShowcaseDialog.tsx", "marketing/GoogleReviews.tsx", "marketing/SocialComposer.tsx", "settings/QuoteSettings.tsx", "settings/JobCostSettings.tsx"];
+
+  it("say AI, not Claude, on the screens that use Crewtavo's own AI: it may be OpenAI answering", () => {
+    for (const screen of screens) {
+      // Words people read: text between tags and quoted sentences, not code comments or the "claude" value drafts are saved with.
+      const words = source(`features/${screen}`).split("\n").filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join("\n").replace(/Claude or OpenAI key/g, "");
+      expect([screen, /\bClaude\b/.test(words)]).toEqual([screen, false]);
+    }
+    expect(source("features/settings/QuoteSettings.tsx")).toContain("Draft quotes with AI");
+    expect(source("features/settings/JobCostSettings.tsx")).toContain("Read receipts and supplier invoices with AI");
+  });
+
+  it("say Using ChatGPT plan, with Manage usage, beside the AI buttons of someone whose plan is answering", () => {
+    for (const screen of ["kb/KnowledgeBasePage.tsx", "quotes/QuotePage.tsx", "marketing/CampaignPage.tsx", "marketing/ShowcaseDialog.tsx", "marketing/GoogleReviews.tsx", "marketing/SocialComposer.tsx"]) {
+      expect([screen, source(`features/${screen}`).includes("<UsingChatGptPlan />")]).toEqual([screen, true]);
+    }
+    const note = source("features/apps/UsingChatGptPlan.tsx");
+    expect(note).toContain("if (!session.config.features.chatgptPlan) return null;");
+    expect(note).toContain('href="https://chatgpt.com/settings/usage"');
+    // A crew sees it under an answer from the guides, so it has its Spanish.
+    expect((parts.team as Record<string, unknown>)["Using ChatGPT plan"]).toBe("Usando tu plan de ChatGPT");
+    expect((parts.team as Record<string, unknown>)["Manage usage"]).toBe("Administrar uso");
+  });
+
+  it("keep OpenAI's own words on the plan's card", () => {
+    const card = source("features/apps/ChatGptPlan.tsx");
+    for (const said of [
+      ">Continue with ChatGPT</Button>",
+      "Use your ChatGPT plan",
+      "Complete eligible AI requests in this app with usage included in your ChatGPT plan or credits balance.",
+      'title="You\'re using your ChatGPT plan"',
+      "Eligible usage in this app uses your ChatGPT plan. Manage usage in your ChatGPT settings.",
+      ">Got it</Button>",
+      "<strong>Using ChatGPT plan</strong>",
+      "Usage limit reached",
+      "Review your plan or this app's limit in ChatGPT settings.",
+      "ChatGPT Plus and Pro plans can be used; an OpenAI API key is the other way.",
+    ]) expect([said, card.includes(said)]).toEqual([said, true]);
+    // Manage usage is the main action at the limit.
+    expect(card).toContain('<a className="btn btn-primary btn-sm" href={usage} target="_blank" rel="noreferrer">Manage usage');
+    // The two steps say what they'll see and what to copy.
+    expect(card).toContain("says the page can't be reached. That's expected");
+    expect(card).toContain("Copy that whole address from the address bar and paste it here.");
   });
 });

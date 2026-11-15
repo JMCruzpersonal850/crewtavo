@@ -96,6 +96,7 @@ import { DraftedCallout } from "./DraftedCallout";
 import { PaymentScheduleCard } from "./PaymentSchedule";
 import { DiscountRows } from "./PromoRow";
 import { SendDialog } from "./SendDialog";
+import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
 export { SendDialog } from "./SendDialog";
 
@@ -1438,6 +1439,7 @@ function MessageCard({ value, editable, onEdit, onUnchanged, onSave }: { value: 
       {config.features.ai && (
         <div className="row">
           <Button size="sm" icon="sparkle" loading={polish.isPending} disabled={draft.trim().length < 3} onClick={() => polish.mutate()}>Polish with AI</Button>
+          <UsingChatGptPlan />
         </div>
       )}
     </div>

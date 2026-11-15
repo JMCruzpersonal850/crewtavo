@@ -31,6 +31,7 @@ import { companyAddressLine, EmailPreview, MessageField, SubjectField, TestEmail
 import { MarketingPage } from "./MarketingPage";
 import { ConnectEmailHint } from "../settings/ConnectEmailHint";
 import { SenderAddressNote } from "./SenderAddress";
+import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
 interface Draft {
   name: string;
@@ -267,6 +268,7 @@ function CampaignPageScreen() {
                 <div className="row">
                   <Menu label="Start from a template" triggerClassName="btn btn-sm btn-ghost" trigger={<><Icon name="file" size={14} />Templates</>} items={TEMPLATES.map((t) => ({ label: t.label, onSelect: async () => { if (draft.body.trim().length > 20 && !(await confirm({ title: "Replace your email?", body: "The template replaces the subject and message.", confirmLabel: "Replace" }))) return; set({ subject: t.subject.replace("{{season}}", "spring"), body: t.body }); } }))} />
                   {session.config.features.ai && <Button size="sm" variant="ghost" icon="sparkle" onClick={() => setDialog("ai")}>Write with AI</Button>}
+                  <UsingChatGptPlan />
                 </div>
               </div>
               <SubjectField value={draft.subject} onChange={(subject) => set({ subject })} placeholder="Spring cleanup spots are filling up" />

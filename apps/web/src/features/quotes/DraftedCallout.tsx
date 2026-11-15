@@ -57,7 +57,7 @@ function cutList(value: unknown): { shown: number; of: number } | null {
 /** Said when the price list was too long to go by whole, so a missing line isn't taken for the draft's judgement. */
 export const cutListWords = (d: Drafted): string | null =>
   d.price_list
-    ? `Your price list has ${d.price_list.of.toLocaleString("en-US")} items, and ${d.by === "claude" ? "Claude was shown" : "this draft went by"} the first ${d.price_list.shown.toLocaleString("en-US")}. Check that nothing further down is missing.`
+    ? `Your price list has ${d.price_list.of.toLocaleString("en-US")} items, and ${d.by === "claude" ? "the AI was shown" : "this draft went by"} the first ${d.price_list.shown.toLocaleString("en-US")}. Check that nothing further down is missing.`
     : null;
 
 /** Whether Claude's description is still to be used: there is one, and the quote's message isn't it already. */
@@ -80,7 +80,7 @@ export function readyDraft<T extends { status: string; drafted?: unknown }>(quot
 export function draftedWords(d: Drafted, checkNames: readonly string[]): string[] {
   const from = d.request_number ? `request #${d.request_number}` : "the request";
   // A draft that came with no lines isn't said to be drafted: its note says why, and to add them.
-  const out = [d.lines === 0 ? `Started from ${from}.` : d.by === "claude" ? `Written by AI: Claude drafted this from ${from} and your price list. It can be wrong, so check every line, quantity and price before you send it.` : `Drafted from ${from} and your price list. Look it over before you send it.`];
+  const out = [d.lines === 0 ? `Started from ${from}.` : d.by === "claude" ? `Written by AI: this was drafted from ${from} and your price list. It can be wrong, so check every line, quantity and price before you send it.` : `Drafted from ${from} and your price list. Look it over before you send it.`];
   if (checkNames.length) out.push(`Check the quantity on ${checkNames.join(", ")}: the request didn't say, so it's 1.`);
   if (d.note) out.push(d.note);
   const cut = cutListWords(d);
@@ -118,12 +118,12 @@ export function DraftedCallout({ quoteId, message, drafted, lines, requestId, ad
         {rest.map((line, i) => <span key={i} style={{ fontWeight: 400 }}>{line}</span>)}
         {d.by === "price_list" && (!d.note || d.lines === 0) && (
           <span className="small" style={{ fontWeight: 400 }}>
-            {admin ? <>Turn on <Link to="/settings?tab=company">Draft quotes with Claude</Link> in Settings → Company to draft them better.</> : "An owner or admin can turn on Draft quotes with Claude in Settings → Company, which drafts them better."}
+            {admin ? <>Turn on <Link to="/settings?tab=company">Draft quotes with AI</Link> in Settings → Company to draft them better.</> : "An owner or admin can turn on Draft quotes with AI in Settings → Company, which drafts them better."}
           </span>
         )}
         {descriptionWaiting(d, message) && (
           <div className="stack-sm" style={{ gap: 4, fontWeight: 400 }}>
-            <span className="small">Claude suggested this message for the client. It was written from what they typed, so it isn't on the quote unless you use it:</span>
+            <span className="small">AI suggested this message for the client. It was written from what they typed, so it isn't on the quote unless you use it:</span>
             <p className="pre-wrap small" style={{ margin: 0 }}>“{d.description}”</p>
             {canEdit && (
               <Button size="sm" style={{ justifySelf: "start" }} loading={useDescription.isPending} onClick={() => useDescription.mutate()}>

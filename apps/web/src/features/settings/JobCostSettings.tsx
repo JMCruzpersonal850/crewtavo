@@ -80,11 +80,11 @@ export function JobCostSettings({ settings }: { settings: Record<string, unknown
       <strong>Receipts</strong>
       <label className="switch-row" style={{ fontWeight: 400 }}>
         <input type="checkbox" className="switch" checked={reading.isPending ? Boolean(reading.variables) : reads} disabled={reading.isPending} onChange={(e) => reading.mutate(e.target.checked)} />
-        Read receipts and supplier invoices with Claude
+        Read receipts and supplier invoices with AI
       </label>
       <span className="muted small">
         A photo or PDF added to an expense, by the office or the crew, fills in the vendor, date, total, tax and category, and a supplier invoice&apos;s lines, for whoever adds it to check before saving.
-        The office can also drop several at once on a job&apos;s Expenses or on Finance → Profit. Each read uses your Claude key from the Apps page, which is checked before this turns on.
+        The office can also drop several at once on a job&apos;s Expenses or on Finance → Profit. Each read uses your Claude or OpenAI key from the Apps page, which is checked before this turns on (or the ChatGPT plan of whoever adds the receipt, if they connected one).
         Off, or when a file can&apos;t be read, expenses are filled in by hand.
       </span>
       <FormError error={reading.error} />

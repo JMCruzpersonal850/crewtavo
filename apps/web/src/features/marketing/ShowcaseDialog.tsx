@@ -24,6 +24,7 @@ import { copyText } from "@/lib/clipboard";
 import { formatDate } from "@/lib/format";
 import { photoLinks } from "@/lib/photoMarkup";
 import { useSession } from "@/lib/session";
+import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
 interface Pick {
   attachment_id: string;
@@ -234,6 +235,7 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
           {session.config.features.ai && !published && (
             <div className="stack-sm">
               <div><Button size="sm" variant="ghost" icon="sparkle" loading={draft.isPending} onClick={() => draft.mutate()}>Write it with AI</Button><FormError error={draft.error} /></div>
+              <UsingChatGptPlan />
               {/* The words above came from AI: said to whoever publishes them. */}
               {aiWrote && <span className="muted small" role="status">Written by AI from the job's services. It can be wrong: check it says what you did before you publish.</span>}
             </div>

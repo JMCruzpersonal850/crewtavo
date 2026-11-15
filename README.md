@@ -195,7 +195,7 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
       <img src="docs/images/quote.png" alt="A quote with line items from the price list and an optional add-on">
       <p><strong>Quotes.</strong> Line items from your price list, formulas and satellite map
       measurements, optional add-ons, deposits, payment schedules and promo codes. Clients approve
-      and sign online. Draft a quote fills one in from a request (with Claude if you switch it on, else
+      and sign online. Draft a quote fills one in from a request (with AI if you switch it on, else
       from your price list), you can hear about big quotes as they're sent, approved or sent
       back, and your Google rating and best reviews can show on the quote.</p>
     </td>
@@ -436,7 +436,7 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
   mailing anything) to the clients in the segment with a full mailing address, never archived or
   opted-out ones, with what each card brought in. A finished job or visit becomes a showcase:
   before and after photos (their drawn-on copies, if any) and a few lines about the work (written
-  by hand or with Claude), on a page in the business's logo and colour with Get a quote to its
+  by hand or with AI), on a page in the business's logo and colour with Get a quote to its
   booking form. It never shows the client's name or address (the town only if chosen), asks before
   showing photos nobody marked OK to share, and can't show a client's who asked that their property
   not be posted. Copy its link, post it to Facebook or Instagram, or unpublish it. Marketing →

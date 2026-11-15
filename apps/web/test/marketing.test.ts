@@ -775,7 +775,7 @@ describe("Google reviews on the Reviews tab", () => {
     expect(reviews).toContain('updating ? "Update your reply on Google?" : "Post this reply on Google?"');
     expect(reviews).toContain("Everyone can read it on Google");
     expect(reviews).toContain("REPLY_MAX.toLocaleString");
-    expect(reviews).toContain("An admin can add a Claude key on the Apps page to draft replies.");
+    expect(reviews).toContain("An admin can add a Claude or OpenAI key on the Apps page to draft replies.");
     expect(reviews).toContain('referrerPolicy="no-referrer"');
   });
 
@@ -1114,7 +1114,7 @@ describe("Marketing → Social", () => {
   it("uses one button for Suggest a caption and Rewrite, as Suggest a reply does", () => {
     const composer = source("../src/features/marketing/SocialComposer.tsx");
     expect(composer).toContain('{caption.trim() ? "Rewrite" : "Suggest a caption"}');
-    expect(composer).toContain('<Link to="/apps/anthropic">Add a Claude key in Apps</Link>');
+    expect(composer).toContain('<Link to="/apps">Add a Claude or OpenAI key in Apps</Link>');
     expect(composer).toContain("Posts stay hidden from the public until your Meta app is Live.");
   });
 });

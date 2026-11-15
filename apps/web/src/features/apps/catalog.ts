@@ -400,7 +400,7 @@ export const APP_INFO: Record<string, AppInfo> = {
       { icon: "star", title: "Reviews", text: "Ask after a job, a visit or a paid invoice, with up to two reminders for anyone who hasn't opened the link." },
       { icon: "gift", title: "Referrals", text: "A link for every client, an email asking for referrals after a job, and a $ or % credit on their next invoice once the friend pays." },
       { icon: "mail", title: "Campaigns", text: "Re-engage past clients, win back lost quotes and close pending quotes by themselves, or email the clients you pick, and see opens, clicks and the work they bring in." },
-      { icon: "share", title: "Social", text: "Post job photos and 4 and 5-star reviews to Facebook, Instagram and Google, now or later, with a caption Claude can draft." },
+      { icon: "share", title: "Social", text: "Post job photos and 4 and 5-star reviews to Facebook, Instagram and Google, now or later, with a caption AI can draft." },
     ],
     access: [
       "Show Marketing in the menu to owners, admins and office staff with the marketing area",
@@ -457,10 +457,10 @@ export const APP_INFO: Record<string, AppInfo> = {
     developer: "Google",
     tagline: "Your Google reviews in Crewtavo",
     about:
-      "See every Google review of your business in Marketing → Reviews: your rating and how it's trending, how many you've answered and how fast, and which review asks led to a review. Reply right from Crewtavo, starting from a suggestion Claude drafts from what the client wrote, and the office hears about new reviews, low ratings first. Each review is matched to the client who left it when only one fits, and that client isn't asked for a review again. Google approves each Crewtavo server's access to reviews first, which takes about 2 weeks, and review asks keep working meanwhile.",
+      "See every Google review of your business in Marketing → Reviews: your rating and how it's trending, how many you've answered and how fast, and which review asks led to a review. Reply right from Crewtavo, starting from a suggestion AI drafts from what the client wrote, and the office hears about new reviews, low ratings first. Each review is matched to the client who left it when only one fits, and that client isn't asked for a review again. Google approves each Crewtavo server's access to reviews first, which takes about 2 weeks, and review asks keep working meanwhile.",
     highlights: [
       { icon: "star", title: "Reviews in Marketing", text: "Your rating, a monthly trend, response rate and time to reply, with every review and its reply." },
-      { icon: "sparkle", title: "Reply with a suggestion", text: "Claude drafts a short reply from what they wrote. Read it, change it, then post it on Google." },
+      { icon: "sparkle", title: "Reply with a suggestion", text: "AI drafts a short reply from what they wrote. Read it, change it, then post it on Google." },
       { icon: "check", title: "Asks stop once they've reviewed", text: "A client matched to their review isn't asked again, and their reminders stop." },
     ],
     access: [
@@ -480,7 +480,7 @@ export const APP_INFO: Record<string, AppInfo> = {
     developer: "Meta",
     tagline: "Post to your Facebook Page and Instagram",
     about:
-      "Post job photos your crew marks OK to share, and 4 and 5-star Google reviews as a square picture, to your Facebook Page and its Instagram account from Marketing → Social, now or at a time you pick. Claude can draft the caption, and posts never name a client or show their address: photos go up without their location. New 5-star reviews can post by themselves, a few a day, with time to change or cancel each one. It connects through a Meta app you make for your own business in about ten minutes, so nobody else's app sits between you and your Page.",
+      "Post job photos your crew marks OK to share, and 4 and 5-star Google reviews as a square picture, to your Facebook Page and its Instagram account from Marketing → Social, now or at a time you pick. AI can draft the caption, and posts never name a client or show their address: photos go up without their location. New 5-star reviews can post by themselves, a few a day, with time to change or cancel each one. It connects through a Meta app you make for your own business in about ten minutes, so nobody else's app sits between you and your Page.",
     highlights: [
       { icon: "camera", title: "Job photos", text: "Pick up to 10 photos marked OK to share. Instagram gets them padded to fit, never cropped." },
       { icon: "star", title: "Reviews as pictures", text: "A 4 or 5-star review becomes a square card in your brand colour, with the reviewer's first name and last initial. Automatic posts are 5-star reviews only." },

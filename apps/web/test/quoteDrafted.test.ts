@@ -35,7 +35,7 @@ describe("a drafted quote", () => {
   });
 
   it("says when the price list was too long to go by whole", () => {
-    expect(cutListWords(readDrafted({ by: "claude", price_list: { shown: 500, of: 1742 } })!)).toBe("Your price list has 1,742 items, and Claude was shown the first 500. Check that nothing further down is missing.");
+    expect(cutListWords(readDrafted({ by: "claude", price_list: { shown: 500, of: 1742 } })!)).toBe("Your price list has 1,742 items, and the AI was shown the first 500. Check that nothing further down is missing.");
     expect(draftedWords(readDrafted({ by: "price_list", request_number: 3, price_list: { shown: 500, of: 742 } })!, []).at(-1)).toBe("Your price list has 742 items, and this draft went by the first 500. Check that nothing further down is missing.");
     expect(cutListWords(readDrafted({ by: "claude", price_list: { shown: 500, of: 500 } })!)).toBeNull();
     expect(cutListWords(readDrafted({ by: "claude" })!)).toBeNull();
@@ -44,12 +44,12 @@ describe("a drafted quote", () => {
   it("says who drafted it and what to check", () => {
     expect(draftedWords({ by: "claude", request_number: 12 }, ["Mowing", "Edging"])).toEqual([
       // Said to whoever opens the draft, who may not be the one who turned drafting on: it's AI's, and to check it.
-      "Written by AI: Claude drafted this from request #12 and your price list. It can be wrong, so check every line, quantity and price before you send it.",
+      "Written by AI: this was drafted from request #12 and your price list. It can be wrong, so check every line, quantity and price before you send it.",
       "Check the quantity on Mowing, Edging: the request didn't say, so it's 1.",
     ]);
-    expect(draftedWords({ by: "price_list", note: "Claude couldn't draft this one (busy), so it was drafted from your price list." }, [])).toEqual([
+    expect(draftedWords({ by: "price_list", note: "The AI couldn't draft this one (busy), so it was drafted from your price list." }, [])).toEqual([
       "Drafted from the request and your price list. Look it over before you send it.",
-      "Claude couldn't draft this one (busy), so it was drafted from your price list.",
+      "The AI couldn't draft this one (busy), so it was drafted from your price list.",
     ]);
     // A draft that came with no lines isn't called drafted.
     expect(draftedWords({ by: "price_list", request_number: 7, lines: 0, note: "Nothing on your price list matched what they asked for. Add the lines yourself." }, [])).toEqual([
