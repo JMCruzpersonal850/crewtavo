@@ -341,6 +341,7 @@ insert into public.client_duplicate_dismissals (company_id, client_a, client_b) 
 -- A number that texted STOP to Oscar, and a text from a number nobody there knows
 -- (20261113000300_contact_messages.sql, 20261113000310_unknown_texts.sql): the office's, never a sub's.
 insert into public.sms_stops (company_id, phone_key, phone) values (:'co', '5405550190', '+15405550190');
+insert into public.sms_stop_changes (company_id, phone_key, phone, texts_on, source) values (:'co', '5405550190', '+15405550190', false, 'keyword');
 insert into public.unknown_texts (company_id, from_phone, phone_key, body) values (:'co', '+15405550191', '5405550191', 'Do you do gutters?');
 -- A custom field on the business's jobs (20261103000700_custom_fields.sql): the team's, never a sub's.
 insert into public.custom_field_definitions (company_id, record_type, key, label, type) values (:'co', 'job', 'permit', 'Permit number', 'text');
