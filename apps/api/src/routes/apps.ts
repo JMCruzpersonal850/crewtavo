@@ -22,6 +22,7 @@ import { analyticsSettings } from "../services/analytics";
 import { AbcProblem, chooseAbcAccount, connectAbc, settingsOf as abcSettingsOf } from "../integrations/abcSupply";
 import { describeAccount, retryAccounting } from "../integrations/accounting";
 import { deleteVisitsCalendar, describeGoogleAccount, pushUpcomingVisits } from "../integrations/calendars";
+import { loadPlan } from "../integrations/chatgptPlan";
 import { checkFalKey } from "../integrations/fal";
 import { checkLobKey, LobProblem, type LobSettings } from "../integrations/lob";
 import { checkOpenAiKey, pickModel } from "../integrations/openai";
@@ -133,6 +134,8 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
     service: aiKeys.claude && aiKeys.chatgpt ? (choice ?? "claude") : aiKeys.chatgpt ? "chatgpt" : aiKeys.claude || c.env.ANTHROPIC_API_KEY ? "claude" : null,
   };
   const openaiSettings = (integrations.find((r) => r.provider === "chatgpt")?.settings ?? {}) as OpenAiSettings;
+  // Whether the person looking has their own ChatGPT plan connected (each person's own: routes/chatgpt.ts).
+  const myPlan = (await loadPlan(adminClient(c.env), { userId: c.var.userId, companyId: c.var.companyId }).catch(() => null))?.status === "connected";
   const openai = aiKeys.chatgpt
     ? { model: pickModel(c.env, openaiSettings.models ?? [], openaiSettings.model) ?? openaiSettings.model ?? null, models: openaiSettings.models ?? [], model_locked: Boolean(c.env.OPENAI_MODEL) }
     : null;
@@ -159,7 +162,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
-        ...(entry.id === "chatgpt" && openai ? { openai } : {}),
+        ...(entry.id === "chatgpt" ? { ...(openai ? { openai } : {}), my_plan: myPlan } : {}),
         ...(takesKeys ? { takes_app_keys: true, app_keys: ownKeys } : {}),
       };
     }),

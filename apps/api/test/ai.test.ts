@@ -13,7 +13,7 @@ import { memoryDb, type MemoryDb, type Row } from "./fixtures/memoryDb";
 const world = vi.hoisted(() => ({ db: null as unknown as MemoryDb }));
 vi.mock("../src/lib/supabase", async () => {
   const { memoryClient } = await import("./fixtures/memoryDb");
-  return { adminClient: () => memoryClient(world.db), userClient: () => memoryClient(world.db), publishableKey: () => "key" };
+  return { adminClient: () => memoryClient(() => world.db), userClient: () => memoryClient(() => world.db), publishableKey: () => "key" };
 });
 const { aiAvailable, checkCompanyAi, companyAi, complete, readDocument } = await import("../src/services/ai");
 const { adminClient } = await import("../src/lib/supabase");

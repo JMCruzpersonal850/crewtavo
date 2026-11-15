@@ -75,7 +75,7 @@ interface Me {
   profile: { user_id: string; email: string | null; full_name: string; phone: string | null; color?: string | null; avatar_url?: string | null; locale?: string | null };
   /** False when every sign-in this person has is a sub's: they can't set up a business with it. */
   can_create_company?: boolean;
-  memberships: Array<{ role: Role; role_name: string; role_id?: string | null; permissions: Permission[]; company: Company; subcontractor?: SubLogin | null; email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean; terms_accepted?: boolean; railway_needed?: boolean }>;
+  memberships: Array<{ role: Role; role_name: string; role_id?: string | null; permissions: Permission[]; company: Company; subcontractor?: SubLogin | null; email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; chatgpt_plan?: boolean; fal_connected?: boolean; terms_accepted?: boolean; railway_needed?: boolean }>;
 }
 
 export interface Session {

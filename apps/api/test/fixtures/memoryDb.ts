@@ -13,14 +13,24 @@ export interface MemoryDb {
   rpc: Record<string, (args: Row, db: MemoryDb) => unknown>;
   /** Every function called, in order. */
   rpcs: Array<{ fn: string; args: Row }>;
+  /** Files in storage, by path. */
+  files: Record<string, Uint8Array>;
 }
 
-export const memoryDb = (tables: Record<string, Row[]> = {}, keys: Record<string, string[]> = {}): MemoryDb => ({ tables, keys, rpc: {}, rpcs: [] });
+export const memoryDb = (tables: Record<string, Row[]> = {}, keys: Record<string, string[]> = {}): MemoryDb => ({ tables, keys, rpc: {}, rpcs: [], files: {} });
 
-export function memoryClient(db: MemoryDb, claims: Row = { sub: "viewer" }) {
+/** `source` and `claims` may be functions, read at each use: a test can swap the world, or who is signed in, between requests. */
+export function memoryClient(source: MemoryDb | (() => MemoryDb), who: Row | (() => Row) = { sub: "viewer" }) {
+  const world = () => (typeof source === "function" ? source() : source);
   return {
-    auth: { getClaims: async () => ({ data: { claims }, error: null }) },
+    auth: { getClaims: async () => ({ data: { claims: typeof who === "function" ? who() : who }, error: null }) },
+    storage: {
+      from: () => ({
+        download: async (path: string) => (world().files[path] ? { data: new Blob([world().files[path]!]), error: null } : { data: null, error: { message: "not found" } }),
+      }),
+    },
     rpc: async (fn: string, args: Row = {}) => {
+      const db = world();
       db.rpcs.push({ fn, args });
       // Rate limits have room unless the test says otherwise.
       const run = db.rpc[fn] ?? (fn === "rate_limit_hit" ? () => true : null);
@@ -33,8 +43,9 @@ export function memoryClient(db: MemoryDb, claims: Row = { sub: "viewer" }) {
       let options: { onConflict?: string; ignoreDuplicates?: boolean } = {};
       let returning = false;
       let limit = Infinity;
-      const rows = () => (db.tables[table] ??= []);
+      const rows = () => (world().tables[table] ??= []);
       const run = (): Row[] => {
+        const db = world();
         if (op === "select") return rows().filter((row) => filters.every((keep) => keep(row))).slice(0, limit).map((row) => ({ ...row }));
         if (op === "insert") {
           const added = (Array.isArray(payload) ? payload : [payload]).map((row) => ({ ...row }));
@@ -65,6 +76,8 @@ export function memoryClient(db: MemoryDb, claims: Row = { sub: "viewer" }) {
         is: (column: string, value: unknown) => (filters.push((row) => (row[column] ?? null) === value), builder),
         gt: (column: string, value: any) => (filters.push((row) => row[column] > value), builder),
         lt: (column: string, value: any) => (filters.push((row) => row[column] != null && row[column] < value), builder),
+        // not(column, "in", "(a,b)"), as PostgREST spells it.
+        not: (column: string, _op: string, list: string) => (filters.push((row) => !list.replace(/^\(|\)$/g, "").split(",").includes(String(row[column]))), builder),
         match: (want: Row) => (filters.push((row) => Object.entries(want).every(([k, v]) => row[k] === v)), builder),
         insert: (value: Row | Row[]) => ((op = "insert"), (payload = value), builder),
         upsert: (value: Row | Row[], o: typeof options = {}) => ((op = "upsert"), (payload = value), (options = o), builder),

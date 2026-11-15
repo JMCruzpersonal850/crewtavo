@@ -33,11 +33,12 @@ import { dailyOutlook } from "./services/external";
 import { autoRoutes } from "./services/routes";
 import { relocatePins } from "./services/properties";
 import { sendScheduledPayments } from "./services/installments";
+import { tidyPlans } from "./integrations/chatgptPlan";
 
 export const TASKS = [
   "automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "address",
   "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync",
-  "social", "backups", "profits", "installments", "postcards", "pins", "review_tidy",
+  "social", "backups", "profits", "installments", "postcards", "pins", "review_tidy", "chatgpt_plans",
 ] as const;
 export type TaskName = (typeof TASKS)[number];
 
@@ -81,6 +82,9 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   "3-59/5 * * * *": ["pins"],
   // Copies of Google reviews the sync has stopped seeing on Google are removed (services/googleReviews.ts).
   "55 4 * * *": ["review_tidy"],
+  // ChatGPT plan sign-ins whose person left the team or signed out are signed out at OpenAI and
+  // deleted, and sign-ins nobody finished are cleared (integrations/chatgptPlan.ts).
+  "7-59/10 * * * *": ["chatgpt_plans"],
 };
 
 export async function runTask(name: TaskName, env: Env): Promise<Record<string, unknown>> {
@@ -152,6 +156,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return relocatePins(env, adminClient(env));
     case "review_tidy":
       return tidyReviews(env);
+    case "chatgpt_plans":
+      return tidyPlans(env, adminClient(env));
   }
 }
 

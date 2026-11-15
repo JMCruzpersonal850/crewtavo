@@ -33,6 +33,7 @@ import { AppIcon, AppTile } from "./AppIcon";
 import { AppKeysCard } from "./AppKeysCard";
 import { AssistantAccess, ConnectedAssistants, useAssistantConnections } from "./AssistantAccess";
 import { assistantAppFor, CONNECTOR_STEPS, disconnect as disconnectAssistant } from "./assistantConnections";
+import { ChatGptPlanCard, TeamPlansSwitch, useChatGptPlan } from "./ChatGptPlan";
 import { CalendarRow, GoogleCalendarPanel, LinkCalendarsPanel, AddCalendarForm, useCalendars, type CalendarSource } from "./CalendarPanels";
 import { categoryName, infoFor, isFullSecretKey, LINK_ACCESS, MORE_LABELS, PASSWORD_HINT, STRIPE_NEW_KEY, useApps, usesMarketing, type AiState, type AppInfo, type AppRow } from "./catalog";
 import { DrivePanel } from "./DrivePanel";
@@ -145,7 +146,7 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
   const setup = phase === "waiting";
   const refresh = () => {
     for (const key of ["apps", "calendars", "google-calendars"]) queryClient.invalidateQueries({ queryKey: [key] });
-    // The company's own Anthropic or OpenAI key turns on Ask and the other AI buttons, a fal.ai key
+    // The company's own Anthropic or OpenAI key (or the person's ChatGPT plan) turns on Ask and the other AI buttons, a fal.ai key
     // Find paving on the measuring map, its Twilio account texting (lib/session.tsx), and the
     // website's editor puts Website in the menu.
     if (app.id === "anthropic" || app.id === "chatgpt" || app.id === "fal" || app.id === "twilio" || app.auth === "site") session.refresh();
@@ -174,6 +175,8 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
   // Uninstall takes this app's own assistants and calendars with it.
   const assistants = connections.filter((c) => assistantAppFor(c.name) === app.id);
   const sources = (calendars.data?.calendars ?? []).filter((s) => s.app === app.id);
+  // ChatGPT: the person's own plan, and whether the whole team may connect theirs, go with Uninstall too.
+  const plan = useChatGptPlan(app.id === "chatgpt");
   // Stripe decides where clients' payments go: uninstalling it asks for the person's password.
   const [askPassword, setAskPassword] = useState(false);
   const uninstall = useMutation({
@@ -186,6 +189,10 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
         // The other Google app signs in the same way, and Google would sign it out too.
         if (res?.revoked === false) toast.info(`Your Google sign-in stays, since ${app.id === "google_business" ? "Google Calendar" : "Google Business Profile"} uses it too. Remove Crewtavo in your Google account's security settings to end both.`);
       }
+      if (app.id === "chatgpt") {
+        if (plan.data?.team_plans) await api.put("/ai/team-plans", { on: false });
+        if (app.my_plan) await api.post("/ai/chatgpt/disconnect", {});
+      }
       if (app.auth === "site") await api.delete(`/apps/${app.id}/site`);
       await Promise.all(sources.filter((s) => s.kind !== "google").map((s) => api.delete(`/calendars/${s.id}`)));
     },
@@ -196,10 +203,11 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
     onSettled: () => {
       refresh();
       queryClient.invalidateQueries({ queryKey: ["assistant-connections"] });
+      queryClient.invalidateQueries({ queryKey: ["chatgpt-plan"] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
   });
-  const canUninstall = installed && (app.auth === "builtin" || app.auth === "site" || hasAccount(app) || assistants.length > 0 || sources.length > 0);
+  const canUninstall = installed && (app.auth === "builtin" || app.auth === "site" || hasAccount(app) || Boolean(app.my_plan) || assistants.length > 0 || sources.length > 0);
 
   const askUninstall = async () => {
     if (app.auth === "builtin") return builtinSwitch.turnOff();
@@ -210,7 +218,7 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
       if (await confirm({ title: `Uninstall ${app.name}?`, body, confirmLabel: "Uninstall", danger: true })) uninstall.mutate({ remove_reviews: choice.remove });
       return;
     }
-    const body = uninstallBody(app, { assistants: assistants.length, calendars: sources.length });
+    const body = uninstallBody(app, { assistants: assistants.length, calendars: sources.length, teamPlans: plan.data?.team_plans });
     if (await confirm({ title: `Uninstall ${app.name}?`, body, confirmLabel: "Uninstall", danger: true })) uninstall.mutate({});
   };
 
@@ -426,6 +434,7 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
             <>
               <ConnectorCard app={app} mcpUrl={mcpUrl} setup />
               {app.auth === "api_key" && <KeyCard app={app} onSaved={refresh} />}
+              {app.id === "chatgpt" && <ChatGptPlanCard where="app" />}
             </>
           ) : (
             <KeyCard app={app} onSaved={refresh} />
@@ -450,6 +459,8 @@ function AppListing({ app, all, mcpUrl, ai }: { app: AppRow; all: AppRow[]; mcpU
           {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
           {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
           {app.id === "chatgpt" && app.status !== "disconnected" && <OpenAiModelCard app={app} onChanged={refresh} />}
+          {app.id === "chatgpt" && <ChatGptPlanCard where="app" />}
+          {app.id === "chatgpt" && <TeamPlansSwitch />}
           {app.id === "lob" && <LobPanel app={app} onChanged={refresh} />}
           {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
           {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
@@ -584,7 +595,7 @@ function UninstallReviews({ count, onChange }: { count: number; onChange: (remov
 }
 
 /** What Uninstall takes away, in the words of each kind of app. */
-function uninstallBody(app: AppRow, counts: { assistants: number; calendars: number }): string {
+function uninstallBody(app: AppRow, counts: { assistants: number; calendars: number; teamPlans?: boolean }): string {
   const again = "You can install it again any time.";
   if (app.id === "google_calendar") {
     const visits = app.status !== "disconnected" ? " The visits calendar Crewtavo made is removed from your Google account." : "";
@@ -608,6 +619,8 @@ function uninstallBody(app: AppRow, counts: { assistants: number; calendars: num
     const parts = [];
     if (counts.assistants) parts.push(`${app.name} stops working with your Crewtavo account. Anyone else on your team who connected it keeps theirs.`);
     if (hasAccount(app)) parts.push(`Your ${app.id === "chatgpt" ? "OpenAI" : "Anthropic"} key is removed, so Crewtavo's AI stops using it.`);
+    if (app.my_plan) parts.push("Your own ChatGPT plan is signed out.");
+    if (counts.teamPlans) parts.push("Everyone else's ChatGPT plan is disconnected too.");
     return `${parts.join(" ")} ${again}`;
   }
   if (app.id === "twilio") return `Texts stop going out from your number, and your Twilio account's keys are removed from Crewtavo. Nothing already sent is deleted, and your Twilio account isn't changed. ${again}`;

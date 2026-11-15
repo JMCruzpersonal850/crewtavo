@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { copyText } from "@/lib/clipboard";
 import { hasRole, useSession } from "@/lib/session";
 import { AssistantAccess, ConnectedAssistants } from "@/features/apps/AssistantAccess";
+import { ChatGptPlanCard } from "@/features/apps/ChatGptPlan";
 import { CONNECTOR_STEPS } from "@/features/apps/assistantConnections";
 
 export function AssistantSettings() {
@@ -34,6 +35,8 @@ export function AssistantSettings() {
         </details>
       </section>
       <ConnectedAssistants card />
+      {/* Not an assistant that uses Crewtavo, but Crewtavo's own AI on this person's ChatGPT plan: shown to whoever may connect one. */}
+      {session.role !== "subcontractor" && <ChatGptPlanCard where="settings" />}
       {hasRole(session, "admin") && (
         <section className="card card-pad stack-sm">
           <strong>For everyone at {session.company.name}</strong>

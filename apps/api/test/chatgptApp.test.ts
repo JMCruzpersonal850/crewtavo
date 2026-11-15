@@ -12,7 +12,7 @@ import { memoryDb, type MemoryDb, type Row } from "./fixtures/memoryDb";
 const world = vi.hoisted(() => ({ db: null as unknown as MemoryDb }));
 vi.mock("../src/lib/supabase", async () => {
   const { memoryClient } = await import("./fixtures/memoryDb");
-  return { adminClient: () => memoryClient(world.db), userClient: () => memoryClient(world.db), publishableKey: () => "key" };
+  return { adminClient: () => memoryClient(() => world.db), userClient: () => memoryClient(() => world.db), publishableKey: () => "key" };
 });
 const { app } = await import("../src/app");
 
@@ -55,7 +55,7 @@ beforeEach(() => {
   );
   world.db.rpc.merge_company_settings = (args, db) => {
     const company = db.tables.companies!.find((c) => c.id === args.p_company)!;
-    for (const [key, value] of Object.entries(args.p_settings as Row)) company.settings[key] = { ...(company.settings[key] ?? {}), ...(value as Row) };
+    for (const [key, value] of Object.entries(args.p_settings as Row)) company.settings[key] = value && typeof value === "object" ? { ...(company.settings[key] ?? {}), ...(value as Row) } : value;
     return null;
   };
 });
@@ -162,5 +162,24 @@ describe("choosing between the company's Claude key and its OpenAI key", () => {
     expect((await request("POST", "/apps/chatgpt/disconnect", {})).status).toBe(200);
     expect(await saved()).toBeNull();
     expect(await ai()).toMatchObject({ claude: true, chatgpt: false, service: "claude" });
+  });
+});
+
+describe("Reading receipts, when the company's AI is its OpenAI key", () => {
+  it("turns on only once OpenAI says the key works, and says what to fix in the ChatGPT app's words", async () => {
+    openai(LISTED);
+    await request("PUT", "/apps/chatgpt/key", { api_key: KEY });
+    openai({ status: 401, error: { code: "invalid_api_key" } });
+    expect(await answer(request("PUT", "/receipts/reading", { on: true }))).toEqual([400, { error: "OpenAI turned the key down. Check that it was copied correctly, or make a new one at platform.openai.com/api-keys. The key is under Apps → ChatGPT." }]);
+    expect(world.db.tables.companies![0]!.settings.receipt_reading).toBeUndefined();
+    const calls = openai(LISTED);
+    expect(await answer(request("PUT", "/receipts/reading", { on: true }))).toEqual([200, { on: true }]);
+    expect(calls.map((c) => c.url)).toEqual(["https://api.openai.com/v1/models"]);
+    expect(world.db.rpcs.find((r) => r.fn === "merge_company_settings")?.args).toEqual({ p_company: CO, p_settings: { receipt_reading: true } });
+  });
+
+  it("can't be turned on with no key at all", async () => {
+    openai(LISTED);
+    expect(await answer(request("PUT", "/receipts/reading", { on: true }))).toEqual([400, { error: "Add a Claude or OpenAI key on the Apps page first, then turn this on." }]);
   });
 });

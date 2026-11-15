@@ -3,16 +3,24 @@
  * receipts. Every feature asks through `complete` or `readDocument`, saying who is asking, and
  * which service answers is decided here, in this order:
  *
- *   1. the company's own key: its Claude key (Apps → Claude) or its OpenAI key (Apps → ChatGPT).
+ *   1. the asking person's own ChatGPT plan, when they connected one and it's working
+ *      (integrations/chatgptPlan.ts). Only for what that person asks for themselves while signed
+ *      in: never for someone else's ask, and never for what Crewtavo does by itself.
+ *   2. the company's own key: its Claude key (Apps → Claude) or its OpenAI key (Apps → ChatGPT).
  *      With both, the one the company chose (settings.ai.service), and Claude until it chooses.
- *   2. the deployment's Claude key (ANTHROPIC_API_KEY), for a company with neither.
+ *   3. the deployment's Claude key (ANTHROPIC_API_KEY), for a company with neither.
  *
- * A company that only ever added a Claude key, or none, gets exactly what it had before OpenAI
- * could be used at all.
+ * When a person's plan can't take an ask (its usage limit, a sign-in that ended, something the plan
+ * route doesn't support), the ask goes on to 2 and 3 so their work isn't held up, and what stopped
+ * the plan is kept on their connection for its page to show. With nothing to go on to, they're told.
+ *
+ * A company that only ever added a Claude key, or none, and whose people connected no plan, gets
+ * exactly what it had before OpenAI could be used at all.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../env";
-import { askWithKey, checkOpenAiKey, listKeyModels, OpenAiProblem, pickModel, type OpenAiAsk, type OpenAiModel } from "../integrations/openai";
+import { ELIGIBLE, loadPlan, notePlanProblem, notePlanUnsupported, planAccess, PlanTrouble, refreshPlanModels, USAGE_URL, type Person, type PlanRow } from "../integrations/chatgptPlan";
+import { askWithKey, askWithPlan, checkOpenAiKey, listKeyModels, OpenAiProblem, pickModel, type OpenAiAsk, type OpenAiModel } from "../integrations/openai";
 import { loadSecret } from "../integrations/tokens";
 import { asJson, HttpError } from "../lib/http";
 import { allow } from "../lib/limit";
@@ -82,9 +90,12 @@ export async function companyAi(env: Env, admin: Db, companyId: string): Promise
   return key ? { service: "claude", apiKey: key, own: Boolean(claude) } : null;
 }
 
-/** Whether an ask from this person, or from the company alone (`userId` null), has a service to answer it. */
+/** Whether an ask from this person, or from the company alone (`userId` null), has a service to answer it: their own plan, or the company's key, or the deployment's. */
 export async function aiAvailable(env: Env, admin: Db, asker: Asker): Promise<boolean> {
-  return Boolean(await companyAi(env, admin, asker.companyId));
+  if (await companyAi(env, admin, asker.companyId)) return true;
+  if (!asker.userId) return false;
+  const plan = await loadPlan(admin, { userId: asker.userId, companyId: asker.companyId }).catch(() => null);
+  return plan?.status === "connected" && plan.problem !== "sign_in";
 }
 
 /** What one person may ask of the AI in an hour, and everyone at one company between them. */
@@ -193,8 +204,16 @@ export async function complete(env: Env, options: CompleteOptions): Promise<stri
 
 async function answer(env: Env, asker: Asker, ask: Ask): Promise<string> {
   const admin = adminClient(env);
+  // The person's own plan first, for what they ask themselves. What it couldn't take goes on to the
+  // company's key; with no key to go on to, why the plan couldn't is what they're told.
+  let instead: HttpError | null = null;
+  if (asker.userId) {
+    const tried = await askPlan(env, admin, { userId: asker.userId, companyId: asker.companyId }, ask);
+    if (tried && "text" in tried) return tried.text;
+    instead = tried?.instead ?? null;
+  }
   const ai = await companyAi(env, admin, asker.companyId);
-  if (!ai) throw new HttpError(501, NO_AI);
+  if (!ai) throw instead ?? new HttpError(501, NO_AI);
   return ai.service === "chatgpt" ? askOpenAiKey(env, admin, asker.companyId, ai, ask) : ask.file ? readWithClaude(env, ai.apiKey, ask) : completeWithClaude(env, ai.apiKey, ask);
 }
 
@@ -355,6 +374,130 @@ async function askOpenAiKey(env: Env, admin: Db, companyId: string, ai: Extract<
         }
       }
       throw keyProblem(error, ask, model);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// OpenAI, on the asking person's own ChatGPT plan
+// ---------------------------------------------------------------------------------------------
+
+/** What a person is told when their own plan can't answer and the company has no key to answer instead. */
+const PLAN_SAYS = {
+  usage_limit: () => new HttpError(429, `Usage limit reached. Review your plan or this app's limit in ChatGPT settings: ${USAGE_URL}`),
+  sign_in: () => new HttpError(409, "Your ChatGPT sign-in has ended. Sign in again under Settings → AI assistants."),
+  not_eligible: () => new HttpError(409, `Your ChatGPT plan can't be used here. ${ELIGIBLE}`),
+  unsupported: () => new HttpError(422, "Your ChatGPT plan can't do that here. An admin can add a Claude or OpenAI key on the Apps page for it."),
+  unavailable: () => new HttpError(503, "ChatGPT couldn't be reached. Try again in a minute."),
+};
+
+/**
+ * How long a plan is left alone after OpenAI says its usage limit is reached, before a later ask
+ * tries it again. OpenAI says not to guess when a limit resets, so this isn't that: only a pause
+ * short enough that someone who added credit isn't kept waiting long.
+ */
+const LIMIT_PAUSE_MS = 15 * 60_000;
+/** A plan OpenAI says can't be used here is asked about again a day later (or when the person presses Try again). */
+const NOT_ELIGIBLE_PAUSE_MS = 24 * 3_600_000;
+
+/** The plan's answer, or why the ask goes elsewhere (`instead`: what to say when there's nowhere else). Null without a connected plan. */
+type PlanTry = { text: string } | { instead: HttpError } | null;
+
+async function askPlan(env: Env, admin: Db, person: Person, ask: Ask): Promise<PlanTry> {
+  let row: PlanRow | null;
+  try {
+    row = await loadPlan(admin, person);
+  } catch (error) {
+    // The connection couldn't be read: the ask goes on as if there were none.
+    console.error((error as Error).message);
+    return null;
+  }
+  if (!row) return null;
+  // A sign-in that ended says so; one the person disconnected is simply not there.
+  if (row.status !== "connected") return row.problem === "sign_in" ? { instead: PLAN_SAYS.sign_in() } : null;
+  if (row.problem === "sign_in") return { instead: PLAN_SAYS.sign_in() };
+  // Paused after the usage limit or "not eligible": not asked again until the pause is over.
+  if (row.problem && (!row.retry_at || Date.parse(row.retry_at) > Date.now())) return { instead: PLAN_SAYS[row.problem]() };
+  // What the plan turned down before as unsupported isn't sent to it again.
+  const file = ask.file ? (ask.file.mediaType === "application/pdf" ? "pdf" : "image") : null;
+  if ((file && row.unsupported.includes(file)) || (ask.schema && row.unsupported.includes("schema"))) return { instead: PLAN_SAYS.unsupported() };
+  let model = pickModel(env, row.models, row.model) ?? row.model;
+  if (!model) return { instead: PLAN_SAYS.unavailable() };
+
+  const trouble = (error: unknown): PlanTry => {
+    if (error instanceof PlanTrouble) return { instead: error.kind === "sign_in" ? PLAN_SAYS.sign_in() : PLAN_SAYS.unavailable() };
+    throw error;
+  };
+  let token: string;
+  try {
+    token = await planAccess(env, admin, person);
+  } catch (error) {
+    return trouble(error);
+  }
+  let effort: OpenAiAsk["effort"] = row.unsupported.includes("effort") ? null : ask.effort;
+  let strict = true;
+  let renewed = false;
+  let relisted = false;
+  for (;;) {
+    try {
+      const text = await askWithPlan(token, { ...ask, model, effort, strict });
+      if (row.problem) await notePlanProblem(admin, person, null);
+      return { text };
+    } catch (error) {
+      if (!(error instanceof OpenAiProblem)) throw error;
+      // An answer that came but isn't whole is the answer: it isn't asked for again on the company's key.
+      const about = answerProblem(error, ask);
+      if (about) throw about;
+      const param = error.param ?? "";
+      if (error.kind === "key") {
+        // OpenAI says to ask people to sign in again only once a refresh confirms it: so refresh, once.
+        if (renewed) return { instead: PLAN_SAYS.unavailable() };
+        renewed = true;
+        try {
+          token = await planAccess(env, admin, person, true);
+          continue;
+        } catch (refused) {
+          return trouble(refused);
+        }
+      }
+      if (error.kind === "usage_limit") {
+        await notePlanProblem(admin, person, "usage_limit", LIMIT_PAUSE_MS);
+        return { instead: PLAN_SAYS.usage_limit() };
+      }
+      if (error.kind === "not_eligible") {
+        await notePlanProblem(admin, person, "not_eligible", NOT_ELIGIBLE_PAUSE_MS);
+        return { instead: PLAN_SAYS.not_eligible() };
+      }
+      if (error.kind === "not_allowed") {
+        await notePlanProblem(admin, person, "sign_in");
+        return { instead: PLAN_SAYS.sign_in() };
+      }
+      if (error.kind === "unsupported" && param.startsWith("reasoning") && effort) {
+        effort = null;
+        await notePlanUnsupported(admin, person, row, "effort");
+        continue;
+      }
+      if (error.kind === "unsupported" && param.startsWith("text") && ask.schema && strict) {
+        strict = false;
+        continue;
+      }
+      if (error.kind === "model" || (error.kind === "unsupported" && param === "model")) {
+        // The model picked is gone from the plan: OpenAI's list is read again and one it has now is used.
+        if (relisted || env.OPENAI_MODEL) return { instead: PLAN_SAYS.unavailable() };
+        relisted = true;
+        const listed = await refreshPlanModels(env, admin, person).catch(() => null);
+        if (!listed?.model || listed.model === model) return { instead: PLAN_SAYS.unavailable() };
+        row = listed;
+        model = listed.model;
+        effort = ask.effort;
+        continue;
+      }
+      if (error.kind === "unsupported") {
+        const what = param.startsWith("text") ? "schema" : file;
+        if (what) await notePlanUnsupported(admin, person, row, what);
+        return { instead: PLAN_SAYS.unsupported() };
+      }
+      return { instead: PLAN_SAYS.unavailable() };
     }
   }
 }

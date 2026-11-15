@@ -53,6 +53,8 @@ export interface AppRow {
   lob?: { mode: "test" | "live" | null } | null;
   /** ChatGPT, once the company's OpenAI key is saved: the model it uses and the ones to pick from. */
   openai?: OpenAiState;
+  /** ChatGPT: the person looking has connected their own ChatGPT plan (each person's own). */
+  my_plan?: boolean;
 }
 
 export interface OpenAiState {

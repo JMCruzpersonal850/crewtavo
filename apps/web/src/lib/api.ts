@@ -27,7 +27,7 @@ export interface AppConfig {
    * `emailCodes`: a sub can get a sign-in code by email, since this Crewtavo sends email in some way
    * (its own sender or some company's mailbox). For the whole instance, never one business.
    */
-  features: { ai: boolean; payments: boolean; email: boolean; sms: boolean; emailCodes?: boolean; smsCodes?: boolean; roofInsights: boolean; devMail?: boolean; findPaving?: boolean };
+  features: { ai: boolean; payments: boolean; email: boolean; sms: boolean; emailCodes?: boolean; smsCodes?: boolean; roofInsights: boolean; devMail?: boolean; findPaving?: boolean; chatgptPlan?: boolean };
   /**
    * Import from Google Drive (Drive's Google Picker), when the deployment sets GOOGLE_CLIENT_ID and
    * GOOGLE_PICKER_API_KEY: the OAuth client, the browser key and the Cloud project number. All public.
@@ -39,12 +39,13 @@ export interface AppConfig {
 /**
  * What's on for one business: the instance's own keys (config), or what the business set up itself.
  * Its own mailbox (Settings → Email) turns email on, its own Twilio account (Apps → Twilio) texting,
- * its own Anthropic key (Apps → Claude) AI, and its fal.ai key (Apps → fal.ai) Find paving on the
- * measuring map.
+ * its own Anthropic or OpenAI key (Apps → Claude, Apps → ChatGPT) AI, and its fal.ai key (Apps →
+ * fal.ai) Find paving on the measuring map. The person's own ChatGPT plan turns AI on for them
+ * alone (`chatgptPlan`: it's answering what they ask, so pages say "Using ChatGPT plan").
  */
 export function companyFeatures(
   features: AppConfig["features"],
-  company: { email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean },
+  company: { email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean; chatgpt_plan?: boolean },
 ): AppConfig["features"] {
   const ownMailbox = Boolean(company.email_connected);
   return {
@@ -54,6 +55,7 @@ export function companyFeatures(
     devMail: !ownMailbox && Boolean(features.devMail),
     ai: features.ai || Boolean(company.ai_connected),
     findPaving: Boolean(company.fal_connected),
+    chatgptPlan: Boolean(company.chatgpt_plan),
   };
 }
 

@@ -12,6 +12,7 @@ import { renderEmail } from "../lib/email";
 import { allow } from "../lib/limit";
 import { checkMailbox, emailConfigured, loadMailbox, sendEmail, smsConfigured } from "../lib/notify";
 import { adminClient, publishableKey, type Db } from "../lib/supabase";
+import { connectedPlans } from "../integrations/chatgptPlan";
 import { timeRates } from "../services/payRates";
 import { saveLetterheadPicture } from "../services/letterhead";
 import { emailCodesOffered, textCodesOffered } from "../services/signInCodes";
@@ -133,6 +134,9 @@ account.get("/me", requireUser, async (c) => {
   const withFal = new Set(connected.filter((r) => r.provider === "fal").map((r) => r.company_id));
   // (One connected with its Account SID: a key saved the old way never sent anything.)
   const withTwilio = new Set(connected.filter((r) => r.provider === "twilio" && r.external_account_id).map((r) => r.company_id));
+  // ...and where this person connected their own ChatGPT plan (Apps → ChatGPT), which answers what
+  // they ask the AI themselves: AI is on for them there whatever the company has.
+  const plans = rows.length ? await connectedPlans(adminClient(c.env), c.var.userId) : [];
   const agreed = new Set(agreements.map((r) => r.company_id));
   const all = must(everyRole);
   return c.json({
@@ -161,7 +165,9 @@ account.get("/me", requireUser, async (c) => {
         email_connected: withMailbox.has(m.company_id),
         // Whether texts go out for this company from its own Twilio account (Apps → Twilio): for a sub too.
         sms_connected: withTwilio.has(m.company_id),
-        ai_connected: staff && withAiKey.has(m.company_id),
+        ai_connected: staff && (withAiKey.has(m.company_id) || plans.some((p) => p.company_id === m.company_id && p.problem !== "sign_in")),
+        // Their own ChatGPT plan is answering what they ask (nothing in its way): pages say so.
+        chatgpt_plan: staff && plans.some((p) => p.company_id === m.company_id && !p.problem),
         // Apps → fal.ai: Find paving on the measuring map.
         fal_connected: staff && withFal.has(m.company_id),
         terms_accepted: agreed.has(m.company_id),
