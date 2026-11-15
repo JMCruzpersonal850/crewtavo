@@ -157,7 +157,7 @@ export function problemCopy(g: GoogleState, timeZone: string): ProblemCopy | nul
       return {
         tone: "info",
         title: "Google Business Profile is disconnected, so new reviews don't come in.",
-        body: `The reviews already here stay, and keep their clients from being asked again.${admin ? "" : " Ask an owner or admin to connect it in Apps."}`,
+        body: `The reviews already here show for up to 30 days after the last sync, and their clients still aren't asked again.${admin ? "" : " Ask an owner or admin to connect it in Apps."}`,
         link: link("Connect Google Business Profile"),
       };
     default:

@@ -14,9 +14,9 @@ export type AutopayTiming = "now" | "end_of_day" | "days";
 /** settings.autopay, as autopay_set_settings writes it (every key, always). */
 export interface AutopaySettings {
   enabled: boolean;
-  /** The words clients agree to. The timing sentence is shown (and stored with the agreement) after them. */
+  /** The words clients agree to. The timing sentence and the bank account paragraph are shown (and stored with the agreement) after them. */
   terms: string;
-  /** Changes when the terms, timing or days change: the client agrees to when they're charged as well as the words. */
+  /** Changes when the terms, timing, days or limit change: the client agrees to when they're charged, and to the most charged without notice, as well as the words. */
   terms_version: string;
   timing: AutopayTiming;
   /** 1 to 14 with timing "days", else null. */
@@ -68,19 +68,20 @@ const OTHER_INVOICES = "and for other invoices we send you";
 const MONTHLY = "or once a month for a monthly plan";
 
 /**
- * The starter terms for each trade (private.autopay_starter_terms has the same words). Paving and
+ * The starter terms for each trade (private.autopay_starter_terms has the same words). They say
+ * "the card or bank account": a client can save either where the business takes both. Paving and
  * roofing charge for big jobs, so theirs talk about the agreed amount; lawn care, cleaning, pool
  * service and pest control sell plans billed by the visit or by the month, so theirs talk about
  * each visit and a monthly plan, as the general words do.
  */
 const STARTER_TERMS: Record<string, string> = {
-  lawn_exterior: `We charge the card on file after each visit is done, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
-  cleaning: `We charge the card on file after each cleaning, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
-  pool_service: `We charge the card on file after each pool service visit, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
-  pest_control: `We charge the card on file after each treatment, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
-  general: `We charge the card on file when each visit or job is done, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
-  paving: `We charge the card on file when the work on your job is done, ${OTHER_INVOICES}. Charges over the amount we agreed wait until we've talked with you. You'll get a receipt each time. ${TURN_OFF}`,
-  roofing_exteriors: `We charge the card on file when the work on your job is done, ${OTHER_INVOICES}. Charges over the amount we agreed wait until we've talked with you. You'll get a receipt each time. ${TURN_OFF}`,
+  lawn_exterior: `We charge the card or bank account on file after each visit is done, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
+  cleaning: `We charge the card or bank account on file after each cleaning, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
+  pool_service: `We charge the card or bank account on file after each pool service visit, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
+  pest_control: `We charge the card or bank account on file after each treatment, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
+  general: `We charge the card or bank account on file when each visit or job is done, ${MONTHLY}, ${OTHER_INVOICES}. You'll get a receipt each time. ${TURN_OFF}`,
+  paving: `We charge the card or bank account on file when the work on your job is done, ${OTHER_INVOICES}. Charges over the amount we agreed wait until we've talked with you. You'll get a receipt each time. ${TURN_OFF}`,
+  roofing_exteriors: `We charge the card or bank account on file when the work on your job is done, ${OTHER_INVOICES}. Charges over the amount we agreed wait until we've talked with you. You'll get a receipt each time. ${TURN_OFF}`,
 };
 
 /** The trades whose new recurring jobs start on autopay unless Settings → Payments says otherwise. */
@@ -121,7 +122,8 @@ export function autopaySettings(settings: unknown, trade?: string | null): Autop
   return {
     enabled: a.enabled === true,
     terms,
-    terms_version: typeof a.terms_version === "string" && a.terms_version ? a.terms_version : `starter-${trade || "general"}-1`,
+    // -2: the starter words say "card or bank account", and the bank account paragraph follows them.
+    terms_version: typeof a.terms_version === "string" && a.terms_version ? a.terms_version : `starter-${trade || "general"}-2`,
     timing,
     days: timing === "days" ? daysOf(a.days) : null,
     // Null is "no limit" only when it was saved that way; a missing or broken cap is the starter one.
@@ -141,6 +143,14 @@ export function autopaySettings(settings: unknown, trade?: string | null): Autop
  * server's checks all ask this.
  */
 export const tipsAllowed = (hubTips: unknown, imported: boolean) => hubTips === true && !imported;
+
+/**
+ * Said by the tips switch. A tip is paid to the business's Stripe account with the invoice and
+ * shows only as a total on Finance, so passing it on is the business's to do: "An employer may not
+ * keep tips received by its employees for any purposes" (29 U.S.C. 203(m)(2)(B)).
+ */
+export const TIPS_LAW_NOTE =
+  "Tips belong to the crew: under federal law an employer may not keep tips its employees receive. They reach your Stripe account with the invoice's payment and show as a total on Finance, so pay them out to the people who did the work.";
 
 // ---------------------------------------------------------------------------------------------
 // Saved cards and bank accounts
@@ -193,6 +203,35 @@ export function autopayTimingText(s: Pick<AutopaySettings, "timing" | "days">): 
   }
   return "at the end of the day of each visit";
 }
+
+/** An amount as private.money writes it: "$500.00", "$1,250.50". */
+const dollars = (amount: number) => `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * What a client paying from a bank account agrees to about notice, shown and kept as the last
+ * paragraph of the terms (the same words as private.autopay_bank_text, tested on both sides). Each
+ * charge is for the work done, so its amount varies, and Regulation E (12 CFR 1005.10(d)) has the
+ * client told of "the right to receive notice of all varying transfers" (the amount and date, at
+ * least 10 days ahead) and lets them choose "notice only when a transfer falls outside a specified
+ * range of amounts". The range is the business's own limit (Most to charge without asking): a
+ * charge over it already waits for the office's OK. With no limit there is no range to name.
+ */
+export function autopayBankText(s: Pick<AutopaySettings, "max_amount">): string {
+  const right = "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made.";
+  if (s.max_amount == null) return `${right} By agreeing, you choose not to be told ahead: each charge is for the invoice it pays, whatever its amount.`;
+  const cap = dollars(s.max_amount);
+  return `${right} By agreeing, you choose to be told ahead only when a charge is more than ${cap}, and we'll send you its amount and date at least 10 days before we make it. Charges of ${cap} or less are made without notice ahead of time.`;
+}
+
+/** Everything a client agrees to, as the agreement keeps it (private.autopay_terms_shown): the terms, when charges go, and the bank account paragraph. */
+export const autopayTermsShown = (s: Pick<AutopaySettings, "terms" | "timing" | "days" | "max_amount">): string =>
+  `${s.terms.trim()}\n\nWe charge ${autopayTimingText(s)}.\n\n${autopayBankText(s)}`;
+
+/** Said under the limit in Settings → Payments, and where the office OKs a charge over it. */
+export const AUTOPAY_BANK_NOTE =
+  "For a client paying from a bank account, federal rules (Regulation E) call for the amount and date of each charge 10 days ahead, unless they agreed to a range. The terms name this limit as that range, and promise 10 days' notice of any charge over it.";
+export const AUTOPAY_NO_LIMIT_NOTE =
+  "With no limit, the terms can't name a range for clients paying from a bank account, so they say charges of any amount go without notice ahead. Set a limit if you take bank payments.";
 
 const MONTH_DAY = new Map<string, Intl.DateTimeFormat>();
 /** "Nov 3" in a time zone. */

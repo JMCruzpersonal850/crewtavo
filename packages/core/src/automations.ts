@@ -85,6 +85,18 @@ export const TRIGGERS: TriggerDef[] = [
   // stands in, once (settings.reviews.recurring_after_visits, 3 unless changed). The verb keeps its
   // old name so rules that name it keep working (20261030000400_recurring_review_visits.sql).
   { verb: "job.recurring_third_visit", label: "A recurring job reaches the visit set in Marketing", group: "Jobs", subject: "job", delayable: true },
+  // The office, an assistant or a booking puts a visit on the schedule, moves it or takes it off
+  // (supabase/migrations/20261113000500_visit_notices.sql). Rules on these run ten minutes after
+  // the change, with the visit as it is then, so a visit dragged twice is one message and one put
+  // back is none. Not for a recurring job's whole run of visits being made or changed. A visit
+  // counts as moved on another day, or with a start an hour or more away (VISIT_MOVED_WORDS).
+  { verb: "visit.scheduled", label: "A visit is booked", group: "Visits", subject: "visit", delayable: false },
+  {
+    verb: "visit.rescheduled", label: "A visit is moved", group: "Visits", subject: "visit", delayable: false,
+    variables: [{ token: "old.date", label: "Date it was on" }, { token: "old.time", label: "Time it was at" }],
+  },
+  // {{date}} and {{time}} are when it was to be: by now the visit has no day, or is gone.
+  { verb: "visit.cancelled", label: "A visit is cancelled", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.reminder", label: "A visit is tomorrow", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.en_route", label: "A crew is on the way", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.started", label: "A visit starts", group: "Visits", subject: "visit", delayable: false },
@@ -127,6 +139,49 @@ export const TRIGGERS: TriggerDef[] = [
     variables: [AUTOPAY_CARD, { token: "autopay.expires", label: "Expires" }, { token: "autopay.link", label: "Update card link", officeOnly: true }],
   },
 ];
+
+/** A visit being booked, moved or cancelled: what a client is told about their own visit changing. */
+export const VISIT_NOTICE_TRIGGERS = ["visit.scheduled", "visit.rescheduled", "visit.cancelled"] as const;
+export const isVisitNotice = (verb: string | null | undefined) => (VISIT_NOTICE_TRIGGERS as readonly string[]).includes(verb ?? "");
+/** How long a rule on one of them waits for the change to settle, in minutes (private.visit_notice_settle). */
+export const VISIT_NOTICE_SETTLE_MIN = 10;
+/** What counts as a visit moved, as the screens say it (private.visit_moved decides). */
+export const VISIT_MOVED_WORDS =
+  "A visit counts as moved when its day changes, or its start time changes by an hour or more. A later start that's still inside the arrival window you give clients doesn't count, and neither does an anytime visit getting a time on its day, so organizing a route doesn't message anyone.";
+
+/** The starter rules for them (private.install_visit_notice_rules), in the order they happen. */
+export const VISIT_NOTICE_STARTERS = ["visit_scheduled", "visit_rescheduled", "visit_cancelled"] as const;
+/**
+ * Whether a company still has the note to answer about them (companies.settings.visit_notices): one
+ * that existed before these messages got them switched off, and its office is asked once whether to
+ * turn them on (public.set_visit_notices). A company made since has them on and nothing to answer.
+ */
+export const visitNoticesPending = (settings: Record<string, unknown> | null | undefined) =>
+  (settings?.visit_notices as { pending?: unknown } | null | undefined)?.pending === true;
+
+/**
+ * What the client themselves just did: a text a rule sends right then answers them, so it goes at
+ * any hour, as a booking's confirmation does. Only with no delay on the rule.
+ */
+export const CLIENTS_OWN_ACTS = ["request.created", "quote.approved", "quote.changes_requested", "quote.range_accepted", "visit.reschedule_requested", "visit.cancel_requested"] as const;
+
+/**
+ * Whether a rule's text to a client goes at any hour, instead of waiting for 8am when it's between
+ * 9pm and 8am: "on my way" (the crew is coming now), and an answer to something the client just
+ * did, when the rule has no delay.
+ */
+export function textsAtAnyHour(verb: string | null | undefined, delayed: boolean): boolean {
+  if (verb === "visit.en_route") return true;
+  return !delayed && (CLIENTS_OWN_ACTS as readonly string[]).includes(verb ?? "");
+}
+
+/** When a rule's text waits for morning, said under its message in the rule editor. Null for on-my-way, which never waits. */
+export function textQuietHint(verb: string): string | null {
+  if (verb === "visit.en_route") return null;
+  if (textsAtAnyHour(verb, false)) return "Sent right away with no delay on the rule. With a delay, a text that comes due between 9pm and 8am waits until 8am.";
+  const stale = isVisitNotice(verb) ? " News of a visit that's before 8am goes by email instead, or by text when there's no email address." : "";
+  return `Between 9pm and 8am your time, this text waits until 8am.${stale}`;
+}
 
 /** Whether a trigger is about autopay: its rules' emails and texts are kept from the crew, and it never adds a client note. */
 export const isAutopayTrigger = (verb: string | null | undefined) => Boolean(verb && (verb.startsWith("autopay.") || verb.startsWith("payment_method.")));
@@ -382,7 +437,8 @@ export const TEMPLATE_VARIABLES: Array<{ token: string; label: string; subjects:
   { token: "total", label: "Total", subjects: ["quote", "job", "invoice"] },
   { token: "balance", label: "Balance due", subjects: ["invoice"] },
   // A quote's or invoice's Client Hub page, or for a client the Hub's home, where they can ask for work.
-  { token: "link", label: "Client Hub link", subjects: ["client", "quote", "invoice"] },
+  // For a visit it's the Hub's home too: the client's visits are there, to see or ask to move.
+  { token: "link", label: "Client Hub link", subjects: ["client", "quote", "invoice", "visit"] },
   { token: "last_visit", label: "Last visit date", subjects: ["client"] },
   { token: "date", label: "Visit date", subjects: ["visit"] },
   { token: "time", label: "Visit time", subjects: ["visit"] },

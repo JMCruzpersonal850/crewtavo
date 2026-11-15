@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { laborRates, lateFeeAmount, lateFeeOn, lateFeeSettings, minimumCharge, minimumTopUp, workLines, workToBill, type LoggedTime } from "../src/billing";
+import { laborRates, LATE_FEE_LAW_NOTE, lateFeeAmount, lateFeeCouldApply, lateFeeNotice, lateFeeOn, lateFeeTerm, lateFeeSettings, minimumCharge, minimumTopUp, workLines, workToBill, type LoggedTime } from "../src/billing";
 
 describe("the minimum charge", () => {
   it("tops the charges up to the minimum, as the database's Minimum charge line does", () => {
@@ -59,9 +59,63 @@ describe("late fees", () => {
     expect(lateFeeOn(owed, null)).toBeNull();
   });
 
+  it("never go on an invoice the office turned them off for", () => {
+    expect(lateFeeOn({ ...owed, no_late_fee: true }, fee)).toBeNull();
+    expect(lateFeeOn({ ...owed, no_late_fee: false }, fee)).toBe("2026-10-07");
+  });
+
+  it("count the grace days from the day a paid invoice was owed again, where the business is", () => {
+    // Due Oct 1 with five grace days; a payment was removed on Oct 20 (late evening in Chicago is Oct 21 UTC).
+    const again = { ...owed, owed_again_at: "2026-10-21T03:30:00Z" };
+    expect(lateFeeOn(again, fee, "America/Chicago")).toBe("2026-10-26");
+    expect(lateFeeOn(again, fee)).toBe("2026-10-27");
+    // Owed again before it was even due: the due date still decides.
+    expect(lateFeeOn({ ...owed, owed_again_at: "2026-09-20T15:00:00Z" }, fee, "America/Chicago")).toBe("2026-10-07");
+  });
+
   it("never go on a deposit invoice, as the hourly task skips them", () => {
     expect(lateFeeOn({ ...owed, kind: "deposit" }, fee)).toBeNull();
     expect(lateFeeOn(owed, fee)).toBe("2026-10-07");
+  });
+});
+
+describe("telling the client about a late fee before one is added", () => {
+  const money = (n: number) => `$${n.toFixed(2)}`;
+  const invoice = { kind: "standard", status: "sent", due_on: "2026-10-01", late_fee_at: null, no_late_fee: false };
+
+  it("says how much and when, in one line", () => {
+    expect(lateFeeNotice({ type: "flat", amount: 25, grace_days: 7 }, money)).toBe("A late fee of $25.00 is added once if this invoice is still unpaid 7 days after its due date.");
+    expect(lateFeeNotice({ type: "percent", amount: 1.5, grace_days: 1 }, money)).toBe("A late fee of 1.5% of the unpaid balance is added once if this invoice is still unpaid 1 day after its due date.");
+    expect(lateFeeNotice({ type: "flat", amount: 40, grace_days: 0 }, money)).toBe("A late fee of $40.00 is added once if this invoice is still unpaid after its due date.");
+  });
+
+  it("is on every invoice a fee could still go on, a draft included", () => {
+    const fee = lateFeeSettings({ late_fee: { type: "flat", amount: 25, grace_days: 7 } });
+    for (const status of ["draft", "sent", "partially_paid", "overdue"]) expect(lateFeeCouldApply({ ...invoice, status }, fee)).toBe(true);
+  });
+
+  it("isn't on one that never gets a fee, or with late fees off", () => {
+    const fee = lateFeeSettings({ late_fee: { type: "percent", amount: 2, grace_days: 10 } });
+    expect(lateFeeCouldApply(invoice, null)).toBe(false);
+    expect(lateFeeCouldApply(invoice, lateFeeSettings({ late_fee: { type: "flat", amount: 0 } }))).toBe(false);
+    expect(lateFeeCouldApply({ ...invoice, kind: "deposit" }, fee)).toBe(false);
+    expect(lateFeeCouldApply({ ...invoice, no_late_fee: true }, fee)).toBe(false);
+    // It has had its fee: the line is on the invoice, and it gets no other.
+    expect(lateFeeCouldApply({ ...invoice, late_fee_at: "2026-10-09T12:00:00Z" }, fee)).toBe(false);
+    expect(lateFeeCouldApply({ ...invoice, due_on: null }, fee)).toBe(false);
+    for (const status of ["paid", "void", "written_off"]) expect(lateFeeCouldApply({ ...invoice, status }, fee)).toBe(false);
+    // Made in Stripe: add_late_fees never touches those.
+    expect(lateFeeCouldApply(invoice, fee, true)).toBe(false);
+  });
+
+  it("says the same as a line of the contract's Payment section", () => {
+    expect(lateFeeTerm({ type: "flat", amount: 25, grace_days: 7 }, money)).toBe("An invoice still unpaid 7 days after its due date gets a late fee of $25.00, added once.");
+    expect(lateFeeTerm({ type: "percent", amount: 2, grace_days: 0 }, money)).toBe("An invoice still unpaid after its due date gets a late fee of 2% of the unpaid balance, added once.");
+  });
+
+  it("tells the business that states limit late fees, and that the invoice now says the fee", () => {
+    expect(LATE_FEE_LAW_NOTE).toContain("States limit late fees");
+    expect(LATE_FEE_LAW_NOTE).toContain("each invoice says the fee and when it applies");
   });
 });
 

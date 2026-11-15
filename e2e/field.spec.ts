@@ -2,7 +2,13 @@
  * The crew on their phones: work a visit from My day, and keep equipment hours and maintenance
  * current from the same screen.
  */
+import { createClient } from "@supabase/supabase-js";
+import { SUPABASE_SECRET, SUPABASE_URL } from "./support/env";
 import { dateIn, expect, expectAccessible, makeJob, must, PHONE, test, unique, zonedIso, type Company } from "./support/fixtures";
+
+// One after another: these share the demo employee, who has one clock. Side by side, one test's
+// clock-in would be newer than another's taps waiting with no signal, and the newer clock wins.
+test.describe.configure({ mode: "default" });
 
 /** A visit at 4 PM today, assigned to the demo employee. */
 async function employeeVisitToday(data: Company) {
@@ -59,6 +65,32 @@ test("a crew member works a visit from My day on a phone", async ({ as, data }) 
   const time = must(await data.db.from("time_entries").select("started_at, ended_at").eq("visit_id", visit.id).eq("user_id", await data.userId("employee")), "time entries");
   expect(time).toHaveLength(1);
   expect(time[0]!.ended_at).toBeTruthy();
+});
+
+test("a crew member is told once what's saved about where they are, and the date they tap OK is kept", async ({ as, data }) => {
+  if (!SUPABASE_URL || !SUPABASE_SECRET) throw new Error("No Supabase server key: fill in .dev.vars (see e2e/README.md).");
+  const admin = createClient(SUPABASE_URL, SUPABASE_SECRET, { auth: { persistSession: false, autoRefreshToken: false } });
+  const employee = await data.userId("employee");
+  const onRecord = async () => (await admin.from("worker_notices").select("notice").eq("company_id", data.id).eq("user_id", employee)).data?.map((r) => r.notice) ?? [];
+  // As someone who hasn't seen it (auth.setup.ts records it for the demo team).
+  must(await admin.from("worker_notices").delete().eq("company_id", data.id).eq("user_id", employee).select("notice"), "clearing the notice");
+
+  const page = await as("employee", PHONE);
+  await page.goto("/field");
+  const notice = page.getByRole("dialog", { name: "Before Crewtavo uses your location" });
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("saves where you are when you clock in and when you clock out");
+  await expectAccessible(page, "the location notice (phone)");
+  expect(await onRecord()).toEqual([]);
+
+  await notice.getByRole("button", { name: "OK, I understand" }).click();
+  await expect(notice).toBeHidden();
+  await expect.poll(onRecord).toContain("clock_location");
+  // Once: not again on this phone, nor on another one.
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.locator(".skeleton")).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
 });
 
 test("a visit started on My day shows as started on its own screen while the tap is still sending", async ({ as, data }) => {

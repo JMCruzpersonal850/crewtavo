@@ -145,6 +145,10 @@ describe("which step shows", () => {
     expect(newPhoneOffer({ sms: false, emailCodes: true })).toBe("email");
     expect(newPhoneOffer({ sms: false, emailCodes: false })).toBe("ask_office");
     expect(newPhoneOffer({ sms: false })).toBe("ask_office");
+    // No Twilio account on the server, but a company texts from its own: codes by text are offered.
+    expect(newPhoneOffer({ sms: false, smsCodes: true })).toBe("text");
+    expect(emailInstead({ sms: false, smsCodes: true, emailCodes: true })).toBe(true);
+    expect(newPhoneOffer({ sms: true, smsCodes: false, emailCodes: true })).toBe("email");
     expect(newPhoneOffer(undefined)).toBe("ask_office");
   });
 

@@ -2,10 +2,10 @@
  * Background tasks, run by server.ts's built-in scheduler (or by hand: GET/POST /api/cron/:task
  * with CRON_SECRET). Each is safe to run twice.
  */
-import { addDays, iceNotices, iceRisk, jobWeatherRules, lastDate, localDate, localTime, occurrenceDates, snowNotices, snowPlan, weatherRisks, zonedTimeToUtc, type DayOutlook, type IceRisk, type SnowDay, type SnowSite } from "@crewtavo/core";
+import { addDays, iceNotices, iceRisk, jobWeatherRules, lastDate, localDate, localTime, occurrenceDates, pavingWorkOn, snowNotices, snowPlan, VISIT_HORIZON_DAYS, weatherRisks, zonedTimeToUtc, type DayOutlook, type IceRisk, type SnowDay, type SnowSite } from "@crewtavo/core";
 import type { Env } from "./env";
 import { OtherBooks, runAccountingJob, SentButUnrecorded } from "./integrations/accounting";
-import { runCalendarJob, syncDueCalendars } from "./integrations/calendars";
+import { pushNewlyUpcomingVisits, runCalendarJob, syncDueCalendars } from "./integrations/calendars";
 import { reconcileAutopayProcessing, reconcileBankPayments, syncStripeInvoice } from "./integrations/stripe";
 import { reportError } from "./lib/monitoring";
 import { emailConfigured, smsConfigured } from "./lib/notify";
@@ -17,30 +17,43 @@ import { chargeDueAutopay, runAutopayJob } from "./services/autopay";
 import { checkHosting } from "./services/hosting";
 import { purgeTrash, tidyApplicantFiles, tidyPlanFiles, tidySubFiles, tidyUnrecordedFiles } from "./services/planFiles";
 import { keepRailwayAlive } from "./services/railway";
+import { checkJobProfits } from "./services/profitAlerts";
 import { checkStorage } from "./services/storageUsage";
 import { emitInactiveClients } from "./services/automatedCampaigns";
 import { processAutomations } from "./services/automations";
 import { processCampaigns } from "./services/campaigns";
-import { syncDueReviews } from "./services/googleReviews";
+import { syncDueReviews, tidyReviews } from "./services/googleReviews";
 import { checkMetaAccess, postDueSocial, tidySocialImages } from "./services/social";
+import { postcardsTask } from "./services/postcards";
+import { tidyShowcaseCopies } from "./services/showcases";
 import { sendDueReminders } from "./services/reviews";
 import { deliverNotifications } from "./services/delivery";
 import { remindSubs } from "./services/subs";
 import { placeKey } from "./services/external";
 import { dailyOutlook, forecasterFor, placeWeathers, snowFallen, snowToday, type Forecaster } from "./services/forecast";
 import { autoRoutes } from "./services/routes";
+import { relocatePins } from "./services/properties";
+import { sendScheduledPayments } from "./services/installments";
+import { tidyPlans } from "./integrations/chatgptPlan";
 
-export const TASKS = ["automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "snow", "address", "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync", "social", "backups"] as const;
+export const TASKS = [
+  "automations", "campaigns", "notify", "outbox", "autopay", "calendars", "recurrence", "followups", "weather", "snow", "address",
+  "railway", "hosting", "plans", "trash", "storage", "routes", "website", "reviews", "inactive", "review_sync",
+  "social", "backups", "profits", "installments", "postcards", "pins", "review_tidy", "chatgpt_plans",
+] as const;
 export type TaskName = (typeof TASKS)[number];
 
 /** Cron expressions -> tasks, run by server.ts's scheduler. */
 export const CRON_TASKS: Record<string, TaskName[]> = {
-  // Social posts whose time has come (services/social.ts), one claim at a time.
-  "* * * * *": ["automations", "campaigns", "notify", "social"],
+  // Social posts whose time has come (services/social.ts), one claim at a time. Postcard campaigns
+  // being mailed make their next cards, and Lob is asked once an hour whether any card it accepted
+  // in the last week failed (services/postcards.ts).
+  "* * * * *": ["automations", "campaigns", "notify", "social", "postcards"],
   "*/2 * * * *": ["address"],
   // Review reminders go at 1:30pm in each company's time zone (services/reviews.ts). Autopay charges
   // what's due (services/autopay.ts); its receipts and notices go out through the outbox.
-  "*/5 * * * *": ["outbox", "reviews", "autopay"],
+  // A quote's scheduled payments the database made, sent when the company sends them by themselves (services/installments.ts).
+  "*/5 * * * *": ["outbox", "reviews", "autopay", "installments"],
   "*/15 * * * *": ["calendars"],
   // Google reviews come in every 30 minutes for each company with Google Business Profile connected
   // (services/googleReviews.ts); review_syncs_due says which are due.
@@ -66,6 +79,16 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   // The night's database backup, once it's past 2am where the business is; hourly, so a night that
   // failed is tried again, and the owners hear when backups have stopped (services/backups.ts).
   "25 * * * *": ["backups"],
+  // Jobs whose profit fell below the company's line since the last look (services/profitAlerts.ts).
+  "45 * * * *": ["profits"],
+  // Map spots with no source kept, looked up again a few at a time; only a server with a Google
+  // server key has any to do (services/properties.ts).
+  "3-59/5 * * * *": ["pins"],
+  // Copies of Google reviews the sync has stopped seeing on Google are removed (services/googleReviews.ts).
+  "55 4 * * *": ["review_tidy"],
+  // ChatGPT plan sign-ins whose person left the team or signed out are signed out at OpenAI and
+  // deleted, and sign-ins nobody finished are cleared (integrations/chatgptPlan.ts).
+  "7-59/10 * * * *": ["chatgpt_plans"],
 };
 
 export async function runTask(name: TaskName, env: Env): Promise<Record<string, unknown>> {
@@ -106,6 +129,8 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
         photos: await tidyUnrecordedFiles(admin),
         // Social posts' pictures whose links ran out, and each Page's sign-in, read from Meta.
         social: await tidySocialImages(admin),
+        // Showcase photos' public copies that are no longer shown (taken down, unpublished or deleted).
+        showcases: await tidyShowcaseCopies(admin),
         meta: await checkMetaAccess(env, admin),
       };
     }
@@ -127,6 +152,18 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
       return postDueSocial(env);
     case "backups":
       return runBackups(env, adminClient(env));
+    case "profits":
+      return checkJobProfits(adminClient(env));
+    case "installments":
+      return sendScheduledPayments(env);
+    case "postcards":
+      return postcardsTask(env);
+    case "pins":
+      return relocatePins(env, adminClient(env));
+    case "review_tidy":
+      return tidyReviews(env);
+    case "chatgpt_plans":
+      return tidyPlans(env, adminClient(env));
   }
 }
 
@@ -205,10 +242,17 @@ const RECURRING_FIELDS =
   "id, company_id, title, property_id, starts_on, ends_on, recurrence_rule, active_months, visit_start_time, visit_duration_min, visit_time_fixed, default_crew_id, paused_at, resume_on, pauses, company:companies(timezone)";
 
 /**
- * Bring one recurring job's visits in line with its schedule for the next 60 days: add missing
- * visits, (when `prune`) remove untouched future visits the schedule no longer includes, and (when
- * `refresh`) give the upcoming visits already made the job's title, crew and time. A paused job
- * gets none, and its waiting ones come off as with `prune`; on its resume date it resumes, from
+ * How many visits one request reads, removes or adds. A year of a daily job's visits named in one
+ * address is longer than the API takes, and a few hundred rows a time keeps each write short.
+ */
+const VISIT_CHUNK = 100;
+const chunks = <T>(items: T[]): T[][] => Array.from({ length: Math.ceil(items.length / VISIT_CHUNK) }, (_, i) => items.slice(i * VISIT_CHUNK, (i + 1) * VISIT_CHUNK));
+
+/**
+ * Bring one recurring job's visits in line with its schedule for the next year (VISIT_HORIZON_DAYS):
+ * add missing visits, (when `prune`) remove untouched future visits the schedule no longer includes,
+ * and (when `refresh`) give the upcoming visits already made the job's title, crew and time. A paused
+ * job gets none, and its waiting ones come off as with `prune`; on its resume date it resumes, from
  * that day. One that ends after a number of visits keeps its last visit's day as its ends_on,
  * the days it was paused not counting toward them.
  */
@@ -216,7 +260,7 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
   if (!job.recurrence_rule || !job.starts_on) return { created: 0, removed: 0, updated: 0 };
   const tz = (job.company as { timezone?: string } | null)?.timezone ?? "UTC";
   const today = localDate(new Date(), tz);
-  const horizon = addDays(today, 60);
+  const horizon = addDays(today, VISIT_HORIZON_DAYS);
   const resumes = Boolean(job.paused_at && job.resume_on && job.resume_on <= today);
   const paused = Boolean(job.paused_at) && !resumes;
   let pauses = job.pauses ?? [];
@@ -249,51 +293,63 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
   };
   let removed = 0;
   if (prune || paused) {
-    const { data: stale } = await admin
+    // A year of a daily job's visits is under the 1,000 rows one read returns.
+    const { data: stale, error: staleError } = await admin
       .from("visits")
       .select("id, recurrence_key")
       .eq("job_id", job.id)
       .eq("status", "scheduled")
       .not("recurrence_key", "is", null)
-      .gte("scheduled_on", today);
-    let drop = (stale ?? []).filter((v) => !dates.includes(v.recurrence_key!)).map((v) => v.id);
-    if (drop.length) {
-      // A visit that job pay whose work is done (or paid) covers stays: that pay's visits are kept as
-      // they were (20261025003001_job_pay.sql), so deleting it would be refused, and the rest with it.
-      // So does one with work logged on it (time, materials, a checklist), which deleting would lose.
+      .gte("scheduled_on", today)
+      .order("id")
+      .limit(1000);
+    if (staleError) throw new Error(staleError.message);
+    const wanted = new Set(dates);
+    let drop = (stale ?? []).filter((v) => !wanted.has(v.recurrence_key!)).map((v) => v.id);
+    // A visit that job pay whose work is done (or paid) covers stays: that pay's visits are kept as
+    // they were (20261025003001_job_pay.sql), so deleting it would be refused, and the rest with it.
+    // So does one with work logged on it (time, materials, a checklist), which deleting would lose,
+    // and one with extra work asked for on it (visit_extras), which is billed with that visit.
+    const keep = new Set<string>();
+    for (const ids of chunks(drop)) {
       const kept = await Promise.all([
-        admin.from("job_pay_visits").select("visit_id, pay:job_pay!inner(status)").in("visit_id", drop).in("pay.status", ["done", "paid"]),
-        admin.from("time_entries").select("visit_id").in("visit_id", drop),
-        admin.from("job_materials").select("visit_id").in("visit_id", drop),
-        admin.from("checklist_responses").select("visit_id").in("visit_id", drop),
+        admin.from("job_pay_visits").select("visit_id, pay:job_pay!inner(status)").in("visit_id", ids).in("pay.status", ["done", "paid"]),
+        admin.from("time_entries").select("visit_id").in("visit_id", ids),
+        admin.from("job_materials").select("visit_id").in("visit_id", ids),
+        admin.from("checklist_responses").select("visit_id").in("visit_id", ids),
+        admin.from("visit_extras").select("visit_id").in("visit_id", ids),
       ]);
       const keptError = kept.find((r) => r.error)?.error;
       if (keptError) throw new Error(keptError.message);
-      const keep = new Set(kept.flatMap((r) => (r.data ?? []).map((k) => k.visit_id)));
-      drop = drop.filter((id) => !keep.has(id));
+      for (const r of kept) for (const k of r.data ?? []) if (k.visit_id) keep.add(k.visit_id);
     }
+    drop = drop.filter((id) => !keep.has(id));
     if (drop.length) {
-      const { error: dropError } = await admin.from("visits").delete().in("id", drop);
+      // In one go, by the database: the people who were on them (their crew's members, mostly) hear
+      // once that the job's visits changed, not once for every visit (remove_recurring_visits).
+      const { data: gone, error: dropError } = await admin.rpc("remove_recurring_visits", { p_job: job.id, p_visits: drop });
       if (dropError) throw new Error(dropError.message);
-      removed = drop.length;
+      removed = gone ?? 0;
     }
   }
   let updated = 0;
   if (refresh) {
     // Only visits still waiting: done or started ones stay as they were, and one moved to another
-    // day keeps that day (its time comes from the job, worked out as times() does). One update.
+    // day keeps that day (its time comes from the job, worked out as times() does). One update,
+    // and one line to each person on them when a time or the crew changed.
     const { data, error } = await admin.rpc("refresh_upcoming_visits", { p_job: job.id });
     if (error) throw new Error(error.message);
     updated = data ?? 0;
   }
   if (!dates.length) return { created: 0, removed, updated };
   // A date whose visit someone deleted stays deleted (the database remembers it in recurrence_skips).
-  const { data: skips, error: skipError } = await admin.from("recurrence_skips").select("recurrence_key").eq("job_id", job.id).gte("recurrence_key", today);
+  // (At most a year of days, so one read has them all.)
+  const { data: skips, error: skipError } = await admin.from("recurrence_skips").select("recurrence_key").eq("job_id", job.id).gte("recurrence_key", today).limit(1000);
   if (skipError) throw new Error(skipError.message);
   const skipped = new Set((skips ?? []).map((s) => s.recurrence_key));
-  const wanted = dates.filter((date) => !skipped.has(date));
-  if (!wanted.length) return { created: 0, removed, updated };
-  const rows = wanted.map((date) => ({
+  const missing = dates.filter((date) => !skipped.has(date));
+  if (!missing.length) return { created: 0, removed, updated };
+  const rows = missing.map((date) => ({
     company_id: job.company_id,
     job_id: job.id,
     property_id: job.property_id,
@@ -303,9 +359,17 @@ export async function materializeJob(admin: Db, job: RecurringJobRow, prune = fa
     ...times(date),
     crew_id: job.default_crew_id,
   }));
-  const { data, error } = await admin.from("visits").upsert(rows, { onConflict: "job_id,recurrence_key", ignoreDuplicates: true }).select("id");
-  if (error) throw new Error(error.message);
-  return { created: data?.length ?? 0, removed, updated };
+  // The dates it already has are left alone, so on most nights this adds the one new day at the
+  // far end. The first run after the reach grew (or a new job) adds the rest of the year, a hundred
+  // at a time: each is a short write of its own, and one that fails leaves the ones before it made
+  // for the next run to carry on from.
+  let created = 0;
+  for (const batch of chunks(rows)) {
+    const { data, error } = await admin.from("visits").upsert(batch, { onConflict: "job_id,recurrence_key", ignoreDuplicates: true }).select("id");
+    if (error) throw new Error(error.message);
+    created += data?.length ?? 0;
+  }
+  return { created, removed, updated };
 }
 
 export async function recurringJob(admin: Db, jobId: string) {
@@ -314,8 +378,11 @@ export async function recurringJob(admin: Db, jobId: string) {
 }
 
 /**
- * Create visits for active recurring jobs, 60 days ahead. recurrence_key prevents duplicates. A paused
- * one has its waiting visits taken off instead, and resumes on its resume date.
+ * Create visits for active recurring jobs, a year ahead. recurrence_key prevents duplicates. A paused
+ * one has its waiting visits taken off instead, and resumes on its resume date. One job after
+ * another, each in short writes of its own: the first run after the reach grew from 60 days to a
+ * year adds ten months of visits for every job, and a job that fails is reported and tried again
+ * the next night.
  */
 async function materializeRecurringVisits(env: Env) {
   const admin = adminClient(env);
@@ -345,12 +412,23 @@ async function materializeRecurringVisits(env: Env) {
       problems.push(`${job.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
-  return { jobs: jobs.length, created, problems };
+  // Recurring visits that have come within the six months the Google visits calendar covers go to
+  // it now (integrations/calendars.ts); the ones further out wait their turn.
+  let google = 0;
+  try {
+    const pushed = await pushNewlyUpcomingVisits(env, admin);
+    google = pushed.queued;
+    problems.push(...pushed.problems);
+  } catch (err) {
+    problems.push(`google calendar: ${err instanceof Error ? err.message : err}`);
+  }
+  return { jobs: jobs.length, created, google, problems };
 }
 
 /**
  * Hourly upkeep: invoices past their due date flip to overdue (which fires "invoice past due"
- * automations) and get their late fee once past the grace days (when the business charges one), monthly
+ * automations; one paid and then owed again fires them from the day after) and get their late fee once past the grace days (when the business charges one), the
+ * office hears about a deposit a client approved with and left unpaid online, monthly
  * jobs get their month's invoice reminder on their invoice day (a monthly plan on autopay its charge),
  * day-before visit reminder events are emitted for companies that use them, job offers
  * to subs past their time to answer by run out, subs' certificates running out are flagged, saved
@@ -371,8 +449,17 @@ async function hourlyUpkeep(env: Env) {
   };
   // Due dates are compared with each company's local date.
   const overdue = await step("mark_overdue_invoices", admin.rpc("mark_overdue_invoices"));
+  // A paid invoice the office made owed again (a payment removed, a refund) raised no past-due event
+  // that day: from the next day this raises it, once, so reminders carry on from then.
+  const owedAgain = await step("raise_past_due_notices", admin.rpc("raise_past_due_notices"));
   // Once each: the database marks every invoice it adds a fee to, so a second run adds none.
   const lateFees = await step("add_late_fees", admin.rpc("add_late_fees"));
+  // A deposit a client was sent on to pay online as they approved, still unpaid an hour later: the
+  // office is told on the bell, once (the database marks each one it has looked at).
+  const deposits = await step("tell_unpaid_deposits", admin.rpc("tell_unpaid_deposits"));
+  // A quote's scheduled payments whose date has come where the company is (or whose work has
+  // started): each is made once, as a draft (the database keeps it to once).
+  const installments = await step("make_due_installments", admin.rpc("make_due_installments"));
   // On a monthly job's invoice day, from 8 in the morning where the company is: one reminder a job a
   // month (the database keeps it to one, so a second run makes none) and one note to the office, or
   // a monthly plan on autopay queued to be charged by the autopay task.
@@ -434,13 +521,13 @@ async function hourlyUpkeep(env: Env) {
   // for looking into a run of requests.
   const codes = await step("tidy_sign_in_codes", admin.rpc("tidy_sign_in_codes"));
   return {
-    overdue: overdue ?? 0, late_fees: lateFees ?? 0, invoice_reminders: invoiceReminders ?? 0, reminders: reminders ?? 0, equipment: equipment ?? 0, paperwork: paperwork ?? 0, guide_reviews: guideReviews ?? 0, offers: offers ?? 0, subs: { alerts: subAlerts?.length ?? 0, reminded },
+    overdue: overdue ?? 0, owed_again: owedAgain ?? 0, late_fees: lateFees ?? 0, deposits: deposits ?? 0, installments: installments ?? 0, invoice_reminders: invoiceReminders ?? 0, reminders: reminders ?? 0, equipment: equipment ?? 0, paperwork: paperwork ?? 0, guide_reviews: guideReviews ?? 0, offers: offers ?? 0, subs: { alerts: subAlerts?.length ?? 0, reminded },
     cards: cards ?? 0, autopay_processing: autopayProcessing, bank_payments: bankPayments, clocks, codes: codes ?? 0, problems,
   };
 }
 
 const WEATHER_FIELDS =
-  "id, scheduled_on, hold_reason, job:jobs(weather_rules, lines:job_line_items(name, service_id, service:services(name))), company_id, company:companies(weather_rules:settings->weather_rules, weather_source:settings->weather_source), property:properties(lat, lng)";
+  "id, scheduled_on, hold_reason, job:jobs(weather_rules, lines:job_line_items(name, service_id, parts, service:services(name))), company_id, company:companies(weather_rules:settings->weather_rules, weather_source:settings->weather_source), property:properties(lat, lng)";
 
 /**
  * Flag tomorrow's visits whose weather rules fail (rain, cold for asphalt, sealcoat dry time): the
@@ -475,7 +562,8 @@ async function weatherHolds(env: Env) {
     const services = (v.job?.lines ?? []).flatMap((l) => [l.name, l.service?.name ?? ""]);
     // The job's price list items by id, as they're called now: a rule follows its item when it's renamed.
     const ids = new Map((v.job?.lines ?? []).flatMap((l) => (l.service_id ? [[l.service_id, l.service?.name ?? l.name] as const] : [])));
-    const rules = v.job ? jobWeatherRules(v.job.weather_rules, v.company?.weather_rules, services, ids) : [];
+    // A line priced with the paving calculator has no item: its kinds of work stand in (rules for "Hot-mix asphalt (paving calculator)").
+    const rules = v.job ? jobWeatherRules(v.job.weather_rules, v.company?.weather_rules, services, ids, pavingWorkOn(v.job.lines ?? [])) : [];
     const p = v.property as { lat: number | null; lng: number | null } | null;
     if (!rules.length || !v.scheduled_on || p?.lat == null || p?.lng == null) continue;
     if (!forecasters.has(v.company_id)) forecasters.set(v.company_id, await forecasterFor(env, admin, v.company_id, v.company));

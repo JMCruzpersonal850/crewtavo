@@ -13,6 +13,17 @@ import {
   roofingQuantities,
   savedRoofingQuantities,
   suggestedWaste,
+  drawingSquares,
+  edgeLengths,
+  isReportRoof,
+  pitchProblem,
+  REPORT_PROVIDER,
+  reportPitch,
+  roofReportCollection,
+  roofReportOf,
+  roofReportProblem,
+  summarizeFeatureCollection,
+  type RoofReport,
   type Section,
 } from "../src";
 
@@ -111,5 +122,55 @@ describe("before a roof estimate goes out", () => {
     expect(leftOutReason(formulaVariables("(ridge_ft + hip_ft + valley_ft) / 33"), true, "None on this roof")).toBe("No ridges, hips or valleys marked on the roof");
     expect(leftOutReason(formulaVariables("steep_squares"), true, "None on this roof")).toBeNull();
     expect(leftOutReason(formulaVariables("squares"), false, "The roof hasn't been measured yet")).toBe("The roof hasn't been measured yet");
+  });
+});
+
+describe("a roof typed in from a report", () => {
+  // An EagleView for a hip roof: 28.5 squares at 6/12, with its edges, ordered with 12% waste.
+  const report: RoofReport = { squares: 28.5, pitch: "6/12", eave_ft: 186, rake_ft: 0, ridge_ft: 42.5, hip_ft: 96, valley_ft: 38, waste_pct: 12 };
+  const saved = (r: RoofReport, at?: { lat: number; lng: number }) => summarizeFeatureCollection(roofReportCollection(r, at), { pitch: reportPitch(r.pitch) });
+
+  it("gives formulas and packages the report's own numbers, the way a drawn roof gives its", () => {
+    const summary = saved(report, { lat: 37.13, lng: -80.41 });
+    // Squares with and without waste, as the roofing variables give them.
+    expect(roofingQuantities(summary.sections, "6/12", 12)).toEqual({ roof_sqft: 2850, squares: 31.92, roof_squares: 28.5, steep_squares: 0 });
+    // Edges as typed: a report's lengths are the real ones, so the pitch doesn't stretch them again.
+    expect(edgeLengths(summary)).toEqual({ eave: 186, rake: 0, ridge: 42.5, hip: 96, valley: 38 });
+    // What the measurement keeps: squares to order, and it's a roof.
+    expect(drawingSquares(summary, "6/12", 12)).toBeCloseTo(31.92, 2);
+    expect(pitchProblem(summary, "6/12")).toBeNull();
+    expect(isRoofDrawing(summary.sections, "6/12")).toBe(true);
+    // The same formulas a drawn roof prices from.
+    const vars = { ...roofingQuantities(summary.sections, "6/12", 12), eave_ft: 186, rake_ft: 0, ridge_ft: 42.5, hip_ft: 96, valley_ft: 38 };
+    expect(evaluateFormula("eave_ft + rake_ft", vars)).toBe(186);
+    expect(evaluateFormula("ridge_ft + hip_ft", vars)).toBe(138.5);
+    // Said for what it is wherever its shapes are named, and no bigger than a placeholder on the map.
+    expect(summary.sections.map((s) => [s.label, s.kind, s.manual_override])).toEqual([["Roof (from a report)", "Area", true], ["Eaves", "Length", true], ["Ridges", "Length", true], ["Hips", "Length", true], ["Valleys", "Length", true]]);
+    expect(isReportRoof({ provider: REPORT_PROVIDER })).toBe(true);
+    expect(isReportRoof({ provider: "naip" })).toBe(false);
+  });
+
+  it("counts a steep roof as steep, a flat one as flat, and a pitch typed as its rise", () => {
+    expect(roofingQuantities(saved({ ...report, pitch: "10" }).sections, "10/12", 0)).toMatchObject({ roof_squares: 28.5, steep_squares: 28.5 });
+    expect(roofingQuantities(saved({ ...report, pitch: "0/12" }).sections, "0/12", 0)).toMatchObject({ roof_sqft: 2850, steep_squares: 0 });
+    expect(reportPitch(" 6 ")).toBe("6/12");
+    expect(reportPitch("6/12")).toBe("6/12");
+    expect(reportPitch("")).toBe("");
+  });
+
+  it("reads its numbers back, to change them", () => {
+    const summary = saved(report);
+    expect(roofReportOf({ sections: summary.sections, roof_pitch: "6/12", waste_pct: "12" })).toEqual(report);
+    expect(roofReportOf({ sections: null, roof_pitch: null, waste_pct: null })).toMatchObject({ squares: 0, pitch: "", eave_ft: 0, waste_pct: 0 });
+  });
+
+  it("says what's wrong with numbers that can't be a roof", () => {
+    expect(roofReportProblem(report)).toBeNull();
+    expect(roofReportProblem({ ...report, squares: 0 })).toBe("Enter the roof's size in squares or square feet.");
+    expect(roofReportProblem({ ...report, squares: Number.NaN })).toBe("Enter the roof's size in squares or square feet.");
+    expect(roofReportProblem({ ...report, pitch: " " })).toBe("Enter the predominant pitch, like 6/12. A flat roof is 0/12.");
+    expect(roofReportProblem({ ...report, pitch: "steep" })).toBe("That pitch doesn't read. Write it like 6/12.");
+    expect(roofReportProblem({ ...report, hip_ft: -4 })).toBe("Hips are a length in feet, or 0.");
+    expect(roofReportProblem({ ...report, waste_pct: 140 })).toBe("Waste is 0 to 100%.");
   });
 });

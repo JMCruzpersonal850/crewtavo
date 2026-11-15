@@ -20,6 +20,7 @@ import { useSession } from "@/lib/session";
 import { replaceMessage, setReactions, type ChatMessage, type ChatReactionGroup, type JobCard } from "./data";
 import { badgeStyle, roleColor, shortTime, timeLabel } from "./ui";
 import s from "./chat.module.css";
+import { browserOrSpanish, t } from "@/lib/i18n";
 
 export const REACTION_ICONS: Record<string, IconName> = { thumbs_up: "thumbsUp", on_it: "onIt", seen: "eye" };
 
@@ -62,10 +63,10 @@ export function MessageText({ body, ctx }: { body: string; ctx: Pick<MessageCont
     <>
       {messageParts(body).map((part, i) => {
         if (part.kind === "text") return <Linkified key={i} text={part.text} />;
-        if (part.kind === "everyone") return <span key={i} className={s.mention} data-role="">@everyone</span>;
+        if (part.kind === "everyone") return <span key={i} className={s.mention} data-role="">{t("@everyone")}</span>;
         if (part.kind === "role") {
           const role = ctx.role(part.key);
-          return <span key={i} className={s.mention} data-role="" style={role ? badgeStyle(role.color) : undefined}>@{role?.label ?? "role"}</span>;
+          return <span key={i} className={s.mention} data-role="" style={role ? badgeStyle(role.color) : undefined}>@{role?.label ?? t("role")}</span>;
         }
         return <button key={i} type="button" className={s.mention} onClick={() => ctx.onPerson(part.id)}>@{ctx.personName(part.id)}</button>;
       })}
@@ -110,7 +111,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
     onSuccess: (res) => replaceMessage(queryClient, company, res.message),
   });
   const pin = useMutation({
-    meta: { success: message.pinned_at ? "Message unpinned" : "Message pinned" },
+    meta: { success: message.pinned_at ? t("Message unpinned") : t("Message pinned") },
     mutationFn: () => api.post<{ message: ChatMessage }>(`/chat/messages/${message.id}/pin`, { pinned: !message.pinned_at }),
     onSuccess: (res) => replaceMessage(queryClient, company, res.message),
   });
@@ -133,7 +134,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
     }
   };
   const askDelete = async () => {
-    if (await confirm({ title: "Delete this message?", body: mine ? "It's removed for everyone." : "It's removed for everyone, and its author isn't told.", confirmLabel: "Delete", danger: true })) remove.mutate();
+    if (await confirm({ title: t("Delete this message?"), body: mine ? t("It's removed for everyone.") : t("It's removed for everyone, and its author isn't told."), confirmLabel: t("Delete"), danger: true })) remove.mutate();
   };
   // A tap on a phone shows the tools; a tap on a link, button or photo does what it says instead.
   const tap = (e: MouseEvent) => {
@@ -145,7 +146,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
   const nameColor = author ? roleColor(author.color) : undefined;
   const reactionMenu = CHAT_REACTIONS.map((r) => {
     const on = message.reactions.find((g) => g.kind === r.key)?.users.includes(ctx.me) ?? false;
-    return { label: on ? `Remove ${r.label}` : r.label, icon: REACTION_ICONS[r.key], onSelect: () => react.mutate({ kind: r.key, on: !on }) };
+    return { label: on ? t("Remove {tag}", { tag: t(r.label) }) : t(r.label), icon: REACTION_ICONS[r.key], onSelect: () => react.mutate({ kind: r.key, on: !on }) };
   });
 
   return (
@@ -167,7 +168,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
           <span className={s.avatar} style={{ background: "var(--fill-2)", cursor: "default" }} aria-hidden="true"><BrandMark size={20} /></span>
         )
       ) : (
-        <span className={s.stamp} title={new Date(message.created_at).toLocaleString()}>{shortTime(message.created_at)}</span>
+        <span className={s.stamp} title={new Date(message.created_at).toLocaleString(browserOrSpanish())}>{shortTime(message.created_at)}</span>
       )}
 
       <div className={s.msgMain}>
@@ -175,7 +176,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
           <button type="button" className={s.reply} onClick={() => ctx.onJumpTo(message.reply!.id)}>
             <Icon name="reply" size={14} />
             <strong>{message.reply.author}</strong>
-            <span>{message.reply.deleted ? "Deleted message" : toEditable(message.reply.body, nameFor) || "Photo"}</span>
+            <span>{message.reply.deleted ? t("Deleted message") : toEditable(message.reply.body, nameFor) || t("Photo")}</span>
           </button>
         )}
         {head && (
@@ -185,19 +186,19 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
             ) : (
               <span className={s.name} style={{ cursor: "default" }}>Crewtavo</span>
             )}
-            {author ? <span className={s.roleBadge} style={badgeStyle(author.color)}>{author.role_label}</span> : <span className={s.appBadge}>App</span>}
-            <time className={s.time} dateTime={message.created_at} title={new Date(message.created_at).toLocaleString()}>{timeLabel(message.created_at)}</time>
-            {message.pinned_at && <span className={s.time} title="Pinned"><Icon name="pushpin" size={12} /> Pinned</span>}
+            {author ? <span className={s.roleBadge} style={badgeStyle(author.color)}>{author.role_label}</span> : <span className={s.appBadge}>{t("App")}</span>}
+            <time className={s.time} dateTime={message.created_at} title={new Date(message.created_at).toLocaleString(browserOrSpanish())}>{timeLabel(message.created_at)}</time>
+            {message.pinned_at && <span className={s.time} title={t("Pinned")}><Icon name="pushpin" size={12} /> {t("Pinned")}</span>}
           </div>
         )}
 
         {editing !== null ? (
           <div className={s.editBox}>
-            <textarea className="textarea" value={editing} autoFocus onChange={(e) => setEditing(e.target.value)} onKeyDown={editKeys} aria-label="Edit message" maxLength={4000} />
+            <textarea className="textarea" value={editing} autoFocus onChange={(e) => setEditing(e.target.value)} onKeyDown={editKeys} aria-label={t("Edit message")} maxLength={4000} />
             <div className="row" style={{ marginTop: 6, gap: 6 }}>
-              <Button size="sm" variant="primary" loading={edit.isPending} onClick={saveEdit}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
-              <span className={s.editHint}>Enter to save, Esc to cancel</span>
+              <Button size="sm" variant="primary" loading={edit.isPending} onClick={saveEdit}>{t("Save")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>{t("Cancel")}</Button>
+              <span className={s.editHint}>{t("Enter to save, Esc to cancel")}</span>
             </div>
             {edit.error && <div className="field-error">{(edit.error as Error).message}</div>}
           </div>
@@ -205,7 +206,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
           message.body && (
             <p className={s.body}>
               <MessageText body={message.body} ctx={ctx} />
-              {message.edited_at && <span className={s.edited} title={`Edited ${new Date(message.edited_at).toLocaleString()}`}>(edited)</span>}
+              {message.edited_at && <span className={s.edited} title={t("Edited {when}", { when: new Date(message.edited_at).toLocaleString(browserOrSpanish()) })}>{t("(edited)")}</span>}
             </p>
           )
         )}
@@ -215,10 +216,10 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
             {message.attachments.map((a) =>
               ctx.photos[a.path] ? (
                 <a key={a.path} className={s.photo} href={ctx.photos[a.path]} target="_blank" rel="noreferrer">
-                  <img src={ctx.photos[a.path]} alt={a.name || "Photo"} loading="lazy" />
+                  <img src={ctx.photos[a.path]} alt={a.name || t("Photo")} loading="lazy" />
                 </a>
               ) : (
-                <span key={a.path} className={`${s.photo} ${s.photoMissing}`}>Photo</span>
+                <span key={a.path} className={`${s.photo} ${s.photoMissing}`}>{t("Photo")}</span>
               ),
             )}
           </div>
@@ -229,7 +230,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
             <Link className={s.jobCard} to={`/jobs/${job.id}`}>
               <span className={s.jobIcon}><Icon name="job" size={16} /></span>
               <span className="grow">
-                <strong style={{ display: "block" }}>{job.number ? `Job #${job.number} · ` : ""}{job.title}</strong>
+                <strong style={{ display: "block" }}>{job.number ? `${t("Job #{number}", { number: job.number })} · ` : ""}{job.title}</strong>
                 <span className="muted small">{[job.client?.display_name, job.property ? addressLine(job.property) : null].filter(Boolean).join(" · ")}</span>
               </span>
               <Icon name="chevronRight" size={16} />
@@ -237,7 +238,7 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
           ) : (
             <span className={s.jobCard} style={{ color: "var(--text-3)" }}>
               <span className={s.jobIcon}><Icon name="job" size={16} /></span>
-              A job you can't open
+              {t("A job you can't open")}
             </span>
           )
         )}
@@ -261,22 +262,22 @@ export function MessageItem({ message, head, flash, ctx }: { message: ChatMessag
 
       {editing === null && (
         <div className={s.tools}>
-          <Menu label="React" align="end" triggerClassName={`icon-btn ${s.icon}`} trigger={<Icon name="react" size={16} />} items={reactionMenu} />
+          <Menu label={t("React")} align="end" triggerClassName={`icon-btn ${s.icon}`} trigger={<Icon name="react" size={16} />} items={reactionMenu} />
           {ctx.canPost && (
-            <button type="button" className={`icon-btn ${s.icon}`} aria-label="Reply" title="Reply" onClick={() => ctx.onReply(message)}>
+            <button type="button" className={`icon-btn ${s.icon}`} aria-label={t("Reply")} title={t("Reply")} onClick={() => ctx.onReply(message)}>
               <Icon name="reply" size={16} />
             </button>
           )}
           <Menu
-            label="More"
+            label={t("More")}
             align="end"
             triggerClassName={`icon-btn ${s.icon}`}
             trigger={<Icon name="more" size={16} />}
             items={[
-              { label: "Edit", icon: "edit", onSelect: startEdit, hidden: !mine || !ctx.canPost },
-              { label: message.pinned_at ? "Unpin" : "Pin to the channel", icon: message.pinned_at ? "unpin" : "pushpin", onSelect: () => pin.mutate(), hidden: !ctx.canManage },
-              { label: "Copy text", icon: "copy", onSelect: () => copyText(toEditable(message.body, nameFor), "Copied"), hidden: !message.body },
-              { label: "Delete", icon: "trash", danger: true, onSelect: askDelete, hidden: !(mine || ctx.canManage) },
+              { label: t("Edit"), icon: "edit", onSelect: startEdit, hidden: !mine || !ctx.canPost },
+              { label: message.pinned_at ? t("Unpin") : t("Pin to the channel"), icon: message.pinned_at ? "unpin" : "pushpin", onSelect: () => pin.mutate(), hidden: !ctx.canManage },
+              { label: t("Copy text"), icon: "copy", onSelect: () => copyText(toEditable(message.body, nameFor), "Copied"), hidden: !message.body },
+              { label: t("Delete"), icon: "trash", danger: true, onSelect: askDelete, hidden: !(mine || ctx.canManage) },
             ]}
           />
         </div>

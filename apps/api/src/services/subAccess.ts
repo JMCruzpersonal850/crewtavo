@@ -28,7 +28,7 @@ import type { Env } from "../env";
 import { emailAuthLink } from "../lib/auth";
 import { renderEmail } from "../lib/email";
 import { dbError, HttpError, must } from "../lib/http";
-import { sendEmail, sendSms, smsConfigured } from "../lib/notify";
+import { sendEmail, sendSms, smsReady } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { logoImage } from "./logo";
 
@@ -316,9 +316,9 @@ export async function sendSignInLink(s: SubAccessScope, subId: string, send: Sig
 
   if (send === "text") {
     if (!sub.phone) out.reason = "Add a phone number for this sub first, or copy the link.";
-    else if (!smsConfigured(s.env)) out.sms_link = smsLink(sub.phone, message.sms);
+    else if (!(await smsReady(s.env, s.companyId))) out.sms_link = smsLink(sub.phone, message.sms);
     else {
-      const sent = await sendSms(s.env, { to: sub.phone, body: message.sms });
+      const sent = await sendSms(s.env, { to: sub.phone, body: message.sms, company: s.companyId });
       out.texted = sent.sent;
       if (!sent.sent) {
         out.reason = sent.reason ?? "The text didn't go out.";

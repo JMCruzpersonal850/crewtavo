@@ -13,20 +13,30 @@
  * What's in the way is kept on the sync (review_syncs.problem) and the app (integrations.last_error):
  * Google's approval and the APIs not turned on are tried again every 6 hours, a sign-in or location
  * problem waits for someone, and anything else backs off from 30 minutes to 6 hours.
+ *
+ * What's here is a copy of what's on Google, kept and shown only while the sync keeps seeing it
+ * there (core REVIEW_FRESH_DAYS, reviews.seen_at): the daily full pass keeps every review fresh,
+ * anything that shows or reuses a review asks for fresh ones, and the review_tidy task removes the
+ * rest (tidyReviews). A review taken off Google loses its words the moment it's marked.
  */
 import type { Tables } from "@crewtavo/core";
 import { marketingOn, rescheduledReminder, reviewSettings } from "@crewtavo/core/marketing";
 import { phoneDisplay, phoneE164 } from "@crewtavo/core/phone";
 import {
   APPROVAL_MESSAGE,
+  isFresh,
   LOCATION_PROBLEMS,
   NOT_ENABLED_MESSAGE,
   OWN_APP_APPROVAL_MESSAGE,
+  profileLink,
+  quoteReviews,
   REPLY_MAX,
   REVIEW_STOP_NOTE,
+  reviewsFreshSince,
   SIGNIN_MESSAGE,
   starRating,
   type LocationProblem,
+  type QuoteReview,
   type ReviewProblem,
 } from "@crewtavo/core/reviews";
 import type { Env } from "../env";
@@ -47,7 +57,7 @@ import { appKeysOf, loadSecret, SignInRefused } from "../integrations/tokens";
 import { asJson, HttpError } from "../lib/http";
 import { reportError } from "../lib/monitoring";
 import { adminClient, type Db } from "../lib/supabase";
-import { complete } from "./ai";
+import { complete, type Asker } from "./ai";
 
 export const SYNC_EVERY_MINUTES = 30;
 export const SLOW_RETRY_HOURS = 6;
@@ -489,7 +499,7 @@ export async function syncCompany(env: Env, admin: Db, companyId: string, option
       admin.from("integrations").select("status, settings").match({ company_id: companyId, provider: "google_business" }).maybeSingle(),
     ]);
     if (company.error) throw new Error(company.error.message);
-    // Uninstalled, Marketing brings nothing in. The reviews already here stay.
+    // Uninstalled, Marketing brings nothing in. The reviews already here stay while they're fresh (tidyReviews).
     if (!marketingOn(company.data?.settings as Record<string, unknown> | null)) {
       await release();
       return { result: "off" };
@@ -561,6 +571,21 @@ export async function syncDueReviews(env: Env) {
     }
   }
   return tally;
+}
+
+/**
+ * The review_tidy task, once a day (tidy_reviews): the copies the sync hasn't seen on Google for
+ * REVIEW_FRESH_DAYS are removed, whyever it stopped seeing them (disconnected with the reviews
+ * kept, a sign-in that stopped working, Google's approval gone), Google's average and count are
+ * forgotten for a sync that hasn't heard them in that long, and a notification about a review that
+ * old keeps only that one came in. Nobody is asked for a review again because of it: a copy that
+ * got old leaves its client as they were.
+ */
+export async function tidyReviews(env: Env) {
+  const { data, error } = await adminClient(env).rpc("tidy_reviews");
+  if (error) throw new Error(error.message);
+  const out = (data ?? {}) as { removed?: number; blanked?: number; figures?: number; notices?: number };
+  return { removed: out.removed ?? 0, blanked: out.blanked ?? 0, figures: out.figures ?? 0, notices: out.notices ?? 0 };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -698,7 +723,7 @@ export function replyPrompt(company: { name: string; phone: string | null; email
 
 /** Drafts a reply with the company's Claude key (or the server's), as /ai/rewrite does. Nothing is posted. */
 export async function suggestReply(env: Env, admin: Db, input: {
-  apiKey: string | null;
+  asker: Asker;
   company: { name: string; phone: string | null; email: string | null };
   review: { reviewer_name: string | null; reviewer_anonymous: boolean; rating: number | null; comment: string | null };
   draft?: string;
@@ -712,7 +737,7 @@ export async function suggestReply(env: Env, admin: Db, input: {
     `Review:\n${review.comment?.trim() || "(No words, just the stars.)"}`,
   ];
   if (input.draft?.trim()) lines.push(`\nTheir draft reply:\n${input.draft.trim()}\n\nRewrite it: ${input.instruction?.trim() || "make it clear, warm and professional, about the same length"}.`);
-  const text = await complete(env, { apiKey: input.apiKey, system: replyPrompt(input.company), prompt: lines.join("\n"), effort: "low", maxTokens: 800 });
+  const text = await complete(env, { asker: input.asker, system: replyPrompt(input.company), prompt: lines.join("\n"), effort: "low", maxTokens: 800 });
   return text.slice(0, REPLY_MAX);
 }
 
@@ -794,4 +819,53 @@ export async function endReviewSync(admin: Db, companyId: string, remove: boolea
   const { data, error } = await admin.rpc("end_review_sync", { p_company: companyId, p_remove: remove });
   if (error) throw new Error(error.message);
   return liftRemoved(admin, companyId, data, "removed");
+}
+
+/** What a quote in the Client Hub shows of the business's Google reviews (settings.quote_reviews). */
+export interface QuoteReviews {
+  /** As Google shows them: the average and how many. */
+  rating: number | null;
+  count: number | null;
+  /** Each with the reviewer's name and words as they are on Google: the page cuts a long one only beside `link`. */
+  reviews: QuoteReview[];
+  /** The business's profile on Google Maps, where every review can be read in full. Null when Google gave none. */
+  link: string | null;
+  /** On the quote's PDF too. */
+  pdf: boolean;
+}
+
+/**
+ * The business's Google rating and count, and up to three reviews, for a quote (core quoteReviews:
+ * the office's picks, else the newest 5-star ones with words), as they are on Google: the rating
+ * and count are Google's own, never worked out here or mixed with another number, and each review
+ * has the reviewer's name and words unchanged, with the link to the profile on Google Maps.
+ * Only Google reviews of the location being synced that are still on Google, and that the sync has
+ * seen there lately (core REVIEW_FRESH_DAYS): a quote shows nothing from a copy older than that, so
+ * a business that disconnected, or whose sign-in stopped working, has no reviews block until it's
+ * syncing again. Null while it's off, while Marketing is uninstalled, or with no reviews to show.
+ */
+export async function quoteReviewsFor(admin: Db, companyId: string): Promise<QuoteReviews | null> {
+  const { data: company } = await admin.from("companies").select("settings").eq("id", companyId).maybeSingle();
+  const settings = (company?.settings ?? {}) as Record<string, unknown>;
+  const on = settings.quote_reviews as { show?: unknown; pdf?: unknown } | undefined;
+  if (on?.show !== true || !marketingOn(settings)) return null;
+  const { data: sync } = await admin.from("review_syncs").select("location_id, average_rating, total_reviews, last_synced_at").eq("company_id", companyId).maybeSingle();
+  if (!sync?.location_id) return null;
+  const fields = "reviewer_name, reviewer_anonymous, rating, comment, posted_at, quote_pick, deleted_at";
+  const since = reviewsFreshSince();
+  const live = () => admin.from("reviews").select(fields).eq("company_id", companyId).eq("location_id", sync.location_id!).is("deleted_at", null).gt("seen_at", since);
+  const [picked, newest, app] = await Promise.all([
+    live().not("quote_pick", "is", null).order("quote_pick").limit(3),
+    live().eq("rating", 5).not("comment", "is", null).order("posted_at", { ascending: false }).limit(20),
+    admin.from("integrations").select("settings").match({ company_id: companyId, provider: "google_business" }).maybeSingle(),
+  ]);
+  const reviews = quoteReviews(picked.data?.length ? picked.data : (newest.data ?? []));
+  const business = (app.data?.settings ?? {}) as BusinessSettings;
+  // Google's own average and count, while the sync has heard them lately.
+  const heard = isFresh(sync.last_synced_at);
+  const count = heard ? (sync.total_reviews ?? null) : null;
+  if (!reviews.length && !(Number(count) > 0)) return null;
+  // The link only for the location these reviews are of.
+  const link = business.location === sync.location_id ? profileLink(business) : null;
+  return { rating: !heard || sync.average_rating === null ? null : Number(sync.average_rating), count, reviews, link, pdf: on.pdf === true };
 }

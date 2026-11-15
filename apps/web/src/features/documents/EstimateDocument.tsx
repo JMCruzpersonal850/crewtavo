@@ -21,6 +21,7 @@
  * the two look alike.
  */
 import { companySignatureLabel, documentColor, letterheadSrc, ownLetterhead, printsFullSheet, type LetterheadPicture, type TemplateSettings } from "@crewtavo/core/documents";
+import { fitReviews, PDF_REVIEW_CHARS } from "@crewtavo/core/reviews";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { formatMoneyCents } from "@/lib/format";
@@ -210,6 +211,8 @@ function paperOf(template: TemplateSettings, company: DocumentCompany, data: Doc
       space: i ? NOTES_LINE : GAP,
     });
   });
+  // The business's Google reviews, when it prints them on its quotes: kept whole on a page.
+  if (estimate && data.reviews && (printedReviews(data.reviews).shown.length || data.reviews.count)) add({ key: "reviews", node: <Reviews reviews={data.reviews} />, space: GAP });
   // The template's own terms, as they've always printed: no title, line breaks kept.
   paragraphs(template.terms).forEach((text, i) =>
     add({
@@ -780,11 +783,26 @@ function Totals({ data }: { data: DocumentData }) {
           <dd>{data.repeats}</dd>
         </>
       )}
-      {estimate && Number(data.deposit) > 0 && (
+      {/* A payment schedule says how all of it is paid, the deposit included. */}
+      {estimate && data.schedule?.length ? (
         <>
-          <dt>Deposit to get on the schedule</dt>
-          <dd>{formatMoneyCents(data.deposit)}</dd>
+          <dt className={styles.scheduleHead}>Payment schedule</dt>
+          <dd className={styles.scheduleHead} />
+          {data.schedule.map((p, i) => (
+            <Fragment key={i}>
+              <dt>{p.name}: {p.due}</dt>
+              <dd>{formatMoneyCents(p.amount)}</dd>
+            </Fragment>
+          ))}
         </>
+      ) : (
+        estimate &&
+        Number(data.deposit) > 0 && (
+          <>
+            <dt>Deposit to get on the schedule</dt>
+            <dd>{formatMoneyCents(data.deposit)}</dd>
+          </>
+        )
       )}
       {!estimate &&
         data.payments?.map((p, i) => (
@@ -797,6 +815,44 @@ function Totals({ data }: { data: DocumentData }) {
         </>
       )}
     </dl>
+  );
+}
+
+/**
+ * The reviews as the page has room for them, with the link to the business's profile on Google
+ * Maps: a review too long for the page is cut only beside that link, and left out without one.
+ */
+function printedReviews(reviews: NonNullable<DocumentData["reviews"]>) {
+  const link = /^https:\/\//.test(reviews.link ?? "") ? reviews.link! : null;
+  return { link, shown: fitReviews(reviews.reviews, PDF_REVIEW_CHARS, link) };
+}
+
+/**
+ * "What clients say on Google": the Google rating and count, then each review as it is on Google,
+ * with its stars, the reviewer's name and the day.
+ */
+function Reviews({ reviews }: { reviews: NonNullable<DocumentData["reviews"]> }) {
+  const { link, shown } = printedReviews(reviews);
+  return (
+    <div className={styles.reviews}>
+      <div className={styles.eyebrow}>What clients say on Google</div>
+      {reviews.rating !== null && reviews.count ? (
+        <div className={styles.reviewsRating}>
+          <span aria-hidden="true">★</span> {reviews.rating.toFixed(1)} on Google · {reviews.count.toLocaleString("en-US")} {reviews.count === 1 ? "review" : "reviews"}
+        </div>
+      ) : null}
+      {shown.map((r, i) => (
+        <figure key={i} className={styles.review}>
+          <blockquote>
+            {r.text}
+            {r.cut && link && <> <a href={link}>Read it on Google</a></>}
+          </blockquote>
+          <figcaption>
+            <span aria-label={`${r.rating} out of 5 stars`}>{"★".repeat(r.rating)}</span> {r.name} · {shortDate(r.date)} · Google review
+          </figcaption>
+        </figure>
+      ))}
+    </div>
   );
 }
 

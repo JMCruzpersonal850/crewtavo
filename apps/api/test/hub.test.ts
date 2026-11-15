@@ -1084,6 +1084,35 @@ describe("an invoice in the Client Hub", () => {
     expect(body.promo_line).toBe(false);
   });
 
+  it("says the late fee that could still go on it, and nothing once it can't or with late fees off", async () => {
+    withOptions();
+    const invoice = (over: Row = {}): Row => ({
+      id: INVOICE, company_id: ROOFER, number: 80, kind: "standard", status: "sent", subject: "Gutter repair", notes: "Thank you.", issued_on: "2026-10-01", due_on: "2026-10-31",
+      late_fee_at: null, no_late_fee: false, subtotal: 400, discount_amount: 0, tax_amount: 0, total: 400, retainage_amount: 0, amount_paid: 0, balance_due: 400, client_id: CLIENT, promo: null,
+      client: { display_name: "Dana Whitfield", billing_address: null }, job: { property: null }, lines: [], payments: [], credit_amount: 0, credits: [], ...over,
+    });
+    const view = async (over: Row = {}) => {
+      state.tables.invoices = [invoice(over)];
+      return (await hub({ t: "invoice", id: INVOICE })).json();
+    };
+    // Late fees off (nothing saved): nothing is said.
+    expect((await view()).late_fee).toBeNull();
+    const company = state.tables.companies![0]!;
+    company.settings = { ...(company.settings as Row), late_fee: { type: "flat", amount: 25, grace_days: 7 } };
+    const body = await view();
+    expect(body.late_fee).toEqual({ type: "flat", amount: 25, grace_days: 7 });
+    // What decides it stays on the server: the page gets the fee to say, not the invoice's switches.
+    for (const hidden of ["late_fee_at", "no_late_fee", "kind"]) expect(body.invoice).not.toHaveProperty(hidden);
+    // An invoice that never gets one says nothing: a deposit, late fees turned off for it, one that has had its fee, a paid one.
+    expect((await view({ kind: "deposit" })).late_fee).toBeNull();
+    expect((await view({ no_late_fee: true })).late_fee).toBeNull();
+    expect((await view({ late_fee_at: "2026-11-08T12:00:00Z" })).late_fee).toBeNull();
+    expect((await view({ status: "paid", balance_due: 0 })).late_fee).toBeNull();
+    // A percent, with no grace days saved.
+    company.settings = { ...(company.settings as Row), late_fee: { type: "percent", amount: 1.5 } };
+    expect((await view()).late_fee).toEqual({ type: "percent", amount: 1.5, grace_days: 0 });
+  });
+
   it("says when its job's promo code is on a line, so no other code goes on it, without sending the line's key", async () => {
     withOptions();
     state.tables.invoices = [{
@@ -1655,7 +1684,7 @@ describe("autopay on the client's home page", () => {
   it("sends the autopay card as services/autopay.ts has it, for the link it was opened from", async () => {
     const card = {
       status: "active" as const, method: { id: CARD, type: "card", label: "Visa ending 4242", exp: "08/28" }, imported: false, since: "2026-10-31T14:05:09Z",
-      terms: "We charge the card on file after each visit is done.", terms_version: "2026-10-31T14:05:09", timing: "at the end of the day of each visit",
+      terms: "We charge the card on file after each visit is done.", terms_version: "2026-10-31T14:05:09", timing: "at the end of the day of each visit", bank_terms: "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made.",
       next_charge: "2026-11-01T05:00:00Z", per_visit: 45, per_visit_taxed: false, reagree: false, available: true, card_required: false,
     };
     vi.mocked(autopay.hubAutopay).mockResolvedValueOnce(card);
@@ -2031,9 +2060,10 @@ describe("autopay facts from the business's saved cards and agreements", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// The deposit, paid as the client approves when the business takes payments online
-// (20261104000500_deposit_percent.sql hub_deposit_invoice), and a quote template, which never
-// reaches the Client Hub.
+// The deposit, invoiced as the client approves and paid then when the business takes payments
+// online (hub_deposit_invoice: 20261104000500_deposit_percent.sql, and
+// 20261113000410_deposit_invoice_at_every_approval.sql), and a quote template, which never reaches
+// the Client Hub.
 // ---------------------------------------------------------------------------------------------
 
 const DEPOSIT = "00000000-0000-4000-8000-0000000000e1";
@@ -2063,7 +2093,7 @@ describe("the deposit, as the client approves", () => {
     expect(await linkOf(body.deposit.link)).toMatchObject({ c: ROOFER, t: "invoice", id: DEPOSIT, own: 1 });
     const names = state.calls.map((c) => c.name);
     expect(names.indexOf("hub_deposit_invoice")).toBeGreaterThan(names.indexOf("approve_hub_quote"));
-    expect(state.calls.find((c) => c.name === "hub_deposit_invoice")!.args).toEqual({ p_company: ROOFER, p_quote: QUOTE });
+    expect(state.calls.find((c) => c.name === "hub_deposit_invoice")!.args).toEqual({ p_company: ROOFER, p_quote: QUOTE, p_online: true });
     // No tip on a deposit.
     expect(vi.mocked(stripeCheckout).mock.calls.map((call) => call.slice(2))).toEqual([[ROOFER, DEPOSIT, 0]]);
   });
@@ -2091,14 +2121,19 @@ describe("the deposit, as the client approves", () => {
     expect(stripeCheckout).not.toHaveBeenCalled();
   });
 
-  it("approves as before when the business doesn't take payments online", async () => {
+  it("makes the deposit's invoice all the same when the business doesn't take payments online, with nothing to pay next", async () => {
     delete shared.STRIPE_SECRET_KEY;
     expect((await (await hub({ t: "quote", id: QUOTE })).json()).deposit_online).toBe(false);
     const res = await approve();
     expect(res.status).toBe(200);
+    // No page to go on to: the quote reloads signed, and says the deposit is due.
     expect(await res.json()).toEqual({ status: "approved" });
-    expect(state.calls.some((c) => c.name === "hub_deposit_invoice")).toBe(false);
+    // The database is told it isn't being paid online, so it tells the office on the bell at once.
+    expect(state.calls.find((c) => c.name === "hub_deposit_invoice")!.args).toEqual({ p_company: ROOFER, p_quote: QUOTE, p_online: false });
     expect(stripeCheckout).not.toHaveBeenCalled();
+    // Its invoice couldn't be made: approved all the same.
+    state.rpcs.hub_deposit_invoice = () => ({ data: null, error: { message: "boom" } });
+    expect(await (await approve()).json()).toEqual({ status: "approved" });
   });
 
   it("sends a percent, so the page asks for it on what they choose", async () => {
@@ -2130,6 +2165,34 @@ describe("the deposit, as the client approves", () => {
     expect((await (await hub({ t: "quote", id: QUOTE })).json()).deposit).toBeNull();
     Object.assign(state.tables.invoices[0]!, { status: "sent", balance_due: 1000 });
     expect((await (await hub({ t: "quote", id: QUOTE, pv: 1 })).json()).deposit).toBeNull();
+  });
+
+  it("shows as due, with nothing to pay from the page, when the business takes no payments online", async () => {
+    delete shared.STRIPE_SECRET_KEY;
+    roofer({
+      status: "approved", approved_at: "2026-10-25T18:00:00Z", range_low: null, range_high: null, deposit_invoice_id: DEPOSIT,
+      approval: { name: "Dana Whitfield", signature: PNG, signed_at: "2026-10-25T18:00:00Z", total: 18304 },
+    });
+    state.tables.invoices = [{ id: DEPOSIT, company_id: ROOFER, status: "sent", total: 1000, balance_due: 1000 }];
+    const owed = await (await hub({ t: "quote", id: QUOTE })).json();
+    // No `deposit`, so a page from before this one offers no Pay button either.
+    expect(owed.deposit).toBeNull();
+    expect(owed.deposit_due).toMatchObject({ amount: 1000, balance_due: 1000 });
+    expect(await linkOf(owed.deposit_due.link)).toMatchObject({ t: "invoice", id: DEPOSIT });
+    // Part of it recorded by the office: what's left is due.
+    Object.assign(state.tables.invoices[0]!, { status: "partially_paid", balance_due: 400 });
+    expect((await (await hub({ t: "quote", id: QUOTE })).json()).deposit_due).toMatchObject({ amount: 1000, balance_due: 400 });
+    // Paid by cash or cheque, recorded by the office: it reads as paid, as one paid online does.
+    Object.assign(state.tables.invoices[0]!, { status: "paid", balance_due: 0 });
+    const paid = await (await hub({ t: "quote", id: QUOTE })).json();
+    expect(paid.deposit).toMatchObject({ amount: 1000, balance_due: 0 });
+    expect(paid.deposit_due).toBeNull();
+    // With online payments, an owed deposit is paid from the page, as before.
+    shared.STRIPE_SECRET_KEY = "sk_test_shared";
+    Object.assign(state.tables.invoices[0]!, { status: "sent", balance_due: 1000 });
+    const online = await (await hub({ t: "quote", id: QUOTE })).json();
+    expect(online.deposit).toMatchObject({ balance_due: 1000 });
+    expect(online.deposit_due).toBeNull();
   });
 });
 
@@ -2260,6 +2323,8 @@ describe("moving or cancelling a visit from the Client Hub", () => {
     expect(result).toEqual({ status: "approved", emailed: true });
     // The visit keeps its hour's length and the date it was made for, so the recurrence doesn't add it again.
     expect(state.tables.visits![0]).toMatchObject({ starts_at: at(day, "11:00"), ends_at: at(day, "12:00"), recurrence_key: day, route_order: null });
+    // The client picked that time, so organizing the route leaves it there.
+    expect(state.tables.visits![0]!.time_fixed).toBe(true);
     expect(state.tables.visits![1]).toMatchObject({ starts_at: at(addDays(day, 7), "09:00") });
     expect(row.status).toBe("approved");
     expect(sent).toHaveLength(1);
@@ -2269,6 +2334,13 @@ describe("moving or cancelling a visit from the Client Hub", () => {
     expect(state.tables.messages).toMatchObject([{ client_id: CLIENT, channel: "email", direction: "out", related_type: "visit", related_id: MINE }]);
     // An answer is given once.
     await expect(answerVisitChange(office, env, "ask-1", { approve: true }, null)).rejects.toThrow(/isn't waiting/);
+  });
+
+  it("approving a move to a whole day keeps the visit's own time, which the route may still move", async () => {
+    request({ kind: "reschedule", scheduled_on: addDays(day, 1) });
+    expect(await answerVisitChange(office, env, "ask-1", { approve: true }, null)).toEqual({ status: "approved", emailed: false });
+    expect(state.tables.visits![0]).toMatchObject({ starts_at: at(addDays(day, 1), "09:00"), ends_at: at(addDays(day, 1), "10:00") });
+    expect(state.tables.visits![0]!.time_fixed ?? false).toBe(false);
   });
 
   it("won't approve a move to a time the crew has been booked into since, and the request keeps waiting", async () => {
@@ -2300,6 +2372,61 @@ describe("moving or cancelling a visit from the Client Hub", () => {
     const change = (await withEvent(adminClient(env), ctx, "visit.reschedule_requested", 7)).vars.change as Row;
     expect(change).toMatchObject({ message: "Mornings are best", reason: "" });
     expect(String(change.when).replace(/\s/g, " ")).toMatch(/^\w{3}, \w{3} \d+, 11:00 AM$/);
+  });
+
+  describe("a visit the client booked online", () => {
+    const BOOKED = "00000000-0000-4000-8000-0000000000e5";
+    const OFFICE_MADE = "00000000-0000-4000-8000-0000000000e6";
+    const estimate = (id: string, request: string, picked: string | null, more: Row = {}) => ({
+      id, company_id: ROOFER, job_id: null, request_id: request, kind: "assessment", title: "Assessment: Free roof inspection", status: "scheduled",
+      scheduled_on: addDays(day, 1), starts_at: at(addDays(day, 1), "09:00"), ends_at: at(addDays(day, 1), "10:00"), completed_at: null, crew_id: null, property: null, assignees: [],
+      job: null, request: { client_id: CLIENT, asked_starts_at: picked }, company: { name: "Summit Roofing" }, ...more,
+    });
+    beforeEach(() => {
+      state.tables.requests = [
+        { id: "req-online", company_id: ROOFER, client_id: CLIENT, number: 7, title: "Free roof inspection", status: "assessment_scheduled", source: "web_form", asked_starts_at: at(addDays(day, 1), "09:00"), asked_ends_at: at(addDays(day, 1), "10:00") },
+        { id: "req-office", company_id: ROOFER, client_id: CLIENT, number: 8, title: "Gutter estimate", status: "assessment_scheduled", source: "phone", asked_starts_at: null, asked_ends_at: null },
+      ];
+      state.tables.visits!.push(estimate(BOOKED, "req-online", at(addDays(day, 1), "09:00")), estimate(OFFICE_MADE, "req-office", null));
+      state.rpcs.booking_busy_times = () => ({ data: [{ starts_at: at(day, "08:00"), ends_at: at(day, "09:00") }], error: null });
+    });
+    afterEach(() => {
+      delete state.rpcs.booking_busy_times;
+      state.tables.requests = [];
+    });
+
+    it("is on their home with the rest, in order, to move or cancel; an assessment the office made isn't", async () => {
+      const home = await (await hub({ t: "client", id: CLIENT })).json();
+      expect(home.visits.map((v: { id: string }) => v.id)).toEqual([TODAYS, MINE, BOOKED, NEXT]);
+      expect(home.visits.find((v: { id: string }) => v.id === BOOKED)).toMatchObject({ title: "Assessment: Free roof inspection", can_change: true, change_requested: null });
+      expect((await slotsOf(OFFICE_MADE)).status).toBe(404);
+      expect((await ask(OFFICE_MADE, { kind: "cancel" })).status).toBe(404);
+      expect((await hub({ t: "client", id: CLIENT }, `/visits/${OFFICE_MADE}.ics`)).status).toBe(404);
+      expect((await hub({ t: "client", id: CLIENT }, `/visits/${BOOKED}.ics`)).status).toBe(200);
+    });
+
+    it("moves against the whole schedule when it has no crew, as its form booked it, and its own time isn't in its way", async () => {
+      const body = await (await slotsOf(BOOKED)).json();
+      expect(state.calls.find((c) => c.name === "booking_busy_times")?.args).toMatchObject({ p_company: ROOFER, p_crew: null, p_except_visit: BOOKED });
+      expect(state.calls.some((c) => c.name === "visit_busy_times")).toBe(false);
+      expect(body.slots.filter((s: { date: string }) => s.date === day).map((s: { starts_at: string }) => localTime(new Date(s.starts_at), CHICAGO))).toEqual(["09:00", "09:30", "10:00", "10:30", "11:00"]);
+      expect((await ask(BOOKED, { kind: "reschedule", starts_at: at(day, "08:00") })).status).toBe(409);
+      expect((await ask(BOOKED, { kind: "reschedule", starts_at: at(day, "10:00") })).status).toBe(201);
+      expect(state.tables.visit_change_requests).toMatchObject([{ visit_id: BOOKED, client_id: CLIENT, kind: "reschedule", starts_at: at(day, "10:00") }]);
+    });
+
+    it("with a crew, moves around that crew's time like any visit", async () => {
+      state.tables.visits!.find((v) => v.id === BOOKED)!.crew_id = "crew-1";
+      await slotsOf(BOOKED);
+      expect(state.calls.find((c) => c.name === "visit_busy_times")?.args).toMatchObject({ p_visit: BOOKED });
+      expect(state.calls.some((c) => c.name === "booking_busy_times")).toBe(false);
+    });
+
+    it("gives the office's rules the time picked, and whether it's booked", async () => {
+      const ctx = (await loadContext(adminClient(env), ROOFER, "request", "req-online"))!;
+      expect(ctx.asked).toEqual({ status: "assessment_scheduled", asked_starts_at: at(addDays(day, 1), "09:00"), asked_ends_at: at(addDays(day, 1), "10:00") });
+      expect((await loadContext(adminClient(env), ROOFER, "request", "req-office"))!.asked).toBeUndefined();
+    });
   });
 
   it("won't approve a move for a visit that has started since", async () => {

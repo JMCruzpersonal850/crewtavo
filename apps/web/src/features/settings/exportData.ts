@@ -85,7 +85,7 @@ export async function exportEverything(session: Session, step: (what: string) =>
   const quotes = quoteRows.filter((q): q is typeof q & { client_id: string } => q.client_id !== null);
 
   step("Reading visits and invoices…");
-  const [visits, assignees, crews, crewMembers, invoices, invoiceLines, payments] = await Promise.all([
+  const [visits, assignees, crews, crewMembers, invoices, invoiceLines, payments, visitExtras] = await Promise.all([
     everyRow(() => db.from("visits").select("id, job_id, request_id, property_id, kind, title, status, scheduled_on, starts_at, ends_at, crew_id, notes, completed_at, invoice_id").eq("company_id", companyId), ALL),
     everyRow(() => db.from("visit_assignees").select("visit_id, user_id").eq("company_id", companyId), { ...ALL, key: ["visit_id", "user_id"] }),
     everyRow(() => db.from("crews").select("id, name, lead_user_id, active").eq("company_id", companyId), ALL),
@@ -93,6 +93,8 @@ export async function exportEverything(session: Session, step: (what: string) =>
     everyRow(() => db.from("invoices").select("id, number, subject, client_id, job_id, kind, status, issued_on, due_on, subtotal, discount_amount, credit_amount, tax_rate, tax_amount, total, amount_paid, balance_due, retainage_amount, notes, sent_at, written_off_at, minimum_charge, late_fee_at, custom_fields").eq("company_id", companyId), ALL),
     everyRow(() => db.from("invoice_line_items").select("id, invoice_id, sort, name, description, quantity, unit, unit_price, taxable, kind, time_entry_ids, material_ids").eq("company_id", companyId), ALL),
     everyRow(() => db.from("payments").select("id, client_id, invoice_id, amount, tip_amount, fee_amount, method, processor, processor_ref, received_at, notes").eq("company_id", companyId), ALL),
+    // Extra work on single visits of repeating jobs: billed once with its visit, apart from the job's lines.
+    everyRow(() => db.from("visit_extras").select("id, job_id, visit_id, name, description, quantity, unit, unit_price, unit_cost, taxable, invoice_id, visit_was_on, added_in_field_at, created_at").eq("company_id", companyId), { ...ALL, order: "created_at" }),
   ]);
 
   step("Reading time, expenses and equipment…");
@@ -230,6 +232,11 @@ export async function exportEverything(session: Session, step: (what: string) =>
       ["Property", (v) => address(v.property_id ?? (v.job_id ? jobById.get(v.job_id)?.property_id : null))], ["Crew", (v) => (v.crew_id ? crewById.get(v.crew_id)?.name : "")],
       ["People", (v) => peopleOn(v.id).join("; ")], ["Notes", (v) => v.notes], ["Completed", (v) => when(v.completed_at)],
       ["Invoice #", (v) => (v.invoice_id ? invoiceById.get(v.invoice_id)?.number : "")], ["Job ID", (v) => v.job_id], ["Visit ID", (v) => v.id],
+    ]),
+    sheet("visit-extras.csv", visitExtras, [
+      ["Job #", (e) => jobNumber(e.job_id)], ["Visit date", (e) => (e.visit_id ? visitById.get(e.visit_id)?.scheduled_on : e.visit_was_on) ?? ""], ["Name", (e) => e.name], ["Description", (e) => e.description],
+      ["Quantity", (e) => e.quantity], ["Unit", (e) => e.unit], ["Unit price", (e) => e.unit_price], ["Unit cost", (e) => e.unit_cost], ["Total", (e) => lineTotal(e.quantity, e.unit_price)], ["Taxable", (e) => yes(e.taxable)],
+      ["Invoice #", (e) => (e.invoice_id ? invoiceById.get(e.invoice_id)?.number : "")], ["Added by the crew", (e) => when(e.added_in_field_at)], ["Job ID", (e) => e.job_id], ["Visit ID", (e) => e.visit_id], ["Extra ID", (e) => e.id],
     ]),
     sheet("invoices.csv", [...invoices].sort(byNumber), beforeIds([
       ["Invoice #", (i) => i.number], ["Subject", (i) => i.subject], ["Client", (i) => clientName(i.client_id)], ["Job #", (i) => jobNumber(i.job_id)], ["Type", (i) => words(i.kind)],

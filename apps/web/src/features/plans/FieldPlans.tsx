@@ -14,6 +14,7 @@ import { hasRole, useSession } from "@/lib/session";
 import { PLAN_FIELDS, planEntries, planMeta, usePlanLinks, type PlanFile } from "./plans";
 import { PlanIcon } from "./PlansCard";
 import styles from "./plans.module.css";
+import { t } from "@/lib/i18n";
 
 export function FieldPlans({ visitId, jobId, propertyId }: { visitId: string; jobId: string | null; propertyId: string | null }) {
   const session = useSession();
@@ -36,8 +37,8 @@ export function FieldPlans({ visitId, jobId, propertyId }: { visitId: string; jo
   return (
     <section className="card card-pad stack-sm">
       <div className="row-between">
-        <strong>Plans</strong>
-        {jobId && hasRole(session, "admin", "office", "estimator", "crew_lead") && <Link className="small strong field-link" to={`/jobs/${jobId}`}>Add or update</Link>}
+        <strong>{t("Plans")}</strong>
+        {jobId && hasRole(session, "admin", "office", "estimator", "crew_lead") && <Link className="small strong field-link" to={`/jobs/${jobId}`}>{t("Add or update")}</Link>}
       </div>
       <div>
         {entries.map((entry) => {
@@ -52,14 +53,14 @@ export function FieldPlans({ visitId, jobId, propertyId }: { visitId: string; jo
                 {f.notes && <p className={styles.notes}>{f.notes}</p>}
               </div>
               <div className={styles.fieldButtons}>
-                <button type="button" className="btn" onClick={() => setViewing(f)}><Icon name="eye" size={16} />Open</button>
-                {save && <a className="btn btn-icon" href={save} aria-label={`Save ${f.title} to this phone`} title="Save to this phone"><Icon name="download" size={16} /></a>}
+                <button type="button" className="btn" onClick={() => setViewing(f)}><Icon name="eye" size={16} />{t("Open")}</button>
+                {save && <a className="btn btn-icon" href={save} aria-label={t("Save {file} to this phone", { file: f.title })} title={t("Save to this phone")}><Icon name="download" size={16} /></a>}
               </div>
             </div>
           );
         })}
       </div>
-      {!navigator.onLine && <span className="muted small">No signal: plans you saved to this phone are in its Files or Downloads.</span>}
+      {!navigator.onLine && <span className="muted small">{t("No signal: plans you saved to this phone are in its Files or Downloads.")}</span>}
       {viewing && (
         <FileViewer
           file={viewing}

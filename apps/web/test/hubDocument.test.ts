@@ -23,6 +23,7 @@ import {
   quoteDocument,
   rangeWords,
   reviewChange,
+  signedThanks,
   unpickedGroup,
   waitingInvoices,
   type HubOption,
@@ -122,6 +123,24 @@ describe("the Client Hub's documents", () => {
       kind: "invoice", number: 77, date: "2026-10-01", dueOn: "2026-10-31", title: "Roof replacement", total: 1000, balanceDue: 450,
       payments: [{ label: "Retainage (billed later)", amount: 100 }, { label: "Paid Oct 5, 2026", amount: 500 }, { label: "Refunded Oct 6, 2026", amount: -50 }],
     });
+  });
+
+  it("prints the late fee the server says could still go on an invoice, after the invoice's own notes", () => {
+    const view = (over: Partial<InvoiceView> = {}, notes: string | null = null): InvoiceView => ({
+      kind: "invoice", home: null, company, can_pay: true, tips: false, ...over,
+      invoice: {
+        id: "i1", number: 78, status: "sent", subject: "Gutter repair", notes, issued_on: "2026-10-01", due_on: "2026-10-31",
+        subtotal: 400, discount_amount: 0, tax_amount: 0, total: 400, retainage_amount: 0, amount_paid: 0, balance_due: 400, promo: null,
+        client: { display_name: "Dana Whitfield" }, lines: [{ name: "Gutters", description: null, quantity: 1, unit: "ea", unit_price: 400 }], payments: [],
+      },
+    });
+    const line = "A late fee of $25.00 is added once if this invoice is still unpaid 7 days after its due date.";
+    expect(invoiceDocument(view({ late_fee: { type: "flat", amount: 25, grace_days: 7 } })).notes).toBe(line);
+    expect(invoiceDocument(view({ late_fee: { type: "flat", amount: 25, grace_days: 7 } }, "Thank you for your business.")).notes).toBe(`Thank you for your business.\n\n${line}`);
+    expect(invoiceDocument(view({ late_fee: { type: "percent", amount: 1.5, grace_days: 0 } })).notes).toBe("A late fee of 1.5% of the unpaid balance is added once if this invoice is still unpaid after its due date.");
+    // No fee could go on it, or a server from before this: nothing is said.
+    expect(invoiceDocument(view({ late_fee: null }, "Thank you.")).notes).toBe("Thank you.");
+    expect(invoiceDocument(view()).notes).toBeNull();
   });
 
   it("uses the business's letterhead and template, with the defaults for anything missing", () => {
@@ -264,6 +283,27 @@ describe("an open quote that offers options", () => {
     expect(depositToBook(1000, 14290.5)).toBe(1000);
     expect(depositToBook("5000.00", 4200)).toBe(4200);
     expect(depositToBook(null, 4200)).toBe(0);
+  });
+
+  // The deposit's invoice is made as they approve, with or without online payments
+  // (20261113000410_deposit_invoice_at_every_approval.sql).
+  it("says where the deposit stands on a signed quote", () => {
+    const signed = { company: { name: "Summit Roofing" }, quote: { deposit_amount: 500 } };
+    const link = "https://app.test/hub/t";
+    // Owed, and the business takes no payments online: the amount, and who'll be in touch.
+    expect(signedThanks({ ...signed, deposit: null, deposit_due: { amount: 500, balance_due: 500, link } })).toBe(
+      "Thank you. Your $500.00 deposit is due, and Summit Roofing will be in touch about paying it and scheduling the work.",
+    );
+    // Part of it recorded since: what's left.
+    expect(signedThanks({ ...signed, deposit: null, deposit_due: { amount: 500, balance_due: 200, link } })).toContain("Your $200.00 deposit is due");
+    // Paid online from the page's button, or already paid.
+    expect(signedThanks({ ...signed, deposit: { amount: 500, balance_due: 500, link } })).toBe(
+      "Thank you. Summit Roofing will be in touch to schedule the work. Your deposit is still due: pay it to hold your place on the schedule.",
+    );
+    expect(signedThanks({ ...signed, deposit: { amount: 500, balance_due: 0, link }, deposit_due: null })).toBe("Thank you. Summit Roofing will be in touch to schedule the work. Your deposit is paid.");
+    // No invoice for it (the office approved it for them): one is coming. And no deposit: just thanks.
+    expect(signedThanks(signed)).toBe("Thank you. Summit Roofing will be in touch to schedule the work. You'll receive an invoice for the deposit.");
+    expect(signedThanks({ company: signed.company, quote: { deposit_amount: 0 } })).toBe("Thank you. Summit Roofing will be in touch to schedule the work.");
   });
 
   it("compares the options while choosing, then prints the copy being signed for the one picked", () => {

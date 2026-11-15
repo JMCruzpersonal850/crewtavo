@@ -466,7 +466,8 @@ select t_roofing.check((select count(*) = 14 from public.automation_rules where 
    'quote_followup', 'invoice_overdue', 'visit_reminder', 'on_my_way', 'review_after_job', 'review_recurring', 'referral_after_job',
    'reengage_past_clients', 'win_back_lost_quotes')), 'along with all the other starter rules');
 select private.install_default_automations(:'newco');
-select t_roofing.check((select count(*) = 14 from public.automation_rules where company_id = :'newco'), 'setting up the starter rules again adds nothing');
+-- 17: those 14, and the three that tell clients a visit is booked, moved or cancelled (20261113000510_visit_notice_rules.sql).
+select t_roofing.check((select count(*) = 17 from public.automation_rules where company_id = :'newco'), 'setting up the starter rules again adds nothing');
 delete from public.companies where id = :'newco';
 
 -- ===== Someone who leaves can't use their signature there ======================================

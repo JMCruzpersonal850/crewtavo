@@ -8,6 +8,22 @@ import { test as setup, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { authFile, PASSWORD, PEOPLE, SUPABASE_SECRET, SUPABASE_URL, withPassword, type Person } from "./support/env";
 
+// Everyone who clocks in is shown, once, what's saved about where they are, in a dialog over My day
+// (features/field/LocationNotice.tsx). The demo team has seen it, so the other tests start past it;
+// field.spec.ts has the test of the notice itself.
+setup("the demo team has acknowledged the location notice", async () => {
+  if (!SUPABASE_URL || !SUPABASE_SECRET) throw new Error("No Supabase server key: fill in .dev.vars (see e2e/README.md).");
+  const admin = createClient(SUPABASE_URL, SUPABASE_SECRET, { auth: { persistSession: false, autoRefreshToken: false } });
+  const people = await admin.from("profiles").select("user_id").in("email", Object.values(PEOPLE).map((p) => p.email));
+  if (people.error) throw new Error(`Couldn't read the demo team (${people.error.message}). Run npm run seed:demo.`);
+  const ids = (people.data ?? []).map((p) => p.user_id);
+  const members = await admin.from("memberships").select("company_id, user_id").in("user_id", ids);
+  if (members.error) throw new Error(`Couldn't read the demo team's companies (${members.error.message}).`);
+  const rows = (members.data ?? []).flatMap((m) => (["clock_location", "clock_at_property"] as const).map((notice) => ({ company_id: m.company_id, user_id: m.user_id, notice })));
+  const saved = await admin.from("worker_notices").upsert(rows, { onConflict: "company_id,user_id,notice", ignoreDuplicates: true });
+  if (saved.error) throw new Error(`Couldn't record the location notice for the demo team (${saved.error.message}).`);
+});
+
 setup("sign in as the sub, with a one-time link", async ({ page }) => {
   if (!SUPABASE_URL || !SUPABASE_SECRET) throw new Error("No Supabase server key: fill in .dev.vars (see e2e/README.md).");
   const admin = createClient(SUPABASE_URL, SUPABASE_SECRET, { auth: { persistSession: false, autoRefreshToken: false } });

@@ -3,12 +3,14 @@
  * priced from its package (with the range the homeowner will see beside it), the range going out
  * and the homeowner's yes, the site visit on the iPad and the signed estimate, then the job and the
  * invoices. Six steps (ROOF_STEPS); the page opens wherever the project is. A roof the map can't
- * measure goes to a salesperson to measure on site (flow/MeasureOnSite.tsx).
+ * measure goes to a salesperson to measure on site (flow/MeasureOnSite.tsx), and one measured by a
+ * report (EagleView, Hover) has its numbers typed in instead of being drawn (flow/RoofReport.tsx).
  *
  * The estimate is the estimate kit's (useEstimateQuote), so a tap on − or + shows at once; the rest
  * of the project (its dates, deposit and job) loads beside it (flow/data.ts). The pieces every trade
  * shares (the progress pills, the step cards, the invoices) are paving/ProjectFlow's.
  */
+import { isReportRoof } from "@crewtavo/core/roofing";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
@@ -25,6 +27,7 @@ import { counts, firstName, useEstimateQuote } from "./estimate";
 import { useFreshEstimate, useRefreshProject, useRoofProject, useTeam, useWatchProject } from "./flow/data";
 import { EstimateStep } from "./flow/EstimateStep";
 import { CantMeasureButton, MeasureOnSiteCard } from "./flow/MeasureOnSite";
+import { RoofReportButton } from "./flow/RoofReport";
 import { personName, rangeState, rangeStepStatus, visitStepStatus } from "./flow/model";
 import type { SendChannel, SendMode } from "./flow/RangeCard";
 import { RangeStep } from "./flow/RangeStep";
@@ -150,10 +153,19 @@ function RoofProject() {
           ) : !takeoff ? (
             <div className="stack-sm">
               <TakeoffEmpty trade={ROOFING} measureLink={measureLink} />
-              <CantMeasureButton quote={quote} />
+              <div className="row wrap" style={{ gap: 12 }}>
+                <RoofReportButton quote={quote} label="Enter measurements from a report" />
+                <CantMeasureButton quote={quote} />
+              </div>
             </div>
           ) : (
-            <RoofCard takeoff={takeoff} picture={takeoff.snapshot_path ? pictures.data?.[takeoff.snapshot_path] : undefined} editLink={measureLink} />
+            <RoofCard
+              takeoff={takeoff}
+              picture={takeoff.snapshot_path ? pictures.data?.[takeoff.snapshot_path] : undefined}
+              editLink={measureLink}
+              // A roof typed in from a report goes back to its numbers, not to the map.
+              action={isReportRoof(takeoff) ? <RoofReportButton quote={quote} takeoff={takeoff} label="Change the numbers" /> : undefined}
+            />
           )}
         </StepCard>
 

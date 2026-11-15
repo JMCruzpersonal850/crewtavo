@@ -387,7 +387,7 @@ export function useChatLive() {
         try {
           const { data } = await supabase().auth.getSession();
           const token = data.session?.access_token;
-          if (!token) throw new Error("signed out");
+          if (!token) throw new Error("signed out"); // i18n-ignore: not shown
           const res = await fetch("/api/chat/live", {
             headers: { Authorization: `Bearer ${token}`, "X-Company-Id": activeCompany() ?? company, Accept: "text/event-stream" },
             signal: controller.signal,
@@ -395,10 +395,10 @@ export function useChatLive() {
           });
           if (res.status === 401) {
             await refreshSignIn();
-            throw new Error("sign-in refreshed");
+            throw new Error("sign-in refreshed"); // i18n-ignore: not shown
           }
           if (res.status === 409) return; // chat turned off; the session refresh unmounts this
-          if (!res.ok || !res.body) throw new Error(`live ${res.status}`);
+          if (!res.ok || !res.body) throw new Error(`live ${res.status}`); // i18n-ignore: not shown
           attempt = 0;
           setLive({ connected: true });
           if (lostOnce) queryClient.invalidateQueries({ queryKey: chatKeys.all(company) });

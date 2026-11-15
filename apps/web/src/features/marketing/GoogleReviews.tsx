@@ -52,6 +52,8 @@ import {
   type ReviewFilters,
   type SuggestedClient,
 } from "./googleReviewData";
+import { quotePickItem, QuoteReviewsCard, useQuoteReviews, useSetQuoteReviews } from "./QuoteReviews";
+import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
 const ReviewTrend = lazy(() => import("./ReviewTrend").then((m) => ({ default: m.ReviewTrend })));
 
@@ -206,6 +208,8 @@ export function GoogleSide({ g, stats }: { g: GoogleState | undefined; stats: Re
           </div>
         </div>
       )}
+      {/* Which reviews clients see on their quotes, once there are any to show. */}
+      <QuoteReviewsCard hasReviews={Boolean(s && s.count > 0)} />
       {s && s.count > 0 && (
         <div className="card card-pad stack-sm">
           <strong>Reviews each month</strong>
@@ -277,6 +281,10 @@ export function GoogleReviewList({ g }: { g: GoogleState }) {
   }, [focused.data]);
 
   const sync = useSyncNow(() => setTimeout(refresh, 1500));
+  // Picking a review to show on quotes, from its menu (QuoteReviews.tsx).
+  const quotePicks = useQuoteReviews();
+  const setPicks = useSetQuoteReviews();
+  const pickFor = (id: string) => quotePickItem(id, quotePicks.data, (ids) => quotePicks.data && setPicks.mutate({ show: quotePicks.data.show, pdf: quotePicks.data.pdf, ids }));
   const setClient = useMutation({
     mutationFn: (v: { review: Review; client: { id: string; display_name: string } | null }) => api.put(`/reviews/${v.review.id}/client`, { client_id: v.client?.id ?? null }),
     onSuccess: (_, v) => {
@@ -351,6 +359,7 @@ export function GoogleReviewList({ g }: { g: GoogleState }) {
             onMatch={() => { setMatching(r); setDialogOpen(true); }}
             onNotThem={() => notThem(r)}
             onChanged={refresh}
+            quotePick={pickFor(r.id)}
           />
         ))}
         {total > PAGE && (
@@ -376,7 +385,7 @@ const LONG = 320;
  * One review. The status and the menu sit on the name's line, so on a phone the words and the reply
  * get the row's whole width beside the photo.
  */
-function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onChanged }: {
+function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onChanged, quotePick }: {
   review: Review;
   names: ReadonlyMap<string, string>;
   highlight: boolean;
@@ -384,6 +393,8 @@ function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onCh
   onMatch: () => void;
   onNotThem: () => void;
   onChanged: () => void;
+  /** Show on quotes, or stop. */
+  quotePick: ReturnType<typeof quotePickItem>;
 }) {
   const navigate = useNavigate();
   const [more, setMore] = useState(false);
@@ -415,6 +426,7 @@ function ReviewRow({ review: r, names, highlight, live, onMatch, onNotThem, onCh
               { label: "Not this client", icon: "x", hidden: !r.client, onSelect: onNotThem },
               // A 4 or 5-star review with words can be posted as a card (Marketing → Social).
               { label: "Post on social", icon: "share", hidden: (r.rating ?? 0) < 4 || !text.trim(), onSelect: () => navigate(`/marketing?tab=social&compose=review&review=${r.id}`) },
+              quotePick,
             ]}
           />
         </div>
@@ -448,6 +460,8 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
   }, [open]);
   const reviewer = reviewerName(r);
   const aiOn = session.config.features.ai;
+  // The reply in the box came from "Suggest a reply": said under it until it's posted or put away.
+  const [suggested, setSuggested] = useState(false);
   const post = useMutation({
     meta: { inline: true },
     mutationFn: (comment: string) => api.put(`/reviews/${r.id}/reply`, { comment }),
@@ -468,7 +482,10 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
   const suggest = useMutation({
     meta: { inline: true },
     mutationFn: () => api.post<{ text: string }>(`/reviews/${r.id}/suggest`, text.trim() ? { draft: text.trim() } : {}),
-    onSuccess: (res) => setText(res.text),
+    onSuccess: (res) => {
+      setText(res.text);
+      setSuggested(true);
+    },
   });
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -515,11 +532,14 @@ function Reply({ review: r, names, live, open, onChanged }: { review: Review; na
         <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setText(r.reply_comment ?? ""); }}>Cancel</Button>
         <span className="muted small grow" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{text.length.toLocaleString("en-US")} / {REPLY_MAX.toLocaleString("en-US")}</span>
       </div>
+      <UsingChatGptPlan />
       {!aiOn && (
         <span className="muted small">
-          {canAddKey ? <><Link to="/apps/anthropic">Add a Claude key in Apps</Link> to draft replies.</> : "An admin can add a Claude key on the Apps page to draft replies."}
+          {canAddKey ? <><Link to="/apps">Add a Claude or OpenAI key in Apps</Link> to draft replies.</> : "An admin can add a Claude or OpenAI key on the Apps page to draft replies."}
         </span>
       )}
+      {/* The words above came from AI: said to whoever posts them. */}
+      {suggested && <span className="muted small" role="status">Written by AI from their review. It can be wrong: read it and make it yours before you post it.</span>}
       <FormError error={post.error ?? suggest.error} />
     </form>
   );

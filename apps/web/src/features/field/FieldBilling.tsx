@@ -1,6 +1,6 @@
 /**
  * Finishing the paperwork on site (fieldMoney.ts says who): adding work to the visit's job from the
- * price list, and, once the visit is done, its invoice with its total, sent to the client, and cash
+ * price list (on a repeating job, to this visit alone), and, once the visit is done, its invoice with its total, sent to the client, and cash
  * or check recorded against it. Each goes the office's own way: add_field_line() for the line, at
  * the office's price; POST /jobs/:id/invoice (create_invoice_for_job, with all its rules) for the
  * invoice; SendDialog for sending; recordPayment for the payment. No card payments on site.
@@ -24,10 +24,15 @@ import { recordPayment } from "../invoices/recordPayment";
 import { scopeKey } from "../jobs/ScopeOfWork";
 import { SendDialog } from "../quotes/SendDialog";
 import { waitingScopeLine, type JobLineAdd } from "./fieldActions";
+import { visitExtrasKey, waitingExtra, type ExtraScopeLine } from "./FieldExtras";
 import { useSignal } from "./OfflineNote";
+import { msg, t } from "@/lib/i18n";
 
-/** Add work: an item from the price list and how many. The office's price applies, and the crew never sees it. */
-export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) {
+/**
+ * Add work: an item from the price list and how many. The office's price applies, and the crew never
+ * sees it. `toVisit`: the job repeats, so it's extra work on this visit alone (fieldMoney addsToVisit).
+ */
+export function AddWork({ visitId, jobId, toVisit = false }: { visitId: string; jobId: string; toVisit?: boolean }) {
   const session = useSession();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -42,27 +47,30 @@ export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) 
   const add = useMutation({
     mutationKey: ["job-line-add"],
     scope: FIELD_SCOPE,
-    meta: { success: "Added to the job" },
+    meta: { success: toVisit ? t("Added to this visit") : t("Added to the job") },
     onMutate: (v: JobLineAdd) => {
-      if (!onlineManager.isOnline()) toast.info("Saved on this phone", { description: "It sends when you have signal." });
-      queryClient.setQueryData<Array<ReturnType<typeof waitingScopeLine>>>(scopeKey(jobId), (old) => old && [...old, waitingScopeLine(v)]);
+      if (!onlineManager.isOnline()) toast.info(t("Saved on this phone"), { description: t("It sends when you have signal.") });
+      if (v.extra) queryClient.setQueryData<ExtraScopeLine[]>(visitExtrasKey(visitId), (old) => old && [...old, waitingExtra(v)]);
+      else queryClient.setQueryData<Array<ReturnType<typeof waitingScopeLine>>>(scopeKey(jobId), (old) => old && [...old, waitingScopeLine(v)]);
     },
     // The job's checklists can come with its new item.
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: scopeKey(jobId) });
+      void queryClient.invalidateQueries({ queryKey: visitExtrasKey(visitId) });
       void queryClient.invalidateQueries({ queryKey: ["checklist", visitId] });
     },
   });
   return (
     <>
-      <Button icon="plus" style={{ justifySelf: "start" }} onClick={() => setOpen(true)}>Add work</Button>
+      <Button icon="plus" style={{ justifySelf: "start" }} onClick={() => setOpen(true)}>{t("Add work")}</Button>
       {open && (
         <AddWorkDialog
+          toVisit={toVisit}
           choices={choices.data}
           loading={choices.isPending && !choices.isPaused}
           onClose={() => setOpen(false)}
           onAdd={(item, quantity) => {
-            add.mutate({ visitId, jobId, lineId: crypto.randomUUID(), serviceId: item.id, quantity, name: item.name, unit: item.unit });
+            add.mutate({ visitId, jobId, lineId: crypto.randomUUID(), serviceId: item.id, quantity, name: item.name, unit: item.unit, ...(toVisit && { extra: true }) });
             setOpen(false);
           }}
         />
@@ -73,38 +81,38 @@ export function AddWork({ visitId, jobId }: { visitId: string; jobId: string }) 
 
 type Choice = { id: string; name: string; unit: string };
 
-function AddWorkDialog({ choices, loading, onClose, onAdd }: { choices: Choice[] | undefined; loading: boolean; onClose: () => void; onAdd: (item: Choice, quantity: number) => void }) {
+function AddWorkDialog({ choices, loading, toVisit, onClose, onAdd }: { choices: Choice[] | undefined; loading: boolean; toVisit: boolean; onClose: () => void; onAdd: (item: Choice, quantity: number) => void }) {
   const [serviceId, setServiceId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [problem, setProblem] = useState<string | null>(null);
   const item = choices?.find((c) => c.id === serviceId);
   const amount = Number(quantity);
   return (
-    <Dialog open onClose={onClose} title="Add work" description="Extra work or a part, from the price list. The office's price applies, and they'll see you added it.">
+    <Dialog open onClose={onClose} title={t("Add work")} description={toVisit ? t("Extra work or a part on this visit only, from the price list. The office's price applies, and they'll see you added it.") : t("Extra work or a part, from the price list. The office's price applies, and they'll see you added it.")}>
       <form
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
-          if (!item) return setProblem("Choose what you added.");
-          if (!(amount > 0 && amount <= 100_000)) return setProblem("Enter how many.");
+          if (!item) return setProblem(t("Choose what you added."));
+          if (!(amount > 0 && amount <= 100_000)) return setProblem(t("Enter how many."));
           onAdd(item, Math.round(amount * 1000) / 1000);
         }}
       >
-        <Field label="What" requiredMessage="Choose what you added.">
+        <Field label={t("What")} requiredMessage={t("Choose what you added.")}>
           {loading ? <Skeleton height={44} radius={8} /> : (
             <select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required autoFocus>
-              <option value="">{choices?.length ? "Choose from the price list…" : "The price list isn't on this phone yet"}</option>
+              <option value="">{choices?.length ? t("Choose from the price list…") : t("The price list isn't on this phone yet")}</option>
               {choices?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
             </select>
           )}
         </Field>
-        <Field label="How many" hint={item?.unit} requiredMessage="Enter how many.">
+        <Field label={t("How many")} hint={item?.unit} requiredMessage={t("Enter how many.")}>
           <input className="input" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.]/g, ""))} required />
         </Field>
         <FormError error={problem} />
         <div className="form-actions">
           <FormChecks />
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" icon="plus">Add</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" icon="plus">{t("Add")}</Button>
         </div>
       </form>
     </Dialog>
@@ -131,7 +139,7 @@ async function visitInvoice(visitId: string, jobId: string, kind: "standard" | "
     supabase().from("visits").select("invoice_id").eq("id", visitId).maybeSingle(),
     supabase().from("invoices").select("id, number, kind, status, total, balance_due, client_id, client:clients(email, phone, sms_opt_out_at)").eq("job_id", jobId).neq("status", "void").order("number"),
   ]);
-  const invoiceId = unwrapOne(visit, "This visit").invoice_id;
+  const invoiceId = unwrapOne(visit, msg("This visit")).invoice_id;
   const rows = unwrap(invoices) as VisitInvoiceRow[];
   return (kind === "visits" ? rows.find((i) => i.id === invoiceId) : rows.find((i) => i.kind === "standard")) ?? null;
 }
@@ -148,7 +156,7 @@ export function VisitInvoice({ visitId, jobId, kind }: { visitId: string; jobId:
     for (const k of [key, ["invoices"], ["job", jobId], ["dashboard"]]) void queryClient.invalidateQueries({ queryKey: k });
   };
   const create = useMutation({
-    meta: { inline: true, success: "Invoice created", tone: "invoice" },
+    meta: { inline: true, success: t("Invoice created"), tone: "invoice" },
     // The office's Create invoice, with every rule it has (create_invoice_for_job).
     mutationFn: () => api.post<{ invoice_id: string }>(`/jobs/${jobId}/invoice`, { kind }),
     onSuccess: refresh,
@@ -158,24 +166,24 @@ export function VisitInvoice({ visitId, jobId, kind }: { visitId: string; jobId:
   return (
     <section className="card card-pad stack-sm">
       <div className="row-between">
-        <strong>{inv ? `Invoice #${inv.number}` : "Invoice"}</strong>
+        <strong>{inv ? t("Invoice #{number}", { number: inv.number }) : t("Invoice")}</strong>
         {inv && <EntityStatus kind="invoice" status={inv.status} />}
       </div>
-      {!online && <span className="muted small"><Icon name="wifiOff" size={14} /> Invoicing and payments need signal.</span>}
+      {!online && <span className="muted small"><Icon name="wifiOff" size={14} /> {t("Invoicing and payments need signal.")}</span>}
       {invoice.isPending ? (online && <Skeleton height={44} radius={8} />) : inv ? (
         <>
           <div className="row-between">
-            <span className="muted">Total</span>
+            <span className="muted">{t("Total")}</span>
             <strong className="tabular" style={{ fontSize: 22 }}>{formatMoneyCents(Number(inv.total))}</strong>
           </div>
-          {balance !== Number(inv.total) && <div className="row-between"><span className="muted">{balance > 0 ? "Still owed" : "Paid"}</span><span className="tabular">{balance > 0 ? formatMoneyCents(balance) : <Icon name="check" size={16} />}</span></div>}
+          {balance !== Number(inv.total) && <div className="row-between"><span className="muted">{balance > 0 ? t("Still owed") : t("Paid")}</span><span className="tabular">{balance > 0 ? formatMoneyCents(balance) : <Icon name="check" size={16} />}</span></div>}
           <div className="field-actions">
-            <Button icon="send" className="big-action" disabled={!online} onClick={() => setDialog("send")}>Send to client</Button>
-            {balance > 0 && <Button variant="primary" icon="cash" className="big-action" disabled={!online} onClick={() => setDialog("payment")}>Record cash or check</Button>}
+            <Button icon="send" className="big-action" disabled={!online} onClick={() => setDialog("send")}>{t("Send to client")}</Button>
+            {balance > 0 && <Button variant="primary" icon="cash" className="big-action" disabled={!online} onClick={() => setDialog("payment")}>{t("Record cash or check")}</Button>}
           </div>
         </>
       ) : (
-        <Button variant="primary" icon="invoice" className="big-action" disabled={!online} loading={create.isPending} onClick={() => create.mutate()}>Create invoice</Button>
+        <Button variant="primary" icon="invoice" className="big-action" disabled={!online} loading={create.isPending} onClick={() => create.mutate()}>{t("Create invoice")}</Button>
       )}
       <FormError error={create.error ?? invoice.error} />
       {dialog === "send" && inv && (
@@ -197,7 +205,7 @@ function CashOrCheckDialog({ invoice, onClose, onSaved }: { invoice: { id: strin
   // The payment's id, made once: sent twice on a weak signal, it's still one payment (recordPayment.ts).
   const [paymentId] = useState(() => crypto.randomUUID());
   const save = useMutation({
-    meta: { inline: true, success: "Payment recorded", tone: "invoice" },
+    meta: { inline: true, success: t("Payment recorded"), tone: "invoice" },
     mutationFn: () =>
       recordPayment({
         id: paymentId,
@@ -216,26 +224,26 @@ function CashOrCheckDialog({ invoice, onClose, onSaved }: { invoice: { id: strin
     },
   });
   return (
-    <Dialog open onClose={onClose} title="Record cash or check" description={`Still owed ${formatMoneyCents(invoice.balance)}`}>
+    <Dialog open onClose={onClose} title={t("Record cash or check")} description={t("Still owed {amount}", { amount: formatMoneyCents(invoice.balance) })}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
-        <div className="segmented" role="group" aria-label="Paid by">
-          <button type="button" aria-pressed={method === "cash"} onClick={() => setMethod("cash")}>Cash</button>
-          <button type="button" aria-pressed={method === "check"} onClick={() => setMethod("check")}>Check</button>
+        <div className="segmented" role="group" aria-label={t("Paid by")}>
+          <button type="button" aria-pressed={method === "cash"} onClick={() => setMethod("cash")}>{t("Cash")}</button>
+          <button type="button" aria-pressed={method === "check"} onClick={() => setMethod("check")}>{t("Check")}</button>
         </div>
-        <Field label="Amount" requiredMessage="Enter the amount you received.">
+        <Field label={t("Amount")} requiredMessage={t("Enter the amount you received.")}>
           <span className="input-group"><span className="addon">$</span><input className="input" style={{ paddingLeft: 22 }} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} required /></span>
         </Field>
         {method === "check" && (
-          <Field label="Check number" requiredMessage="Enter the check number.">
+          <Field label={t("Check number")} requiredMessage={t("Enter the check number.")}>
             <input className="input" inputMode="numeric" value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} maxLength={40} required />
           </Field>
         )}
-        <Field label="Note" optional><input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={150} placeholder="Left in the mailbox, paid by a neighbor…" /></Field>
+        <Field label={t("Note")} optional><input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={150} placeholder={t("Left in the mailbox, paid by a neighbor…")} /></Field>
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" icon="cash" loading={save.isPending}>Record {value > 0 ? formatMoneyCents(value) : "payment"}</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" icon="cash" loading={save.isPending}>{value > 0 ? t("Record {amount}", { amount: formatMoneyCents(value) }) : t("Record payment")}</Button>
         </div>
       </form>
     </Dialog>

@@ -5,8 +5,9 @@
  */
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Button } from "@/components/ui/Button";
+import { t } from "@/lib/i18n";
 
-export function SignaturePad({ value, onChange, label = "Sign here", disabled = false, height = 140, maxWidth = 420 }: { value: string | null; onChange: (dataUrl: string | null) => void; label?: string; disabled?: boolean; height?: number; maxWidth?: number | string }) {
+export function SignaturePad({ value, onChange, label = t("Sign here"), disabled = false, height = 140, maxWidth = 420 }: { value: string | null; onChange: (dataUrl: string | null) => void; label?: string; disabled?: boolean; height?: number; maxWidth?: number | string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
@@ -74,8 +75,8 @@ export function SignaturePad({ value, onChange, label = "Sign here", disabled = 
   if (value && !redo) {
     return (
       <div className="stack-sm">
-        <img src={value} alt="Signature" style={{ width: "100%", maxWidth, height, objectFit: "contain", background: "#fff", border: "1px solid var(--border)", borderRadius: "var(--radius-control)" }} />
-        {!disabled && <Button size="sm" variant="ghost" icon="undo" style={{ justifySelf: "start" }} onClick={clear}>Sign again</Button>}
+        <img src={value} alt={t("Signature")} style={{ width: "100%", maxWidth, height, objectFit: "contain", background: "#fff", border: "1px solid var(--border)", borderRadius: "var(--radius-control)" }} />
+        {!disabled && <Button size="sm" variant="ghost" icon="undo" style={{ justifySelf: "start" }} onClick={clear}>{t("Sign again")}</Button>}
       </div>
     );
   }
@@ -95,7 +96,7 @@ export function SignaturePad({ value, onChange, label = "Sign here", disabled = 
         {/* Paper white in both themes, so its ink is fixed too: #6b6963 on white is 5.5:1. */}
         {empty && <span aria-hidden="true" style={{ position: "absolute", left: 14, bottom: 12, right: 14, borderTop: "1px solid #c9c7c0", paddingTop: 4, color: "#6b6963", fontSize: 12, pointerEvents: "none" }}>{label}</span>}
       </div>
-      {!empty && <Button size="sm" variant="ghost" icon="x" style={{ justifySelf: "start" }} onClick={clear}>Clear</Button>}
+      {!empty && <Button size="sm" variant="ghost" icon="x" style={{ justifySelf: "start" }} onClick={clear}>{t("Clear")}</Button>}
     </div>
   );
 }

@@ -6,6 +6,7 @@
  * discount on a quote or job, in an area of its own that "Full access, no money" leaves out.
  */
 import { audienceKeys, marketingOn, OFFICE, REPLY_MAX, SALES } from "@crewtavo/core";
+import { reviewsFreshSince } from "@crewtavo/core/reviews";
 import { z } from "zod";
 import { adminClient } from "../lib/supabase";
 import { startCampaign, stopCampaign } from "../services/campaigns";
@@ -161,7 +162,8 @@ export const marketingTools = {
         .from("reviews")
         .select("id, rating, reviewer_name, reviewer_anonymous, comment, posted_at, reply_comment, reply_updated_at, client_id")
         .eq("company_id", ctx.companyId)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .gt("seen_at", reviewsFreshSince());
       if (a.unanswered) query = query.is("reply_comment", null);
       if (a.max_rating) query = query.lte("rating", a.max_rating);
       return rows(query.order("posted_at", { ascending: false }).range(a.offset, a.offset + 24));

@@ -13,6 +13,8 @@ import { allow, allowStrict } from "../src/lib/limit";
 import { clientLink, clientLinks, readClientLink, sentToClient } from "../src/lib/links";
 import { buildMime } from "../src/lib/smtp";
 import { twilioSignature } from "../src/routes/messages";
+import { TOOLS } from "../src/assistant-tools";
+import { BATCH_JOBS, TOO_MANY_JOBS } from "../src/services/sales";
 import { verifyStripeSignature } from "../src/services/stripe";
 import { CRON_TASKS, runTask, TASKS } from "../src/tasks";
 
@@ -132,7 +134,7 @@ describe("routes", () => {
 
   it("runs autopay every 5 minutes, with the outbox that sends its receipts", () => {
     expect(TASKS).toContain("autopay");
-    expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay"]);
+    expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay", "installments"]);
   });
 
   it("rejects expired client links", async () => {
@@ -148,7 +150,7 @@ describe("setting up a business", () => {
   const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const token = `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub: "user-1", role: "authenticated", exp: Math.floor(Date.now() / 1000) + 600 })}.c2ln`;
 
-  const create = (timezone: string) => {
+  const create = (timezone: string, on: Env = env) => {
     const rpcs: Array<{ name: string; body: unknown }> = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
@@ -157,7 +159,7 @@ describe("setting up a business", () => {
       return Response.json(url.pathname === "/rest/v1/rpc/create_company" ? "company-1" : []);
     });
     const body = { name: "Acme Lawn", trade_preset: "lawn_exterior", timezone, terms_version: TERMS_VERSION };
-    const res = request("/api/companies", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = app.request("/api/companies", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }, on);
     return { rpcs, res };
   };
 
@@ -165,6 +167,14 @@ describe("setting up a business", () => {
     const { rpcs, res } = create("America/Chicago");
     expect((await res).status).toBe(201);
     expect(rpcs[0]).toEqual({ name: "create_company", body: { p_name: "Acme Lawn", p_trade_preset: "lawn_exterior", p_timezone: "America/Chicago" } });
+    // No texting on this server: the starter rules stay as every company's start, emails only.
+    expect(rpcs.map((r) => r.name)).not.toContain("texting_starters");
+  });
+
+  it("adds texts to the starters that tell clients about their visits where the server can text", async () => {
+    const { rpcs, res } = create("America/Chicago", { ...env, TWILIO_ACCOUNT_SID: "AC123", TWILIO_AUTH_TOKEN: "twilio-token", TWILIO_FROM_NUMBER: "+15405550000" });
+    expect((await res).status).toBe(201);
+    expect(rpcs.filter((r) => r.name === "texting_starters")).toEqual([{ name: "texting_starters", body: { p_company: "company-1" } }]);
   });
 
   it("loads the preset into the settings the company started with, so Marketing stays installed", async () => {
@@ -408,6 +418,11 @@ describe("texting", () => {
   describe("STOP and START", () => {
     const withTwilio = { ...env, TWILIO_AUTH_TOKEN: "twilio-token" };
     const url = "https://ops.example.com/api/webhooks/twilio";
+    /** The contacts with a number like the sender's, for the tests that have some. */
+    let contacts: Array<{ company_id: string; client_id: string; name: string; phone: string }> = [];
+    afterEach(() => {
+      contacts = [];
+    });
     /** A text from +1 540-555-0163, who's a client in two companies; `changes` is whether the client's texts setting changes. */
     async function text(body: string, extra: Record<string, string> = {}, changes = true) {
       const calls: Array<{ method: string; path: string; params: URLSearchParams; body: any }> = [];
@@ -423,6 +438,9 @@ describe("texting", () => {
             { id: "client-3", company_id: "co-1", phone: "(540) 555-0199", display_name: "Bo Other" },
           ]);
         }
+        if (method === "GET" && path === "client_contacts") return Response.json(contacts);
+        // The number wasn't stopped before a STOP, and was before a START, when `changes`.
+        if ((method === "POST" || method === "DELETE") && path === "sms_stops") return Response.json(changes ? [{ phone_key: "5405550163" }] : []);
         if (method === "PATCH" && path === "clients") return Response.json(changes ? [{ id: u.searchParams.get("id")!.slice(3) }] : []);
         if (method === "GET" && path === "memberships") return Response.json([{ user_id: "owner-1" }]);
         return Response.json([]);
@@ -436,8 +454,61 @@ describe("texting", () => {
         optOuts: optOuts.map((c) => ({ id: c.params.get("id"), when: c.params.get("sms_opt_out_at"), set: c.body.sms_opt_out_at === null ? null : typeof c.body.sms_opt_out_at })),
         messages: calls.filter((c) => c.method === "POST" && c.path === "messages").map((c) => [c.body.client_id, c.body.body]),
         notices: calls.filter((c) => c.method === "POST" && c.path === "notifications").flatMap((c) => c.body.map((n: { title: string }) => n.title)),
+        // The number itself, by company: remembered on a STOP (sms_stops), forgotten on a START.
+        stops: calls.filter((c) => c.method === "POST" && c.path === "sms_stops").map((c) => [c.body.company_id, c.body.phone_key, c.body.phone]),
+        starts: calls.filter((c) => c.method === "DELETE" && c.path === "sms_stops").map((c) => [c.params.get("company_id"), c.params.get("phone_key")]),
+        // How each stop is kept: the keyword's, or the words that asked for it.
+        kept: calls.filter((c) => c.method === "POST" && c.path === "sms_stops").map((c) => [c.body.source, c.body.note]),
+        told: calls.filter((c) => c.method === "POST" && c.path === "notifications").flatMap((c) => c.body.map((n: { body: string }) => n.body)),
       };
     }
+
+    it.each(["Please stop texting me", "stop texting me!!", "please stop", "Unsubscribe me", "No more texts"])("turns texts off on words that plainly ask for it (%j), keeps what was texted and tells the office", async (body) => {
+      const { optOuts, messages, notices, kept, told } = await text(body);
+      expect(optOuts).toEqual([
+        { id: "eq.client-1", when: "is.null", set: "string" },
+        { id: "eq.client-2", when: "is.null", set: "string" },
+      ]);
+      // Kept as a phrase, not the keyword: Twilio didn't stop the number, so the office can lift it if they ask.
+      expect(kept).toEqual([["phrase", body], ["phrase", body]]);
+      // The text is on their timeline like any other, and the office reads what they wrote.
+      expect(messages).toEqual([["client-1", body], ["client-2", body]]);
+      expect(notices).toEqual(["Ana Smith asked to stop texts", "Ana S. asked to stop texts"]);
+      expect(told[0]).toBe(`They texted “${body}”, so Crewtavo won't text them. If that isn't what they meant, you can turn texts back on from their page, only if they ask.`);
+    });
+
+    it("keeps the keyword as the keyword's, and what Twilio acted on as Twilio's", async () => {
+      expect((await text("STOP")).kept).toEqual([["keyword", null], ["keyword", null]]);
+      // Twilio says it stopped the number (Advanced Opt-Out), whatever the words.
+      expect((await text("please stop texting me", { OptOutType: "STOP" })).kept).toEqual([["keyword", null], ["keyword", null]]);
+      // And says a text was only its HELP: words in it that ask to stop aren't read.
+      expect((await text("stop texting me", { OptOutType: "HELP" })).kept).toEqual([]);
+    });
+
+    it("stops the number itself too, for each company that keeps it as a client's or a contact's", async () => {
+      // A property manager in a third company's contacts has the number too, and someone else there doesn't.
+      const others = [
+        { company_id: "co-3", client_id: "client-9", name: "Ana at Oak HOA", phone: "540.555.0163" },
+        { company_id: "co-3", client_id: "client-8", name: "Someone else", phone: "540-555-0199" },
+        // In co-1 the number is a client's own, so the text is filed under that client alone.
+        { company_id: "co-1", client_id: "client-3", name: "Ana, Bo's neighbour", phone: "5405550163" },
+      ];
+      contacts = others;
+      const stopped = await text("STOP");
+      expect(stopped.stops).toEqual([["co-1", "5405550163", "+15405550163"], ["co-2", "5405550163", "+15405550163"], ["co-3", "5405550163", "+15405550163"]]);
+      expect(stopped.starts).toEqual([]);
+      // On the contact's client's timeline, and the office hears who it was.
+      expect(stopped.messages).toEqual([["client-1", "STOP"], ["client-2", "STOP"], ["client-9", "STOP"]]);
+      expect(stopped.notices).toEqual(["Ana Smith turned off texts", "Ana S. turned off texts", "Ana at Oak HOA turned off texts"]);
+      const started = await text("START");
+      expect(started.starts).toEqual([["eq.co-1", "eq.5405550163"], ["eq.co-2", "eq.5405550163"], ["eq.co-3", "eq.5405550163"]]);
+      expect(started.stops).toEqual([]);
+      expect(started.notices).toEqual(["Ana Smith turned texts back on", "Ana S. turned texts back on", "Ana at Oak HOA turned texts back on"]);
+      // An ordinary text changes nothing about who can be texted.
+      const plain = await text("See you Tuesday");
+      expect([plain.stops, plain.starts]).toEqual([[], []]);
+      expect(plain.notices).toEqual(["New text from a client", "New text from a client", "New text from Ana at Oak HOA"]);
+    });
 
     it.each(["STOP", "stop ", "Stop.", "STOPALL", "unsubscribe", "opt out", "Revoke"])("turns texts off for every client with the number on %j", async (body) => {
       const { optOuts, messages, notices } = await text(body);
@@ -644,6 +715,24 @@ describe("validation messages", () => {
   });
 });
 
+describe("batch invoicing", () => {
+  it("takes 50 jobs a call and says how to send more, to a person and to an assistant", () => {
+    const ids = (n: number) => Array.from({ length: n }, () => crypto.randomUUID());
+    const first = (schema: z.ZodType, value: unknown) => {
+      const r = schema.safeParse(value);
+      return r.success ? null : friendlyIssue(r.error.issues[0]!);
+    };
+    const body = z.object({ job_ids: z.array(z.uuid()).min(1).max(BATCH_JOBS, TOO_MANY_JOBS) });
+    expect(BATCH_JOBS).toBe(50);
+    expect(first(body, { job_ids: ids(50) })).toBeNull();
+    expect(first(body, { job_ids: ids(51) })).toBe("Invoice at most 50 jobs at a time: send the first 50, then the next.");
+    const tool = TOOLS.invoice_jobs!;
+    expect(tool.description).toContain("at most 50 job_ids a call");
+    expect(first(tool.input, { job_ids: ids(50) })).toBeNull();
+    expect(first(tool.input, { job_ids: ids(51) })).toBe(TOO_MANY_JOBS);
+  });
+});
+
 describe("built-in scheduler", () => {
   const at = (iso: string) => new Date(iso);
   it("matches the schedules the tasks use", () => {
@@ -686,6 +775,7 @@ describe("recurring visits", () => {
       const { pathname } = new URL(String(input));
       if (pathname === "/rest/v1/jobs") return Response.json([job("bad", "FREQ=HOURLY"), job("good", "FREQ=WEEKLY;BYDAY=MO")]);
       if (pathname === "/rest/v1/recurrence_skips") return Response.json([]); // nothing deleted by hand
+      if (pathname === "/rest/v1/integrations") return Response.json([]); // nobody puts visits on Google Calendar
       if (pathname === "/rest/v1/visits" && init?.method === "POST") {
         const rows = JSON.parse(String(init.body)) as typeof posted;
         posted.push(...rows);

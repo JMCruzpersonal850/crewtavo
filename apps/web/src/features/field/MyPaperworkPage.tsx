@@ -22,19 +22,20 @@ import { isSub, useSession, type SubLogin } from "@/lib/session";
 import { ItemCard, type Item } from "../public/PaperworkPage";
 import { asksForEndDate, documentTitle, endDateProblem, kindsFor, myPaperwork, myPaperworkSummary, myUploadProblem, withType, type MyPaperworkItem, type MyPaperworkState } from "../subs/paperwork";
 import { addSubDocument, refreshSubs, useSubDocuments, useSubPaperwork } from "../subs/subsData";
+import { msg, t } from "@/lib/i18n";
 
 type Sending = Pick<Item, "key" | "label" | "kinds">;
 
 const SECTIONS: Array<{ state: MyPaperworkState; title: string }> = [
-  { state: "needed", title: "Needed" },
-  { state: "waiting", title: "Waiting for the office to check" },
+  { state: "needed", title: msg("Needed") },
+  { state: "waiting", title: msg("Waiting for the office to check") },
   { state: "ok", title: "OK" },
 ];
 
 export function MyPaperworkPage() {
   const session = useSession();
-  useDocumentTitle("My paperwork");
-  if (!isSub(session) || !session.subcontractor) return <NoAccess title="My paperwork" />;
+  useDocumentTitle(t("My paperwork"));
+  if (!isSub(session) || !session.subcontractor) return <NoAccess title={t("My paperwork")} />;
   return <MyPaperwork sub={session.subcontractor} />;
 }
 
@@ -52,11 +53,11 @@ function MyPaperwork({ sub }: { sub: SubLogin }) {
     <div className="field-app">
       <div>
         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{sub.name}</div>
-        <h1 className="page-title" style={{ marginTop: 4 }}>My paperwork</h1>
+        <h1 className="page-title" style={{ marginTop: 4 }}>{t("My paperwork")}</h1>
       </div>
-      <p className="muted" style={{ margin: 0 }}>What {company.name} needs on file from you: your W-9, and your liability and workers' comp insurance.</p>
+      <p className="muted" style={{ margin: 0 }}>{t("What {company} needs on file from you: your W-9, and your liability and workers' comp insurance.", { company: company.name })}</p>
 
-      {paperwork.isPending && <Loading label="Loading your paperwork"><div className="stack">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={2} />)}</div></Loading>}
+      {paperwork.isPending && <Loading label={t("Loading your paperwork")}><div className="stack">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={2} />)}</div></Loading>}
       {paperwork.error && !paperwork.data && <div className="card"><ErrorState error={paperwork.error} onRetry={() => paperwork.refetch()} /></div>}
 
       {paperwork.data && (
@@ -76,13 +77,13 @@ function MyPaperwork({ sub }: { sub: SubLogin }) {
                     <div key={item.requirement} className="card-row wrap" style={{ alignItems: "flex-start" }}>
                       <span className="grow stack-sm" style={{ minWidth: 200, gap: 4 }}>
                         <span className="row wrap" style={{ gap: 8 }}>
-                          <strong>{item.label}</strong>
+                          <strong>{t(item.label)}</strong>
                           <StatusPill label={item.status} tone={item.tone} />
                         </span>
                         <span className="muted small">{item.detail}</span>
                       </span>
                       <Button icon="upload" onClick={() => sendFor(item)}>
-                        {item.state === "needed" ? "Send it" : "Send another"}
+                        {item.state === "needed" ? t("Send it") : t("Send another")}
                       </Button>
                     </div>
                   ))}
@@ -95,8 +96,8 @@ function MyPaperwork({ sub }: { sub: SubLogin }) {
 
       <section className="stack-sm">
         <div className="section-head">
-          <h2 className="section-title">What you've sent</h2>
-          <Button variant="ghost" icon="plus" onClick={() => setSending({ key: "other", label: "Something else", kinds: ["license", "other"] })}>Send something else</Button>
+          <h2 className="section-title">{t("What you've sent")}</h2>
+          <Button variant="ghost" icon="plus" onClick={() => setSending({ key: "other", label: t("Something else"), kinds: ["license", "other"] })}>{t("Send something else")}</Button>
         </div>
         <div className="card">
           {documents.isPending ? (
@@ -104,18 +105,18 @@ function MyPaperwork({ sub }: { sub: SubLogin }) {
           ) : documents.error && !documents.data ? (
             <div className="card-row"><ErrorState compact error={documents.error} onRetry={() => documents.refetch()} /></div>
           ) : sent.length === 0 ? (
-            <EmptyState compact icon="file" title="Nothing on file yet">What you send shows here, and the office checks it.</EmptyState>
+            <EmptyState compact icon="file" title={t("Nothing on file yet")}>{t("What you send shows here, and the office checks it.")}</EmptyState>
           ) : (
             sent.map((d) => (
               <div key={d.id} className="card-row" style={{ alignItems: "flex-start" }}>
                 <Icon name={d.content_type?.startsWith("image/") ? "image" : "file"} size={16} />
                 <span className="grow" style={{ minWidth: 0 }}>
-                  {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="strong" style={{ overflowWrap: "anywhere" }}>{documentTitle(d)}</a> : <strong>{documentTitle(d)}</strong>}
+                  {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="strong" style={{ overflowWrap: "anywhere" }}>{t(documentTitle(d))}</a> : <strong>{t(documentTitle(d))}</strong>}
                   <span className="muted small" style={{ display: "block" }}>
-                    {[d.uploaded_via === "office" ? "Added by the office" : `Sent ${formatDate(d.created_at)}`, d.expires_on && `Ends ${formatDate(d.expires_on)}`].filter(Boolean).join(" · ")}
+                    {[d.uploaded_via === "office" ? t("Added by the office") : t("Sent {date}", { date: formatDate(d.created_at) }), d.expires_on && t("Ends {date}", { date: formatDate(d.expires_on) })].filter(Boolean).join(" · ")}
                   </span>
                 </span>
-                {d.verified_at ? <StatusPill label="Checked" tone="good" /> : <StatusPill label="Waiting to be checked" tone="info" />}
+                {d.verified_at ? <StatusPill label={t("Checked")} tone="good" /> : <StatusPill label={t("Waiting to be checked")} tone="info" />}
               </div>
             ))
           )}
@@ -138,7 +139,7 @@ function SendDialog({ sub, sending, today, onClose }: { sub: SubLogin; sending: 
   const dateProblem = item.file ? endDateProblem(item.kind, item.expires_on, today) : null;
   const named = item.kind === "license" || item.kind === "other";
   const send = useMutation({
-    meta: { inline: true, success: `Sent to ${company.name} to check` },
+    meta: { inline: true, success: t("Sent to {company} to check", { company: company.name }) },
     mutationFn: () =>
       addSubDocument(company.id, sub.id, withType(item.file!), {
         kind: item.kind,
@@ -162,7 +163,7 @@ function SendDialog({ sub, sending, today, onClose }: { sub: SubLogin; sending: 
   const required = PAPERWORK_REQUIREMENTS.some((r) => r.key === sending.key);
 
   return (
-    <Dialog open onClose={onClose} title={required ? `Send your ${sending.label === "W-9" ? "W-9" : sending.label.toLowerCase()}` : "Send something else"}>
+    <Dialog open onClose={onClose} title={required ? t("Send your {document}", { document: sending.label === "W-9" ? "W-9" : t(sending.label).toLowerCase() }) : t("Send something else")}>
       <form className="dialog-body" noValidate onSubmit={submit}>
         <ItemCard
           item={item}
@@ -175,16 +176,16 @@ function SendDialog({ sub, sending, today, onClose }: { sub: SubLogin; sending: 
           onChange={(patch) => setItem((current) => ({ ...current, ...patch }))}
         />
         {named && (
-          <Field label="What it is" optional>
-            <input className="input" value={title} maxLength={120} placeholder={item.kind === "license" ? "Contractor's license" : "Signed agreement"} disabled={send.isPending} onChange={(e) => setTitle(e.target.value)} />
+          <Field label={t("What it is")} optional>
+            <input className="input" value={title} maxLength={120} placeholder={item.kind === "license" ? t("Contractor's license") : t("Signed agreement")} disabled={send.isPending} onChange={(e) => setTitle(e.target.value)} />
           </Field>
         )}
-        {touched && !item.file && <div className="form-error" role="alert">Choose a file or take a photo to send.</div>}
+        {touched && !item.file && <div className="form-error" role="alert">{t("Choose a file or take a photo to send.")}</div>}
         <FormError error={send.error} />
-        <span className="muted small">Only {company.name} sees what you send. They'll check it and let you know if anything's missing.</span>
+        <span className="muted small">{t("Only {company} sees what you send. They'll check it and let you know if anything's missing.", { company: company.name })}</span>
         <div className="form-actions">
-          <Button onClick={onClose} disabled={send.isPending}>Cancel</Button>
-          <Button type="submit" variant="primary" icon="send" loading={send.isPending} slowHint={false}>Send</Button>
+          <Button onClick={onClose} disabled={send.isPending}>{t("Cancel")}</Button>
+          <Button type="submit" variant="primary" icon="send" loading={send.isPending} slowHint={false}>{t("Send")}</Button>
         </div>
       </form>
     </Dialog>

@@ -29,6 +29,8 @@ import {
   REVIEW_GAP_DAYS,
   reviewSettings,
   STOP_LINE,
+  REVIEW_ASK_POLICY_URL,
+  REVIEW_ASK_RULES,
   type AskChannel,
   type AskWhen,
 } from "@crewtavo/core/marketing";
@@ -53,6 +55,7 @@ import { ReviewLinkOffer } from "../apps/GoogleBusinessPanel";
 import { askBody, askRules, askToastKind, daysInOrder, reminderDropWords, remindersDroppedWords, type AskForm, type AskResult, type AskRuleRow } from "./askForm";
 import { GoogleNumbers, GoogleReviewList, GoogleSide, useGoogleState, useReviewStats } from "./GoogleReviews";
 import { hasNumbers, hasReviews, showsList, type GoogleState } from "./googleReviewData";
+import { ReviewCompare } from "./ReviewCompare";
 import { useSettingsSaver } from "./useSettingsSaver";
 
 /** Email, Text, Both: the same order wherever a review ask's channel is picked. */
@@ -62,7 +65,7 @@ const CHANNELS: Array<{ value: AskChannel; label: string }> = [
   { value: "both", label: "Both" },
 ];
 const WHEN_HINTS: Record<AskWhen, string> = {
-  "job.completed": "When a job moves to Requires invoicing or Completed.",
+  "job.completed": "When a job moves to Requires invoicing or Completed. A one-off job does when its last visit is finished, unless that's off in Settings → Company.",
   "visit.completed": "Each visit of a one-off job, not assessments or tasks.",
   "invoice.paid": "Not deposits or progress billing: the work isn't done yet.",
 };
@@ -125,6 +128,7 @@ export function Reviews() {
             <AskAutomatically rules={rules.data} google={g} />
           )}
           <ReviewLink google={g} />
+          <ReviewCompare />
         </div>
         <aside className="narrow stack">
           <AskNow />
@@ -301,10 +305,11 @@ function AskAutomatically({ rules, google }: { rules: AskRuleRow[]; google: Goog
 
       <p className="muted small" style={{ margin: 0 }}>
         {timing} At most once every 6 months per client. Between 9pm and 9am the first ask goes by email.
+        {/* Underlined: in grey text a link told apart by colour alone can't be seen by everyone. */}
         {(afterRule || recurringRule) && " In Automations: "}
-        {afterRule && <Link to={`/automations/${afterRule.id}`}>{afterRule.name}</Link>}
+        {afterRule && <Link to={`/automations/${afterRule.id}`} style={{ textDecoration: "underline" }}>{afterRule.name}</Link>}
         {afterRule && recurringRule && " · "}
-        {recurringRule && <Link to={`/automations/${recurringRule.id}`}>{recurringRule.name}</Link>}
+        {recurringRule && <Link to={`/automations/${recurringRule.id}`} style={{ textDecoration: "underline" }}>{recurringRule.name}</Link>}
         {(afterRule || recurringRule) && "."}
       </p>
       {canSave && missing && <p className="muted small" style={{ margin: 0 }}>Saving puts the rules back in Automations.</p>}
@@ -362,7 +367,7 @@ function ReviewLink({ google }: { google: GoogleState | undefined }) {
       <Field label="Google review URL" error={url && !validUrl ? "Paste the full link, starting with https://" : null} hint={<a href="https://support.google.com/business/answer/3474122" target="_blank" rel="noreferrer">Where to find it</a>}>
         <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://g.page/r/…/review" disabled={!canSave} />
       </Field>
-      <Field label="Message" hint={`{{link}} is replaced with your review link. Texts end with “${STOP_LINE}” unless yours says STOP.`}>
+      <Field label="Message" hint={<>{`{{link}} is replaced with your review link. Texts end with “${STOP_LINE}” unless yours says STOP.`} {REVIEW_ASK_RULES} <a href={REVIEW_ASK_POLICY_URL} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>Google's policy</a></>}>
         <textarea className="textarea" style={{ minHeight: 110 }} value={message} maxLength={1000} onChange={(e) => setMessage(e.target.value)} disabled={!canSave} />
       </Field>
       <Field label="Reminder message" hint="Sent to anyone who hasn't opened the link, with the same link.">

@@ -3,14 +3,14 @@ import type { Env } from "../src/env";
 import { encryptJson } from "../src/lib/crypto";
 
 // Stand-ins for the signed-in person's Supabase client and the service-role client: tables of rows
-// that eq, neq and in filter, and search_sops answering with `hits`. Claude itself is replaced by
-// `complete`, which keeps what it was asked. Rate limits whose key matches `full` are used up.
+// that eq, neq and in filter, and search_sops answering with `hits`. The AI itself is replaced by
+// `complete`, which keeps what it was asked and for whom (which service answers: ai.test.ts). Rate limits whose key matches `full` are used up.
 type Row = Record<string, unknown>;
 const state = vi.hoisted(() => ({
   tables: {} as Record<string, Row[]>,
   hits: [] as Row[],
   rpcs: [] as Array<{ fn: string; args: Record<string, unknown> }>,
-  completions: [] as Array<{ apiKey?: string | null; prompt: string; system?: string }>,
+  completions: [] as Array<{ asker?: unknown; prompt: string; system?: string }>,
   full: null as RegExp | null,
 }));
 vi.mock("../src/lib/supabase", () => {
@@ -42,8 +42,8 @@ vi.mock("../src/lib/supabase", () => {
 });
 vi.mock("../src/services/ai", async (original) => ({
   ...(await original<typeof import("../src/services/ai")>()),
-  complete: async (_env: Env, options: { apiKey?: string | null; prompt: string; system?: string }) => {
-    state.completions.push({ apiKey: options.apiKey, prompt: options.prompt, system: options.system });
+  complete: async (_env: Env, options: { asker?: unknown; prompt: string; system?: string }) => {
+    state.completions.push({ asker: options.asker, prompt: options.prompt, system: options.system });
     return '{"subject": "Spring is here", "body": "Book your aeration."}';
   },
 }));
@@ -94,18 +94,22 @@ describe("a business's own Anthropic key", () => {
     const { memberships } = (await res.json()) as { memberships: Array<{ company: { id: string }; ai_connected: boolean; email_connected: boolean }> };
     expect(memberships.find((m) => m.company.id === UNIFORM)).toMatchObject({ ai_connected: true, email_connected: false });
     expect(memberships.find((m) => m.company.id === VICTOR)).toMatchObject({ ai_connected: false, email_connected: true });
+    // An OpenAI key of the business's own (Apps → ChatGPT) turns it on the same way.
+    state.tables.integrations!.push({ company_id: VICTOR, provider: "chatgpt", status: "connected" });
+    const again = (await (await request("/me")).json()) as { memberships: Array<{ company: { id: string }; ai_connected: boolean }> };
+    expect(again.memberships.find((m) => m.company.id === VICTOR)).toMatchObject({ ai_connected: true });
     // The server has no key of its own, so the instance-wide switch stays off.
     expect(((await (await app.request("/api/config", {}, env)).json()) as { features: { ai: boolean } }).features.ai).toBe(false);
   });
 
-  it("answers Ask from guides with any of the question's words, using the business's key", async () => {
+  it("answers Ask from guides with any of the question's words, for the person who asked", async () => {
     await addKeys();
     state.hits = [{ id: "g1", title: "Sealcoating a driveway", body_text: "Let the sealer cure 24 hours before driving on it." }];
     const res = await request("/kb/ask", { question: "How long does sealer need to dry before cars drive on it?" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ answer: expect.any(String), sources: [{ id: "g1", title: "Sealcoating a driveway" }] });
     expect(state.rpcs.filter((r) => r.fn !== "rate_limit_hit")).toEqual([{ fn: "search_sops", args: { p_company: UNIFORM, p_query: "How long does sealer need to dry before cars drive on it?", p_limit: 4, p_any: true } }]);
-    expect(state.completions).toEqual([{ apiKey: "sk-ant-uniform-own-key", prompt: expect.stringContaining("[1] Sealcoating a driveway"), system: expect.any(String) }]);
+    expect(state.completions).toEqual([{ asker: { companyId: UNIFORM, userId: "viewer" }, prompt: expect.stringContaining("[1] Sealcoating a driveway"), system: expect.any(String) }]);
   });
 
   it("says so when no guide has any of the words, without asking Claude", async () => {
@@ -117,11 +121,11 @@ describe("a business's own Anthropic key", () => {
     expect(state.rpcs.map((r) => r.fn)).toEqual(["search_sops"]);
   });
 
-  it("writes campaign drafts and rewrites with it too", async () => {
+  it("writes campaign drafts and rewrites for the person who asked too", async () => {
     await addKeys();
     expect((await request("/campaigns/draft", { goal: "Spring aeration special" })).status).toBe(200);
     expect((await request("/ai/rewrite", { text: "we r coming tmrw" })).status).toBe(200);
-    expect(state.completions.map((c) => c.apiKey)).toEqual(["sk-ant-uniform-own-key", "sk-ant-uniform-own-key"]);
+    expect(state.completions.map((c) => c.asker)).toEqual([{ companyId: UNIFORM, userId: "viewer" }, { companyId: UNIFORM, userId: "viewer" }]);
   });
 
   it("drafts campaigns with the Client Hub link their clicks and bookings are counted by", async () => {

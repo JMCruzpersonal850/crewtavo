@@ -10,6 +10,7 @@ import { useIsMutating, useMutation, useQuery, useQueryClient, type QueryClient 
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, supabase, unwrap } from "@/lib/api";
 import { signedUrls, storedType, uploadFile } from "@/lib/files";
+import { photoPaths, shownPath } from "@/lib/photoMarkup";
 import { useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { IN_TRASH } from "../../drive/trash";
@@ -534,8 +535,11 @@ export interface QuoteNote {
 export interface QuotePhoto {
   id: string;
   path: string;
-  /** A signed link for an hour, or null when it couldn't be made. */
+  /** A signed link for an hour to what it shows (its drawing, if it has one), or null when it couldn't be made. */
   url: string | null;
+  /** The photo drawn on (lib/photoMarkup.ts), and a link to the photo as taken. */
+  marked_path: string | null;
+  originalUrl: string | null;
   file_name: string | null;
   caption: string | null;
   created_at: string;
@@ -568,7 +572,7 @@ export function useQuoteNotes(quoteId: string | null | undefined) {
       const db = supabase();
       const [messages, attachments, quote] = await Promise.all([
         db.from("messages").select("id, body, created_at, sent_by").eq("related_type", "quote").eq("related_id", quoteId!).eq("channel", "note").eq("direction", "internal").order("created_at").limit(200),
-        db.from("attachments").select("id, path, file_name, caption, created_at, created_by").eq("owner_type", "quote").eq("owner_id", quoteId!).order("created_at").limit(200),
+        db.from("attachments").select("id, path, marked_path, file_name, caption, created_at, created_by").eq("owner_type", "quote").eq("owner_id", quoteId!).order("created_at").limit(200),
         db.from("quotes").select("client_id").eq("id", quoteId!).maybeSingle(),
       ]);
       const notes: QuoteNote[] = unwrap(messages).map((m) => ({ id: m.id, body: m.body, created_at: m.created_at, author_id: m.sent_by }));
@@ -576,9 +580,12 @@ export function useQuoteNotes(quoteId: string | null | undefined) {
       const ids = [...new Set([...notes.map((n) => n.author_id), ...files.map((f) => f.created_by)].filter((id): id is string => Boolean(id)))];
       const [people, urls] = await Promise.all([
         ids.length ? supabase().from("profiles").select("user_id, full_name, color, avatar_url").in("user_id", ids).then(unwrap) : Promise.resolve([]),
-        signedUrls(files.map((f) => f.path)).catch(() => ({}) as Record<string, string>),
+        signedUrls(photoPaths(files)).catch(() => ({}) as Record<string, string>),
       ]);
-      const photos: QuotePhoto[] = files.map((f) => ({ id: f.id, path: f.path, url: urls[f.path] ?? null, file_name: f.file_name, caption: f.caption, created_at: f.created_at, author_id: f.created_by }));
+      const photos: QuotePhoto[] = files.map((f) => ({
+        id: f.id, path: f.path, url: urls[shownPath(f)] ?? urls[f.path] ?? null, marked_path: f.marked_path, originalUrl: urls[f.path] ?? null,
+        file_name: f.file_name, caption: f.caption, created_at: f.created_at, author_id: f.created_by,
+      }));
       const authors: Record<string, NoteAuthor> = {};
       for (const p of people) authors[p.user_id] = { user_id: p.user_id, name: p.full_name?.trim() || "Someone on your team", color: p.color ?? null, photo: p.avatar_url ?? null };
       return { clientId: unwrap(quote)?.client_id ?? null, notes, photos, authors, thread: threadItems(notes, photos) };

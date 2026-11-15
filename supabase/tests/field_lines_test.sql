@@ -1,8 +1,9 @@
 -- Database tests for finishing the paperwork on site (20261106000700_field_lines): the crew on a
 -- visit adds a price list item to its job at the office's price, which they still can't read, and
 -- the line says who added it and when; sent twice, it's added once. Not crew off the visit, not on a
--- repeating or cancelled job's visit, never another business. Invoicing and recording cash or check
--- go through the office's own paths, which turn crews (and an office role without invoices) away.
+-- cancelled job's visit, never another business; on a repeating job it's extra work on that visit.
+-- Invoicing and recording cash or check go through the office's own paths, which turn crews (and
+-- an office role without invoices) away.
 -- Run with scripts/test-db.sh (plain Postgres + prelude.sql). Any failed check stops with an error.
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -83,7 +84,10 @@ select t_ffl.check(public.add_field_line(:'visit', :'seal', 40, :'line') = :'lin
 select t_ffl.check(not exists (select from public.job_line_items where job_id = :'job'), 'he still can''t read the job''s lines (they have prices)');
 select t_ffl.check((select array_agg(name || ' ' || quantity || ' ' || unit order by sort) from public.job_scope(:'job')) = '{"Sorrel driveway seal 1.000 ea","Sorrel crack seal 40.000 lf"}',
   'but his list of the work has it, after what was there');
-select t_ffl.expect_error(format('select public.add_field_line(%L, %L, 1)', :'sweep_visit', :'seal'), 'not on a repeating job, where it would bill every visit');
+-- On a repeating job it goes on that visit alone (20261113000900_visit_extras.sql), not on the job's lines, which bill every visit.
+select public.add_field_line(:'sweep_visit', :'seal', 1);
+select t_ffl.check((select count(*) = 1 from public.visit_extra_scope(:'sweep_visit')) and (select count(*) = 0 from public.job_scope(:'sweep')),
+  'on a repeating job his work is extra work on that visit, not a line that would bill every visit');
 select t_ffl.expect_error(format('select public.add_field_line(%L, %L, 1)', :'called_off', :'seal'), 'not on a cancelled visit');
 select t_ffl.expect_error(format('select public.add_field_line(%L, %L, 1)', :'visit', :'old_patch'), 'not an item taken off the price list');
 select t_ffl.expect_error(format('select public.add_field_line(%L, %L, 1)', :'visit', :'their_mulch'), 'nor another business''s item');

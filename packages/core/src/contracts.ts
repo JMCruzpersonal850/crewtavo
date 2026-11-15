@@ -309,6 +309,37 @@ export type ContractStarter = Omit<ContractSection, "id">;
 export const STARTER_NOTE = "Example wording to start from — have your attorney review it before you use it.";
 
 const terms = (title: string, body: string): ContractStarter => ({ title, body, place: "terms", initials: false });
+/** Plain words as they go into a section's HTML, with nothing read as a fill-in. */
+const escapeText = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/[{}]/g, "");
+
+/**
+ * The statement 16 CFR 429.1(a) has a seller put "in immediate proximity to the space reserved in
+ * the contract for the signature of the buyer", in the rule's own words.
+ */
+export const FTC_CANCEL_STATEMENT =
+  "You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction. See the attached notice of cancellation form for an explanation of this right.";
+
+/** The caption 16 CFR 429.1(b) gives the form. */
+export const NOTICE_OF_CANCELLATION_TITLE = "Notice of Cancellation";
+
+/**
+ * The Notice of Cancellation form of 16 CFR 429.1(b), a paragraph at a time, in the rule's own
+ * words. The seller completes it (429.1(c)): the date of the transaction, its name and the address
+ * of its place of business, and the date, not earlier than the third business day after the
+ * transaction, by which the buyer may cancel. The name is filled in; the blanks are the business's
+ * to fill in, as STARTER_NOTE says of every example.
+ */
+export const NOTICE_OF_CANCELLATION: readonly string[] = [
+  "Date of transaction: ______________",
+  "You may CANCEL this transaction, without any Penalty or Obligation, within THREE BUSINESS DAYS from the above date.",
+  "If you cancel, any property traded in, any payments made by you under the contract or sale, and any negotiable instrument executed by you will be returned within TEN BUSINESS DAYS following receipt by the seller of your cancellation notice, and any security interest arising out of the transaction will be cancelled.",
+  "If you cancel, you must make available to the seller at your residence, in substantially as good condition as when received, any goods delivered to you under this contract or sale, or you may, if you wish, comply with the instructions of the seller regarding the return shipment of the goods at the seller's expense and risk.",
+  "If you do make the goods available to the seller and the seller does not pick them up within 20 days of the date of your Notice of Cancellation, you may retain or dispose of the goods without any further obligation. If you fail to make the goods available to the seller, or if you agree to return the goods to the seller and fail to do so, then you remain liable for performance of all obligations under the contract.",
+  "To cancel this transaction, mail or deliver a signed and dated copy of this Cancellation Notice or any other written notice, or send a telegram, to {Business name}, at ______________________________ NOT LATER THAN MIDNIGHT OF ______________.",
+  "I HEREBY CANCEL THIS TRANSACTION.",
+  "(Date) ______________",
+  "(Buyer's signature) ______________________________",
+];
 
 const TRADE_STARTERS: Record<string, ContractStarter[]> = {
   roofing_exteriors: [
@@ -431,9 +462,14 @@ const TRADE_STARTERS: Record<string, ContractStarter[]> = {
 /**
  * Example sections for a new library, in plain words: the ones every business needs (payment,
  * changes, warranty, the right to cancel and so on) with a few for the trade. They're a start to
- * edit, not finished legal terms, which is what STARTER_NOTE tells the business.
+ * edit, not finished legal terms, which is what STARTER_NOTE tells the business. The right to
+ * cancel and its notice are the exception to plain words: a sale made at the buyer's home has to
+ * carry the FTC's own (16 CFR 429.1), so those two say exactly that.
+ *
+ * `lateFeeLine`: for a business that charges late fees, the sentence saying so (core billing
+ * lateFeeTerm), which goes in the Payment section so the fee is agreed to before one is charged.
  */
-export function contractStarters(trade: string | null | undefined): ContractStarter[] {
+export function contractStarters(trade: string | null | undefined, { lateFeeLine }: { lateFeeLine?: string | null } = {}): ContractStarter[] {
   const cleanup =
     "<p>We keep the work area tidy as we go and haul away our debris when the job is done.</p>" +
     (trade === "roofing_exteriors" ? "<p>We run a magnet over the yard and driveway for stray nails. Keep an eye out for any we missed for a few days.</p>" : "");
@@ -443,6 +479,7 @@ export function contractStarters(trade: string | null | undefined): ContractStar
       "<p>The price for this work is {Total}, as shown on the estimate.</p>" +
         "<ul><li>Any deposit on the estimate is due when you sign, to hold your place on our schedule.</li>" +
         "<li>The rest is due when the work is done.</li>" +
+        (lateFeeLine ? `<li>${escapeText(lateFeeLine)}</li>` : "") +
         "<li>Please make checks out to {Business name}.</li></ul>",
     ),
     terms(
@@ -472,16 +509,21 @@ export function contractStarters(trade: string | null | undefined): ContractStar
       "<p>Anyone who supplies labor or materials for work on your property and isn't paid may be able to put a lien on it. We pay our crews and suppliers from the payments you make to us.</p>" +
         "<p>Once you've paid in full, you can ask us for a lien waiver.</p>",
     ),
-    {
-      title: "Your right to cancel",
-      body:
-        "<p>If you signed this agreement at your home, you may cancel it <strong>within three business days</strong> after the day you signed, without any penalty.</p>" +
-        "<p>To cancel, let {Business name} know in writing (a letter or an email is fine) by midnight of the third business day. If you cancel, we'll return any payment you made within 10 business days.</p>",
-      place: "signatures",
-      initials: true,
-    },
+    // The FTC's cooling-off rule for a sale made at the buyer's home (16 CFR 429.1): the statement
+    // above the signature in the rule's own words, and the Notice of Cancellation it refers to.
+    { title: "Your right to cancel", body: `<p><strong>${FTC_CANCEL_STATEMENT}</strong></p>`, place: "signatures", initials: true },
+    terms(NOTICE_OF_CANCELLATION_TITLE, NOTICE_OF_CANCELLATION.map((text) => `<p><strong>${text}</strong></p>`).join("")),
   ];
 }
+
+/**
+ * Example sections as they were worded before, word for word: a library that still has one is
+ * still showing an example, and says so (STARTER_NOTE).
+ */
+export const EARLIER_STARTER_BODIES: readonly string[] = [
+  "<p>If you signed this agreement at your home, you may cancel it <strong>within three business days</strong> after the day you signed, without any penalty.</p>" +
+    "<p>To cancel, let {Business name} know in writing (a letter or an email is fine) by midnight of the third business day. If you cancel, we'll return any payment you made within 10 business days.</p>",
+];
 
 // ---------------------------------------------------------------------------------------------
 // The facts a quote's or an invoice's fill-ins come from

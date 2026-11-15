@@ -26,14 +26,16 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/favicon.svg"];
 // Shared with src/lib/offline.ts (SYNC_TAG, WAITING_CACHE).
 const SYNC_TAG = "crewtavo-field-sync";
 const WAITING = "crewtavo-waiting";
-/** Pages for clients (Client Hub, booking forms, referrals): they don't run the crew's app. */
-const CLIENT_PAGES = /^\/(hub|book|u|refer)(\/|$)/;
+/** The waiting notification's words in the app's language (src/lib/offline.ts WORDS_CACHE). */
+const WORDS = "crewtavo-words";
+/** Pages for clients (Client Hub, booking forms, referrals, unsubscribe links, job showcases): they don't run the crew's app. */
+const CLIENT_PAGES = /^\/(hub|book|u|refer|s)(\/|$)/;
 /**
  * Left to the browser, with nothing kept: what the server answers itself (the API, sign-in links
  * under /auth/, the database and stored files, a website form's thank-you page under /f/) and the
  * clients' pages.
  */
-const NOT_THE_APP = /^\/(api|mcp|\.well-known|storage|auth|rest|f|hub|book|u|refer)(\/|$)/;
+const NOT_THE_APP = /^\/(api|mcp|\.well-known|storage|auth|rest|f|hub|book|u|refer|s)(\/|$)/;
 /** How long opening the app waits for the network before using the copy kept here: on one bar a page can hang for a minute. */
 const NAVIGATE_WAIT = 4000;
 /** Where the page that old files were last cleared for is noted (pruneAssets). */
@@ -51,8 +53,8 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      // The count of waiting updates belongs to the app, not to this worker's version: it stays.
-      await Promise.all(keys.filter((k) => k !== WAITING && (k !== CACHE || !OFFLINE)).map((k) => caches.delete(k)));
+      // The count of waiting updates, and the words to say it in, belong to the app, not to this worker's version: they stay.
+      await Promise.all(keys.filter((k) => k !== WAITING && k !== WORDS && (k !== CACHE || !OFFLINE)).map((k) => caches.delete(k)));
       await self.clients.claim();
     })(),
   );
@@ -228,7 +230,12 @@ self.addEventListener("notificationclick", (event) => {
       const open = windows.find(ours);
       if (open) {
         await open.focus();
-        if ("navigate" in open) await open.navigate(link).catch(() => undefined);
+        // A question from the clock at the property (src/features/field/geofence.ts) is already on My
+        // day and on that visit's screen: brought to the front, the screen stays as it is. Loading
+        // it again would drop what's only on that screen.
+        const at = new URL(open.url).pathname;
+        const asked = String(event.notification.tag || "").startsWith("geofence:") && (at === "/field" || at === new URL(link).pathname);
+        if (!asked && "navigate" in open) await open.navigate(link).catch(() => undefined);
         return;
       }
       await self.clients.openWindow(link);
@@ -255,8 +262,10 @@ self.addEventListener("sync", (event) => {
         if (event.lastChance) return;
         throw new Error("Crewtavo is open on the screen: it sends them itself.");
       }
+      // In the app's language when it left its words (src/lib/offline.ts tellServiceWorker), else English.
+      const words = await waitingWords();
       await self.registration.showNotification("Crewtavo", {
-        body: `${waiting === 1 ? "1 update is" : `${waiting} updates are`} waiting to be sent. Open Crewtavo to send them.`,
+        body: words ? (waiting === 1 ? words.one : words.other.replace("{count}", String(waiting))) : `${waiting === 1 ? "1 update is" : `${waiting} updates are`} waiting to be sent. Open Crewtavo to send them.`,
         tag: SYNC_TAG,
         icon: "/icon-192.png",
         badge: "/icon-192.png",
@@ -265,6 +274,16 @@ self.addEventListener("sync", (event) => {
     })(),
   );
 });
+
+/** The waiting notification's words in the app's language, or null for English. */
+async function waitingWords() {
+  try {
+    const words = await (await (await caches.open(WORDS)).match("/waiting"))?.json();
+    return typeof words?.one === "string" && typeof words?.other === "string" ? words : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Everyone's updates waiting on this phone, as the app last counted them. */
 async function waitingUpdates() {

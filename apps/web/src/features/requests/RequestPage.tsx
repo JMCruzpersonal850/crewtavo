@@ -22,7 +22,9 @@ import { PropertySelect } from "../clients/ClientForm";
 import type { WebVisit } from "../marketing/website";
 import { WebVisitRows } from "../marketing/WebVisitRows";
 import { PlansCard } from "../plans/PlansCard";
+import { readyDraft } from "../quotes/DraftedCallout";
 import { VisitDialog, type VisitInput } from "../schedule/VisitDialog";
+import { askedFor, BookAskedTime } from "./AskedTime";
 import { memberName, requestSource, useTeam } from "./RequestsPage";
 
 export function RequestPage() {
@@ -40,7 +42,7 @@ export function RequestPage() {
       unwrapOne(
         await supabase()
           .from("requests")
-          .select("id, number, title, details, status, source, website_form_id, assigned_to, answers, promo_code, rejected_promo_code, promo_problem, web_visit, created_at, client:clients(id, display_name, email, phone), property:properties(id, line1, city, region, postal_code, lat, lng), form:intake_forms(name, questions), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, assignees:visit_assignees(user_id)), quotes(id, number, title, status, total)")
+          .select("id, number, title, details, status, source, website_form_id, assigned_to, answers, promo_code, rejected_promo_code, promo_problem, web_visit, created_at, asked_starts_at, asked_ends_at, client:clients(id, display_name, email, phone), property:properties(id, line1, city, region, postal_code, lat, lng), form:intake_forms(name, questions), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, assignees:visit_assignees(user_id)), quotes(id, number, title, status, total, drafted)")
           .eq("id", id)
           .maybeSingle(),
         "This request",
@@ -57,6 +59,15 @@ export function RequestPage() {
   const toQuote = useMutation({
     meta: { success: "Quote started from this request", tone: "quote" },
     mutationFn: () => api.post<{ id: string }>(`/requests/${id}/quote`),
+    onSuccess: (q) => {
+      refresh();
+      navigate(`/quotes/${q.id}`);
+    },
+  });
+  // A draft filled in from the request (services/quoteDrafts.ts): Claude's when it's on, else from the price list.
+  const toDraft = useMutation({
+    meta: { success: (d: { by: string; lines?: number }) => (d.lines === 0 ? "Quote started. Nothing on your price list matched, so add the lines yourself." : d.by === "claude" ? "AI drafted the quote. Check it before you send it." : "Quote drafted from your price list"), tone: "quote" },
+    mutationFn: () => api.post<{ id: string; by: "claude" | "price_list" }>(`/requests/${id}/draft-quote`),
     onSuccess: (q) => {
       refresh();
       navigate(`/quotes/${q.id}`);
@@ -108,6 +119,8 @@ export function RequestPage() {
   );
   const questions = ((r.form?.questions ?? []) as Array<{ key: string; label: string }>).reduce<Record<string, string>>((m, q) => ({ ...m, [q.key]: q.label }), {});
   const open = !["converted", "archived"].includes(r.status);
+  // A quote drafted by itself as this came in (Settings → Company): the request is still as it arrived, so this says it's there.
+  const drafted = readyDraft(r.quotes);
   // The request's salesperson goes out, unless someone picks another.
   const assessment = (): VisitInput => ({ request_id: r.id, property_id: r.property?.id ?? null, title: `Assessment: ${r.title}`, kind: "assessment", assignee_ids: r.assigned_to ? [r.assigned_to] : [], context: { label: `Request #${r.number} · ${r.client?.display_name ?? ""}`, to: `/requests/${r.id}` } });
 
@@ -121,7 +134,8 @@ export function RequestPage() {
             <>
               {open && <Button icon="calendar" onClick={() => setVisit(assessment())}>Schedule assessment</Button>}
               {/* The next step, until it has a quote: then that quote is, and another is only an option. */}
-              {open && <Button variant={r.quotes.length ? "secondary" : "primary"} icon="quote" loading={toQuote.isPending} onClick={() => toQuote.mutate()}>Create quote</Button>}
+              {open && <Button variant={r.quotes.length ? "secondary" : "primary"} icon="quote" loading={toQuote.isPending} disabled={toDraft.isPending} onClick={() => toQuote.mutate()}>Create quote</Button>}
+              {open && <Button icon="sparkle" loading={toDraft.isPending} disabled={toQuote.isPending} onClick={() => toDraft.mutate()}>Draft a quote</Button>}
               <Menu
                 items={[
                   { label: "Edit request", icon: "edit", onSelect: () => setEditing(true) },
@@ -150,6 +164,31 @@ export function RequestPage() {
         {r.client && <Link to={`/clients/${r.client.id}`} className="strong">{r.client.display_name}</Link>}
         <span className="chip">{requestSource(r)}</span>
       </div>
+
+      {/* A time picked on a booking form that needs the office's OK: held for them until it's answered. */}
+      {askedFor(r, session.company.timezone) && !r.visits.some((v) => v.kind === "assessment" && v.status !== "cancelled") && (
+        <div className="callout callout-info">
+          <Icon name="calendar" size={20} />
+          <div className="grow">
+            <strong>Asked for {askedFor(r, session.company.timezone)}</strong>
+            <div className="small" style={{ fontWeight: 400 }}>{r.client?.display_name ?? "The client"} picked this time online and was told it isn't confirmed yet. Book it, or schedule the assessment for another time.</div>
+          </div>
+          {canSell && <BookAskedTime request={r} onBooked={refresh} />}
+        </div>
+      )}
+
+      {drafted && (
+        <div className="callout callout-info">
+          <Icon name="sparkle" size={20} />
+          <div className="grow">
+            <strong>A draft quote is ready</strong>
+            <div className="small" style={{ fontWeight: 400 }}>
+              Quote #{drafted.quote.number} was drafted {drafted.by === "claude" ? "by AI" : "from your price list"} when this request came in.{drafted.by === "claude" ? " It can be wrong: check it before you send it." : ""} Nothing has been sent, and the request is as it arrived until you send the quote.
+            </div>
+          </div>
+          <Link to={`/quotes/${drafted.quote.id}`} className="strong">Open the draft</Link>
+        </div>
+      )}
 
       {r.status === "new" && Date.now() - Date.parse(r.created_at) > 2 * 86_400_000 && (
         <div className="callout callout-warning"><Icon name="clock" size={20} /><div className="grow">Waiting over 2 days. Schedule an assessment or start a quote.</div></div>

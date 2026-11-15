@@ -130,20 +130,23 @@ function Estimate({ quote, takeoff, editable, onChanged }: EstimateProps) {
   const work: AsphaltWork = picked ?? (priced || visible.some((l) => l.service_id && kinds.get(l.service_id) === "pave") ? "pave" : "seal");
   const depthIn = Number(depth) > 0 ? Number(depth) : null;
   const vars = useMemo(() => takeoffVariables(takeoff, depthIn), [takeoff, depthIn]);
+  // An item with a depth of its own in the price list (6 inches of stone base) is worked out at
+  // that; the rest at the depth typed here. The server does the same (item_depths).
+  const valueOf = (s: Service) => (s.formula ? formulaValue(s.formula, s.default_depth_in != null ? { ...vars, depth_in: Number(s.default_depth_in) } : vars) : null);
   // The calculator prices the asphalt itself, so the price list's paving is only shown to take it off.
   const covered = useMemo(() => new Set(services.filter((s) => pavesAsphalt(s.formula, s.name)).map((s) => s.id)), [services]);
   const rows = services
-    .map((s) => ({ service: s, kind: kinds.get(s.id) ?? "other", qty: s.formula ? formulaValue(s.formula, vars) : null }))
+    .map((s) => ({ service: s, kind: kinds.get(s.id) ?? "other", qty: valueOf(s) }))
     .filter((r) => onEstimate.has(r.service.id) || ((r.qty ?? 0) > 0 && !covered.has(r.service.id) && (r.kind === "other" || r.kind === work)));
   const twice = priced ? rows.filter((r) => onEstimate.has(r.service.id) && covered.has(r.service.id)).map((r) => r.service.name) : [];
   const calculatorLink = `/paving/calculator?quote=${quote.id}`;
-  const needsDepth = rows.some((r) => usesDepth(r.service.formula) && (r.kind !== "pave" || work === "pave"));
+  const needsDepth = rows.some((r) => usesDepth(r.service.formula) && r.service.default_depth_in == null && (r.kind !== "pave" || work === "pave"));
 
   const add = useMutation({
     mutationFn: async (list: Service[]) => {
       const sort = quote.lines.reduce((m, l) => Math.max(m, l.sort), 0);
       const lines = list.map((s, i) => {
-        const value = s.formula ? formulaValue(s.formula, vars) ?? 0 : 0;
+        const value = valueOf(s) ?? 0;
         const byPrice = s.formula_target === "unit_price";
         return {
           company_id: company.id,
@@ -162,7 +165,7 @@ function Estimate({ quote, takeoff, editable, onChanged }: EstimateProps) {
       });
       unwrap(await supabase().from("quote_line_items").insert(lines));
       // The server works the quantities out the same way, and links the takeoff to the quote.
-      await api.post(`/quotes/${quote.id}/apply-measurement`, { measurement_id: takeoff.id, ...(depthIn ? { depth_in: depthIn } : {}) });
+      await api.post(`/quotes/${quote.id}/apply-measurement`, { measurement_id: takeoff.id, item_depths: true, ...(depthIn ? { depth_in: depthIn } : {}) });
       // Priced for the first time: the proposal shows the takeoff sheet, unless someone turns it off.
       if (!quote.lines.length && takeoff.snapshot_path && !takeoff.show_on_quote) {
         unwrap(await supabase().from("measurements").update({ show_on_quote: true }).eq("id", takeoff.id));
@@ -179,7 +182,7 @@ function Estimate({ quote, takeoff, editable, onChanged }: EstimateProps) {
     onSuccess: onChanged,
   });
   const reprice = useMutation({
-    mutationFn: () => api.post(`/quotes/${quote.id}/apply-measurement`, { measurement_id: takeoff.id, ...(depthIn ? { depth_in: depthIn } : {}) }),
+    mutationFn: () => api.post(`/quotes/${quote.id}/apply-measurement`, { measurement_id: takeoff.id, item_depths: true, ...(depthIn ? { depth_in: depthIn } : {}) }),
     onSuccess: onChanged,
   });
   const repriced = useJustDone(reprice);

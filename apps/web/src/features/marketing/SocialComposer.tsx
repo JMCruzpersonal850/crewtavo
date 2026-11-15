@@ -44,12 +44,15 @@ import {
   type SocialState,
   type Source,
 } from "./socialData";
+import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
 export interface ComposerStart {
   source?: Source;
   photos?: string[];
   review?: string;
   job?: string;
+  /** What the caption starts as (a showcase's). */
+  caption?: string;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -75,7 +78,7 @@ export function SocialComposer({ open, onClose, state, post, start }: { open: bo
   const [takenOut, setTakenOut] = useState<string | null>(null);
   const [review, setReview] = useState<string | null>(post?.review_id ?? start?.review ?? null);
   const [job, setJob] = useState<string>(start?.job ?? "");
-  const [caption, setCaption] = useState(post?.caption ?? "");
+  const [caption, setCaption] = useState(post?.caption ?? start?.caption?.slice(0, 2200) ?? "");
   const [captionBy, setCaptionBy] = useState<"person" | "ai">("person");
   const choices = networkChoices(state, source);
   // A post being changed keeps its networks that can still post; the rest are taken off, saying why.
@@ -351,9 +354,10 @@ export function SocialComposer({ open, onClose, state, post, start }: { open: bo
               <Button size="sm" icon="sparkle" loading={suggest.isPending} disabled={!aiOn || (source === "photos" && !picked.length) || (source === "review" && !review)} onClick={() => suggest.mutate()}>{caption.trim() ? "Rewrite" : "Suggest a caption"}</Button>
               <span className="muted small grow" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{caption.length.toLocaleString("en-US")} / {limit.toLocaleString("en-US")}</span>
             </div>
+            <UsingChatGptPlan />
             {!aiOn && (
               <span className="muted small">
-                {canAddKey ? <><Link to="/apps/anthropic">Add a Claude key in Apps</Link> to draft captions.</> : "An admin can add a Claude key on the Apps page to draft captions."}
+                {canAddKey ? <><Link to="/apps">Add a Claude or OpenAI key in Apps</Link> to draft captions.</> : "An admin can add a Claude or OpenAI key on the Apps page to draft captions."}
               </span>
             )}
             {problems.map((p) => <span key={`${p.network}-${p.kind}`} className="field-error">{captionProblemWords(p)}</span>)}

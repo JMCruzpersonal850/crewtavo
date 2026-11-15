@@ -55,6 +55,8 @@ export interface Env {
 
   ANTHROPIC_API_KEY?: string;
   AI_MODEL?: string;
+  /** The OpenAI model in-app AI uses with a company's OpenAI key or a person's ChatGPT plan, instead of the one picked on Apps → ChatGPT. */
+  OPENAI_MODEL?: string;
 
   GOOGLE_MAPS_BROWSER_KEY?: string;
   GOOGLE_MAPS_SERVER_KEY?: string;

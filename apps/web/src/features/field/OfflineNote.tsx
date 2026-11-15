@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { OFFLINE_MUTATIONS, subscribeUnsaved, unsavedFieldActions } from "@/lib/offline";
 import { phonePhotos, removePhonePhoto, retryPhonePhotos, subscribePhonePhotos } from "@/lib/offlinePhotos";
 import { useSession } from "@/lib/session";
+import { t } from "@/lib/i18n";
 
 /** Whether there's signal, as the app knows it: no signal, or requests that don't get through. */
 export const useSignal = () => useSyncExternalStore(onlineManager.subscribe.bind(onlineManager), () => onlineManager.isOnline());
@@ -22,7 +23,6 @@ const WHOLE = new Set(["checklist-save", "visit-notes"]);
 /** With signal, how long updates wait before it says they're sending: one waiting its turn behind another goes in a moment. */
 const LATE = 1_000;
 
-const photoCount = (n: number) => (n === 1 ? "1 photo" : `${n} photos`);
 
 export function OfflineNote() {
   const online = useSignal();
@@ -53,7 +53,7 @@ export function OfflineNote() {
     return () => clearTimeout(timer);
   }, [online, since, late]);
   const removeRefused = async () => {
-    const ok = await confirm({ title: refused.length === 1 ? "Remove this photo?" : `Remove ${refused.length} photos?`, body: refused.length === 1 ? "It hasn't uploaded, so it will be gone for good." : "They haven't uploaded, so they will be gone for good.", confirmLabel: "Remove", danger: true });
+    const ok = await confirm({ title: refused.length === 1 ? t("Remove this photo?") : t("Remove {count} photos?", { count: refused.length }), body: refused.length === 1 ? t("It hasn't uploaded, so it will be gone for good.") : t("They haven't uploaded, so they will be gone for good."), confirmLabel: t("Remove"), danger: true });
     if (ok) refused.forEach((p) => removePhonePhoto(p.id));
   };
   return (
@@ -62,8 +62,8 @@ export function OfflineNote() {
         <div className="callout callout-info" role="status">
           <Icon name="wifiOff" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
-            <div>{online ? "Sending your updates…" : "No signal"}</div>
-            {waiting ? `${waiting} ${waiting === 1 ? "update is" : "updates are"} saved on this phone and will send when you have signal.` : unsavedUpdates ? "Your updates send when you have signal." : "You can keep working: your updates are saved on this phone and sent when you have signal."}
+            <div>{online ? t("Sending your updates…") : t("No signal")}</div>
+            {waiting ? t.plural(waiting, { one: "{count} update is saved on this phone and will send when you have signal.", other: "{count} updates are saved on this phone and will send when you have signal." }) : unsavedUpdates ? t("Your updates send when you have signal.") : t("You can keep working: your updates are saved on this phone and sent when you have signal.")}
           </div>
         </div>
       )}
@@ -71,8 +71,11 @@ export function OfflineNote() {
         <div className="callout callout-warning" role="status">
           <Icon name="alert" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
-            <div>This phone is out of room</div>
-            Your last {unsavedUpdates === 1 ? "update isn't" : `${unsavedUpdates} updates aren't`} saved on it. Keep Crewtavo open until you have signal and {unsavedUpdates === 1 ? "it has" : "they have"} sent, or {unsavedUpdates === 1 ? "it" : "they"} will be lost.
+            <div>{t("This phone is out of room")}</div>
+            {t.plural(unsavedUpdates, {
+              one: "Your last update isn't saved on it. Keep Crewtavo open until you have signal and it has sent, or it will be lost.",
+              other: "Your last {count} updates aren't saved on it. Keep Crewtavo open until you have signal and they have sent, or they will be lost.",
+            })}
           </div>
         </div>
       )}
@@ -80,8 +83,8 @@ export function OfflineNote() {
         <div className="callout callout-warning" role="status">
           <Icon name="alert" size={20} />
           <div className="grow small" style={{ fontWeight: 400 }}>
-            <div>This phone couldn't save {photoCount(unsaved.length)}</div>
-            Keep Crewtavo open until you have signal, or {unsaved.length === 1 ? "it" : "they"} will be lost.
+            <div>{t.plural(unsaved.length, { one: "This phone couldn't save {count} photo", other: "This phone couldn't save {count} photos" })}</div>
+            {unsaved.length === 1 ? t("Keep Crewtavo open until you have signal, or it will be lost.") : t("Keep Crewtavo open until you have signal, or they will be lost.")}
           </div>
         </div>
       )}
@@ -89,11 +92,11 @@ export function OfflineNote() {
         <div className="callout callout-danger" role="status">
           <Icon name="alert" size={20} />
           <div className="grow small stack-sm" style={{ fontWeight: 400 }}>
-            <div>{photoCount(refused.length)} didn't upload</div>
-            <span>{refused[0]!.problem} The office may have changed the visit. {refused.length === 1 ? "It's" : "They're"} still on this phone.</span>
+            <div>{t.plural(refused.length, { one: "{count} photo didn't upload", other: "{count} photos didn't upload" })}</div>
+            <span>{refused[0]!.problem} {refused.length === 1 ? t("The office may have changed the visit. It's still on this phone.") : t("The office may have changed the visit. They're still on this phone.")}</span>
             <span className="row" style={{ gap: 8 }}>
-              <Button size="sm" icon="refresh" onClick={() => retryPhonePhotos(userId)}>Try again</Button>
-              <Button size="sm" variant="ghost" onClick={() => void removeRefused()}>Remove</Button>
+              <Button size="sm" icon="refresh" onClick={() => retryPhonePhotos(userId)}>{t("Try again")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => void removeRefused()}>{t("Remove")}</Button>
             </span>
           </div>
         </div>

@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   rpcs: [] as Array<{ by: string; name: string; args: Record<string, unknown> }>,
   afterInsert: {} as Record<string, () => void>,
   meanwhile: null as (() => void) | null,
+  /** What quote_send_problem answers: why the quote can't be sent as it is, or null. */
+  sendProblem: null as string | null,
 }));
 vi.mock("../src/lib/supabase", () => {
   const embed = (table: string, row: Row): Row =>
@@ -73,6 +75,7 @@ vi.mock("../src/lib/supabase", () => {
       state.rpcs.push({ by, name, args });
       if (name === "accept_hub_range") return by === "admin" ? { data: acceptHubRange(args), error: null } : { data: null, error: { message: "permission denied for function accept_hub_range", code: "42501" } };
       if (name === "put_quote_package") return { data: putQuotePackage(args), error: null };
+      if (name === "quote_send_problem") return { data: state.sendProblem, error: null };
       return { data: true, error: null };
     },
     from: (table: string) => {
@@ -227,6 +230,7 @@ afterEach(() => {
   state.rpcs = [];
   state.afterInsert = {};
   state.meanwhile = null;
+  state.sendProblem = null;
 });
 
 describe("setting up roofing", () => {
@@ -238,6 +242,13 @@ describe("setting up roofing", () => {
     const preset = getPreset("roofing_exteriors");
     expect(body.services_added).toEqual(preset.services.map((s) => s.name));
     expect(body.packages_created).toBe(3);
+    // And the insurance claim fields, on quotes and on jobs so a quote's values carry to its job.
+    expect(body.fields_added).toEqual(["Insurance company", "Claim number", "Adjuster name", "Adjuster phone", "Date of loss", "Deductible"]);
+    expect(rows("custom_field_definitions").map((f) => `${f.record_type}:${f.key}:${f.type}`)).toEqual([
+      "quote:insurance_company:text", "job:insurance_company:text", "quote:claim_number:text", "job:claim_number:text", "quote:adjuster_name:text", "job:adjuster_name:text",
+      "quote:adjuster_phone:text", "job:adjuster_phone:text", "quote:date_of_loss:date", "job:date_of_loss:date", "quote:deductible:number", "job:deductible:number",
+    ]);
+    expect(rows("custom_field_definitions").every((f) => f.company_id === ROOFER && f.show_on_pdf === false && f.show_in_portal === false)).toBe(true);
 
     const packages = rows("roof_packages");
     expect(packages.map((p) => [p.name, p.style, p.is_default])).toEqual([
@@ -256,8 +267,31 @@ describe("setting up roofing", () => {
     expect(packages.map((p) => [p.highlights, p.warranty])).toEqual(preset.packages!.map((p) => [p.highlights, p.warranty]));
 
     const again = await (await send("/roofing/setup", {})).json();
-    expect(again).toEqual({ services_added: [], packages_created: 0 });
+    expect(again).toEqual({ services_added: [], fields_added: [], packages_created: 0 });
     expect(rows("roof_packages")).toHaveLength(3);
+    expect(rows("custom_field_definitions")).toHaveLength(12);
+  });
+
+  it("offers a roofer already set up the insurance claim fields it doesn't have, after its own fields", async () => {
+    const preset = getPreset("roofing_exteriors");
+    state.tables = {
+      memberships: [{ company_id: ROOFER, user_id: "viewer", active: true, role: "office", role_id: null }],
+      services: preset.services.map((s, i) => ({ id: `s${i}`, company_id: ROOFER, name: s.name, active: true, sort: i })),
+      roof_packages: [{ id: PKG, company_id: ROOFER }],
+      roof_package_items: [],
+      // Its own claim number on quotes (archived, even), and a field of another business's.
+      custom_field_definitions: [
+        { id: "f1", company_id: ROOFER, record_type: "quote", key: "claim_number", label: "Claim #", type: "text", sort: 4, archived_at: "2026-11-01T00:00:00Z" },
+        { id: "f2", company_id: "someone-else", record_type: "job", key: "deductible", label: "Deductible", type: "number", sort: 9 },
+      ],
+    };
+    const body = await (await send("/roofing/setup", {})).json();
+    expect(body).toEqual({ services_added: [], fields_added: ["Insurance company", "Claim number", "Adjuster name", "Adjuster phone", "Date of loss", "Deductible"], packages_created: 0 });
+    const mine = rows("custom_field_definitions").filter((f) => f.company_id === ROOFER);
+    // Eleven added: its own claim number on quotes stays as it is, and the one on jobs is new.
+    expect(mine).toHaveLength(12);
+    expect(mine.filter((f) => f.key === "claim_number").map((f) => [f.record_type, f.label])).toEqual([["quote", "Claim #"], ["job", "Claim number"]]);
+    expect(Math.min(...mine.filter((f) => f.id !== "f1").map((f) => Number(f.sort)))).toBe(5);
   });
 
   it("is for the office", async () => {
@@ -701,6 +735,25 @@ describe("sending a roof estimate the usual way", () => {
     }
     return JSON.parse(String(fetcher.mock.calls.find(([url]) => String(url).includes("mailpit"))![1]!.body));
   };
+
+  it("sends nothing while the payment schedule has a day to set or one already gone, and says which", async () => {
+    roofer({ lines, status: "draft" });
+    state.sendProblem = "Payment 2 is due on Mar 1, 2026, which has already passed. Give it a new date.";
+    env.MAILPIT_URL = "http://mailpit.local";
+    try {
+      for (const channel of ["email", "link"]) {
+        const res = await send(`/quotes/${QUOTE}/send`, { channel });
+        expect(res.status, channel).toBe(400);
+        expect((await res.json()).error, channel).toBe("Payment 2 is due on Mar 1, 2026, which has already passed. Give it a new date.");
+      }
+    } finally {
+      delete env.MAILPIT_URL;
+    }
+    expect(state.rpcs.filter((r) => r.name === "quote_send_problem").map((r) => r.args)).toEqual([{ p_quote: QUOTE }, { p_quote: QUOTE }]);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("mailpit"))).toBe(false);
+    expect(rows("messages")).toEqual([]);
+    expect(quote().status).toBe("draft");
+  });
 
   it("says the range, never the exact total, while it's out as a range", async () => {
     roofer({ lines, status: "sent" });

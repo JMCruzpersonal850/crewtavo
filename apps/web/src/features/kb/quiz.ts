@@ -1,4 +1,6 @@
 /** A guide's quiz as the editor holds it, and as it's saved (public.sop_quizzes, checked by private.valid_quiz). */
+import { t } from "@/lib/i18n";
+
 
 export interface QuizDraft { question: string; options: string[]; answer: number | null }
 export interface SavedQuestion { question: string; options: string[]; answer: number }
@@ -17,11 +19,11 @@ export function cleanQuiz(drafts: readonly QuizDraft[]): { questions: SavedQuest
   for (const [i, q] of drafts.entries()) {
     const n = i + 1;
     const question = q.question.trim();
-    if (!question) return { problem: `Write question ${n}, or remove it.` };
+    if (!question) return { problem: t("Write question {number}, or remove it.", { number: n }) };
     const kept = q.options.map((o, j) => ({ text: o.trim(), j })).filter((o) => o.text);
-    if (kept.length < 2) return { problem: `Question ${n} needs at least two answers.` };
+    if (kept.length < 2) return { problem: t("Question {number} needs at least two answers.", { number: n }) };
     const answer = kept.findIndex((o) => o.j === q.answer);
-    if (answer < 0) return { problem: `Pick the right answer for question ${n}.` };
+    if (answer < 0) return { problem: t("Pick the right answer for question {number}.", { number: n }) };
     questions.push({ question: question.slice(0, 300), options: kept.map((o) => o.text.slice(0, 200)), answer });
   }
   return { questions };

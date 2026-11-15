@@ -18,6 +18,7 @@ import { useRefreshProject, useTeam } from "./data";
 import styles from "./flow.module.css";
 import { personName, salesPeople } from "./model";
 import { SalespersonSelect } from "./RangeCard";
+import { RoofReportButton } from "./RoofReport";
 
 const REASONS = ["Trees cover the roof", "The aerial is old or blurry", "Too cut up to trace", "Something else"] as const;
 const OTHER = REASONS[3];
@@ -118,11 +119,12 @@ export function MeasureOnSiteCard({ quote, measureLink, canSell }: { quote: Esti
       </p>
       <p className={styles.note}>
         {quote.measure_on_site_reason ? `Not from the air: ${quote.measure_on_site_reason.replace(/[.!?]+$/, "")}. ` : ""}
-        {who ? "Once it's measured, draw the roof on the map with the pitch found on site, and the estimate prices from it." : "Nobody covers this address. Pick who goes out."}
+        {who ? "Once it's measured, draw the roof on the map with the pitch found on site, or type in the measurements, and the estimate prices from it." : "Nobody covers this address. Pick who goes out."}
       </p>
       <SalespersonSelect quoteId={quote.id} value={quote.salesperson_id} disabled={!canSell} label="Who goes out to measure" />
       <div className={styles.tools}>
         {measureLink && <Link className="btn" to={measureLink}>Draw the roof</Link>}
+        {canSell && <RoofReportButton quote={quote} label="Enter measurements from a report" />}
         {canSell && (
           <button type="button" className={styles.linkBtn} disabled={unflag.isPending} onClick={() => unflag.mutate(null)}>
             Measure it from the air after all

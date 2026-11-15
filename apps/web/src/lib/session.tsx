@@ -20,12 +20,14 @@ import { TermsPage } from "@/features/legal/License";
 import { RailwaySetupPage } from "@/features/setup/RailwaySetupPage";
 import { api, ApiError, companyFeatures, loadConfig, setActiveCompany, supabase, type AppConfig } from "./api";
 import { setCurrency } from "./format";
+import { followProfile, forgetLanguageAtSignOut } from "./i18n";
 import { forgetOfflineCache, keepQueuedFieldActions, keepsDayOffline, pendingFieldActions, signOutWarning, startOfflineCache } from "./offline";
 import { photosNotSent } from "./offlinePhotos";
 import { setRecentsPerson } from "./recent";
 import { setSessionExpiredHandler } from "./queryClient";
 import { toast } from "./toast";
 import { flushUndos } from "./undo";
+import { t } from "@/lib/i18n";
 
 /**
  * The active company. A sub gets only its basics (company_basics() in the database): no slug, trade
@@ -69,10 +71,11 @@ export interface SubLogin {
 }
 
 interface Me {
-  profile: { user_id: string; email: string | null; full_name: string; phone: string | null; color?: string | null; avatar_url?: string | null };
+  /** locale: the language they chose (en, es), or null to follow this device; missing from a server older than it. */
+  profile: { user_id: string; email: string | null; full_name: string; phone: string | null; color?: string | null; avatar_url?: string | null; locale?: string | null };
   /** False when every sign-in this person has is a sub's: they can't set up a business with it. */
   can_create_company?: boolean;
-  memberships: Array<{ role: Role; role_name: string; role_id?: string | null; permissions: Permission[]; company: Company; subcontractor?: SubLogin | null; email_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean; terms_accepted?: boolean; railway_needed?: boolean }>;
+  memberships: Array<{ role: Role; role_name: string; role_id?: string | null; permissions: Permission[]; company: Company; subcontractor?: SubLogin | null; email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; chatgpt_plan?: boolean; fal_connected?: boolean; terms_accepted?: boolean; railway_needed?: boolean }>;
 }
 
 export interface Session {
@@ -152,8 +155,8 @@ function redeemEmailLink(): Promise<string | null> {
   redeeming ??= supabase()
     .auth.verifyOtp({ token_hash: emailLink.tokenHash, type: emailLink.type })
     .then(
-      ({ error }) => (error ? "That link has expired or was already used. Ask whoever sent it for a new one, or sign in below." : null),
-      () => "Couldn't open that link. Check your connection and try again.",
+      ({ error }) => (error ? t("That link has expired or was already used. Ask whoever sent it for a new one, or sign in below.") : null),
+      () => t("Couldn't open that link. Check your connection and try again."),
     )
     .finally(() => {
       // The token works once; keep it out of the address bar and history.
@@ -210,6 +213,8 @@ export function SessionProvider({ children, requireCompany = true }: { children:
         signingOut.current = false;
         lastUser = null;
         queryClient.clear();
+        // Their language leaves with them: the next person to sign in here never gets it unasked (lib/i18n.tsx).
+        forgetLanguageAtSignOut();
       }
     });
     return () => data.subscription.unsubscribe();
@@ -250,6 +255,20 @@ export function SessionProvider({ children, requireCompany = true }: { children:
   setActiveCompany(membership?.company.id ?? null);
   setRecentsPerson(auth?.user.id ?? null);
   setCurrency(membership?.company.currency);
+
+  // Their own language, once known: the app reloads into it when this device was in another, and a
+  // language picked on the sign-in page is saved with them, so their notifications come in it too
+  // (lib/i18n.tsx). Never the language someone else left on the device.
+  const hasMe = Boolean(me.data);
+  const profileLocale = me.data?.profile.locale;
+  const refetchMe = me.refetch;
+  useEffect(() => {
+    if (!hasMe) return;
+    void followProfile(profileLocale, async (locale) => {
+      await api.patch("/me", { locale });
+      await refetchMe();
+    });
+  }, [hasMe, profileLocale, refetchMe]);
 
   // Crews and subs keep their day on the phone; queued field actions survive closing the app (lib/offline.ts).
   const userId = auth?.user.id;
@@ -293,7 +312,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
       !warning ||
       (await confirm({
         ...warning,
-        confirmLabel: "Sign out anyway",
+        confirmLabel: t("Sign out anyway"),
         danger: true,
       }));
     if (!ok) return false;
@@ -303,7 +322,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     await supabase().auth.signOut().catch(() => undefined);
     // Still set: no SIGNED_OUT came (the sign-in needed refreshing and that didn't get through).
     const signedOut = !signingOut.current;
-    if (!signedOut) toast.error("Couldn't sign out. Try again when you have signal.");
+    if (!signedOut) toast.error(t("Couldn't sign out. Try again when you have signal."));
     signingOut.current = false;
     return signedOut;
   }, [queryClient, userId]);
@@ -332,7 +351,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     return (
       <SetupGate>
         <Centered>
-          <ErrorState title="Can't reach Crewtavo" error={config.error} onRetry={() => config.refetch()} />
+          <ErrorState title={t("Can't reach Crewtavo")} error={config.error} onRetry={() => config.refetch()} />
         </Centered>
       </SetupGate>
     );
@@ -347,9 +366,9 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     return (
       <SetupGate>
         <Centered>
-          <ErrorState title="Couldn't load your account" error={me.error} onRetry={() => me.refetch()} />
+          <ErrorState title={t("Couldn't load your account")} error={me.error} onRetry={() => me.refetch()} />
           <div style={{ display: "flex", justifyContent: "center", paddingBottom: 24, marginTop: -12 }}>
-            <Button variant="ghost" icon="logout" onClick={() => signOut()}>Sign out</Button>
+            <Button variant="ghost" icon="logout" onClick={() => signOut()}>{t("Sign out")}</Button>
           </div>
         </Centered>
       </SetupGate>
@@ -361,8 +380,8 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     if (requireCompany && me.data.can_create_company === false) {
       return (
         <Centered>
-          <EmptyState icon="lock" title="Your sign-in is turned off" action={<Button variant="ghost" icon="logout" onClick={() => signOut()}>Sign out</Button>}>
-            The business that gave you this sign-in has turned it off. Ask their office to turn it back on.
+          <EmptyState icon="lock" title={t("Your sign-in is turned off")} action={<Button variant="ghost" icon="logout" onClick={() => signOut()}>{t("Sign out")}</Button>}>
+            {t("The business that gave you this sign-in has turned it off. Ask their office to turn it back on.")}
           </EmptyState>
         </Centered>
       );
@@ -384,7 +403,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
 
 export function useSession(): Session {
   const session = useContext(SessionContext);
-  if (!session) throw new Error("useSession must be used inside SessionProvider");
+  if (!session) throw new Error("useSession must be used inside SessionProvider"); // i18n-ignore: for developers
   return session;
 }
 

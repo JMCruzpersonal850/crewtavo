@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSimpleRule, lastDate, occurrenceDates, parseSimpleRule, repeatText, scheduleText } from "../src/recurrence";
+import { buildSimpleRule, lastDate, occurrenceDates, parseSimpleRule, repeatText, scheduleText, VISIT_HORIZON_DAYS } from "../src/recurrence";
+import { addDays } from "../src/time";
 
 // The repeat editor's rules, as the job screen builds them and reads them back.
 describe("the job screen's repeats", () => {
@@ -49,6 +50,52 @@ describe("ending after a number of visits", () => {
   it("has no last date without one, and ignores an end date the count keeps", () => {
     expect(lastDate({ starts_on: "2026-11-03", recurrence_rule: "FREQ=WEEKLY;BYDAY=TU" })).toBeNull();
     expect(lastDate({ starts_on: "2026-11-03", ends_on: "2026-11-04", recurrence_rule: "FREQ=WEEKLY;BYDAY=TU;COUNT=2" })).toBe("2026-11-10");
+  });
+});
+
+// Visits are on the schedule a year ahead (VISIT_HORIZON_DAYS): the dates for that window.
+describe("a year of visits", () => {
+  const year = (from: string) => [from, addDays(from, VISIT_HORIZON_DAYS)] as const;
+
+  it("is every day of a daily job, well inside what one call returns", () => {
+    expect(VISIT_HORIZON_DAYS).toBe(365);
+    const dates = occurrenceDates({ starts_on: "2020-01-01", recurrence_rule: "FREQ=DAILY" }, ...year("2026-01-10"));
+    expect(dates).toHaveLength(366);
+    expect([dates[0], dates.at(-1)]).toEqual(["2026-01-10", "2027-01-10"]);
+  });
+
+  it("has next season's visits in the off season, and both ends of a season that's under way", () => {
+    const mowing = { starts_on: "2025-04-07", recurrence_rule: "FREQ=WEEKLY;BYDAY=MO", active_months: [4, 5, 6, 7, 8, 9, 10] };
+    const fromJanuary = occurrenceDates(mowing, ...year("2026-01-10"));
+    expect([fromJanuary[0], fromJanuary.at(-1)]).toEqual(["2026-04-06", "2026-10-26"]);
+    // From July: the rest of this season, and next spring's up to a year from today.
+    const fromJuly = occurrenceDates(mowing, ...year("2026-07-15"));
+    expect(fromJuly[0]).toBe("2026-07-20");
+    expect(fromJuly).toContain("2026-10-26");
+    expect(fromJuly).not.toContain("2026-11-02");
+    expect(fromJuly).toContain("2027-04-05");
+    expect(fromJuly.at(-1)).toBe("2027-07-12");
+  });
+
+  it("ends after its number of visits across seasons and a pause, wherever in the year the window starts", () => {
+    // Thirty mowings from April 2026, April to October, with two weeks off in July: 28 fit in 2026, so two run into April 2027.
+    const job = { starts_on: "2026-04-06", recurrence_rule: "FREQ=WEEKLY;BYDAY=MO;COUNT=30", active_months: [4, 5, 6, 7, 8, 9, 10], paused: [{ from: "2026-07-06", until: "2026-07-20" }] };
+    expect(lastDate(job)).toBe("2027-04-12");
+    const all = occurrenceDates(job, ...year("2026-04-06"));
+    expect(all).toHaveLength(29); // the 30th is a week past the year
+    expect(all).not.toContain("2026-07-13");
+    expect(all.slice(-2)).toEqual(["2026-10-26", "2027-04-05"]);
+    // In the off season the window holds only what's left of the thirty.
+    expect(occurrenceDates(job, ...year("2026-12-01"))).toEqual(["2027-04-05", "2027-04-12"]);
+    // And once they're done, nothing.
+    expect(occurrenceDates(job, ...year("2027-04-13"))).toEqual([]);
+  });
+
+  it("stops at the end date, and skips a pause in the middle of the year", () => {
+    const job = { starts_on: "2026-01-05", ends_on: "2026-09-30", recurrence_rule: "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", paused: [{ from: "2026-03-01", until: "2026-05-01" }] };
+    const dates = occurrenceDates(job, ...year("2026-01-01"));
+    expect(dates.slice(0, 5)).toEqual(["2026-01-05", "2026-01-19", "2026-02-02", "2026-02-16", "2026-05-11"]);
+    expect(dates.at(-1)).toBe("2026-09-28");
   });
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/lib/errors";
 import { phoneDigits } from "@/lib/validate";
 import { Icon } from "./Icon";
+import { msg, t } from "@/lib/i18n";
 
 const CONTROL = 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea, [contenteditable="true"], [role="textbox"]';
 
@@ -10,7 +11,7 @@ const isCheckable = (el: unknown): el is Checkable => el instanceof HTMLInputEle
 const hasValue = (control: Checkable) => (control instanceof HTMLInputElement && (control.type === "checkbox" || control.type === "radio") ? control.checked : control.value.trim() !== "");
 const isContact = (control: Checkable) => control instanceof HTMLInputElement && (control.type === "email" || control.type === "tel");
 
-const NOT_RIGHT = "This doesn't look right.";
+const NOT_RIGHT = msg("This doesn't look right.");
 const DATE_TYPES = new Set(["date", "datetime-local", "month", "week"]);
 
 /** A min or max as people read it: "1,000", or "Oct 28, 2026" for a date. */
@@ -28,21 +29,21 @@ export function validityMessage(control: Checkable, label: string, requiredMessa
   if (v.valid) return null;
   const type = control.type;
   const dated = DATE_TYPES.has(type) || type === "time";
-  if (v.valueMissing) return requiredMessage ?? (label && !label.endsWith("?") ? `${label} is required.` : "This is required.");
-  if (v.typeMismatch) return type === "email" ? "Enter an email like name@company.com." : type === "url" ? "Enter a web address like https://example.com." : NOT_RIGHT;
-  if (v.badInput) return type === "number" ? "Enter a number." : DATE_TYPES.has(type) ? "Enter a full date." : type === "time" ? "Enter a full time." : NOT_RIGHT;
-  if (v.rangeUnderflow) return dated ? `Pick ${readLimit(control, (control as HTMLInputElement).min)} or later.` : `Enter ${readLimit(control, (control as HTMLInputElement).min)} or more.`;
-  if (v.rangeOverflow) return dated ? `Pick ${readLimit(control, (control as HTMLInputElement).max)} or earlier.` : `Enter ${readLimit(control, (control as HTMLInputElement).max)} or less.`;
+  if (v.valueMissing) return requiredMessage ?? (label && !label.endsWith("?") ? t("{label} is required.", { label }) : t("This is required."));
+  if (v.typeMismatch) return type === "email" ? t("Enter an email like name@company.com.") : type === "url" ? t("Enter a web address like https://example.com.") : t(NOT_RIGHT);
+  if (v.badInput) return type === "number" ? t("Enter a number.") : DATE_TYPES.has(type) ? t("Enter a full date.") : type === "time" ? t("Enter a full time.") : t(NOT_RIGHT);
+  if (v.rangeUnderflow) return dated ? t("Pick {limit} or later.", { limit: readLimit(control, (control as HTMLInputElement).min) }) : t("Enter {limit} or more.", { limit: readLimit(control, (control as HTMLInputElement).min) });
+  if (v.rangeOverflow) return dated ? t("Pick {limit} or earlier.", { limit: readLimit(control, (control as HTMLInputElement).max) }) : t("Enter {limit} or less.", { limit: readLimit(control, (control as HTMLInputElement).max) });
   if (v.stepMismatch) {
     const step = control.getAttribute("step") ?? "1";
-    if (Number(step) === 1) return "Use whole numbers.";
+    if (Number(step) === 1) return t("Use whole numbers.");
     const places = /^0\.0*1$/.test(step) ? step.length - 2 : 0;
-    return places ? `Use up to ${places} decimal ${places === 1 ? "place" : "places"}.` : `Use steps of ${step}.`;
+    return places ? t.plural(places, { one: "Use up to {count} decimal place.", other: "Use up to {count} decimal places." }) : t("Use steps of {step}.", { step });
   }
-  if (v.tooShort) return `Use at least ${(control as HTMLInputElement).minLength} characters.`;
-  if (v.tooLong) return `Use ${(control as HTMLInputElement).maxLength} characters or fewer.`;
-  if (v.patternMismatch) return control.title || NOT_RIGHT;
-  return control.validationMessage || NOT_RIGHT;
+  if (v.tooShort) return t("Use at least {count} characters.", { count: (control as HTMLInputElement).minLength });
+  if (v.tooLong) return t("Use {count} characters or fewer.", { count: (control as HTMLInputElement).maxLength });
+  if (v.patternMismatch) return control.title || t(NOT_RIGHT);
+  return control.validationMessage || t(NOT_RIGHT);
 }
 
 /**
@@ -57,8 +58,8 @@ function checkContact(control: Checkable) {
   const digits = phoneDigits(value).length;
   const message =
     control.type === "email"
-      ? value.includes("@") && /@[^.]*$/.test(value) ? "Add the rest of the email, like name@company.com." : ""
-      : !value.startsWith("+") && ((digits >= 1 && digits <= 9) || digits > 15) ? "Enter the full phone number, with area code." : "";
+      ? value.includes("@") && /@[^.]*$/.test(value) ? t("Add the rest of the email, like name@company.com.") : ""
+      : !value.startsWith("+") && ((digits >= 1 && digits <= 9) || digits > 15) ? t("Enter the full phone number, with area code.") : "";
   if (message) {
     control.setCustomValidity(message);
     control.dataset.fieldCustom = "1";
@@ -146,7 +147,7 @@ export function Field({ label, hint, error, optional, requiredMessage, children,
       if (!ours(e.target)) return;
       e.preventDefault();
       state.typed.add(e.target);
-      wrongNow(e.target, messageFor(e.target) ?? NOT_RIGHT);
+      wrongNow(e.target, messageFor(e.target) ?? t(NOT_RIGHT));
       focusFirstInvalid(e.target);
     };
     const onInput = (e: Event) => {
@@ -237,7 +238,7 @@ export function Field({ label, hint, error, optional, requiredMessage, children,
         }}
       >
         {label}
-        {optional && <span className="optional"> (optional)</span>}
+        {optional && <span className="optional"> {t("(optional)")}</span>}
         {fine && !note && <span className="field-ok"><Icon name="check" size={14} strokeWidth={2} /></span>}
       </span>
       {children}
@@ -301,7 +302,7 @@ export function FormChecks() {
       {count > 0 && (
         <>
           <Icon name="alert" size={14} />
-          {count === 1 ? "1 field needs a look" : `${count} fields need a look`}
+          {t.plural(count, { one: "{count} field needs a look", other: "{count} fields need a look" })}
         </>
       )}
     </span>

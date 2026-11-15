@@ -100,7 +100,9 @@ select tcrc.check((select array_agg(file_name order by file_name) from public.re
   'the job''s Photos card shows its own, its quote''s and their visit''s');
 select tcrc.check(not exists (select 1 from public.record_photos(:'co', :'j2')) and not exists (select 1 from public.record_photos(:'co', p_client => :'c2')),
   'and nothing of a job or a client they don''t work for');
-select tcrc.check((select array_agg(verb || ' ' || subject_id order by verb) from public.activity) = array['job.created ' || :'j1', 'visit.started ' || :'v1'],
+-- (A new company tells clients when a visit is booked, so their two visits being booked is news too.)
+select tcrc.check((select array_agg(verb || ' ' || subject_id order by verb || ' ' || subject_id) from public.activity)
+    = (select array_agg(x order by x) from unnest(array['job.created ' || :'j1', 'visit.scheduled ' || :'v1', 'visit.scheduled ' || :'va', 'visit.started ' || :'v1']) x),
   'they read the news of their own visit and its job, not another client''s');
 -- Adding a photo to their visit, and taking it back, as before.
 insert into public.attachments (company_id, owner_type, owner_id, path, file_name, content_type)

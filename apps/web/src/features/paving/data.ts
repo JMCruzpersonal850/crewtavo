@@ -5,7 +5,7 @@
  * (features/roofing) are the same records with a roof for the takeoff, so they share these.
  */
 import { marginPct } from "@crewtavo/core/estimates";
-import { evaluateFormula, formulaVariables, type FormulaVariable } from "@crewtavo/core/formulas";
+import { evaluateFormula, formulaVariables, usesDepth, type FormulaVariable } from "@crewtavo/core/formulas";
 import { drawingPitchFactor, edgeLengths, type Section } from "@crewtavo/core/geo";
 import { countsOn, lineTotal, optionTotals, toCents, type Amount, type OptionLine, type TotalsPromo } from "@crewtavo/core/money";
 import { isPavingTakeoff, pavingQuantities } from "@crewtavo/core/paving";
@@ -47,8 +47,10 @@ export interface TakeoffRow {
   snapshot_path: string | null;
   show_on_quote: boolean;
   updated_at: string;
+  /** The aerial imagery it was drawn on, or "report" for a roof typed in from a report (core isReportRoof). */
+  provider?: string | null;
 }
-export const TAKEOFF_FIELDS = "id, title, sections, total_area_sqft, total_area_sqyd, total_length_ft, roof_pitch, waste_pct, roofing_squares, snapshot_path, show_on_quote, updated_at";
+export const TAKEOFF_FIELDS = "id, title, sections, total_area_sqft, total_area_sqyd, total_length_ft, roof_pitch, waste_pct, roofing_squares, snapshot_path, show_on_quote, updated_at, provider";
 
 export const sectionsOf = (m: Pick<TakeoffRow, "sections"> | null | undefined): Section[] => (Array.isArray(m?.sections) ? (m!.sections as Section[]) : []);
 export const isPaving = (m: Pick<TakeoffRow, "sections"> | null | undefined) => isPavingTakeoff(sectionsOf(m));
@@ -130,13 +132,7 @@ export function pavesAsphalt(formula: string | null, name = ""): boolean {
     return false;
   }
 }
-export const usesDepth = (formula: string | null) => {
-  try {
-    return Boolean(formula && formulaVariables(formula).has("depth_in"));
-  } catch {
-    return false;
-  }
-};
+export { usesDepth };
 
 export interface QuoteForFlow {
   status: string;

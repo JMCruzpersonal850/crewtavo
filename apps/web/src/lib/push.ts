@@ -4,6 +4,7 @@
  */
 import { api } from "./api";
 import { isIos, isStandalone } from "./install";
+import { t } from "@/lib/i18n";
 
 const fromBase64Url = (text: string) => {
   const b64 = text.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (text.length % 4)) % 4);
@@ -45,7 +46,7 @@ export async function pushState(): Promise<PushState> {
 /** Ask permission, subscribe, and tell the server about this device. */
 export async function enablePush(): Promise<void> {
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") throw new Error(permission === "denied" ? "Notifications are blocked for Crewtavo in this browser's settings." : "Notifications weren't allowed.");
+  if (permission !== "granted") throw new Error(permission === "denied" ? t("Notifications are blocked for Crewtavo in this browser's settings.") : t("Notifications weren't allowed."));
   const registration = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
   await navigator.serviceWorker.ready;
   const { publicKey } = await api.get<{ publicKey: string }>("/push/key");
@@ -65,6 +66,7 @@ export async function disablePush(): Promise<void> {
 
 function deviceName(): string {
   const ua = navigator.userAgent;
+  // i18n-ignore: the device's name as it's kept with its subscription
   const os = /iPhone|iPad/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Device";
   const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "browser";
   return `${os} · ${browser}`;

@@ -4,7 +4,7 @@
  * of it is steep enough for a steep charge. The roof edges (eave_ft and the rest) come from
  * edgeLengths in geo.ts. Used by quote formulas like any other measurement value (FORMULA_VARIABLES).
  */
-import { pitchFactor, pitchSlope, roofAreaSqft, ROOF_EDGES, SQFT_PER_ROOFING_SQUARE, type RoofEdge, type Section } from "./geo";
+import { edgeLengths, pitchFactor, pitchSlope, roofAreaSqft, ROOF_EDGES, SQFT_PER_ROOFING_SQUARE, type Feature, type FeatureCollection, type RoofEdge, type Section } from "./geo";
 
 /** Rise per 12: from here up, most crews need roof jacks and charge a steep fee. */
 export const STEEP_RISE = 8;
@@ -74,6 +74,101 @@ export function suggestedWaste(edges: Partial<Record<RoofEdge, number>>): number
 /** Whether a drawing is a roof: a pitch on it somewhere, or lines marked as roof edges. */
 export function isRoofDrawing(sections: readonly Pick<Section, "kind" | "pitch" | "edge">[], pitch?: string | null): boolean {
   return Boolean(pitch?.trim()) || sections.some((s) => (s.kind === "Area" && Boolean(s.pitch?.trim())) || (s.kind === "Length" && (ROOF_EDGES as readonly unknown[]).includes(s.edge)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// A roof measured by someone else's report (EagleView, Hover): typed in, not drawn
+// ---------------------------------------------------------------------------------------------
+
+/** measurements.provider for a roof typed in from a report, where a drawn one names its aerial imagery. */
+export const REPORT_PROVIDER = "report";
+export const REPORT_TITLE = "Roof measurements from a report";
+/** Whether a measurement was typed in from a report rather than drawn. */
+export const isReportRoof = (m: { provider?: string | null } | null | undefined) => m?.provider === REPORT_PROVIDER;
+
+/** What a roof report says, as it's typed in. */
+export interface RoofReport {
+  /** Squares of roof surface before waste: the report's total roof area over 100. */
+  squares: number;
+  /** The predominant pitch: "6/12", or just its rise ("6"). */
+  pitch: string;
+  eave_ft: number;
+  rake_ft: number;
+  ridge_ft: number;
+  hip_ft: number;
+  valley_ft: number;
+  waste_pct: number;
+}
+
+const REPORT_EDGES: Record<RoofEdge, { field: keyof RoofReport; label: string }> = {
+  eave: { field: "eave_ft", label: "Eaves" },
+  rake: { field: "rake_ft", label: "Rakes" },
+  ridge: { field: "ridge_ft", label: "Ridges" },
+  hip: { field: "hip_ft", label: "Hips" },
+  valley: { field: "valley_ft", label: "Valleys" },
+};
+const REPORT_ROOF = "Roof (from a report)";
+
+/** A pitch as typed on a report: "6" is 6/12. Blank stays blank. */
+export const reportPitch = (pitch: string) => (/^\s*\d+(\.\d+)?\s*$/.test(pitch) ? `${pitch.trim()}/12` : pitch.trim());
+
+/** Why a report's numbers can't be saved, in words for the form; null when they can. */
+export function roofReportProblem(report: RoofReport): string | null {
+  if (!(report.squares > 0 && report.squares <= 100_000)) return "Enter the roof's size in squares or square feet.";
+  if (!reportPitch(report.pitch)) return "Enter the predominant pitch, like 6/12. A flat roof is 0/12.";
+  try {
+    pitchSlope(reportPitch(report.pitch));
+  } catch {
+    return "That pitch doesn't read. Write it like 6/12.";
+  }
+  for (const edge of ROOF_EDGES) {
+    const feet = Number(report[REPORT_EDGES[edge].field]);
+    if (!(feet >= 0 && feet <= 1_000_000)) return `${REPORT_EDGES[edge].label} are a length in feet, or 0.`;
+  }
+  if (!(report.waste_pct >= 0 && report.waste_pct <= 100)) return "Waste is 0 to 100%.";
+  return null;
+}
+
+/**
+ * A report's numbers as a drawing, so everything that reads a drawn roof reads this one the same
+ * way: the roof packages, the formulas' values (ROOFING_VARIABLES and the edges) and the estimate.
+ * One area carries the roof at the predominant pitch, and one line for each kind of edge carries
+ * its feet, each as a measured value (manual_value in summarizeFeatureCollection), which stands in
+ * for what the shape itself would measure. The shapes are placeholders a few feet across at the
+ * property (`at`): nothing was traced. The area is the roof seen from above (its surface over the
+ * pitch's slope factor), since a drawing's area is what the map sees and its pitch makes the surface.
+ * Save it with provider REPORT_PROVIDER. Throws RangeError for a pitch that doesn't read.
+ */
+export function roofReportCollection(report: RoofReport, at?: { lat: number; lng: number } | null): FeatureCollection {
+  const pitch = reportPitch(report.pitch);
+  const plan = Math.round(((report.squares * SQFT_PER_ROOFING_SQUARE) / pitchFactor(pitch)) * 100) / 100;
+  const [lng, lat] = [at?.lng ?? 0, at?.lat ?? 0];
+  // About a yard: enough to be a shape, too small to be taken for the roof.
+  const d = 0.00001;
+  const features: Feature[] = [
+    {
+      type: "Feature",
+      id: "report-roof",
+      geometry: { type: "Polygon", coordinates: [[[lng, lat], [lng + d, lat], [lng + d, lat + d], [lng, lat + d], [lng, lat]]] },
+      properties: { label: REPORT_ROOF, pitch, manual_value: plan },
+    },
+  ];
+  ROOF_EDGES.forEach((edge, i) => {
+    const feet = Math.round(Number(report[REPORT_EDGES[edge].field]) * 100) / 100;
+    if (!(feet > 0)) return;
+    const y = lat + d * (i + 2);
+    features.push({ type: "Feature", id: `report-${edge}`, geometry: { type: "LineString", coordinates: [[lng, y], [lng + d, y]] }, properties: { label: REPORT_EDGES[edge].label, edge, pitch, manual_value: feet } });
+  });
+  return { type: "FeatureCollection", features };
+}
+
+/** A saved report's numbers back from its measurement, to change them. */
+export function roofReportOf(m: { sections: unknown; roof_pitch: string | null; waste_pct: number | string | null }): RoofReport {
+  const sections = (Array.isArray(m.sections) ? m.sections : []) as Section[];
+  const edges = edgeLengths({ sections });
+  const pitch = sections.find((s) => s.kind === "Area" && s.pitch)?.pitch ?? m.roof_pitch ?? "";
+  const values = savedRoofingQuantities(sections, m.roof_pitch, 0);
+  return { squares: values.roof_squares ?? 0, pitch, eave_ft: edges.eave, rake_ft: edges.rake, ridge_ft: edges.ridge, hip_ft: edges.hip, valley_ft: edges.valley, waste_pct: Number(m.waste_pct) || 0 };
 }
 
 // ---------------------------------------------------------------------------------------------

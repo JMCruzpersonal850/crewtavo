@@ -24,7 +24,7 @@ import { isEmail } from "../lib/email";
 import { asJson, dbError, HttpError, must } from "../lib/http";
 import { adminClient, type Db } from "../lib/supabase";
 import { formulaValue, MEASUREMENT_VALUE_FIELDS, measurementVariables, type MeasurementValues, type MeasurementVariables } from "./measurements";
-import { addMissingServices } from "./presetServices";
+import { addMissingCustomFields, addMissingServices } from "./presetServices";
 import { deliver, rangeMessage, type SalesScope, type SendBody } from "./sales";
 
 /** Quotes whose lines can still change. */
@@ -45,16 +45,18 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The roofing preset's services a price list is missing, and, for a business with no roof packages
- * yet, the preset's packages made from its services (matched by name). Safe to run again.
+ * The roofing preset's services a price list is missing, its insurance claim fields for quotes and
+ * jobs where the business doesn't have them, and, for a business with no roof packages yet, the
+ * preset's packages made from its services (matched by name). Safe to run again.
  */
-export async function setupRoofing(db: Db, companyId: string): Promise<{ services_added: string[]; packages_created: number }> {
+export async function setupRoofing(db: Db, companyId: string): Promise<{ services_added: string[]; fields_added: string[]; packages_created: number }> {
   const servicesAdded = await addMissingServices(db, companyId, "roofing_exteriors");
+  const fieldsAdded = await addMissingCustomFields(db, companyId, "roofing_exteriors");
   const existing = must(await db.from("roof_packages").select("id").eq("company_id", companyId).limit(1));
-  if (existing.length) return { services_added: servicesAdded, packages_created: 0 };
+  if (existing.length) return { services_added: servicesAdded, fields_added: fieldsAdded, packages_created: 0 };
 
   const preset = getPreset("roofing_exteriors").packages ?? [];
-  if (!preset.length) return { services_added: servicesAdded, packages_created: 0 };
+  if (!preset.length) return { services_added: servicesAdded, fields_added: fieldsAdded, packages_created: 0 };
   const services = must(await db.from("services").select("id, name, active, sort").eq("company_id", companyId).order("sort"));
   // One service per name: the active one first, then the first in the price list.
   const byName = new Map<string, string>();
@@ -98,7 +100,7 @@ export async function setupRoofing(db: Db, companyId: string): Promise<{ service
       if (error) throw dbError(error);
     }
   }
-  return { services_added: servicesAdded, packages_created: created };
+  return { services_added: servicesAdded, fields_added: fieldsAdded, packages_created: created };
 }
 
 function unique<T>(list: T[], key: (item: T) => string): T[] {

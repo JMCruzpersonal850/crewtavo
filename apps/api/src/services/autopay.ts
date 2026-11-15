@@ -13,7 +13,7 @@
  *   - what Settings → Payments shows (autopayStatus).
  * Uses the admin client, and every lookup filters by company. Crews never reach any of it.
  */
-import { autopayCoversMonthly, autopaySettings, autopayTimingText, methodExpiry, methodLabel, tipsAllowed, type AutopaySettings } from "@crewtavo/core/autopay";
+import { autopayBankText, autopayCoversMonthly, autopaySettings, autopayTimingText, methodExpiry, methodLabel, tipsAllowed, type AutopaySettings } from "@crewtavo/core/autopay";
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { textsOff, textsOffReason } from "@crewtavo/core/marketing";
 import type { Env } from "../env";
@@ -34,12 +34,14 @@ import { firstName, isEmail, renderEmail } from "../lib/email";
 import { HttpError } from "../lib/http";
 import { clientLinks } from "../lib/links";
 import { reportError } from "../lib/monitoring";
-import { emailReady, sendEmail, sendSms, smsConfigured } from "../lib/notify";
+import { emailReady, sendEmail, sendSms, smsReady } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
 import { logoImage } from "./logo";
 import { stripeApi } from "./stripe";
-import { noteRefusedText } from "./textsOff";
+import { recipientsColumn, recipientsFor, sendToEach } from "./recipients";
+import { textWithStopLine } from "./stopLine";
+import { noteRefusedText, numberStopped } from "./textsOff";
 
 // ---------------------------------------------------------------------------------------------
 // Shapes other parts of the server and the web read
@@ -67,6 +69,8 @@ export interface HubAutopay {
   terms_version: string;
   /** "at the end of the day of each visit" (core autopayTimingText). */
   timing: string;
+  /** What paying from a bank account means for notice (core autopayBankText): the last paragraph they agree to. */
+  bank_terms: string;
   /** When the charge waiting for the next finished visit goes. */
   next_charge: string | null;
   /** The price of a visit on the client's one recurring job that autopay charges, if just one. */
@@ -240,7 +244,7 @@ async function alreadySent(admin: Db, companyId: string, key: string): Promise<b
 }
 
 /** The client's timeline gets what was sent. A failure here is logged: the email went, so it isn't sent again. */
-async function logMessage(admin: Db, row: { company_id: string; client_id: string; channel: string; subject: string | null; body: string; related_type: string; related_id: string; external_id: string | null; sent_by?: string | null }) {
+async function logMessage(admin: Db, row: { company_id: string; client_id: string; channel: string; subject: string | null; body: string; related_type: string; related_id: string; external_id: string | null; sent_by?: string | null; recipients?: ReturnType<typeof recipientsColumn> }) {
   const { error } = await admin.from("messages").insert({ ...row, direction: "out", status: "sent", sent_by: row.sent_by ?? null });
   if (error) {
     console.error("Couldn't log an autopay message", error.message);
@@ -504,7 +508,9 @@ export async function sendAutopayReceipt(env: Env, admin: Db, chargeId: string):
   if (!invoice) return "skipped: the invoice isn't there";
   // The company's settings as they are now, not when the charge was queued.
   if (!autopaySettings(company.settings, company.trade_preset).receipts) return "skipped: receipts are off";
-  if (!reachable(client.email)) return "skipped: no email address";
+  // The client, and their contacts ticked for emailed receipts (services/recipients.ts).
+  const people = await recipientsFor(admin, company.id, client, "email", company.settings);
+  if (!people.length) return "skipped: no email address";
   const key = `autopay:receipt:${charge.id}`;
   if (await alreadySent(admin, company.id, key)) return "skipped: already sent";
   if (!(await emailReady(env, company.id))) return "skipped: email isn't set up";
@@ -536,19 +542,21 @@ export async function sendAutopayReceipt(env: Env, admin: Db, chargeId: string):
     : `${charged} for ${what}. Thank you.`;
   const tip = base && tipOffered ? await clientLinks(env, base, { c: company.id, t: "invoice", id: invoice.id }) : null;
   const home = base ? await autopayLinks(env, base, company.id, client.id) : null;
-  // The same words with either set of links: the client's own to send, the office's to keep.
-  const write = (who: Who) => {
+  // The same words with either set of links: the client's own to send, the office's to keep. A
+  // contact's copy says what was charged and no more: the tip and the card are the client's.
+  const write = (who: Who | "contact") => {
     const parts = [`Hi ${firstName(client.display_name)},`, paid];
-    if (tip) parts.push("Add a tip for the crew?", `${tip[who]}?tip=1`);
-    if (home) parts.push("Change your card or turn off autopay any time:", home[who]);
+    if (tip && who !== "contact") parts.push("Add a tip for the crew?", `${tip[who]}?tip=1`);
+    if (home && who !== "contact") parts.push("Change your card or turn off autopay any time:", home[who]);
     parts.push(`Thanks,\n${company.name}`);
     return parts.join("\n\n");
   };
   const subject = `Receipt for invoice #${invoice.number}`;
 
-  const result = await emailFrom(env, company, client.email.trim(), subject, write("own"));
-  if (!result.sent) throw new Error(result.reason ?? "The receipt wasn't sent.");
-  await logMessage(admin, { company_id: company.id, client_id: client.id, channel: "email", subject, body: write("office"), related_type: "invoice", related_id: invoice.id, external_id: key });
+  const delivery = await sendToEach(people, (person) => emailFrom(env, company, person.to, subject, write(person.contact_id ? "contact" : "own")), "The receipt wasn't sent.");
+  // Sent to nobody: tried again. Once it reached someone it's logged, so it isn't sent twice.
+  if (!delivery.went.length) throw new Error(delivery.failed[0]!.reason);
+  await logMessage(admin, { company_id: company.id, client_id: client.id, channel: "email", subject, body: write("office"), related_type: "invoice", related_id: invoice.id, external_id: key, recipients: recipientsColumn(delivery) });
   return "sent";
 }
 
@@ -633,11 +641,12 @@ export async function sendAutopayNotice(env: Env, admin: Db, chargeId: string, s
     await logMessage(admin, { company_id: company.id, client_id: client.id, channel: "email", subject, body: write("office"), related_type: "invoice", related_id: invoice.id, external_id: key });
     return "sent";
   }
-  // Never to a client who texted STOP (and Twilio saying they did is kept).
-  if (client.phone && smsConfigured(env) && !textsOff(client)) {
+  // Never to a client whose texts are off, or a number that's stopped (and Twilio saying so is kept).
+  if (client.phone && (await smsReady(env, company.id)) && !textsOff(client) && !(await numberStopped(admin, company.id, client.phone))) {
     const body = (who: Who) => `${company.name}: ${short}${invoiceLink ? ` ${invoiceLink[who]}` : ""}`;
-    const result = await sendSms(env, { to: client.phone, body: body("own") });
-    await noteRefusedText(admin, client, client.phone, result);
+    const to = client.phone;
+    const result = await textWithStopLine(admin, company.id, to, body("own"), (text) => sendSms(env, { to, body: text, company: company.id }));
+    await noteRefusedText(admin, client, client.phone, result, company.id);
     if (!result.sent) throw new Error(result.reason ?? "The notice wasn't sent.");
     await logMessage(admin, { company_id: company.id, client_id: client.id, channel: "sms", subject: null, body: body("office"), related_type: "invoice", related_id: invoice.id, external_id: key });
     return "sent";
@@ -692,10 +701,11 @@ export async function sendAutopayAgreed(env: Env, admin: Db, authorizationId: st
     await logMessage(admin, { company_id: company.id, client_id: who.id, channel: "email", subject, body: write("office"), related_type: "autopay", related_id: who.id, external_id: key });
     return "sent";
   }
-  if (who.phone && smsConfigured(env) && !textsOff(who)) {
+  if (who.phone && (await smsReady(env, company.id)) && !textsOff(who) && !(await numberStopped(admin, company.id, who.phone))) {
     const body = (link: Who) => `${company.name}: ${intro} Not you, or changed your mind? ${links ? `Turn it off here: ${links[link]}` : "Contact us to turn it off."}`;
-    const result = await sendSms(env, { to: who.phone, body: body("own") });
-    await noteRefusedText(admin, who, who.phone, result);
+    const to = who.phone;
+    const result = await textWithStopLine(admin, company.id, to, body("own"), (text) => sendSms(env, { to, body: text, company: company.id }));
+    await noteRefusedText(admin, who, who.phone, result, company.id);
     if (!result.sent) throw new Error(result.reason ?? "The copy of the agreement wasn't sent.");
     await logMessage(admin, { company_id: company.id, client_id: who.id, channel: "sms", subject: null, body: body("office"), related_type: "autopay", related_id: who.id, external_id: key });
     return "sent";
@@ -800,8 +810,8 @@ export async function sendAutopayInvite(
   }
   if (input.channel === "email" && !reachable(client.email)) throw new Error("This client has no email address.");
   if (input.channel === "sms" && !client.phone) throw new Error("This client has no mobile number.");
-  if (input.channel === "sms" && !smsConfigured(env)) throw new Error("Texting isn't set up.");
-  if (input.channel === "sms" && textsOff(client)) return { sent: false, detail: `Skipped: ${textsOffReason(client.display_name)}` };
+  if (input.channel === "sms" && !(await smsReady(env, input.companyId))) throw new Error("Texting isn't set up.");
+  if (input.channel === "sms" && (textsOff(client) || (await numberStopped(admin, input.companyId, client.phone)))) return { sent: false, detail: `Skipped: ${textsOffReason(client.display_name)}` };
 
   // A card brought in from Stripe that they haven't agreed to: one tap confirms it. Not one saved
   // before they or the office last turned autopay off, which their page won't offer (turnedOffAt).
@@ -832,8 +842,8 @@ export async function sendAutopayInvite(
   const sms = (url: string) => words(url).sms;
   // The button says what tapping it does here; receipts and notices keep "Manage autopay".
   const button = card ? "Confirm autopay" : "Save your card";
-  const result = input.channel === "email" ? await emailFrom(env, company, client.email!.trim(), subject, text(links.own), base, button) : await sendSms(env, { to: client.phone!, body: sms(links.own) });
-  if (input.channel === "sms") await noteRefusedText(admin, client, client.phone!, result);
+  const result = input.channel === "email" ? await emailFrom(env, company, client.email!.trim(), subject, text(links.own), base, button) : await textWithStopLine(admin, input.companyId, client.phone!, sms(links.own), (text) => sendSms(env, { to: client.phone!, body: text, company: input.companyId }));
+  if (input.channel === "sms") await noteRefusedText(admin, client, client.phone!, result, input.companyId);
   if (!result.sent) throw new Error(result.reason ?? "The invite wasn't sent.");
   await logMessage(admin, {
     company_id: input.companyId,
@@ -934,6 +944,7 @@ export async function hubAutopay(env: Env, admin: Db, companyId: string, clientI
     terms: settings.terms,
     terms_version: settings.terms_version,
     timing: autopayTimingText(settings),
+    bank_terms: autopayBankText(settings),
     next_charge: due,
     per_visit: perVisit,
     per_visit_taxed: perVisit !== null && taxed,

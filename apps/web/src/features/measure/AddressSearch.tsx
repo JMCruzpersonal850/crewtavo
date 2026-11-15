@@ -6,6 +6,10 @@
  * isn't answering. Enter on a suggestion picks it. On the map, Enter with none picked looks the
  * whole address up exactly (the Census geocoder for US addresses), which finds the rural house
  * numbers OpenStreetMap lacks; in a form it's just a field.
+ *
+ * Where a place Google found is on the map goes only to a Google map: the measuring map offers
+ * Google's suggestions while it shows Google's tiles (`google`), and OpenStreetMap's with any other
+ * imagery. A form field takes only the words of the address, so it offers them either way.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -15,13 +19,22 @@ import { useSession } from "@/lib/session";
 import { googlePlace, googlePlacesKey, googleSuggest } from "./googlePlaces";
 
 export interface ClientSuggestion { property_id: string; client_id: string | null; client: string | null; label: string; detail: string | null; lat: number | null; lng: number | null }
-export interface PlaceSuggestion { label: string; detail: string | null; lat: number; lng: number; country: string | null; kind: "address" | "street" | "place" }
+export interface PlaceSuggestion {
+  label: string;
+  detail: string | null;
+  lat: number;
+  lng: number;
+  country: string | null;
+  kind: "address" | "street" | "place";
+  /** Google said where this is: it's for a map showing Google's tiles, and isn't kept. */
+  from?: "google";
+}
 interface Suggestions { clients: ClientSuggestion[]; places: PlaceSuggestion[]; places_unavailable?: boolean }
 
 type Item = { key: string; group: string; icon: IconName; title: string; sub: string | null; pick: () => void };
 
 export function AddressSearch({
-  disabled, busy, near, onSubmit, onPickClient, onPickPlace, onEdit, initial = "", placeholder = "Search a client or an address, US or worldwide", label = "Search a client or an address",
+  disabled, busy, near, onSubmit, onPickClient, onPickPlace, onEdit, initial = "", placeholder = "Search a client or an address, US or worldwide", label = "Search a client or an address", google: googleAllowed = true,
 }: {
   disabled: boolean;
   /** An exact lookup is running. */
@@ -38,6 +51,11 @@ export function AddressSearch({
   placeholder?: string;
   /** Leave out inside a Field, which labels it. */
   label?: string | null;
+  /**
+   * Whether Google's suggestions can be offered here (when the company has them on). The measuring
+   * map says no unless it's showing Google's tiles; left out, they're offered.
+   */
+  google?: boolean;
 }) {
   const id = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -45,7 +63,11 @@ export function AddressSearch({
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(-1);
-  const googleKey = googlePlacesKey(useSession().company.settings);
+  const ownGoogleKey = googlePlacesKey(useSession().company.settings);
+  const googleKey = googleAllowed ? ownGoogleKey : null;
+  // As it is when a place's lookup comes back: the map may have left Google's tiles meanwhile.
+  const googleNow = useRef(googleAllowed);
+  googleNow.current = googleAllowed;
   // One Google session from the first suggestion to the place picked.
   const googleSession = useRef<string | null>(null);
   const sessionToken = () => (googleSession.current ??= crypto.randomUUID());
@@ -101,7 +123,8 @@ export function AddressSearch({
     if (!onPickPlace) return;
     setLocating(true);
     googlePlace(googleKey!, placeId, session)
-      .then((at) => onPickPlace({ ...place, ...at }))
+      // Not Google's tiles anymore: the words are looked up the other way instead.
+      .then((at) => (googleNow.current ? onPickPlace({ ...place, ...at, from: "google" }) : onSubmit?.(label)))
       // Google's lookup failing: look the address up the other way.
       .catch(() => onSubmit?.(label))
       .finally(() => setLocating(false));

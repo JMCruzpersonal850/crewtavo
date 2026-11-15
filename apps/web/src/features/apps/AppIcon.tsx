@@ -9,6 +9,7 @@ import falLogo from "@/assets/apps/fal.svg";
 import openMeteoLogo from "@/assets/apps/open-meteo.png";
 import googleBusinessLogo from "@/assets/apps/google-business.svg";
 import googleCalendarLogo from "@/assets/apps/google-calendar.svg";
+import lobLogo from "@/assets/apps/lob.svg";
 import metaLogo from "@/assets/apps/meta.svg";
 import outlookLogo from "@/assets/apps/outlook.svg";
 import quickbooksLogo from "@/assets/apps/quickbooks.svg";
@@ -38,6 +39,7 @@ const LOGOS: Record<string, string> = {
   stripe: stripeLogo,
   abc_supply: abcSupplyLogo,
   twilio: twilioLogo,
+  lob: lobLogo,
   anthropic: claudeLogo,
   fal: falLogo,
   open_meteo: openMeteoLogo,

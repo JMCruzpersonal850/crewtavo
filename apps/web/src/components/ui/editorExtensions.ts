@@ -15,11 +15,12 @@ import { Placeholder } from "@tiptap/extensions";
 import { Plugin } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { isAppPath } from "@/lib/html";
+import { msg } from "@/lib/i18n";
 
 export const CALLOUTS = [
-  { tone: "tip", label: "Tip" },
-  { tone: "important", label: "Important" },
-  { tone: "warning", label: "Warning" },
+  { tone: "tip", label: msg("Tip") },
+  { tone: "important", label: msg("Important") },
+  { tone: "warning", label: msg("Warning") },
 ] as const;
 export type CalloutTone = (typeof CALLOUTS)[number]["tone"];
 const isTone = (t: string | null): t is CalloutTone => CALLOUTS.some((c) => c.tone === t);

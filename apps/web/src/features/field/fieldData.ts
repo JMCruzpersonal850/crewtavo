@@ -1,8 +1,11 @@
 /** Shared helpers for the crew (field) screens. */
-import { useQuery } from "@tanstack/react-query";
+import { clockMode } from "@crewtavo/core/clock";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase, unwrap } from "@/lib/api";
 import { isSub, keepsTime, useSession, type Company, type Session } from "@/lib/session";
+import { startedBefore, withWaitingTaps } from "./clockTaps";
+import { mayUsePlace, NOT_YET } from "./locationNotice";
 import type { VisitStatusChange } from "./fieldActions";
 
 export type TimerCategory = "visit" | "assessment" | "drive" | "shop" | "break" | "other";
@@ -40,18 +43,32 @@ export function locate(): Promise<ClockPlace> {
   });
 }
 
-/** Where to say this clock tap happened: the phone's place, or nothing when the company doesn't keep them. */
-export const clockPlace = (company: Pick<Company, "settings">) => (recordsPlaces(company) ? locate() : Promise.resolve(undefined));
+/**
+ * Where to say this clock tap happened: the phone's place, or nothing when the company doesn't keep
+ * them. Until the person has acknowledged the notice of what's saved (locationNotice.ts) the phone
+ * isn't asked where it is, and the tap says no place was found.
+ */
+export const clockPlace = (session: Pick<Session, "userId" | "role" | "subcontractor"> & { company: Pick<Company, "id" | "settings"> }): Promise<ClockPlace | undefined> =>
+  !recordsPlaces(session.company) ? Promise.resolve(undefined) : mayUsePlace(session, "clock_location") ? locate() : Promise.resolve(NOT_YET);
 
 /** Statuses that start or stop the person's clock on a visit (see setVisitStatus). */
 export const clocksOn = (status: string) => status === "in_progress" || status === "completed";
 
 /**
- * What a status tap saves, as it was made: the time is when it was tapped, and whether it clocks
- * this person in and out (not a sub without a clock), which stays with it if it has to wait for
- * signal. `locate`: the phone's place goes with it, where the company keeps where people clock in,
- * for a tap that starts or stops the clock, and for On my way, to tell the client when the crew
- * should get there (only that time is kept).
+ * Whether this person is on the whole-day clock (Settings → Company → Time clock): On my way starts
+ * their clock on travel, Complete visit moves it back to travel, and it runs until they stop for
+ * the day. The team only: a sub's clock, when the office keeps one, runs for their visits.
+ */
+export const onDayClock = (session: Pick<Session, "role" | "subcontractor"> & { company: Pick<Company, "settings"> }) =>
+  keepsTime(session) && !isSub(session) && clockMode(session.company.settings) === "day";
+
+/**
+ * What a status tap saves, as it was made: the time is when it was tapped, whether it clocks this
+ * person in and out (not a sub without a clock), and whether they're on the whole-day clock, which
+ * stay with it if it has to wait for signal. `locate`: the phone's place goes with it, where the
+ * company keeps where people clock in, for a tap that starts or stops the clock, and for On my way,
+ * to tell the client when the crew should get there (only that time is kept, unless On my way
+ * starts the whole-day clock: then it's where they clocked in).
  */
 export function statusChange(
   session: Pick<Session, "role" | "subcontractor" | "userId"> & { company: Pick<Company, "id" | "settings"> },
@@ -60,7 +77,7 @@ export function statusChange(
   at = new Date().toISOString(),
 ): { change: VisitStatusChange; locate: boolean } {
   const clock = keepsTime(session);
-  const change: VisitStatusChange = { companyId: session.company.id, userId: session.userId, visitId: visit.id, jobId: visit.jobId, status, at, clock, ...(isSub(session) && { sub: true }) };
+  const change: VisitStatusChange = { companyId: session.company.id, userId: session.userId, visitId: visit.id, jobId: visit.jobId, status, at, clock, ...(isSub(session) && { sub: true }), ...(onDayClock(session) && { day: true }) };
   return { change, locate: ((clock && clocksOn(status)) || status === "en_route") && recordsPlaces(session.company) };
 }
 
@@ -74,7 +91,10 @@ export function useStatusTap(send: (change: VisitStatusChange) => void) {
   const [locating, setLocating] = useState<{ id: string; status: string } | null>(null);
   const tap = async (visit: { id: string; jobId: string | null }, status: string) => {
     const { change, locate: withPlace } = statusChange(session, visit, status);
-    if (withPlace) {
+    if (withPlace && !mayUsePlace(session, "clock_location")) {
+      // Not told yet what's saved: the tap goes through with no place, and the phone isn't asked for one.
+      change.place = NOT_YET;
+    } else if (withPlace) {
       setLocating({ id: visit.id, status });
       change.place = await locate();
       setLocating(null);
@@ -104,7 +124,7 @@ export async function clockVisit(companyId: string, userId: string, visit: { id:
   }
   for (const entry of open) {
     // A clock started after `at` (another queued action ran first) can't end before it began.
-    if (entry.started_at >= now) continue;
+    if (!startedBefore(entry, now)) continue;
     unwrap(await db.from("time_entries").update({ ended_at: now, out_place: place }).eq("id", entry.id));
   }
   if (action === "start") {
@@ -112,35 +132,58 @@ export async function clockVisit(companyId: string, userId: string, visit: { id:
   }
 }
 
-/** Start a general timer (driving, shop time, a break), stopping whatever was running. */
-export async function startTimer(companyId: string, userId: string, category: TimerCategory, place?: ClockPlace) {
+/**
+ * The whole-day clock's travel (Driving, on no visit or job) for the signed-in person, from `at`.
+ * Returns whether they're on travel afterwards.
+ *
+ * On my way: whatever they were on stops and travel starts, unless they're driving already.
+ * Complete visit (`fromVisit`): only their clock on that visit moves to travel. One on a break or
+ * on other work stays as it is, and no clock stays no clock: the day starts with On my way or
+ * Start visit, not with finishing one. (Everyone else on the visit's clock is moved by the
+ * database as the visit is finished: 20261113000610_whole_day_clock.sql.)
+ */
+export async function clockTravel(companyId: string, userId: string, at: string, place?: ClockPlace, fromVisit?: string): Promise<boolean> {
   const db = supabase();
-  const now = new Date().toISOString();
-  unwrap(await db.from("time_entries").update({ ended_at: now, out_place: place }).eq("user_id", userId).eq("company_id", companyId).is("ended_at", null));
-  unwrap(await db.from("time_entries").insert({ company_id: companyId, user_id: userId, category, started_at: now, in_place: place }));
+  const open = unwrap(await db.from("time_entries").select("id, visit_id, category, started_at").eq("user_id", userId).eq("company_id", companyId).is("ended_at", null));
+  const driving = open.some((entry) => entry.category === "drive" && !entry.visit_id);
+  if (driving) return true;
+  if (!fromVisit) {
+    // Their own On my way sent again after they'd moved on (the app closed before it heard back): that travel is already there.
+    const recorded = unwrap(await db.from("time_entries").select("id").eq("user_id", userId).eq("company_id", companyId).eq("category", "drive").eq("started_at", at).limit(1));
+    if (recorded.length) return false;
+  }
+  const leaving = (fromVisit ? open.filter((entry) => entry.visit_id === fromVisit) : open).filter((entry) => startedBefore(entry, at));
+  if (fromVisit && !leaving.length) return false;
+  for (const entry of leaving) unwrap(await db.from("time_entries").update({ ended_at: at, out_place: place }).eq("id", entry.id));
+  unwrap(await db.from("time_entries").insert({ company_id: companyId, user_id: userId, category: "drive", started_at: at, in_place: place }));
+  return true;
 }
 
-export async function stopTimers(companyId: string, userId: string, place?: ClockPlace) {
-  unwrap(await supabase().from("time_entries").update({ ended_at: new Date().toISOString(), out_place: place }).eq("user_id", userId).eq("company_id", companyId).is("ended_at", null));
-}
-
-/** The clock currently running for me, if any. `enabled` is false for someone without a clock (a sub, mostly). */
+/**
+ * The clock currently running for me, if any, with the taps still waiting on this phone on top
+ * (clockTaps.ts): what the server says is older than those. `enabled` is false for someone without
+ * a clock (a sub, mostly).
+ */
 export function useRunningTimer(companyId: string, userId: string, enabled = true) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["running-timer", companyId, userId],
     enabled,
     refetchInterval: 60_000,
-    queryFn: async () =>
-      unwrap(
-        await supabase()
-          .from("time_entries")
-          .select("id, category, started_at, visit:visits(id, title)")
-          .eq("company_id", companyId)
-          .eq("user_id", userId)
-          .is("ended_at", null)
-          .order("started_at", { ascending: false })
-          .limit(1),
-      )[0] ?? null,
+    queryFn: async () => {
+      const running =
+        unwrap(
+          await supabase()
+            .from("time_entries")
+            .select("id, category, started_at, visit:visits(id, title)")
+            .eq("company_id", companyId)
+            .eq("user_id", userId)
+            .is("ended_at", null)
+            .order("started_at", { ascending: false })
+            .limit(1),
+        )[0] ?? null;
+      return withWaitingTaps(queryClient, companyId, userId, running);
+    },
   });
 }
 
@@ -163,4 +206,4 @@ export function formatDuration(ms: number) {
   return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
 }
 
-export const CATEGORY_LABELS: Record<TimerCategory, string> = { visit: "On a visit", assessment: "Assessment", drive: "Driving", shop: "Shop time", break: "On break", other: "Other work" };
+export { CLOCK_LABELS as CATEGORY_LABELS } from "./clockTaps";

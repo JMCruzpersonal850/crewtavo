@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { supabase, unwrap } from "@/lib/api";
 import { formatDay, todayIn } from "@/lib/format";
+import { t } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 
 export function SnowAvailabilityCard() {
@@ -22,7 +23,7 @@ export function SnowAvailabilityCard() {
       unwrap(await supabase().from("snow_availability").select("snow_date, can").eq("company_id", company.id).eq("user_id", session.userId).gte("snow_date", todayIn(company.timezone)).order("snow_date")),
   });
   const answer = useMutation({
-    meta: { success: (_: unknown, v: { can: boolean }) => (v.can ? "Thanks. The office knows you're in." : "The office has been told you can't.") },
+    meta: { success: (_: unknown, v: { can: boolean }) => (v.can ? t("Thanks. The office knows you're in.") : t("The office has been told you can't.")) },
     mutationFn: async (v: { date: string; can: boolean }) => unwrap(await supabase().rpc("snow_answer", { p_company: company.id, p_date: v.date, p_can: v.can })),
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
@@ -33,16 +34,16 @@ export function SnowAvailabilityCard() {
       <div key={day.snow_date} className={`callout ${day.can == null ? "callout-warning" : ""}`}>
         <Icon name="snow" size={20} />
         <div className="grow">
-          <div>{day.can == null ? `Snow is coming for ${when}. Can you go out?` : day.can ? `You said you can go out for snow on ${when}.` : `You said you can't go out for snow on ${when}.`}</div>
-          {day.can == null && <div>The office is waiting to hear. Your snow customers are in the notice you got.</div>}
+          <div>{day.can == null ? t("Snow is coming for {when}. Can you go out?", { when }) : day.can ? t("You said you can go out for snow on {when}.", { when }) : t("You said you can't go out for snow on {when}.", { when })}</div>
+          {day.can == null && <div>{t("The office is waiting to hear. Your snow customers are in the notice you got.")}</div>}
         </div>
         {day.can == null ? (
           <span className="row" style={{ gap: 8 }}>
-            <Button size="sm" variant="primary" loading={busy && answer.variables?.can === true} disabled={busy} onClick={() => answer.mutate({ date: day.snow_date, can: true })}>Yes</Button>
-            <Button size="sm" loading={busy && answer.variables?.can === false} disabled={busy} onClick={() => answer.mutate({ date: day.snow_date, can: false })}>No</Button>
+            <Button size="sm" variant="primary" loading={busy && answer.variables?.can === true} disabled={busy} onClick={() => answer.mutate({ date: day.snow_date, can: true })}>{t("Yes")}</Button>
+            <Button size="sm" loading={busy && answer.variables?.can === false} disabled={busy} onClick={() => answer.mutate({ date: day.snow_date, can: false })}>{t("No")}</Button>
           </span>
         ) : (
-          <Button size="sm" variant="ghost" loading={busy} onClick={() => answer.mutate({ date: day.snow_date, can: !day.can })}>{day.can ? "I can't after all" : "I can after all"}</Button>
+          <Button size="sm" variant="ghost" loading={busy} onClick={() => answer.mutate({ date: day.snow_date, can: !day.can })}>{day.can ? t("I can't after all") : t("I can after all")}</Button>
         )}
       </div>
     );

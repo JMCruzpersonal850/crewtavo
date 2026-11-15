@@ -11,6 +11,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { supabase, unwrap } from "@/lib/api";
 import { formatMoneyCents } from "@/lib/format";
 import { formatRate, payStatusLabel, payTone, quantityWords } from "../subs/pay";
+import { t } from "@/lib/i18n";
 
 interface MyPay {
   id: string;
@@ -35,12 +36,12 @@ export function YourPrice({ visitId }: { visitId: string }) {
   return (
     <section className="card card-pad stack-sm">
       <div className="row-between">
-        <strong>Your price</strong>
-        <StatusPill label={p.status === "offered" ? "New price" : payStatusLabel(p.status)} tone={payTone(p.status)} />
+        <strong>{t("Your price")}</strong>
+        <StatusPill label={p.status === "offered" ? t("New price") : payStatusLabel(p.status)} tone={payTone(p.status)} />
       </div>
       {p.status === "offered" && (
         <span className="small">
-          The office sent a new price. <Link to={`/field/jobs/${p.id}`}>Accept or decline it in My jobs</Link>
+          {t("The office sent a new price.")} <Link to={`/field/jobs/${p.id}`}>{t("Accept or decline it in My jobs")}</Link>
         </span>
       )}
       {lines.map((l) => (
@@ -52,7 +53,7 @@ export function YourPrice({ visitId }: { visitId: string }) {
           <span className="tabular">{formatMoneyCents(Number(l.amount))}</span>
         </div>
       ))}
-      <div className="row-between"><strong>Total</strong><strong className="tabular">{formatMoneyCents(Number(p.total))}</strong></div>
+      <div className="row-between"><strong>{t("Total")}</strong><strong className="tabular">{formatMoneyCents(Number(p.total))}</strong></div>
       {p.notes && <p className="pre-wrap small muted" style={{ margin: 0 }}>{p.notes}</p>}
     </section>
   );

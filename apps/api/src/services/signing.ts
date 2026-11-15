@@ -22,7 +22,8 @@ import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
 import { checkContract, contractInput, freezeContract, freezeOption, initialsImage, isPriced, loadOptions, optionTiers, packageFill, postedId, resolveContract, sectionsHashSchema, type OptionRow } from "./contracts";
 import { isDrawnPng, logoImage } from "./logo";
-import { noteRefusedText, textsOffRefusal, textsOffTo } from "./textsOff";
+import { textWithStopLine } from "./stopLine";
+import { noteRefusedText, numberStopped, numberStoppedRefusal, textsOffRefusal, textsOffTo } from "./textsOff";
 
 /** Who's signing, where: the person's client, their company and user, and the address links use. */
 export interface SigningScope {
@@ -293,8 +294,10 @@ async function deliverCopy(s: SigningScope, quote: Quote, company: Company, link
       // A signed estimate always has its client: a quote template is never signed.
       const { data: texted } = await s.db.from("clients").select("id, phone, sms_opt_out_at").eq("id", quote.client_id!).maybeSingle();
       if (texted && textsOffTo(texted, to)) return { sent: false, reason: textsOffRefusal(who) };
-      result = await sendSms(s.env, { to, body: sms(linkFor("sms", to)) });
-      if (texted) await noteRefusedText(adminClient(s.env), texted, to, result);
+      // Nor to any other number that texted STOP.
+      if (await numberStopped(adminClient(s.env), s.companyId, to)) return { sent: false, reason: numberStoppedRefusal(to) };
+      result = await textWithStopLine(adminClient(s.env), s.companyId, to, sms(linkFor("sms", to)), (text) => sendSms(s.env, { to, body: text, company: s.companyId }));
+      if (texted) await noteRefusedText(adminClient(s.env), texted, to, result, s.companyId);
     }
   } catch (error) {
     console.error("Couldn't send the signed copy", error);

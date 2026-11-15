@@ -208,6 +208,15 @@ export function evaluateFormula(source: string, variables: Record<string, number
   return result;
 }
 
+/** Whether a formula reads a depth (depth_in), so a line with it is asked for its own. One that doesn't parse reads nothing. */
+export function usesDepth(formula: string | null | undefined): boolean {
+  try {
+    return Boolean(formula && formulaVariables(formula).has("depth_in"));
+  } catch {
+    return false;
+  }
+}
+
 /** Variable names a formula reads, so the UI can show what it needs. */
 export function formulaVariables(source: string): Set<string> {
   const names = new Set<string>();

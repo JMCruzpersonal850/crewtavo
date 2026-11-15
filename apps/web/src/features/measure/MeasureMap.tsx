@@ -23,7 +23,8 @@ import {
   type HexColor,
 } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
-import { KeyError, OVERLAYS, overlaySource, rasterSource, type ImageryId, type OverlayId } from "./imagery";
+import { googleAttribution, type GoogleAttribution } from "./googleAttribution";
+import { googleViewport, KeyError, OVERLAYS, overlaySource, rasterSource, type ImageryId, type OverlayId } from "./imagery";
 import { fromMercator, toMercator, type Corners, type LngLat } from "./planAlign";
 import { drawSheet, feetPerPixel, type SheetInfo } from "./takeoffSheet";
 
@@ -309,6 +310,7 @@ export const MeasureMap = forwardRef<MeasureMapHandle, MeasureMapProps>(function
   const streetLayers = useRef<string[]>([]);
   const nameLayers = useRef<string[]>([]);
   const imageryToken = useRef(0);
+  const googleRef = useRef<GoogleAttribution | null>(null);
   const trouble = useRef({ errors: 0, loaded: 0, since: 0 });
   const planRef = useRef<{ url: string; corners: Corners; opacity: number } | null>(null);
   const planUrl = useRef<string | null>(null);
@@ -372,7 +374,8 @@ export const MeasureMap = forwardRef<MeasureMapHandle, MeasureMapProps>(function
           center: [props.start.lng, props.start.lat],
           zoom: props.start.zoom,
           maxZoom: 21.5,
-          attributionControl: { compact: true },
+          // Added below, after Google's own credit, so that one sits in the corner.
+          attributionControl: false,
           // Keeps the last frame readable so the drawing can be saved as a picture.
           canvasContextAttributes: { preserveDrawingBuffer: true },
           dragRotate: false,
@@ -384,7 +387,23 @@ export const MeasureMap = forwardRef<MeasureMapHandle, MeasureMapProps>(function
       }
       mapRef.current = map;
       map.touchZoomRotate.disableRotation();
+      // Google's logo and its credit for what's on screen go in the bottom corners, shown only while
+      // its tiles are and never folded away (googleAttribution.ts). What's added later sits above:
+      // the other sources' credits, which fold away, the zoom buttons and the scale.
+      const google = googleAttribution({
+        key: () => live.current.keys.google_key,
+        view: () => {
+          const m = mapRef.current;
+          if (!m) return null;
+          const b = m.getBounds();
+          return googleViewport({ north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() }, m.getZoom());
+        },
+      });
+      googleRef.current = google;
+      map.addControl(google.credit, "bottom-right");
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+      map.addControl(google.logo, "bottom-left");
       map.addControl(new maplibregl.ScaleControl({ unit: "imperial", maxWidth: 120 }), "bottom-left");
 
       map.on("error", (e: { sourceId?: string; error?: Error }) => {
@@ -404,6 +423,8 @@ export const MeasureMap = forwardRef<MeasureMapHandle, MeasureMapProps>(function
         const c = map!.getCenter();
         trouble.current = { errors: 0, loaded: 0, since: Date.now() };
         live.current.onMoved({ lng: c.lng, lat: c.lat }, map!.getZoom());
+        // Google's credit is for what's on screen: asked again for the new view.
+        google.moved();
       });
 
       map.once("load", () => {
@@ -506,6 +527,8 @@ export const MeasureMap = forwardRef<MeasureMapHandle, MeasureMapProps>(function
         /* map already gone */
       }
       drawRef.current = null;
+      googleRef.current?.stop();
+      googleRef.current = null;
       map?.remove();
       mapRef.current = null;
     };
@@ -677,6 +700,8 @@ export const MeasureMap = forwardRef<MeasureMapHandle, MeasureMapProps>(function
     }
     for (const layer of streetLayers.current) map.setLayoutProperty(layer, "visibility", id === "street" ? "visible" : "none");
     trouble.current = { errors: 0, loaded: 0, since: Date.now() };
+    // Google's logo and credit show with its tiles, and go with them.
+    googleRef.current?.show(id === "google" && Boolean(source));
   }
 
   function applyOverlays(list: OverlayId[]) {

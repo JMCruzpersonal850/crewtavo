@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sqlFunction } from "../../../scripts/i18n.mjs";
 import {
   actionsForTrigger,
   AUTOPAY_STATUS_TEXT,
@@ -6,7 +7,9 @@ import {
   autopayAllowed,
   autopayCoversMonthly,
   autopayDueText,
+  autopayBankText,
   autopaySettings,
+  autopayTermsShown,
   autopayTimingText,
   checkCondition,
   DEFAULT_TERMS,
@@ -31,12 +34,12 @@ import {
   type Action,
 } from "../src";
 
-const LAWN = "We charge the card on file after each visit is done, or once a month for a monthly plan, and for other invoices we send you. You'll get a receipt each time. Turn it off anytime from your client page or by calling us.";
+const LAWN = "We charge the card or bank account on file after each visit is done, or once a month for a monthly plan, and for other invoices we send you. You'll get a receipt each time. Turn it off anytime from your client page or by calling us.";
 
 describe("autopay settings", () => {
   it("start from the trade's starter terms, the end of the day, a $500 cap and receipts, with autopay off", () => {
     expect(autopaySettings({}, "lawn_exterior")).toEqual({
-      enabled: false, terms: LAWN, terms_version: "starter-lawn_exterior-1", timing: "end_of_day", days: null,
+      enabled: false, terms: LAWN, terms_version: "starter-lawn_exterior-2", timing: "end_of_day", days: null,
       max_amount: 500, receipts: true, jobs_default: true, card_required: false, changed_at: null, changed_by: null,
     });
     // Only the plan trades (lawn care, cleaning, pool service, pest control) get autopay on for new recurring jobs by default.
@@ -46,8 +49,8 @@ describe("autopay settings", () => {
 
   it("have starter terms for every trade that cover other invoices too (Charge card), and the general ones for a trade they don't know", () => {
     expect(starterAutopayTerms("lawn_exterior")).toBe(LAWN);
-    expect(starterAutopayTerms("general")).toBe("We charge the card on file when each visit or job is done, or once a month for a monthly plan, and for other invoices we send you. You'll get a receipt each time. Turn it off anytime from your client page or by calling us.");
-    const bigJobs = "We charge the card on file when the work on your job is done, and for other invoices we send you. Charges over the amount we agreed wait until we've talked with you. You'll get a receipt each time. Turn it off anytime from your client page or by calling us.";
+    expect(starterAutopayTerms("general")).toBe("We charge the card or bank account on file when each visit or job is done, or once a month for a monthly plan, and for other invoices we send you. You'll get a receipt each time. Turn it off anytime from your client page or by calling us.");
+    const bigJobs = "We charge the card or bank account on file when the work on your job is done, and for other invoices we send you. Charges over the amount we agreed wait until we've talked with you. You'll get a receipt each time. Turn it off anytime from your client page or by calling us.";
     expect(starterAutopayTerms("paving")).toBe(bigJobs);
     expect(starterAutopayTerms("roofing_exteriors")).toBe(bigJobs);
     expect(starterAutopayTerms("snow")).toBe(starterAutopayTerms("general"));
@@ -57,8 +60,10 @@ describe("autopay settings", () => {
     expect(starterAutopayTerms("pest_control")).toBe(LAWN.replace("each visit is done", "each treatment"));
     for (const trade of ["plumbing", "hvac", "electrical", "handyman", "landscaping"]) expect(starterAutopayTerms(trade)).toBe(starterAutopayTerms("general"));
     expect(starterAutopayTerms(null)).toBe(starterAutopayTerms("general"));
-    expect(autopaySettings(null).terms_version).toBe("starter-general-1");
-    expect(autopaySettings(null, "snow")).toMatchObject({ terms: starterAutopayTerms("general"), terms_version: "starter-snow-1" });
+    // -2: the words say "card or bank account" and the bank account paragraph follows them (private.autopay_terms_version says the same).
+    expect(autopaySettings(null).terms_version).toBe("starter-general-2");
+    expect(autopaySettings(null, "snow")).toMatchObject({ terms: starterAutopayTerms("general"), terms_version: "starter-snow-2" });
+    for (const trade of ["lawn_exterior", "cleaning", "pool_service", "pest_control", "paving", "roofing_exteriors", "general"]) expect(starterAutopayTerms(trade)).toMatch(/^We charge the card or bank account on file /);
   });
 
   it("read what autopay_set_settings saved", () => {
@@ -96,7 +101,7 @@ describe("autopay settings", () => {
       expect(autopaySettings(settings, "general")).toEqual(starter);
     }
     const bad = autopaySettings({ autopay: { enabled: "true", terms: "   ", timing: "weekly", receipts: "no", jobs_default: 1, changed_at: 5, terms_version: "" } }, "lawn_exterior");
-    expect(bad).toMatchObject({ enabled: false, terms: LAWN, timing: "end_of_day", receipts: true, jobs_default: true, changed_at: null, terms_version: "starter-lawn_exterior-1" });
+    expect(bad).toMatchObject({ enabled: false, terms: LAWN, timing: "end_of_day", receipts: true, jobs_default: true, changed_at: null, terms_version: "starter-lawn_exterior-2" });
     expect(autopaySettings({ autopay: { terms: "x".repeat(AUTOPAY_TERMS_MAX + 50) } }).terms).toHaveLength(AUTOPAY_TERMS_MAX);
   });
 
@@ -158,6 +163,51 @@ describe("a saved card's name", () => {
     expect(methodExpiry({ exp_month: 12, exp_year: 2031 })).toBe("12/31");
     expect(methodExpiry({ exp_month: null, exp_year: 2028 })).toBeNull();
     expect(methodExpiry({})).toBeNull();
+  });
+});
+
+describe("what the tips switch says", () => {
+  it("says tips belong to the crew under federal law, and where the money lands", async () => {
+    const { TIPS_LAW_NOTE } = await import("../src/autopay");
+    // 29 U.S.C. 203(m)(2)(B): "An employer may not keep tips received by its employees for any purposes".
+    expect(TIPS_LAW_NOTE).toContain("Tips belong to the crew: under federal law an employer may not keep tips its employees receive.");
+    expect(TIPS_LAW_NOTE).toContain("pay them out to the people who did the work");
+  });
+});
+
+describe("what a bank account agrees to about notice", () => {
+  const RIGHT = "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made.";
+
+  it("tells them of the right to notice of every charge, and names the business's limit as the range they choose instead", () => {
+    // 12 CFR 1005.10(d)(1): "written notice of the amount and date of the transfer at least 10 days before the scheduled date of transfer";
+    // (d)(2): "the option of receiving notice only when a transfer falls outside a specified range of amounts".
+    expect(autopayBankText({ max_amount: 500 })).toBe(
+      `${RIGHT} By agreeing, you choose to be told ahead only when a charge is more than $500.00, and we'll send you its amount and date at least 10 days before we make it. Charges of $500.00 or less are made without notice ahead of time.`,
+    );
+    expect(autopayBankText({ max_amount: 1250.5 })).toContain("more than $1,250.50, and");
+    expect(autopayBankText({ max_amount: 1250.5 })).toContain("Charges of $1,250.50 or less");
+  });
+
+  it("names no range when the business set no limit, and says so plainly", () => {
+    expect(autopayBankText({ max_amount: null })).toBe(`${RIGHT} By agreeing, you choose not to be told ahead: each charge is for the invoice it pays, whatever its amount.`);
+  });
+
+  it("is the last paragraph of what a client agrees to, after the terms and when charges go", () => {
+    expect(autopayTermsShown({ terms: " Our words. ", timing: "end_of_day", days: null, max_amount: 300 })).toBe(
+      `Our words.\n\nWe charge at the end of the day of each visit.\n\n${autopayBankText({ max_amount: 300 })}`,
+    );
+  });
+
+  it("says the same as the database's (private.autopay_bank_text)", () => {
+    // The function as the newest migration defines it, quotes as they're read.
+    const body = sqlFunction("private.autopay_bank_text");
+    // Every run of words the database writes is in the sentence core writes, in order.
+    const pieces = [...body.matchAll(/'((?:[^'\n]){12,})'/g)].map((m) => m[1]!);
+    expect(pieces.length).toBe(5);
+    const capped = autopayBankText({ max_amount: 500 });
+    const open = autopayBankText({ max_amount: null });
+    for (const piece of pieces) expect(capped.includes(piece.trim()) || open.includes(piece.trim()), piece).toBe(true);
+    expect(pieces.filter((piece) => capped.includes(piece.trim())).join("").replaceAll(/\s+/g, " ").length).toBeGreaterThan(200);
   });
 });
 

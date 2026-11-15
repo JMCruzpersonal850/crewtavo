@@ -39,6 +39,16 @@ export const ONE_OFF_CHOICES: ReadonlyArray<{ value: "on_completion" | "progress
   { value: "progress", label: "Progress billing", hint: "Bill parts of the contract as the work goes." },
 ];
 
+/**
+ * Whether a one-off job's work is marked complete when its last visit is finished
+ * (settings.jobs.complete_when_visits_done; private.completes_finished_jobs): on unless it's been
+ * turned off, for companies from before the switch too.
+ */
+export function completesWhenVisitsDone(settings: unknown): boolean {
+  const jobs = (settings as { jobs?: unknown } | null | undefined)?.jobs;
+  return !(jobs && typeof jobs === "object" && (jobs as { complete_when_visits_done?: unknown }).complete_when_visits_done === false);
+}
+
 /** billing_mode for the two answers (private.align_billing). */
 export const billingModeOf = (pricing: JobPricing, schedule: InvoiceSchedule) => (pricing === "per_visit" && schedule === "after_visit" ? "per_visit" : "fixed_schedule");
 
@@ -51,6 +61,17 @@ export function billingAnswers(job: JobBilling): { pricing: JobPricing; schedule
   if (job.billing_mode === "per_visit") return { pricing: "per_visit", schedule: "after_visit" };
   if (job.billing_mode === "fixed_schedule") return { pricing: "fixed", schedule: "monthly" };
   return null;
+}
+
+/**
+ * Whether the job is billed by the visit, so "Completed visits" (the job's lines once for each
+ * finished visit) is a way to invoice it: a recurring job that isn't a fixed price, or a one-off job
+ * invoiced after each visit. Any other job is billed as one job, and create_invoice_for_job refuses
+ * a visits invoice for it (20261113000400_visit_invoices_for_per_visit_jobs.sql).
+ */
+export function billsByVisit(job: JobBilling): boolean {
+  if (job.kind === "recurring") return billingAnswers(job)?.pricing !== "fixed";
+  return job.billing_mode === "per_visit";
 }
 
 /** Whether a job is a monthly plan: recurring, a fixed price, invoiced monthly (the one autopay charges by the month). */

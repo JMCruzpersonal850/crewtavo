@@ -9,7 +9,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { focusManager, onlineManager, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { saveVisitNotes, setVisitStatus } from "../src/features/field/fieldActions";
+import { registerFieldActions, saveVisitNotes, setVisitStatus } from "../src/features/field/fieldActions";
 import { api, setActiveCompany, unwrap } from "../src/lib/api";
 import { ApiError, OFFLINE, SESSION_EXPIRED } from "../src/lib/errors";
 import { ROLES } from "@crewtavo/core/roles";
@@ -1273,6 +1273,89 @@ describe("recently opened records", () => {
   });
 });
 
+describe("the clock, with no signal", () => {
+  const day = (time: string) => `2026-10-17T${time}:00.000Z`;
+  type Tap = { status?: string; target?: { category: string } | null; at: string };
+  /** What the server got, as "visit in_progress 08:40" or "clock drive 08:00". Each takes a moment, so one that jumped the line would show. */
+  const serverFor = (qc: QueryClient, sent: string[], answer: (said: string) => unknown = () => ({ lost: [] })) => {
+    const send = (kind: string) => async (v: Tap) => {
+      await new Promise((r) => setTimeout(r, 5));
+      const said = `${kind} ${v.status ?? v.target?.category ?? "stop"} ${v.at.slice(11, 16)}`;
+      sent.push(said);
+      return answer(said);
+    };
+    qc.setMutationDefaults(["visit-status"], { mutationFn: send("visit") });
+    qc.setMutationDefaults(["clock"], { mutationFn: send("clock") });
+  };
+
+  it("keeps clock taps on the phone with the visit's taps, and sends them all in the order they were made after the app was closed", async () => {
+    const before = newClient();
+    serverFor(before, []);
+    onlineManager.setOnline(false);
+    const stopBefore = startOfflineCache(before, "u60", true);
+    const taps: Array<[string, Tap]> = [
+      ["clock", { target: { category: "drive" }, at: day("08:00") }],
+      ["visit-status", { status: "in_progress", at: day("08:40") }],
+      ["clock", { target: { category: "break" }, at: day("12:00") }],
+      ["clock", { target: { category: "visit" }, at: day("12:30") }],
+      ["visit-status", { status: "completed", at: day("15:00") }],
+      ["clock", { target: { category: "shop" }, at: day("15:20") }],
+      ["clock", { target: null, at: day("16:00") }],
+    ];
+    for (const [key, variables] of taps) void tap(before, key, { visitId: "v1", who: ["u60"], ...variables });
+    await settle();
+    expect(pendingFieldActions(before)).toBe(7);
+    // The app is closed: only what the phone saved is left, each tap with the time it was made.
+    stopBefore();
+    before.clear();
+    expect(saved("u60")!.mutations.map((m) => (m.state.variables as Tap).at)).toEqual(taps.map(([, v]) => v.at));
+
+    const qc = newClient();
+    const sent: string[] = [];
+    serverFor(qc, sent);
+    onlineManager.setOnline(true);
+    const stop = startOfflineCache(qc, "u60", true);
+    await settle();
+    expect(sent).toEqual(["clock drive 08:00", "visit in_progress 08:40", "clock break 12:00", "clock visit 12:30", "visit completed 15:00", "clock shop 15:20", "clock stop 16:00"]);
+    expect(saved("u60")!.mutations).toHaveLength(0);
+    stop();
+  });
+
+  it("a clock tap that lost to a newer clock, or that the server turned down, doesn't hold up the taps behind it", async () => {
+    const qc = newClient();
+    const sent: string[] = [];
+    serverFor(qc, sent, (said) => {
+      // The office locked that time (a paid period): refused. The Stop after it lost to a clock the office started since.
+      if (said === "clock shop 10:00") throw new ApiError("You don't have permission to do that.", 403, "42501");
+      return { lost: said === "clock stop 11:00" ? ["u61"] : [] };
+    });
+    onlineManager.setOnline(false);
+    const stop = startOfflineCache(qc, "u61", true);
+    const results = [
+      tap(qc, "clock", { who: ["u61"], target: { category: "shop" }, at: day("10:00") }),
+      tap(qc, "clock", { who: ["u61"], target: null, at: day("11:00") }),
+      tap(qc, "visit-status", { visitId: "v1", status: "in_progress", at: day("13:00") }),
+      tap(qc, "clock", { who: ["u61"], target: null, at: day("16:00") }),
+    ];
+    await settle();
+    expect(sent).toEqual([]);
+    onlineManager.setOnline(true);
+    await settle();
+    expect(await Promise.all(results)).toEqual(["failed", "sent", "sent", "sent"]);
+    expect(sent).toEqual(["clock shop 10:00", "clock stop 11:00", "visit in_progress 13:00", "clock stop 16:00"]);
+    expect(pendingFieldActions(qc)).toBe(0);
+    expect(saved("u61")!.mutations).toHaveLength(0);
+    stop();
+  });
+
+  it("has a function registered for every field action that waits for signal, the clock's included", () => {
+    const qc = newClient();
+    registerFieldActions(qc);
+    for (const key of OFFLINE_MUTATIONS) expect(qc.getMutationDefaults([key]), key).toMatchObject({ networkMode: "online", mutationFn: expect.any(Function) });
+    expect(OFFLINE_MUTATIONS.has("clock")).toBe(true);
+  });
+});
+
 describe("screens", () => {
   /** What each useMutation({ ... }) in a file is given, up to its closing brace. */
   const mutationOptions = (text: string) =>
@@ -1295,7 +1378,7 @@ describe("screens", () => {
         expect(options, relative(SRC, file)).not.toMatch(/\bmutationFn\b/);
       }
     }
-    expect(found.sort()).toEqual(["features/field/FieldBilling.tsx job-line-add", "features/field/FieldTodayPage.tsx visit-status", "features/field/FieldVisitPage.tsx checklist-save", "features/field/FieldVisitPage.tsx visit-notes", "features/field/FieldVisitPage.tsx visit-status", "features/marketing/ShareToggle.tsx photo-share"]);
+    expect(found.sort()).toEqual(["features/field/ClockCard.tsx clock", "features/field/CrewClockCard.tsx clock", "features/field/FieldBilling.tsx job-line-add", "features/field/FieldTodayPage.tsx visit-status", "features/field/FieldVisitPage.tsx checklist-save", "features/field/FieldVisitPage.tsx visit-notes", "features/field/FieldVisitPage.tsx visit-status", "features/field/GeofenceCard.tsx clock", "features/field/geofence.ts clock", "features/marketing/ShareToggle.tsx photo-share"]);
   });
 });
 

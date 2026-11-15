@@ -57,15 +57,19 @@ async function serviceReport(ctx: ToolContext, range: ReportRange) {
   // 200 jobs a request keeps the address short enough.
   const ids = [...new Set(sold.flatMap((l) => (l.invoice?.job_id ? [l.invoice.job_id] : [])))];
   const byJobs = async <T>(read: (jobs: string[]) => PromiseLike<T[]>) => (await Promise.all(Array.from({ length: Math.ceil(ids.length / 200) }, (_, i) => read(ids.slice(i * 200, i * 200 + 200))))).flat();
-  const [jobLines, time, expenses, rates, crewPay] = await Promise.all([
+  const [jobLines, time, expenses, rates, crewPay, costLines, materials] = await Promise.all([
     // Everything the jobs have been invoiced, whenever: their labor is split across all of it.
     byJobs((jobs) => all((f, t) => lines().in("invoice.job_id", jobs).order("id").range(f, t))),
     byJobs((jobs) => all((f, t) => ctx.db.from("time_entries").select("id, job_id, started_at, ended_at").in("job_id", jobs).order("id").range(f, t))),
-    byJobs((jobs) => all((f, t) => ctx.db.from("expenses").select("job_id, amount").in("job_id", jobs).order("id").range(f, t))),
+    // As Finance → Services reads them: an expense already in the line items' costs isn't counted again.
+    byJobs((jobs) => all((f, t) => ctx.db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", jobs).order("id").range(f, t))),
     byJobs((jobs) => timeRates(adminClient(ctx.env), ctx.companyId, { job_ids: jobs }).then((r) => [r])).then((r): Record<string, number> => Object.assign({}, ...r)),
     byJobs((jobs) => rows(ctx.db.rpc("job_pay_costs", { p_jobs: jobs }))),
+    // The jobs' own lines and what was logged on them: logged materials over or under the estimate count as they do in Finance.
+    byJobs((jobs) => all((f, t) => ctx.db.from("job_line_items").select("job_id, quantity, unit_cost, unit_labor_cost, service_id, unit, parts").in("job_id", jobs).order("id").range(f, t))),
+    byJobs((jobs) => all((f, t) => ctx.db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", jobs).order("id").range(f, t))),
   ]);
-  const { lines: _, ...figures } = serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (e) => rates[e.id] ?? 0, crewPay });
+  const { lines: _, ...figures } = serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (e) => rates[e.id] ?? 0, crewPay, costLines, materials });
   return { ...figures, costs: "Each item's price list cost (without the labor in it once the job has labor of its own), plus a share of the job's labor (time at its rates, sub and crew pay) and expenses, split by the line's share of everything the job has been invoiced." };
 }
 
@@ -123,7 +127,7 @@ export const reportTools = {
     },
   }),
   job_profit: tool({
-    description: "Profit on jobs finished in a period (default this month): each job's revenue, labor (approved time at its rate, the rest at the person's current rate), sub and crew pay (agreed, done or paid), expenses and materials at cost (without the labor estimate in a line's cost once the job has labor of its own), profit and margin, and which are below the company's target margin.",
+    description: "Profit on jobs finished in a period (default this month): each job's revenue, labor (approved time at its rate, the rest at the person's current rate), sub and crew pay (agreed, done or paid), expenses and materials at cost (without the labor estimate in a line's cost once the job has labor of its own), profit and margin, and which are below the company's target margin. As on the job page, a material logged against one of the job's lines counts at the amount logged in place of the line's estimate (logged_materials_adjustment is the difference), and an expense marked as already in the line items' costs isn't counted again (expenses_in_line_costs).",
     input: z.object({ ...rangeInput, limit: z.number().int().min(1).max(300).default(100), ...companyArg }),
     run: async (ctx, a) => {
       requireRole(ctx, OFFICE, "reports");
@@ -132,7 +136,7 @@ export const reportTools = {
       const jobs = await all((f, t) =>
         ctx.db
           .from("jobs")
-          .select("id, number, title, status, financials:job_financials(contract_total), client:clients(display_name), lines:job_line_items(quantity, unit_cost, unit_labor_cost)")
+          .select("id, number, title, status, financials:job_financials(contract_total), client:clients(display_name), lines:job_line_items(quantity, unit_cost, unit_labor_cost, service_id, unit, parts)")
           .eq("company_id", ctx.companyId)
           .in("status", ["requires_invoicing", "completed"])
           .gte("updated_at", range.start)
@@ -140,18 +144,20 @@ export const reportTools = {
           .range(f, t),
       );
       const ids = jobs.slice(0, a.limit).map((j) => j.id);
-      const [time, expenses, rates, company, crewPay] = ids.length
+      const [time, expenses, rates, company, crewPay, materials] = ids.length
         ? await Promise.all([
             all((f, t) => ctx.db.from("time_entries").select("id, job_id, user_id, started_at, ended_at, approved_at").in("job_id", ids).range(f, t)),
-            all((f, t) => ctx.db.from("expenses").select("job_id, amount").in("job_id", ids).range(f, t)),
+            all((f, t) => ctx.db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", ids).range(f, t)),
             timeRates(adminClient(ctx.env), ctx.companyId, { job_ids: ids }),
             rows(ctx.db.from("companies").select("settings").eq("id", ctx.companyId)),
             // Sub and crew pay (job pay agreed, done or paid), for the office with job costs.
             rows(ctx.db.rpc("job_pay_costs", { p_jobs: ids })),
+            // Materials logged on the jobs, to count in place of the lines' estimate for them.
+            all((f, t) => ctx.db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", ids).order("id").range(f, t)),
           ])
-        : [[], [], {} as Record<string, number>, [], []];
+        : [[], [], {} as Record<string, number>, [], [], []];
       const target = Number(((company[0]?.settings ?? {}) as Record<string, unknown>).margin_target ?? 0) || null;
-      const result = jobProfit(jobs.slice(0, a.limit) as never, time, expenses, (e) => rates[e.id] ?? 0, target, crewPay);
+      const result = jobProfit(jobs.slice(0, a.limit) as never, time, expenses, (e) => rates[e.id] ?? 0, target, crewPay, materials);
       return { period: range, ...result, jobs: result.jobs.sort((x, y) => (x.margin_percent ?? 0) - (y.margin_percent ?? 0)) };
     },
   }),

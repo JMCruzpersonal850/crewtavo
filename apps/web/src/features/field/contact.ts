@@ -22,7 +22,8 @@ export function visitContact(client: { display_name: string; phone?: string | nu
 export function contactLinks(contact: { phone: string | null }): Array<{ label: "Call" | "Text"; href: string }> {
   if (!contact.phone) return [];
   return [
-    { label: "Call", href: `tel:${contact.phone}` },
-    { label: "Text", href: `sms:${contact.phone}` },
+    // English keys: the screen shows them with t().
+    { label: "Call", href: `tel:${contact.phone}` }, // i18n-ignore
+    { label: "Text", href: `sms:${contact.phone}` }, // i18n-ignore
   ];
 }

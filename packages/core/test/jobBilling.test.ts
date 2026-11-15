@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { billingAnswers, billingModeOf, billingText, invoiceDue, invoicePeriod, monthlyPlan, monthlyVisits, monthText, visitDay } from "../src/jobBilling";
+import { billingAnswers, billingModeOf, billingText, billsByVisit, completesWhenVisitsDone, invoiceDue, invoicePeriod, monthlyPlan, monthlyVisits, monthText, visitDay } from "../src/jobBilling";
+
+describe("marking a one-off job complete when its last visit is finished", () => {
+  it("is on until the company turns it off, as the database reads it", () => {
+    expect(completesWhenVisitsDone(null)).toBe(true);
+    expect(completesWhenVisitsDone({})).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: {} })).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: { complete_when_visits_done: true } })).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: "off" })).toBe(true);
+    expect(completesWhenVisitsDone({ jobs: { complete_when_visits_done: false } })).toBe(false);
+  });
+});
 
 describe("the two questions", () => {
   it("keep billing_mode in step: per_visit only for per visit, after each visit", () => {
@@ -32,6 +43,28 @@ describe("the two questions", () => {
     expect(monthlyPlan({ kind: "recurring", billing_mode: "fixed_schedule" })).toBe(true);
     expect(monthlyPlan({ kind: "recurring", billing_mode: "fixed_schedule", pricing: "fixed", invoice_schedule: "as_needed" })).toBe(false);
     expect(monthlyPlan({ kind: "one_off", billing_mode: "fixed_schedule", pricing: "fixed", invoice_schedule: "monthly" })).toBe(false);
+  });
+});
+
+// The same rule create_invoice_for_job keeps for a "visits" invoice (20261113000400).
+describe("billing by the visit", () => {
+  it("is for a recurring job that isn't a fixed price", () => {
+    expect(billsByVisit({ kind: "recurring", billing_mode: "per_visit", pricing: "per_visit", invoice_schedule: "after_visit" })).toBe(true);
+    expect(billsByVisit({ kind: "recurring", billing_mode: "fixed_schedule", pricing: "per_visit", invoice_schedule: "monthly" })).toBe(true);
+    expect(billsByVisit({ kind: "recurring", billing_mode: "fixed_schedule", pricing: "fixed", invoice_schedule: "monthly" })).toBe(false);
+    expect(billsByVisit({ kind: "recurring", billing_mode: "fixed_schedule", pricing: "fixed", invoice_schedule: "as_needed" })).toBe(false);
+    // Saved before the two questions were asked.
+    expect(billsByVisit({ kind: "recurring", billing_mode: "per_visit" })).toBe(true);
+    expect(billsByVisit({ kind: "recurring", billing_mode: "fixed_schedule" })).toBe(false);
+    // A recurring job someone set to be invoiced when it's done keeps its visits invoice.
+    expect(billsByVisit({ kind: "recurring", billing_mode: "on_completion" })).toBe(true);
+  });
+
+  it("and for a one-off job only when it's invoiced after each visit", () => {
+    expect(billsByVisit({ kind: "one_off", billing_mode: "per_visit", pricing: "per_visit", invoice_schedule: "after_visit" })).toBe(true);
+    expect(billsByVisit({ kind: "one_off", billing_mode: "on_completion" })).toBe(false);
+    expect(billsByVisit({ kind: "one_off", billing_mode: "progress" })).toBe(false);
+    expect(billsByVisit({ billing_mode: "on_completion" })).toBe(false);
   });
 });
 

@@ -19,6 +19,7 @@ import { emailReady } from "../lib/notify";
 import type { Db } from "../lib/supabase";
 import { emailClient } from "./marketingEmail";
 import { WaitUntil } from "./reviews";
+import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
 
 export interface ReferralClient {
   id: string;
@@ -86,6 +87,14 @@ export async function sendReferralAsk(env: Env, admin: Db, args: ReferralAskArgs
   }
   // The business's to fix, so an automatic ask fails rather than skips.
   if (!(await emailReady(env, args.companyId))) throw new Error(REFERRAL_EMAIL_NOT_CONNECTED);
+  // The ask is a marketing email, which has to show the company's postal address
+  // (services/senderAddress.ts). An automatic one fails, and the owners hear once why.
+  const noAddress = senderAddressProblem(company);
+  if (noAddress) {
+    if (!automatic) throw new ReferralAskRefused(noAddress);
+    await tellAddressNeeded(admin, args.companyId);
+    throw new Error(noAddress);
+  }
   const now = Date.now();
   if (args.skipIfRecentDays) {
     const { data: last, error } = await admin.rpc("last_referral_ask", { p_company: args.companyId, p_client: client.id });

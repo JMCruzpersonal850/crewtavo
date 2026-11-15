@@ -1,6 +1,9 @@
 /** Extra people on a client account: a spouse, property manager or billing contact. */
+import { textConsentLine } from "@crewtavo/core/marketing";
+import { contactMessages } from "@crewtavo/core/recipients";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -8,10 +11,12 @@ import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { supabase, unwrap } from "@/lib/api";
 import { fieldError } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 import { formatPhoneTyping } from "@/lib/validate";
+import { TextsSwitch, useTextStops } from "./TextsSwitch";
 
 interface Contact {
   id: string;
@@ -22,7 +27,13 @@ interface Contact {
   is_primary: boolean;
   notify_email: boolean;
   notify_sms: boolean;
+  /** When and where their say-so to be texted came from (the database notes it when they're ticked). */
+  sms_consent_at: string | null;
+  sms_consent_source: string | null;
 }
+
+/** Under "Gets text reminders": a contact's number is often one the business was given by someone else. */
+export const TEXT_TICK_HINT = "Tick only if they've agreed to get texts.";
 
 const contactsKey = (clientId: string) => ["client", clientId, "contacts"];
 /** The order the list loads in: the primary contact first, then by name. */
@@ -32,7 +43,7 @@ const byPrimaryThenName = (a: Contact, b: Contact) => Number(b.is_primary) - Num
 export function useClientContacts(clientId: string) {
   return useQuery({
     queryKey: contactsKey(clientId),
-    queryFn: async () => unwrap(await supabase().from("client_contacts").select("id, name, email, phone, role, is_primary, notify_email, notify_sms").eq("client_id", clientId).order("is_primary", { ascending: false }).order("name")),
+    queryFn: async () => unwrap(await supabase().from("client_contacts").select("id, name, email, phone, role, is_primary, notify_email, notify_sms, sms_consent_at, sms_consent_source").eq("client_id", clientId).order("is_primary", { ascending: false }).order("name")),
   });
 }
 
@@ -40,7 +51,7 @@ export function useClientContacts(clientId: string) {
  * The other contacts, as a section of their own once there's one. With none it isn't shown: the
  * client's Details card offers "Add another contact" (AddContact) instead.
  */
-export function ContactsCard({ clientId, canEdit }: { clientId: string; canEdit: boolean }) {
+export function ContactsCard({ clientId, canEdit, canSetTexts = false }: { clientId: string; canEdit: boolean; canSetTexts?: boolean }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Contact | "new" | null>(null);
   const contacts = useClientContacts(clientId);
@@ -67,6 +78,8 @@ export function ContactsCard({ clientId, canEdit }: { clientId: string; canEdit:
   };
 
   const rows = contacts.data ?? [];
+  // Which of their numbers are on the stop list, for each contact's Texts switch (the office's).
+  const stopFor = useTextStops(rows.map((row) => row.phone), canSetTexts);
   return (
     <>
       {rows.length > 0 && (
@@ -86,6 +99,7 @@ export function ContactsCard({ clientId, canEdit }: { clientId: string; canEdit:
                   </span>
                   {c.email && <a href={`mailto:${c.email}`} className="small">{c.email}</a>}
                   {c.phone && <a href={`tel:${c.phone}`} className="small">{c.phone}</a>}
+                  {c.phone && canSetTexts && <span className="small"><TextsSwitch clientId={clientId} contactId={c.id} name={c.name} phone={c.phone} stop={stopFor(c.phone)} label="Can be texted" /></span>}
                 </span>
                 {canEdit && (
                   <Menu
@@ -124,6 +138,8 @@ export function AddContact({ clientId }: { clientId: string }) {
 function ContactDialog({ clientId, contact, onClose }: { clientId: string; contact: Contact | null; onClose: () => void }) {
   const { company } = useSession();
   const queryClient = useQueryClient();
+  // Whether ticked contacts get the client's messages at all (Settings → Client notifications).
+  const contactsOn = contactMessages(company.settings).enabled;
   const [f, setF] = useState({
     name: contact?.name ?? "",
     email: contact?.email ?? "",
@@ -131,7 +147,8 @@ function ContactDialog({ clientId, contact, onClose }: { clientId: string; conta
     role: contact?.role ?? "",
     is_primary: contact?.is_primary ?? false,
     notify_email: contact?.notify_email ?? true,
-    notify_sms: contact?.notify_sms ?? true,
+    // A new contact isn't texted until someone says they agreed to it.
+    notify_sms: contact?.notify_sms ?? false,
   });
   const save = useMutation({
     meta: { inline: true, success: contact ? "Contact saved" : "Contact added" },
@@ -159,6 +176,12 @@ function ContactDialog({ clientId, contact, onClose }: { clientId: string; conta
         <label className="checkbox"><input type="checkbox" checked={f.is_primary} onChange={(e) => setF({ ...f, is_primary: e.target.checked })} /> Primary contact</label>
         <label className="checkbox"><input type="checkbox" checked={f.notify_email} onChange={(e) => setF({ ...f, notify_email: e.target.checked })} /> Gets emailed reminders and receipts</label>
         <label className="checkbox"><input type="checkbox" checked={f.notify_sms} onChange={(e) => setF({ ...f, notify_sms: e.target.checked })} /> Gets text reminders</label>
+        <span className="muted small">{TEXT_TICK_HINT}{contact?.notify_sms && contact.phone ? ` ${textConsentLine(contact.sms_consent_source, contact.sms_consent_at ? formatDate(contact.sms_consent_at) : null, true)}` : ""}</span>
+        <span className="muted small">
+          {contactsOn
+            ? "Ticked, they get what the client gets about their work: a visit booked, moved or cancelled, visit reminders, on-my-way texts, quotes, invoices and receipts. Marketing emails and review requests only go to the client."
+            : <>Contacts don't get these yet. An owner or admin can turn it on in <Link to="/settings?tab=client-notifications">Settings → Client notifications</Link>.</>}
+        </span>
         <FormError error={save.error} fields={["email", "phone"]} />
         <div className="form-actions">
           <FormChecks />

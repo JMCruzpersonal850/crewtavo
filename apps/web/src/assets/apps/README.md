@@ -10,6 +10,9 @@ simplified storefront in Google's colors drawn for Crewtavo, for the Google Busi
 meta.svg is a speech bubble and a camera in Facebook's blue and Instagram's gradient, drawn for
 Crewtavo, for the Facebook & Instagram app (not Meta's own logo).
 
+lob.svg is a postcard with a stamp in a blue like Lob's, drawn for Crewtavo, for the Lob app
+(postcards by mail; not Lob's own logo).
+
 fal.svg is fal.ai's mark from @lobehub/icons-static-svg 1.95.1 (MIT), in fal's red, for the fal.ai app
 (Find paving).
 

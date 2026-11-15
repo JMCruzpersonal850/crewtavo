@@ -15,6 +15,7 @@ import { useSession } from "@/lib/session";
 import { addMessage, useTyping, type ChatChannel, type ChatMessage } from "./data";
 import { Avatar, roleColor } from "./ui";
 import s from "./chat.module.css";
+import { t, T } from "@/lib/i18n";
 
 export interface MentionOption extends Mentionable {
   kind: "user" | "role" | "everyone";
@@ -229,23 +230,23 @@ export function Composer({
         <div className={s.readOnly} role="note">
           <Icon name={channel.archived ? "archive" : "lock"} size={16} />
           {channel.archived
-            ? "This channel is archived. You can read it, but nobody can post in it."
+            ? t("This channel is archived. You can read it, but nobody can post in it.")
             : channel.kind === "announcement"
-              ? "Owners, admins and the office post here. You can read and react."
-              : "Your role can read this channel but not post in it."}
+              ? t("Owners, admins and the office post here. You can read and react.")
+              : t("Your role can read this channel but not post in it.")}
         </div>
       </div>
     );
   }
 
-  const placeholder = channel.kind === "announcement" ? `Message ${channel.name}` : `Message #${channel.name}`;
+  const placeholder = t("Message {channel}", { channel: channel.kind === "announcement" ? channel.name : `#${channel.name}` });
   return (
     <div className={s.foot}>
       <TypingLine channelId={channel.id} />
       <div className={s.composer}>
         {suggest && matches.length > 0 && (
-          <div className={s.suggest} role="listbox" aria-label="People and roles to mention">
-            <div className={s.suggestHead}>Mention</div>
+          <div className={s.suggest} role="listbox" aria-label={t("People and roles to mention")}>
+            <div className={s.suggestHead}>{t("Mention")}</div>
             {matches.map((o, i) => (
               <button
                 key={o.token}
@@ -257,7 +258,7 @@ export function Composer({
                 onClick={() => choose(o)}
               >
                 {o.kind === "user" ? <Avatar name={o.label} color={o.avatar} photo={o.photo} size={28} /> : <Icon name={o.kind === "everyone" ? "users" : "mention"} size={20} />}
-                <span style={{ fontWeight: 600, color: o.kind === "role" ? roleColor(o.color) : undefined }}>{o.kind === "everyone" ? "@everyone" : o.label}</span>
+                <span style={{ fontWeight: 600, color: o.kind === "role" ? roleColor(o.color) : undefined }}>{o.kind === "everyone" ? t("@everyone") : o.label}</span>
                 {o.hint && <small>{o.hint}</small>}
               </button>
             ))}
@@ -266,30 +267,30 @@ export function Composer({
         {replyTo && (
           <div className={s.bar}>
             <Icon name="reply" size={14} />
-            <span className="grow">Replying to <strong>{replyTo.author?.name ?? "Crewtavo"}</strong></span>
-            <button type="button" className="icon-btn" aria-label="Cancel reply" onClick={onCancelReply}><Icon name="x" size={14} /></button>
+            <span className="grow"><T text="Replying to <b>{name}</b>" b={(s) => <strong>{s}</strong>} name={replyTo.author?.name ?? "Crewtavo"} /></span>
+            <button type="button" className="icon-btn" aria-label={t("Cancel reply")} onClick={onCancelReply}><Icon name="x" size={14} /></button>
           </div>
         )}
         {(uploads.length > 0 || job) && (
           <div className={s.chips}>
             {uploads.map((u) => (
-              <span key={u.id} className={s.chip} title={u.status === "error" ? "Couldn't upload this photo" : u.name}>
+              <span key={u.id} className={s.chip} title={u.status === "error" ? t("Couldn't upload this photo") : u.name}>
                 <img src={u.preview} alt="" />
-                <span>{u.status === "uploading" ? "Uploading…" : u.status === "error" ? "Didn't upload" : u.name}</span>
-                <button type="button" className="icon-btn" aria-label={`Remove ${u.name}`} onClick={() => setUploads((list) => list.filter((x) => x.id !== u.id))}><Icon name="x" size={14} /></button>
+                <span>{u.status === "uploading" ? t("Uploading…") : u.status === "error" ? t("Didn't upload") : u.name}</span>
+                <button type="button" className="icon-btn" aria-label={t("Remove {tag}", { tag: u.name })} onClick={() => setUploads((list) => list.filter((x) => x.id !== u.id))}><Icon name="x" size={14} /></button>
               </span>
             ))}
             {job && (
               <span className={s.chip}>
                 <span className={s.jobIcon}><Icon name="job" size={16} /></span>
-                <span>{job.number ? `Job #${job.number} · ` : ""}{job.title}</span>
-                <button type="button" className="icon-btn" aria-label="Remove the job" onClick={() => setJob(null)}><Icon name="x" size={14} /></button>
+                <span>{job.number ? `${t("Job #{number}", { number: job.number })} · ` : ""}{job.title}</span>
+                <button type="button" className="icon-btn" aria-label={t("Remove the job")} onClick={() => setJob(null)}><Icon name="x" size={14} /></button>
               </span>
             )}
           </div>
         )}
         <div className={s.composerRow}>
-          <button type="button" className={`icon-btn ${s.composerBtn}`} aria-label="Add photos" title="Add photos" disabled={uploads.length >= MAX_PHOTOS} onClick={() => files.current?.click()}>
+          <button type="button" className={`icon-btn ${s.composerBtn}`} aria-label={t("Add photos")} title={t("Add photos")} disabled={uploads.length >= MAX_PHOTOS} onClick={() => files.current?.click()}>
             <Icon name="camera" size={20} />
           </button>
           <input ref={files} type="file" accept="image/*,.heic,.heif" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
@@ -306,10 +307,10 @@ export function Composer({
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
             maxLength={4000}
           />
-          <button type="button" className={`icon-btn ${s.composerBtn}`} aria-label="Link a job" title="Link a job" onClick={() => setPickingJob(true)}>
+          <button type="button" className={`icon-btn ${s.composerBtn}`} aria-label={t("Link a job")} title={t("Link a job")} onClick={() => setPickingJob(true)}>
             <Icon name="job" size={20} />
           </button>
-          <button type="button" className={s.sendBtn} aria-label="Send" title="Send" disabled={!canSend} onClick={submit}>
+          <button type="button" className={s.sendBtn} aria-label={t("Send")} title={t("Send")} disabled={!canSend} onClick={submit}>
             <Icon name="send" size={20} />
           </button>
         </div>
@@ -323,7 +324,7 @@ export function Composer({
 function TypingLine({ channelId }: { channelId: string }) {
   const session = useSession();
   const names = useTypingNames(channelId, session.userId);
-  const text = names.length === 0 ? "" : names.length === 1 ? `${names[0]} is typing…` : names.length === 2 ? `${names[0]} and ${names[1]} are typing…` : "Several people are typing…";
+  const text = names.length === 0 ? "" : names.length === 1 ? t("{name} is typing…", { name: names[0] }) : names.length === 2 ? t("{first} and {second} are typing…", { first: names[0], second: names[1] }) : t("Several people are typing…");
   return (
     <div className={s.typing} aria-live="polite">
       {text && (
@@ -372,11 +373,11 @@ function JobPicker({ open, onClose, onPick }: { open: boolean; onClose: () => vo
     },
   });
   return (
-    <Dialog open={open} onClose={onClose} title="Link a job" size="sm">
+    <Dialog open={open} onClose={onClose} title={t("Link a job")} size="sm">
       <div className="dialog-body stack-sm">
-        <input className="input" type="search" placeholder="Search jobs by title or number" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search jobs" />
-        {jobs.isPending && <span className="muted small">Loading jobs…</span>}
-        {jobs.data?.length === 0 && <span className="muted small">No jobs match.</span>}
+        <input className="input" type="search" placeholder={t("Search jobs by title or number")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("Search jobs")} />
+        {jobs.isPending && <span className="muted small">{t("Loading jobs…")}</span>}
+        {jobs.data?.length === 0 && <span className="muted small">{t("No jobs match.")}</span>}
         <div className="stack-sm" style={{ gap: 4 }}>
           {jobs.data?.map((j) => (
             <button key={j.id} type="button" className="card-row" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--surface)", textAlign: "left", cursor: "pointer" }} onClick={() => onPick(j)}>

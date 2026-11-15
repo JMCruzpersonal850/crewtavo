@@ -212,8 +212,11 @@ describe("Marketing's code", () => {
   });
 
   it("lets a quote or invoice be texted to a different number for a client who texted STOP", () => {
+    // Their own number is listed but can't be ticked, and another number can still be typed in
+    // (test/sendRecipients.test.ts checks which numbers are marked).
     const dialog = source("../src/features/quotes/SendDialog.tsx");
-    expect(dialog).toContain('channel === "sms" && !textsOffSince ? formatPhoneTyping(phone ?? "") : ""');
+    expect(dialog).toContain("checked={!p.blocked && ticked.includes(p.to)} disabled={Boolean(p.blocked)}");
+    expect(dialog).toContain('"Another number"');
     expect(dialog).not.toContain("disabled={Boolean(textsOffSince)}");
   });
 
@@ -324,9 +327,11 @@ describe("the automated campaign cards", () => {
     expect(source("../src/features/marketing/useMarketingSwitch.tsx")).toContain("{waitingWords(winBacks)}");
   });
 
-  it("say what each leaves out, and that Close pending quotes isn't marketing", () => {
+  it("say what each leaves out, and that Close pending quotes keeps going without Marketing but has an unsubscribe link", () => {
     const cards = source("../src/features/marketing/AutomatedCampaigns.tsx");
-    expect(cards).toContain("so it isn't a marketing email: it keeps going while Marketing is uninstalled, reaches clients who unsubscribed from marketing, and has no unsubscribe link.");
+    expect(cards).toContain("so it keeps going while Marketing is uninstalled. It has an unsubscribe link like every campaign email, and isn't sent to clients who unsubscribed from marketing.");
+    // Its preview shows the link, as the email has it.
+    expect(cards).toContain("vars={vars} unsubscribe linkLabel={linkButton(key)} />");
     expect(cards).toContain("A year by default, so it reaches them at the same time of year as their last visit");
     expect(turnOffWords("close_quotes", 3)).toBe("3 quotes are waiting for a follow-up. Turning this off cancels them, and turning it back on won't send them.");
     expect(turnOffWords("win_back", 1)).toBe("1 quote is waiting for a win-back email. Turning this off cancels it, and turning it back on won't send it.");
@@ -411,7 +416,9 @@ describe("the automated campaign cards' words", () => {
     const page = source("../src/features/marketing/CampaignPage.tsx");
     expect(page.indexOf("<CampaignStats")).toBeLessThan(page.indexOf('<div className="two-col">'));
     expect(page).toContain('queryKey: ["campaign-first-recipient", id]');
-    expect(page).toContain("options={choices.data?.cities}");
+    // The segment's fields are the ones postcards use too (AudienceFields), offering the company's own cities.
+    expect(page).toContain("<AudienceFields audience={draft.audience} onChange={(audience) => set({ audience })} choices={choices.data} />");
+    expect(source("../src/features/marketing/AudienceFields.tsx")).toContain("options={choices?.cities}");
   });
 });
 
@@ -438,7 +445,7 @@ describe("the Campaigns tab and a campaign's page", () => {
     expect(page).toContain("audienceSummary(shown.audience, choices.data)");
     expect(page).toContain("subject={shown.subject} body={shown.body}");
     // Their labels load for a sent campaign too, not only while it's a draft.
-    expect(page).toContain('enabled: Boolean(c) && c?.kind !== "automated",');
+    expect(page).toContain('useAudienceChoices(Boolean(c) && c?.kind !== "automated")');
   });
 
   it("shows an automated campaign as its results, and says opens are approximate", () => {
@@ -692,8 +699,8 @@ describe("Google reviews on the Reviews tab", () => {
     expect(problemCopy(g({ state: "location", problem_message: "x", can_connect: false }), "UTC")!.link).toBeNull();
     // Disconnected with the reviews kept: connecting again, or who can.
     const off = g({ state: "disconnected" });
-    expect(problemCopy(off, "UTC")).toMatchObject({ link: "Connect Google Business Profile", body: "The reviews already here stay, and keep their clients from being asked again." });
-    expect(problemCopy({ ...off, can_connect: false }, "UTC")).toMatchObject({ link: null, body: "The reviews already here stay, and keep their clients from being asked again. Ask an owner or admin to connect it in Apps." });
+    expect(problemCopy(off, "UTC")).toMatchObject({ link: "Connect Google Business Profile", body: "The reviews already here show for up to 30 days after the last sync, and their clients still aren't asked again." });
+    expect(problemCopy({ ...off, can_connect: false }, "UTC")).toMatchObject({ link: null, body: "The reviews already here show for up to 30 days after the last sync, and their clients still aren't asked again. Ask an owner or admin to connect it in Apps." });
     // A Google account with no Business Profile has nothing to pick: another account signs in.
     const none = g({ state: "pick", problem_detail: "none", problem_message: "The Google account signed in doesn't manage a Business Profile." });
     expect(problemCopy(none, "UTC")).toMatchObject({ tone: "warning", body: "Sign in with the Google account that manages it, in Apps → Google Business Profile.", link: "Open in Apps" });
@@ -768,7 +775,7 @@ describe("Google reviews on the Reviews tab", () => {
     expect(reviews).toContain('updating ? "Update your reply on Google?" : "Post this reply on Google?"');
     expect(reviews).toContain("Everyone can read it on Google");
     expect(reviews).toContain("REPLY_MAX.toLocaleString");
-    expect(reviews).toContain("An admin can add a Claude key on the Apps page to draft replies.");
+    expect(reviews).toContain("An admin can add a Claude or OpenAI key on the Apps page to draft replies.");
     expect(reviews).toContain('referrerPolicy="no-referrer"');
   });
 
@@ -1107,7 +1114,7 @@ describe("Marketing → Social", () => {
   it("uses one button for Suggest a caption and Rewrite, as Suggest a reply does", () => {
     const composer = source("../src/features/marketing/SocialComposer.tsx");
     expect(composer).toContain('{caption.trim() ? "Rewrite" : "Suggest a caption"}');
-    expect(composer).toContain('<Link to="/apps/anthropic">Add a Claude key in Apps</Link>');
+    expect(composer).toContain('<Link to="/apps">Add a Claude or OpenAI key in Apps</Link>');
     expect(composer).toContain("Posts stay hidden from the public until your Meta app is Live.");
   });
 });

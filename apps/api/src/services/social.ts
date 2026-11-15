@@ -20,6 +20,7 @@
  */
 import type { Tables } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
+import { reviewsFreshSince } from "@crewtavo/core/reviews";
 import {
   brandColor,
   CANT_SHARE,
@@ -78,7 +79,7 @@ import { renderReviewCard, type CardInput } from "../lib/reviewCard";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
 import { adminClient, type Db } from "../lib/supabase";
-import { complete } from "./ai";
+import { complete, type Asker } from "./ai";
 import { LOGO_MAX_BYTES, logoOf, pngSize } from "./logo";
 import { storageWritesPaused } from "./storageBucket";
 
@@ -307,16 +308,17 @@ export async function clientWords(admin: Db, companyId: string, clientIds: Reado
 /**
  * A review post's review: by its row, or, when that row was removed (disconnected with the reviews
  * removed, or Change location away and back) and the review came in again, by its location and
- * review ids (review_key), linking the post to it again. Null when it isn't here.
+ * review ids (review_key), linking the post to it again. Null when it isn't here, or the sync hasn't
+ * seen it on Google lately (core REVIEW_FRESH_DAYS): a copy that old isn't posted from.
  */
 export async function postReview(admin: Db, post: Pick<Post, "id" | "company_id" | "review_id" | "review_key">): Promise<Tables<"reviews"> | null> {
   if (post.review_id) {
-    const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("id", post.review_id).maybeSingle();
+    const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("id", post.review_id).gt("seen_at", reviewsFreshSince()).maybeSingle();
     if (data) return data;
   }
   const key = /^(locations\/[^/]+)\/(.+)$/.exec(post.review_key ?? "");
   if (!key) return null;
-  const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("location_id", key[1]!).eq("review_id", key[2]!).maybeSingle();
+  const { data } = await admin.from("reviews").select("*").eq("company_id", post.company_id).eq("location_id", key[1]!).eq("review_id", key[2]!).gt("seen_at", reviewsFreshSince()).maybeSingle();
   if (data && !post.review_id) await admin.from("social_posts").update({ review_id: data.id }).eq("id", post.id).is("review_id", null);
   return data ?? null;
 }
@@ -914,7 +916,7 @@ export function captionPrompt(company: string): string {
  * that names a client is asked for again once; if it still does, it comes back with a warning.
  */
 export async function suggestCaption(env: Env, input: {
-  apiKey: string | null;
+  asker: Asker;
   company: string;
   source: "photos" | "review" | "text";
   review?: { rating: number | null; comment: string | null } | null;
@@ -928,7 +930,7 @@ export async function suggestCaption(env: Env, input: {
   if (input.source === "review" && input.review) lines.push(`The post shows a ${input.review.rating ?? 5}-star Google review from a client:\n${cardText(input.review.comment)}`);
   if (input.source === "text") lines.push("The post is words alone, an update from the business.");
   if (input.draft?.trim()) lines.push(`\nTheir draft caption:\n${input.draft.trim()}\n\nRewrite it: ${input.instruction?.trim() || "make it clear, warm and short"}.`);
-  const ask = (extra = "") => complete(env, { apiKey: input.apiKey, system: captionPrompt(input.company), prompt: lines.join("\n") + extra, effort: "low", maxTokens: 600 });
+  const ask = (extra = "") => complete(env, { asker: input.asker, system: captionPrompt(input.company), prompt: lines.join("\n") + extra, effort: "low", maxTokens: 600 });
   let text = (await ask()).slice(0, 2200);
   if (mentionsClient(text, input.clients).blocked.length) {
     text = (await ask("\n\nYour last caption named the client or their street. Write it again without any name or address.")).slice(0, 2200);
@@ -965,7 +967,7 @@ export interface PostScope {
 /** A review of the company's that can go on a card, or the reason it can't. */
 export async function postableReview(s: PostScope, id: string) {
   const admin = adminClient(s.env);
-  const { data: review } = await admin.from("reviews").select("*").eq("company_id", s.companyId).eq("id", id).is("deleted_at", null).maybeSingle();
+  const { data: review } = await admin.from("reviews").select("*").eq("company_id", s.companyId).eq("id", id).is("deleted_at", null).gt("seen_at", reviewsFreshSince()).maybeSingle();
   if (!review) throw new HttpError(404, "That review isn't here. It may have been removed from Google.");
   if ((review.rating ?? 0) < 4) throw new HttpError(400, "Only 4 and 5-star reviews can be posted.");
   if (!hasWords(review.comment)) throw new HttpError(400, "This review has no words to put on a card.");

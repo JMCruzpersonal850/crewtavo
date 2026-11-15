@@ -1,5 +1,6 @@
 /** Public config, the signed-in user, onboarding (company + trade preset), the license and team invites. */
-import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetSummaries, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
+import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetCustomFields, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
+import { LOCALES } from "@crewtavo/core/i18n";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv, Env } from "../env";
@@ -11,9 +12,10 @@ import { renderEmail } from "../lib/email";
 import { allow } from "../lib/limit";
 import { checkMailbox, emailConfigured, loadMailbox, sendEmail, smsConfigured } from "../lib/notify";
 import { adminClient, publishableKey, type Db } from "../lib/supabase";
+import { connectedPlans } from "../integrations/chatgptPlan";
 import { timeRates } from "../services/payRates";
 import { saveLetterheadPicture } from "../services/letterhead";
-import { emailCodesOffered } from "../services/signInCodes";
+import { emailCodesOffered, textCodesOffered } from "../services/signInCodes";
 import { removeLogo, setLogo } from "../services/logo";
 import { removePhoto, setPhoto } from "../services/photos";
 import { adminAccess, allowAdminGrant, invitePerson, inviteStatus, sendInvite, welcomeLink, type TeamScope } from "../services/team";
@@ -67,6 +69,8 @@ account.get("/config", async (c) =>
         // Whether the sign-in page offers a sub a sign-in code by email (services/signInCodes.ts): the
         // way in when this Crewtavo can't text, and the one for a sub with no phone on file when it can.
         emailCodes: await emailCodesOffered(c.env),
+        // And a code by text: with the server's Twilio account, or any company's own (the same service).
+        smsCodes: await textCodesOffered(c.env),
         devMail: Boolean(c.env.MAILPIT_URL && !c.env.RESEND_API_KEY),
         roofInsights: Boolean(c.env.GOOGLE_MAPS_SERVER_KEY),
       },
@@ -89,7 +93,7 @@ account.get("/presets", (c) => c.json(presetSummaries()));
 account.get("/me", requireUser, async (c) => {
   const { db, userId } = c.var;
   const [profile, memberships, everyRole] = await Promise.all([
-    db.from("profiles").select("user_id, email, full_name, phone, avatar_url, color").eq("user_id", userId).maybeSingle(),
+    db.from("profiles").select("user_id, email, full_name, phone, avatar_url, color, locale").eq("user_id", userId).maybeSingle(),
     db
       .from("memberships")
       .select("company_id, role, role_id, subcontractor_id, company:companies(id, name, slug, trade_preset, timezone, currency, address, phone, settings)")
@@ -113,20 +117,26 @@ account.get("/me", requireUser, async (c) => {
     : [[], [], []];
   const basicsOf = new Map(basics.filter((b) => b).map((b) => [b!.id, b!]));
   // Which companies send email from their own mailbox (Settings → Email) and which added their own
-  // Anthropic or fal.ai key (Apps), so email and AI are on for them; integrations is admin-only.
+  // Anthropic, OpenAI or fal.ai key (Apps), so email and AI are on for them; integrations is admin-only.
   const companyIds = rows.map((m) => m.company_id);
   // ...and which have agreed to the current license (only owners and admins can read agreements).
   // ...and, on Railway, whether the owner still has to connect it (services/railway.ts).
   const [connected, agreements, railways] = companyIds.length
     ? await Promise.all([
-        adminClient(c.env).from("integrations").select("company_id, provider").in("provider", ["email", "anthropic", "fal"]).neq("status", "disconnected").in("company_id", companyIds),
+        adminClient(c.env).from("integrations").select("company_id, provider, external_account_id").in("provider", ["email", "anthropic", "chatgpt", "fal", "twilio"]).neq("status", "disconnected").in("company_id", companyIds),
         adminClient(c.env).from("terms_acceptances").select("company_id").eq("version", TERMS_VERSION).in("company_id", companyIds),
         adminClient(c.env).from("integrations").select("company_id, status").eq("provider", "railway").in("company_id", companyIds),
       ]).then(([apps, terms, railway]) => [must(apps), must(terms), must(railway)] as const)
     : [[], [], []];
   const withMailbox = new Set(connected.filter((r) => r.provider === "email").map((r) => r.company_id));
-  const withClaudeKey = new Set(connected.filter((r) => r.provider === "anthropic").map((r) => r.company_id));
+  // A key of the company's own for Crewtavo's AI: Claude's or OpenAI's (services/ai.ts).
+  const withAiKey = new Set(connected.filter((r) => r.provider === "anthropic" || r.provider === "chatgpt").map((r) => r.company_id));
   const withFal = new Set(connected.filter((r) => r.provider === "fal").map((r) => r.company_id));
+  // (One connected with its Account SID: a key saved the old way never sent anything.)
+  const withTwilio = new Set(connected.filter((r) => r.provider === "twilio" && r.external_account_id).map((r) => r.company_id));
+  // ...and where this person connected their own ChatGPT plan (Apps → ChatGPT), which answers what
+  // they ask the AI themselves: AI is on for them there whatever the company has.
+  const plans = rows.length ? await connectedPlans(adminClient(c.env), c.var.userId) : [];
   const agreed = new Set(agreements.map((r) => r.company_id));
   const all = must(everyRole);
   return c.json({
@@ -153,7 +163,11 @@ account.get("/me", requireUser, async (c) => {
           : null,
         // Whether email goes out for this company (its own mailbox): for a sub too, whose notices it sends.
         email_connected: withMailbox.has(m.company_id),
-        ai_connected: staff && withClaudeKey.has(m.company_id),
+        // Whether texts go out for this company from its own Twilio account (Apps → Twilio): for a sub too.
+        sms_connected: withTwilio.has(m.company_id),
+        ai_connected: staff && (withAiKey.has(m.company_id) || plans.some((p) => p.company_id === m.company_id && p.problem !== "sign_in")),
+        // Their own ChatGPT plan is answering what they ask (nothing in its way): pages say so.
+        chatgpt_plan: staff && plans.some((p) => p.company_id === m.company_id && !p.problem),
         // Apps → fal.ai: Find paving on the measuring map.
         fal_connected: staff && withFal.has(m.company_id),
         terms_accepted: agreed.has(m.company_id),
@@ -191,7 +205,8 @@ function codeWaysOf(sub: { phone: string | null; email: string | null }, setting
 }
 
 account.patch("/me", requireUser, async (c) => {
-  const body = await readJson(c, z.object({ full_name: z.string().trim().min(1).max(120).optional(), phone: z.string().max(40).nullable().optional() }));
+  // locale: the language they use the app in (null follows their device), and notices reach them in.
+  const body = await readJson(c, z.object({ full_name: z.string().trim().min(1).max(120).optional(), phone: z.string().max(40).nullable().optional(), locale: z.enum(LOCALES).nullable().optional() }));
   const { error } = await c.var.db.from("profiles").update(body).eq("user_id", c.var.userId);
   if (error) throw dbError(error);
   return c.json({ ok: true });
@@ -280,6 +295,14 @@ account.post("/companies", requireUser, async (c) => {
     if (set.error) console.error("Couldn't set the currency", set.error.message);
   }
   await applyPreset(db, companyId as string, preset);
+  // Where texting is connected (a business this new has no Twilio account of its own yet, so the
+  // server's), the starters that tell clients about their visits text as well as email, and the
+  // on-my-way text starts on. If this fails they're as every company's start, and can be changed
+  // in Settings → Client notifications.
+  if (smsConfigured(c.env)) {
+    const texting = await adminClient(c.env).rpc("texting_starters", { p_company: companyId as string });
+    if (texting.error) console.error("Couldn't add texts to the starter rules", texting.error.message);
+  }
   // An instance on Railway: the next screen offers to connect Railway and set up a web address.
   if (c.env.CREWTAVO_SINGLE_COMPANY === "1" && platformOf(c.env) === "railway") await setRailwaySetup(adminClient(c.env), companyId as string, "pending");
   // The business exists either way; if this fails, the owner is asked to agree again when it opens.
@@ -332,7 +355,7 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
   // The price list's ids, made here so the weather rules can name their items by id in the same go.
   const ids = preset.services.map(() => crypto.randomUUID());
   const idOf = (name: string | undefined) => ids[preset.services.findIndex((s) => s.name === name)];
-  const weatherRules = preset.weather_rules.map((r) => (idOf(r.applies_to) ? { ...r, service_id: idOf(r.applies_to) } : r));
+  const weatherRules = presetWeatherRules(preset, idOf);
   const [services, checklists, ...rest] = await Promise.all([
     db.from("services").insert(
       preset.services.map((s, i) => {
@@ -347,11 +370,12 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
           category: s.category ?? null,
           formula: formula?.formula ?? null,
           formula_target: formula?.sets ?? "quantity",
+          default_depth_in: s.default_depth_in ?? null,
           sort: i,
         };
       }),
     ).select("id, name"),
-    db.from("checklist_templates").insert(preset.checklists.map((cl) => ({ company_id: companyId, name: cl.name, items: asJson(cl.items) }))).select("id, name"),
+    db.from("checklist_templates").insert(preset.checklists.map((cl) => ({ company_id: companyId, name: cl.name, items: asJson(cl.items), every_job: cl.every_job === true, work: cl.work ?? [] }))).select("id, name"),
     db.from("intake_forms").insert(
       preset.intake_forms.map((f) => ({
         company_id: companyId,
@@ -363,9 +387,14 @@ async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
         slot_minutes: f.slot_minutes ?? null,
         max_per_day: f.max_per_day ?? null,
         requires_approval: f.requires_approval,
+        // A starter estimate or booking form that books without the office's OK offers times from
+        // the first day; one that needs the OK starts as a plain request form until the office says.
+        pick_time: f.kind !== "request" && !f.requires_approval,
       })),
     ),
     db.from("sop_categories").insert(preset.sop_categories.map((name, i) => ({ company_id: companyId, name, sort: i }))),
+    // The trade's own fields on its records (roofing's insurance claim details on quotes and jobs).
+    ...(preset.custom_fields?.length ? [db.from("custom_field_definitions").insert(presetCustomFields(preset).map((f) => ({ ...f, company_id: companyId })))] : []),
     // Merged into what create_company started it with (Marketing installed, for one), with the
     // trade's own app installed, as the migration did for businesses already in it.
     db
@@ -404,7 +433,7 @@ account.get("/team", requireUser, requireCompany(), async (c) => {
   if (!withSubs) query = query.neq("role", "subcontractor");
   const members = must(await query);
   const profiles = must(
-    await db.from("profiles").select("user_id, full_name, email, phone, color, avatar_url").in("user_id", members.map((m) => m.user_id)),
+    await db.from("profiles").select("user_id, full_name, email, phone, color, avatar_url, locale").in("user_id", members.map((m) => m.user_id)),
   );
   const byId = new Map(profiles.map((p) => [p.user_id, p]));
   // Subs' business names: the subs list is the office's, so just the names, read with the server's key.

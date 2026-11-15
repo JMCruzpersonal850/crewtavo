@@ -37,7 +37,7 @@ const m = vi.hoisted(() => ({
   sendEmail: vi.fn(),
   sendSms: vi.fn(),
   emailReady: vi.fn(),
-  smsConfigured: vi.fn(),
+  smsReady: vi.fn(),
   reportError: vi.fn(),
 }));
 vi.mock("../src/integrations/stripe", async (original) => ({
@@ -59,7 +59,7 @@ vi.mock("../src/lib/notify", async (original) => ({
   sendEmail: m.sendEmail,
   sendSms: m.sendSms,
   emailReady: m.emailReady,
-  smsConfigured: m.smsConfigured,
+  smsReady: m.smsReady,
 }));
 vi.mock("../src/lib/monitoring", async (original) => ({ ...(await original<typeof import("../src/lib/monitoring")>()), reportError: m.reportError }));
 
@@ -153,6 +153,8 @@ function fakeDb(tables: Record<string, Row[]>) {
       maybeSingle: () => ((one = "maybe"), q),
       single: () => ((one = "single"), q),
       insert: (p: unknown) => ((op = "insert"), (payload = p), q),
+      // Numbers told how to stop texts (sms_told): kept as an insert is.
+      upsert: (p: unknown) => ((op = "insert"), (payload = p), q),
       update: (p: unknown) => ((op = "update"), (payload = p), q),
       delete: () => ((op = "delete"), q),
       then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve().then(run).then(resolve, reject),
@@ -281,7 +283,7 @@ beforeEach(() => {
   m.sendEmail.mockResolvedValue({ sent: true, id: "em_1" });
   m.sendSms.mockResolvedValue({ sent: true, id: "SM1" });
   m.emailReady.mockResolvedValue(true);
-  m.smsConfigured.mockReturnValue(true);
+  m.smsReady.mockResolvedValue(true);
   m.chargeTip.mockResolvedValue({ status: "paid" });
   m.detachPaymentMethod.mockResolvedValue(undefined);
   stripeCalls.length = 0;
@@ -744,7 +746,7 @@ describe("the notice of a charge that didn't go through", () => {
 
     const quiet = failing();
     quiet.tables.clients![0]!.email = null;
-    m.smsConfigured.mockReturnValue(false);
+    m.smsReady.mockResolvedValue(false);
     expect(await sendAutopayNotice(env, quiet.db, CHARGE, "failed", 1)).toBe("skipped: no way to reach them");
   });
 
@@ -889,7 +891,7 @@ describe("autopay invites", () => {
     await expect(invite(world(), { baseUrl: null })).rejects.toThrow("Set APP_URL so links can go out.");
     await expect(invite(world(), { clientId: SAM })).rejects.toThrow("This client has no email address.");
     await expect(invite(world(), { channel: "sms" })).rejects.toThrow("This client has no mobile number.");
-    m.smsConfigured.mockReturnValue(false);
+    m.smsReady.mockResolvedValue(false);
     await expect(invite(world(), { clientId: SAM, channel: "sms" })).rejects.toThrow("Texting isn't set up.");
     expect(m.sendEmail).not.toHaveBeenCalled();
   });
@@ -897,7 +899,7 @@ describe("autopay invites", () => {
   it("sends by text, and never to another company's client", async () => {
     const db = world();
     expect(await invite(db, { clientId: SAM, channel: "sms" })).toEqual({ sent: true, detail: "Sent by text." });
-    expect(texts()[0]!.body).toMatch(/^Radford Lawn Care: thanks for choosing us\. We keep a card on file and charge it after each visit\. Save yours securely with Stripe: https:\/\/ops\.example\.com\/hub\/\S+\?view=autopay$/);
+    expect(texts()[0]!.body).toMatch(/^Radford Lawn Care: thanks for choosing us\. We keep a card on file and charge it after each visit\. Save yours securely with Stripe: https:\/\/ops\.example\.com\/hub\/\S+\?view=autopay\n\nReply STOP to opt out\.$/);
     expect(await payloadOf(hubLinks(db.tables.messages![0]!.body)[0]!)).toMatchObject({ t: "client", id: SAM, via: "office" });
     expect(await invite(db, { clientId: STRANGER })).toEqual({ sent: false, detail: "Client not found." });
     expect(m.sendSms).toHaveBeenCalledTimes(1);
@@ -905,7 +907,7 @@ describe("autopay invites", () => {
   it("doesn't text a client who texted STOP, and keeps it when Twilio says they did", async () => {
     const db = world();
     db.tables.clients!.find((c) => c.id === SAM)!.sms_opt_out_at = "2026-10-01T12:00:00.000Z";
-    expect(await invite(db, { clientId: SAM, channel: "sms" })).toEqual({ sent: false, detail: "Skipped: Sam Ortiz texted STOP, so texts to them are off." });
+    expect(await invite(db, { clientId: SAM, channel: "sms" })).toEqual({ sent: false, detail: "Skipped: Sam Ortiz asked not to be texted, so texts to them are off." });
     expect(m.sendSms).not.toHaveBeenCalled();
     // Twilio refusing a number that texted STOP: the client is marked, so nothing texts them again.
     const fresh = world();
@@ -959,6 +961,9 @@ describe("the Client Hub's autopay", () => {
       terms: TERMS,
       terms_version: "2026-10-31T14:05:09",
       timing: "at the end of the day of each visit",
+      // What a bank account agrees to about notice, from the business's $500 limit (core autopayBankText).
+      bank_terms:
+        "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made. By agreeing, you choose to be told ahead only when a charge is more than $500.00, and we'll send you its amount and date at least 10 days before we make it. Charges of $500.00 or less are made without notice ahead of time.",
       next_charge: "2026-11-08T05:00:00Z",
       per_visit: 45,
       per_visit_taxed: false,
@@ -966,6 +971,9 @@ describe("the Client Hub's autopay", () => {
       available: true,
       card_required: false,
     });
+    // With no limit there's no range to name, and the words say so.
+    db.tables.companies![0]!.settings = { autopay: autopaySetting({ max_amount: null }) };
+    expect((await hubAutopay(env, db.db, CO, PAT))!.bank_terms).toContain("By agreeing, you choose not to be told ahead");
     // A business that needs a card on file says so on the client's page.
     db.tables.companies![0]!.settings = { autopay: autopaySetting({ card_required: true }) };
     expect((await hubAutopay(env, db.db, CO, PAT))!.card_required).toBe(true);

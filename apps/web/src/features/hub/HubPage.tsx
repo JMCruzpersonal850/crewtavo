@@ -21,6 +21,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Button, cx } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { PrivacyLink } from "@/components/ui/PrivacyLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { BrandMark } from "@/components/shell/BrandMark";
 import {
@@ -35,9 +36,11 @@ import {
   type InitialedSections,
   type QuoteContract,
 } from "@/features/documents/build";
+import { quoteSchedule } from "@/features/documents/build";
 import { smallInitials } from "@/features/documents/data";
 import { DocumentSheet, PrintableDocument } from "@/features/documents/EstimateDocument";
 import { openPrintablePdf } from "@/features/documents/pdfPrint";
+import { inkOn } from "@/features/documents/words";
 import { nextFrames, paperSettled } from "@/features/documents/paper";
 import type { DocumentSection } from "@/features/documents/types";
 import { ApiError } from "@/lib/api";
@@ -45,6 +48,7 @@ import { dateIn, formatDate, formatMoney, formatMoneyCents, setCurrency, todayIn
 import { sanitizeContractHtml } from "@/lib/html";
 import { ClientPortal, hubZone, MessageDialog, type ClientView, type PortalVisit } from "./ClientPortal";
 import { CARD_REQUIRED } from "./HubAutopay";
+import { HubReviews } from "./HubReviews";
 import {
   autopayPayNote,
   contrastOnWhite,
@@ -80,6 +84,7 @@ import {
   rangeWords,
   reviewChange,
   roofTiles,
+  signedThanks,
   TIP_MINIMUM,
   TIP_PERCENTS,
   trustBadges,
@@ -188,18 +193,6 @@ function CompanyMark({ company, logoClass = "hub-logo", tileClass = "tile" }: { 
   return <span className={tileClass} aria-hidden="true">{monogram(company.name)}</span>;
 }
 
-/** Text color that reads on the company's color. */
-function inkOn(hex: string | undefined) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? "");
-  if (!m) return "#fff";
-  const n = parseInt(m[1], 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#182430" : "#fff";
-}
-
 export function HubPage() {
   const { token = "" } = useParams();
   const [params] = useSearchParams();
@@ -285,6 +278,7 @@ export function HubPage() {
             {d.kind === "client" && <ClientPortal token={token} data={d} hubFetch={hubFetch} onMessage={(visit) => setMessaging({ visit })} onChanged={() => view.refetch()} />}
             <footer className="public-foot hub-foot">
               <span><Icon name="lock" size={12} /> Private link{clientName ? ` for ${clientName}` : ""}. Keep it to yourself.</span>
+              {d.company.privacy_url && <span><PrivacyLink url={d.company.privacy_url} /></span>}
               <span className="hub-powered">Powered by <BrandMark size={13} /> <strong>Crewtavo</strong></span>
             </footer>
           </>
@@ -724,6 +718,7 @@ function RangeHub({ token, data, onChanged, onAsk, onPrint }: { token: string; d
               </span>
             )}
             {credits && <span>{credits}</span>}
+            {company.privacy_url && <span><PrivacyLink url={company.privacy_url} /></span>}
           </div>
           <span className={styles.private}>A private link{clientName ? ` for ${clientName}` : ""}. Powered by Crewtavo.</span>
         </div>
@@ -809,12 +804,13 @@ function SignedQuote({ token, data, printing, onPrint }: { token: string; data: 
         action={
           <div className="row wrap" style={{ gap: 8, justifyContent: "center" }}>
             {owed && <a className="hub-btn hub-btn-brand" href={data.deposit!.link}>Pay the {formatMoneyCents(data.deposit!.balance_due)} deposit</a>}
+            {/* Owed, with nothing to pay it with here: its invoice to look at, and the words below say what happens next. */}
+            {data.deposit_due && <a className="btn" href={data.deposit_due.link}>View the deposit invoice</a>}
             <Button icon="printer" onClick={onPrint}>Print or save PDF</Button>
           </div>
         }
       >
-        Thank you. {data.company.name} will be in touch to schedule the work.
-        {data.deposit ? (owed ? " Your deposit is still due: pay it to hold your place on the schedule." : " Your deposit is paid.") : Number(q.deposit_amount) > 0 ? " You'll receive an invoice for the deposit." : ""}
+        {signedThanks(data)}
       </Done>
       {data.autopay_offer && data.home && <AutopayOffer home={data.home} required={data.card_required === true} />}
       <section className="hub-document" aria-label={`${signed ? "Signed estimate" : "Estimate"} #${q.number}`}>
@@ -823,6 +819,7 @@ function SignedQuote({ token, data, printing, onPrint }: { token: string; data: 
       {contract && <TermsToRead contract={contract} />}
       {(q.portal_fields?.length ?? 0) > 0 && <section className="card card-pad"><HubFieldList fields={q.portal_fields} /></section>}
       <HubDrawings token={token} drawings={data.drawings} />
+      <HubReviews reviews={data.reviews} />
       {printing && <PrintableDocument {...doc} />}
     </>
   );
@@ -1016,6 +1013,8 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
 
       {/* Without options, what's on it and its add-ons, always in view. */}
       {!offers && lineCard}
+
+      <HubReviews reviews={data.reviews} />
 
       {requestChanges.isSuccess ? (
         <Done title="Request sent">{data.company.name} will review your notes and follow up with an updated quote.</Done>
@@ -1245,6 +1244,8 @@ function LinesCard({ token, data, lines, optionId, chosen, onChoose, editable, t
   const listed = listedLines(lines);
   const firstOf = (l: HubLine, i: number) => groupOf(l) !== null && !listed.slice(0, i).some((x) => groupOf(x) === groupOf(l));
   const deposit = depositToBook(q.deposit_amount, totals.total, q.deposit_percent);
+  // How it's paid, on what they're choosing; signed, as it was signed.
+  const schedule = quoteSchedule({ payment_schedule: q.payment_schedule, approval: q.approval, total: totals.total }, q.status === "approved" || q.status === "converted");
   // The add-ons ticked among these lines: what the code's minimum order is checked against, as it will be when they approve.
   const ticked = chosen.filter((id) => lines.some((l) => l.id === id));
   const short = promoShortfall(q.promo, lines, ticked);
@@ -1290,7 +1291,14 @@ function LinesCard({ token, data, lines, optionId, chosen, onChoose, editable, t
         {q.client?.tax_exempt && totals.tax === 0 && <div className="line"><span>Tax exempt{q.client.tax_exempt_note ? ` · ${q.client.tax_exempt_note}` : ""}</span><span>{formatMoneyCents(0)}</span></div>}
         <div className="line grand" style={{ fontSize: 24 }}><span>{q.recurrence_rule ? "Total per visit" : "Total"}</span><span>{formatMoneyCents(totals.total)}</span></div>
         {q.recurrence_rule && <div className="line"><span>How often</span><span style={{ textAlign: "right" }}>{scheduleText(q.recurrence_rule, q.active_months)}</span></div>}
-        {deposit > 0 && <div className="line"><span>Deposit to book</span><span>{formatMoneyCents(deposit)}</span></div>}
+        {schedule ? (
+          <>
+            <div className="line" style={{ marginTop: 8 }}><strong>Payment schedule</strong><span /></div>
+            {schedule.map((p, i) => <div key={i} className="line"><span>{p.name}: {p.due}</span><span>{formatMoneyCents(p.amount)}</span></div>)}
+          </>
+        ) : (
+          deposit > 0 && <div className="line"><span>Deposit to book</span><span>{formatMoneyCents(deposit)}</span></div>
+        )}
         {q.valid_until && <div className="line"><span>Valid until</span><span className={expired ? "text-danger" : undefined}>{formatDate(q.valid_until)}</span></div>}
       </div>
     </section>

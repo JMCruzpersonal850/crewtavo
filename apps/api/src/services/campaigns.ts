@@ -22,6 +22,7 @@ import { adminClient, type Db } from "../lib/supabase";
 import { CAMPAIGN_LINK_DAYS, trackedLinks } from "./automatedCampaigns";
 import { companyAddress } from "./automations";
 import { logoImage } from "./logo";
+import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
 
 const BATCH = 25;
 const SPACING_MS = 550; // stays under typical provider rate limits (about 2 per second)
@@ -102,10 +103,14 @@ export async function processCampaigns(env: Env, options: { campaignId?: string;
     let next = 0; // the first recipient this run hasn't started on
     try {
       const canSend = await emailReady(env, campaign.company_id);
+      // A campaign scheduled before the company's address was taken out: nothing goes without it
+      // (services/senderAddress.ts), and the owners hear once why.
+      const noAddress = claimed.length ? senderAddressProblem(company) : null;
+      if (noAddress) await tellAddressNeeded(admin, campaign.company_id);
       for (const [index, r] of claimed.entries()) {
         next = index;
-        if (!canSend || !baseUrl) {
-          await record(admin, token, [r.id], "failed", !baseUrl ? "APP_URL isn't set." : "Email isn't set up.");
+        if (!canSend || !baseUrl || noAddress) {
+          await record(admin, token, [r.id], "failed", !baseUrl ? "APP_URL isn't set." : !canSend ? "Email isn't set up." : noAddress!);
           failed++;
           continue;
         }
@@ -206,6 +211,13 @@ export async function requireCampaignsOn(db: Db, companyId: string) {
   }
 }
 
+/** A marketing email has to show the company's postal address: without a complete one, none is sent, started or tested. */
+export async function requireSenderAddress(db: Db, companyId: string) {
+  const company = must(await db.from("companies").select("address").eq("id", companyId).maybeSingle());
+  const problem = senderAddressProblem(company);
+  if (problem) throw new HttpError(400, problem);
+}
+
 export async function requireCampaignEmail(env: Env, companyId: string) {
   if (!(await emailReady(env, companyId))) throw new HttpError(501, "Email isn't connected yet, so campaigns can't be sent. An admin can connect it in Settings → Email.");
 }
@@ -227,6 +239,7 @@ export async function loadCampaign(db: Db, companyId: string, id: string) {
 export async function startCampaign(env: Env, db: Db, companyId: string, id: string, scheduledAt?: string) {
   await requireCampaignsOn(db, companyId);
   await requireCampaignEmail(env, companyId);
+  await requireSenderAddress(db, companyId);
   const campaign = await loadCampaign(db, companyId, id);
   if (campaign.status !== "draft") throw new HttpError(409, "This campaign has already been sent or scheduled.");
   if (!campaign.subject.trim()) throw new HttpError(400, "Add a subject line first.");

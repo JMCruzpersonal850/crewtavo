@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { publicFetch } from "@/lib/publicApi";
 import { fileSize, isAbort, uploadToLink } from "../plans/plans";
 import { asksForEndDate, endDateProblem, greeting, kindsFor, needsEndDate, neededWhy, UPLOAD_ACCEPT, uploadProblem, withType } from "../subs/paperwork";
+import { getLocale, msg, t } from "@/lib/i18n";
 
 interface PaperworkView {
   company: { name: string; logo: string | null };
@@ -37,7 +38,7 @@ export interface Item {
   expires_on: string;
 }
 
-const REQUIREMENT_LABELS: Record<string, string> = { w9: "W-9", liability: "Liability insurance", workers_comp: "Workers' comp" };
+const REQUIREMENT_LABELS: Record<string, string> = { w9: "W-9", liability: msg("Liability insurance"), workers_comp: msg("Workers' comp") };
 const localToday = () => new Date().toLocaleDateString("en-CA");
 
 export function PaperworkPage() {
@@ -52,7 +53,7 @@ export function PaperworkPage() {
   const data = view.data;
 
   useEffect(() => {
-    if (data) document.title = `Paperwork for ${data.company.name}`;
+    if (data) document.title = t("Paperwork for {company}", { company: data.company.name });
     if (data && !items) setItems(data.needed.map((n) => ({ key: n.requirement, label: n.label, kinds: kindsFor(n.requirement), kind: kindsFor(n.requirement)[0]!, why: neededWhy(n), file: null, expires_on: "" })));
   }, [data, items]);
 
@@ -72,7 +73,7 @@ export function PaperworkPage() {
   const extras = [
     ...Object.keys(REQUIREMENT_LABELS).map((key) => ({ key, label: REQUIREMENT_LABELS[key]!, kinds: kindsFor(key) })),
     { key: "license", label: kindLabel("license"), kinds: ["license"] },
-    { key: "other", label: "Other document", kinds: ["other"] },
+    { key: "other", label: t("Other document"), kinds: ["other"] },
   ].filter((e) => !list.some((i) => i.key === e.key));
 
   const submit = useMutation({
@@ -87,9 +88,9 @@ export function PaperworkPage() {
           await uploadToLink(link, file, (progress) => setSending({ label: item.label, progress })).promise;
           const recorded = await publicFetch<{ added: number }>(`${path}/files`, { files_token: link.files_token, expires_on: asksForEndDate(item.kind) && item.expires_on ? item.expires_on : null });
           if (recorded.added) done.push(item.key);
-          else problems[item.key] = "That file didn't come through. Try sending it again.";
+          else problems[item.key] = t("That file didn't come through. Try sending it again.");
         } catch (error) {
-          if (!isAbort(error)) problems[item.key] = error instanceof Error ? error.message : "That file didn't come through. Try sending it again.";
+          if (!isAbort(error)) problems[item.key] = error instanceof Error ? error.message : t("That file didn't come through. Try sending it again.");
         }
       }
       return { done, problems };
@@ -121,7 +122,7 @@ export function PaperworkPage() {
           <div className="card">
             <div className="empty-state error-state">
               <span className="empty-icon"><Icon name="link" size={24} /></span>
-              <h3>This link isn't working</h3>
+              <h3>{t("This link isn't working")}</h3>
               <p>{(view.error as Error).message}</p>
             </div>
           </div>
@@ -136,9 +137,9 @@ export function PaperworkPage() {
             {sent.length > 0 && (
               <div className="card card-pad stack-sm" style={{ textAlign: "center", justifyItems: "center", padding: 28 }} role="status">
                 <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
-                <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)" }}>Thanks, it's in</h1>
-                <p style={{ margin: 0 }}>{data.company.name} got {askingFor(sent.map((label) => ({ label })))}. They'll check {sent.length === 1 ? "it" : "them"} and get in touch if anything's missing.</p>
-                {allSent && <Button variant="ghost" onClick={() => setSent([])}>Send something else</Button>}
+                <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)" }}>{t("Thanks, it's in")}</h1>
+                <p style={{ margin: 0 }}>{t.plural(sent.length, { one: "{company} got {list}. They'll check it and get in touch if anything's missing.", other: "{company} got {list}. They'll check them and get in touch if anything's missing." }, { company: data.company.name, list: getLocale() === "en" ? askingFor(sent.map((label) => ({ label }))) : sent.map((label) => t(label)).join(", ") })}</p>
+                {allSent && <Button variant="ghost" onClick={() => setSent([])}>{t("Send something else")}</Button>}
               </div>
             )}
 
@@ -146,16 +147,16 @@ export function PaperworkPage() {
               <form className="card card-pad stack" noValidate onSubmit={onSubmit}>
                 {sent.length === 0 && (
                   <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)", margin: 0 }}>
-                    {list.length ? greeting(data.sub.name, data.company.name) : `Hi ${data.sub.name}, you're all set`}
+                    {list.length ? greeting(data.sub.name, data.company.name) : t("Hi {sub}, you're all set", { sub: data.sub.name })}
                   </h1>
                 )}
                 {list.length === 0 && sent.length === 0 && (
-                  <p className="muted" style={{ margin: 0 }}>{data.company.name} has everything they need from you right now. If your insurance changed, you can still send the new one below.</p>
+                  <p className="muted" style={{ margin: 0 }}>{t("{company} has everything they need from you right now. If your insurance changed, you can still send the new one below.", { company: data.company.name })}</p>
                 )}
                 {data.waiting.length > 0 && sent.length === 0 && (
                   <div className="callout callout-info">
                     <Icon name="info" size={20} />
-                    <div className="grow" style={{ fontWeight: 400 }}>Already sent, waiting for {data.company.name} to check: {data.waiting.map((w) => REQUIREMENT_LABELS[w] ?? w).join(", ")}.</div>
+                    <div className="grow" style={{ fontWeight: 400 }}>{t("Already sent, waiting for {company} to check: {list}.", { company: data.company.name, list: data.waiting.map((w) => t(REQUIREMENT_LABELS[w] ?? w)).join(", ") })}</div>
                   </div>
                 )}
 
@@ -175,11 +176,11 @@ export function PaperworkPage() {
 
                 {extras.length > 0 && (
                   <details className="more-options" open={list.length === 0 || undefined}>
-                    <summary>Send something else</summary>
+                    <summary>{t("Send something else")}</summary>
                     <div className="row wrap" style={{ gap: 8 }}>
                       {extras.map((e) => (
                         <button key={e.key} type="button" className="btn" onClick={() => setItems([...list, { key: e.key, label: e.label, kinds: e.kinds, kind: e.kinds[0]!, why: null, file: null, expires_on: "" }])}>
-                          <Icon name="plus" size={14} />{e.label}
+                          <Icon name="plus" size={14} />{t(e.label)}
                         </button>
                       ))}
                     </div>
@@ -188,21 +189,21 @@ export function PaperworkPage() {
 
                 {sending && (
                   <div className="stack-sm" role="status" aria-live="polite">
-                    <div className="row-between small"><span className="strong">Sending your {sending.label === "W-9" ? "W-9" : sending.label.toLowerCase()}</span><span className="muted tabular">{Math.round(sending.progress * 100)}%</span></div>
+                    <div className="row-between small"><span className="strong">{t("Sending your {document}", { document: sending.label === "W-9" ? "W-9" : t(sending.label).toLowerCase() })}</span><span className="muted tabular">{Math.round(sending.progress * 100)}%</span></div>
                     <div className="progress"><span style={{ width: `${Math.round(sending.progress * 100)}%` }} /></div>
-                    <span className="muted small">Keep this page open until it's done.</span>
+                    <span className="muted small">{t("Keep this page open until it's done.")}</span>
                   </div>
                 )}
-                {touched && !picked.length && list.length > 0 && <div className="form-error" role="alert">Choose a file or take a photo to send.</div>}
+                {touched && !picked.length && list.length > 0 && <div className="form-error" role="alert">{t("Choose a file or take a photo to send.")}</div>}
                 <FormError error={submit.error} />
                 {list.length > 0 && (
                   <Button type="submit" variant="primary" size="lg" icon="send" loading={submit.isPending} block>
-                    {picked.length > 1 ? `Send ${picked.length} documents` : "Send"}
+                    {picked.length > 1 ? t("Send {count} documents", { count: picked.length }) : t("Send")}
                   </Button>
                 )}
               </form>
             )}
-            <p className="public-foot">Only {data.company.name} sees what you send.</p>
+            <p className="public-foot">{t("Only {company} sees what you send.", { company: data.company.name })}</p>
           </>
         )}
       </div>
@@ -238,19 +239,19 @@ export function ItemCard({
     if (file) onChange({ file });
   };
   return (
-    <section className="stack-sm" style={{ padding: 14, borderRadius: "var(--radius-card)", border: `1px solid ${fileProblem || dateProblem ? "var(--danger)" : "var(--border)"}` }} aria-label={item.label}>
+    <section className="stack-sm" style={{ padding: 14, borderRadius: "var(--radius-card)", border: `1px solid ${fileProblem || dateProblem ? "var(--danger)" : "var(--border)"}` }} aria-label={t(item.label)}>
       <div className="row" style={{ gap: 8, alignItems: "flex-start" }}>
         <span className="grow">
-          <strong style={{ fontSize: 16 }}>{item.label}</strong>
+          <strong style={{ fontSize: 16 }}>{t(item.label)}</strong>
           {item.why && <span className="muted small" style={{ display: "block" }}>{item.why}</span>}
         </span>
-        {onRemove && <button type="button" className="btn btn-sm btn-ghost btn-icon" aria-label={`Don't send ${item.label}`} disabled={disabled} onClick={onRemove}><Icon name="x" size={14} /></button>}
+        {onRemove && <button type="button" className="btn btn-sm btn-ghost btn-icon" aria-label={t("Don't send {document}", { document: t(item.label) })} disabled={disabled} onClick={onRemove}><Icon name="x" size={14} /></button>}
       </div>
       {item.kinds.length > 1 && (
-        <div className="segmented" role="group" aria-label={`What you're sending for ${item.label}`}>
+        <div className="segmented" role="group" aria-label={t("What you're sending for {document}", { document: t(item.label) })}>
           {item.kinds.map((k) => (
             <button key={k} type="button" aria-pressed={item.kind === k} disabled={disabled} onClick={() => onChange({ kind: k })}>
-              {k === "wc_exemption" ? "I'm exempt" : k === "workers_comp" ? "Certificate" : kindLabel(k)}
+              {k === "wc_exemption" ? t("I'm exempt") : k === "workers_comp" ? t("Certificate") : t(kindLabel(k))}
             </button>
           ))}
         </div>
@@ -259,27 +260,27 @@ export function ItemCard({
         <div className="row" style={{ gap: 8 }}>
           <Icon name={item.file.type.startsWith("image/") ? "image" : "file"} size={16} />
           <span className="grow" style={{ overflowWrap: "anywhere" }}>{item.file.name} <span className="muted small">{fileSize(item.file.size)}</span></span>
-          <button type="button" className="btn btn-sm btn-ghost" disabled={disabled} onClick={() => onChange({ file: null })}>Change</button>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={disabled} onClick={() => onChange({ file: null })}>{t("Change")}</button>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
           <label className="btn" aria-disabled={disabled}>
-            <Icon name="camera" size={16} />Take a photo
+            <Icon name="camera" size={16} />{t("Take a photo")}
             <input type="file" className="sr-only" accept="image/*" capture="environment" disabled={disabled} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
           </label>
           <label className="btn" aria-disabled={disabled}>
-            <Icon name="upload" size={16} />Choose a file
+            <Icon name="upload" size={16} />{t("Choose a file")}
             <input type="file" className="sr-only" accept={UPLOAD_ACCEPT} disabled={disabled} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
           </label>
         </div>
       )}
       {fileProblem && <span className="field-error" role="alert">{fileProblem}</span>}
       {asksForEndDate(item.kind) && (
-        <Field label="Ends on" optional={!needsEndDate(item.kind)} hint={dateProblem ? undefined : "The expiration date on it."} error={dateProblem}>
+        <Field label={t("Ends on")} optional={!needsEndDate(item.kind)} hint={dateProblem ? undefined : t("The expiration date on it.")} error={dateProblem}>
           <input className="input" type="date" value={item.expires_on} min={today} disabled={disabled} onChange={(e) => onChange({ expires_on: e.target.value })} />
         </Field>
       )}
-      {!item.file && !fileProblem && <span className="muted small">A PDF or a clear photo, up to {fileSize(maxBytes)}.</span>}
+      {!item.file && !fileProblem && <span className="muted small">{t("A PDF or a clear photo, up to {size}.", { size: fileSize(maxBytes) })}</span>}
     </section>
   );
 }

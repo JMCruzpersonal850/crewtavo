@@ -1,9 +1,13 @@
 /**
  * One app's page, laid out like an app store listing. Before it's installed: its icon, name and
  * Install, a strip of facts, screenshots, what it does and what Crewtavo can see and do in it.
- * Install turns it on or signs in right away, or opens its setup (a key, a calendar link, the
- * connector link) under the name. Once it's installed: Open and Uninstall, then managing it
- * (calendars, sign-in, keys) before the rest of the listing.
+ * Install turns it on or signs in right away, or opens its setup (a key, a calendar link) under
+ * the name. Once it's installed: Open and Uninstall, then managing it (calendars, sign-in, keys)
+ * before the rest of the listing.
+ *
+ * Claude and ChatGPT here are what powers Crewtavo's own AI (a key, or for ChatGPT a person's own
+ * plan). Using Crewtavo from inside either chat app is the connector, which is added and managed in
+ * Settings → AI assistants: their pages only point there.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -18,7 +22,7 @@ import { BackLink, useDocumentTitle } from "@/components/ui/PageHeader";
 import { Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { StatusPill, type Tone } from "@/components/ui/StatusPill";
-import { api, supabase } from "@/lib/api";
+import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { timeAgo } from "@/lib/format";
 import { useSession } from "@/lib/session";
@@ -27,27 +31,32 @@ import { useDriveSwitch } from "../drive/useDriveSwitch";
 import { useMarketingSwitch } from "../marketing/useMarketingSwitch";
 import { CalendarFeedCard } from "../settings/CalendarFeedCard";
 import { AbcSupplyPanel } from "./AbcSupplyPanel";
+import { AiServiceChoice, OpenAiModelCard } from "./AiPanels";
 import { AnalyticsPanel, useAnalyticsSwitch } from "./AnalyticsPanel";
 import { AppIcon, AppTile } from "./AppIcon";
 import { AppKeysCard } from "./AppKeysCard";
-import { AssistantAccess, ConnectedAssistants, useAssistantConnections } from "./AssistantAccess";
-import { assistantAppFor, CONNECTOR_STEPS, disconnect as disconnectAssistant } from "./assistantConnections";
+import { ChatGptPlanCard, TeamPlansSwitch, useChatGptPlan } from "./ChatGptPlan";
 import { CalendarRow, GoogleCalendarPanel, LinkCalendarsPanel, AddCalendarForm, useCalendars, type CalendarSource } from "./CalendarPanels";
-import { categoryName, infoFor, isFullSecretKey, LINK_ACCESS, MORE_LABELS, PASSWORD_HINT, STRIPE_NEW_KEY, useApps, usesMarketing, type AppInfo, type AppRow } from "./catalog";
+import { categoryName, infoFor, isFullSecretKey, LINK_ACCESS, MORE_LABELS, PASSWORD_HINT, STRIPE_NEW_KEY, useApps, usesMarketing, type AiState, type AppInfo, type AppRow } from "./catalog";
 import { DrivePanel } from "./DrivePanel";
 import { GoogleBeforeSignIn, GoogleBusinessPanel } from "./GoogleBusinessPanel";
 import { InstallRing, type InstallPhase } from "./InstallRing";
 import { useIsInstalled } from "./installed";
+import { LobPanel } from "./LobPanel";
 import { MarketingPanel } from "./MarketingPanel";
 import { MetaPanel } from "./MetaPanel";
 import { SCREENSHOTS } from "./screenshots";
 import { StripePanel } from "./StripePanel";
 import { TeamChatPanel, useTeamChatSwitch } from "./TeamChatPanel";
+import { TwilioPanel } from "./TwilioPanel";
 import { useTradeAppSwitch } from "./tradeApps";
 import { WebsiteFormsPanel, useWebsiteFormsSwitch } from "./WebsiteFormsPanel";
 import { WebsitePanel } from "./WebsitePanel";
 
 const GOOGLE_SETTINGS = "https://calendar.google.com/calendar/r/settings";
+// OpenAI: where a key is made, and where its credit is added.
+const OPENAI_KEYS = "https://platform.openai.com/api-keys";
+const OPENAI_BILLING = "https://platform.openai.com/settings/organization/billing";
 // fal.ai: where a key is made, and where credit is added.
 const FAL_KEYS = "https://fal.ai/dashboard/keys";
 const FAL_BILLING = "https://fal.ai/dashboard/billing";
@@ -86,9 +95,9 @@ function statusOf(app: AppRow, installed: boolean): { label: string; tone: Tone 
   return { label: "Not installed", tone: "muted" };
 }
 
-/** Signed in or a key added: what /apps/:id/disconnect takes away. Stripe set up for the server isn't the company's to remove. */
+/** Signed in or a key added: what /apps/:id/disconnect takes away. Stripe or Twilio set up for the server isn't the company's to remove. */
 const hasAccount = (app: AppRow) =>
-  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own);
+  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own) && !(app.id === "twilio" && !app.twilio?.own);
 
 /** Where Open goes: a page in Crewtavo, or the app itself. */
 const openTarget = (app: AppRow, info: AppInfo) => (app.id === "stripe" && !app.stripe?.own ? "/payouts" : (info.open ?? info.website));
@@ -120,28 +129,29 @@ export function AppDetailPage() {
       </>
     );
   }
-  return <AppListing key={app.id} app={app} all={apps.data!.apps} mcpUrl={apps.data!.mcp_url} />;
+  return <AppListing key={app.id} app={app} all={apps.data!.apps} ai={apps.data!.ai} />;
 }
 
-function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: string }) {
+function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState | undefined }) {
   const info = infoFor(app);
   const session = useSession();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const { isInstalled, connections } = useIsInstalled();
+  const { isInstalled } = useIsInstalled();
   const installed = isInstalled(app);
   const calendars = useCalendars(app.category === "Calendar");
-  // Install pressed: installing right away ("working"), or waiting on the setup below for a key, a
-  // calendar link or the connector link ("waiting"); then the ring fills ("done") and Uninstall shows.
+  // Install pressed: installing right away ("working"), or waiting on the setup below for a key or a
+  // calendar link ("waiting"); then the ring fills ("done") and Uninstall shows.
   // Back from signing in to it: the ring finishes filling there too.
   const [phase, setPhase] = useState<InstallPhase | null>(() => (params.get("status") === "connected" ? "done" : null));
   const started = useRef(0);
   const setup = phase === "waiting";
   const refresh = () => {
     for (const key of ["apps", "calendars", "google-calendars"]) queryClient.invalidateQueries({ queryKey: [key] });
-    // The company's own Anthropic key turns on Ask and the other AI buttons, a fal.ai key Find paving
-    // on the measuring map (lib/session.tsx), and the website's editor puts Website in the menu.
-    if (app.id === "anthropic" || app.id === "fal" || app.auth === "site") session.refresh();
+    // The company's own Anthropic or OpenAI key (or the person's ChatGPT plan) turns on Ask and the other AI buttons, a fal.ai key
+    // Find paving on the measuring map, its Twilio account texting (lib/session.tsx), and the
+    // website's editor puts Website in the menu.
+    if (app.id === "anthropic" || app.id === "chatgpt" || app.id === "fal" || app.id === "twilio" || app.auth === "site") session.refresh();
   };
   const connect = useMutation({
     mutationFn: () => api.post<{ authorization_url: string }>(`/apps/${app.id}/connect`),
@@ -164,20 +174,24 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
     : app.id === "paving" || app.id === "roofing" || app.id === "snow" ? tradeSwitch
     : chatSwitch;
 
-  // Uninstall takes this app's own assistants and calendars with it.
-  const assistants = connections.filter((c) => assistantAppFor(c.name) === app.id);
+  // Uninstall takes this app's own calendars with it.
   const sources = (calendars.data?.calendars ?? []).filter((s) => s.app === app.id);
+  // ChatGPT: the person's own plan, and whether the whole team may connect theirs, go with Uninstall too.
+  const plan = useChatGptPlan(app.id === "chatgpt");
   // Stripe decides where clients' payments go: uninstalling it asks for the person's password.
   const [askPassword, setAskPassword] = useState(false);
   const uninstall = useMutation({
     meta: { success: `${app.name} uninstalled`, inline: askPassword },
     mutationFn: async (options: { remove_reviews?: boolean; password?: string } = {}) => {
-      for (const c of assistants) await disconnectAssistant(supabase(), c.clientId);
       // Google's own calendars go with its sign-in; the ones added by address are removed here.
       if (hasAccount(app)) {
         const res = await api.post<{ revoked?: boolean }>(`/apps/${app.id}/disconnect`, options);
         // The other Google app signs in the same way, and Google would sign it out too.
         if (res?.revoked === false) toast.info(`Your Google sign-in stays, since ${app.id === "google_business" ? "Google Calendar" : "Google Business Profile"} uses it too. Remove Crewtavo in your Google account's security settings to end both.`);
+      }
+      if (app.id === "chatgpt") {
+        if (app.team_plans || plan.data?.team_plans) await api.put("/ai/team-plans", { on: false });
+        if (app.my_plan) await api.post("/ai/chatgpt/disconnect", {});
       }
       if (app.auth === "site") await api.delete(`/apps/${app.id}/site`);
       await Promise.all(sources.filter((s) => s.kind !== "google").map((s) => api.delete(`/calendars/${s.id}`)));
@@ -188,11 +202,11 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
     },
     onSettled: () => {
       refresh();
-      queryClient.invalidateQueries({ queryKey: ["assistant-connections"] });
+      queryClient.invalidateQueries({ queryKey: ["chatgpt-plan"] });
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
   });
-  const canUninstall = installed && (app.auth === "builtin" || app.auth === "site" || hasAccount(app) || assistants.length > 0 || sources.length > 0);
+  const canUninstall = installed && (app.auth === "builtin" || app.auth === "site" || hasAccount(app) || Boolean(app.my_plan) || Boolean(app.team_plans) || sources.length > 0);
 
   const askUninstall = async () => {
     if (app.auth === "builtin") return builtinSwitch.turnOff();
@@ -203,7 +217,7 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
       if (await confirm({ title: `Uninstall ${app.name}?`, body, confirmLabel: "Uninstall", danger: true })) uninstall.mutate({ remove_reviews: choice.remove });
       return;
     }
-    const body = uninstallBody(app, { assistants: assistants.length, calendars: sources.length });
+    const body = uninstallBody(app, { calendars: sources.length, teamPlans: app.team_plans || plan.data?.team_plans });
     if (await confirm({ title: `Uninstall ${app.name}?`, body, confirmLabel: "Uninstall", danger: true })) uninstall.mutate({});
   };
 
@@ -336,7 +350,7 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           <div className="app-hero-actions">
             {actions}
             {((installed && !phase) || unavailable) && <StatusPill label={status.label} tone={status.tone} />}
-            {installed && app.id === "stripe" && !app.stripe?.own && <span className="muted small">Set up for this server</span>}
+            {installed && ((app.id === "stripe" && !app.stripe?.own) || (app.id === "twilio" && !app.twilio?.own)) && <span className="muted small">Set up for this server</span>}
             {info.beta && <StatusPill label="Beta" tone="info" />}
           </div>
         </div>
@@ -411,10 +425,15 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
             <WebsitePanel app={app} onSaved={refresh} />
           ) : app.id === "abc_supply" ? (
             <AbcSupplyPanel app={app} onChanged={refresh} />
-          ) : app.auth === "connector" || app.id === "anthropic" ? (
+          ) : app.id === "twilio" ? (
+            <TwilioPanel app={app} onChanged={refresh} />
+          ) : app.id === "lob" ? (
+            <LobPanel app={app} onChanged={refresh} />
+          ) : app.id === "chatgpt" ? (
             <>
-              <ConnectorCard app={app} mcpUrl={mcpUrl} setup />
-              {app.id === "anthropic" && <KeyCard app={app} onSaved={refresh} />}
+              <KeyCard app={app} onSaved={refresh} />
+              <ChatGptPlanCard where="app" />
+              <TeamPlansSwitch />
             </>
           ) : (
             <KeyCard app={app} onSaved={refresh} />
@@ -434,10 +453,15 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           {app.id === "google_calendar" && app.status === "connected" && <GoogleCalendarPanel />}
           {app.id === "google_calendar" && app.available && googleByAddress}
           {app.auth === "link" && <LinkCalendarsPanel app={app.id} appName={app.name} steps={info.steps} />}
-          {(app.auth === "connector" || app.id === "anthropic") && <ConnectorCard app={app} mcpUrl={mcpUrl} />}
+          {(app.id === "anthropic" || app.id === "chatgpt") && <AiServiceChoice ai={ai} onChanged={refresh} />}
           {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
-          {app.auth === "api_key" && app.id !== "abc_supply" && <KeyCard app={app} onSaved={refresh} />}
+          {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
+          {app.id === "chatgpt" && app.status !== "disconnected" && <OpenAiModelCard app={app} onChanged={refresh} />}
+          {app.id === "chatgpt" && <ChatGptPlanCard where="app" />}
+          {app.id === "chatgpt" && <TeamPlansSwitch />}
+          {app.id === "lob" && <LobPanel app={app} onChanged={refresh} />}
           {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
+          {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
           {app.id === "website_analytics" && <AnalyticsPanel />}
           {app.id === "website_forms" && <WebsiteFormsPanel />}
           {app.id === "careers" && <WebsiteFormsPanel kind="careers" />}
@@ -446,6 +470,16 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
           {app.id === "team_chat" && <TeamChatPanel />}
           {app.auth === "site" && <WebsitePanel app={app} onSaved={refresh} />}
         </>
+      )}
+
+      {/* Using Crewtavo from inside the chat app is the connector, which lives in Settings. */}
+      {AI_CHAT_APPS.has(app.id) && (
+        <div className="callout" role="note">
+          <Icon name="info" size={20} />
+          <div className="grow" style={{ fontWeight: 400 }}>
+            To use Crewtavo from inside {app.name}, add the connector in <Link to="/settings?tab=assistants" style={{ textDecoration: "underline" }}>Settings → AI assistants</Link>.
+          </div>
+        </div>
       )}
 
       {shots.length > 0 && (
@@ -507,6 +541,9 @@ function AppListing({ app, all, mcpUrl }: { app: AppRow; all: AppRow[]; mcpUrl: 
   );
 }
 
+/** The two chat apps that can also use Crewtavo over its connector (Settings → AI assistants). */
+const AI_CHAT_APPS = new Set(["anthropic", "chatgpt"]);
+
 /** The apps whose Open goes to Marketing. */
 const OPENS_MARKETING = new Set(["marketing", "google_business", "meta"]);
 
@@ -551,7 +588,7 @@ function signedInWaiting(pending: string | null): string {
   return "Signed in. Google didn't answer, so Crewtavo tries again soon.";
 }
 
-/** Uninstalling Google Business Profile: its reviews stay, unless this is ticked. */
+/** Uninstalling Google Business Profile: its reviews stay (for as long as a copy that isn't syncing is kept), unless this is ticked. */
 function UninstallReviews({ count, onChange }: { count: number; onChange: (remove: boolean) => void }) {
   const [remove, setRemove] = useState(false);
   return (
@@ -563,13 +600,13 @@ function UninstallReviews({ count, onChange }: { count: number; onChange: (remov
           <span>Also remove the {count.toLocaleString("en-US")} {count === 1 ? "review" : "reviews"} brought in (asks start again for clients they matched)</span>
         </label>
       )}
-      {count > 0 && !remove && <p className="muted small" style={{ margin: 0 }}>Kept, they still show in Marketing → Reviews and keep their clients from being asked again.</p>}
+      {count > 0 && !remove && <p className="muted small" style={{ margin: 0 }}>Kept, they show in Marketing → Reviews for up to 30 days more, and their clients still aren't asked again.</p>}
     </div>
   );
 }
 
 /** What Uninstall takes away, in the words of each kind of app. */
-function uninstallBody(app: AppRow, counts: { assistants: number; calendars: number }): string {
+function uninstallBody(app: AppRow, counts: { calendars: number; teamPlans?: boolean }): string {
   const again = "You can install it again any time.";
   if (app.id === "google_calendar") {
     const visits = app.status !== "disconnected" ? " The visits calendar Crewtavo made is removed from your Google account." : "";
@@ -587,14 +624,18 @@ function uninstallBody(app: AppRow, counts: { assistants: number; calendars: num
     return `Posts stop going to your Page and Instagram, and Crewtavo's access to them is removed at Meta.${waiting} Posts already made stay, and your app's keys stay, so installing it again is one sign-in.`;
   }
   if (app.id === "abc_supply") return `Estimates stop getting prices from ABC, and your ABC app's keys are removed from Crewtavo. The materials in your price list and the prices already on estimates stay. ${again}`;
+  if (app.id === "lob") return `Postcard campaigns stop, including any being mailed now, and your Lob key is removed from Crewtavo. Cards Lob already made are still mailed. ${again}`;
   if (app.id === "fal") return `Find paving stops working, and your fal.ai key is removed from Crewtavo. Shapes it already found stay on your drawings. ${again}`;
   if (app.category === "AI") {
     const parts = [];
-    if (counts.assistants) parts.push(`${app.name} stops working with your Crewtavo account. Anyone else on your team who connected it keeps theirs.`);
-    if (hasAccount(app)) parts.push("Your Anthropic key is removed, so Crewtavo's writing help stops using it.");
+    if (hasAccount(app)) parts.push(`Your ${app.id === "chatgpt" ? "OpenAI" : "Anthropic"} key is removed, so Crewtavo's AI stops using it.`);
+    if (app.my_plan) parts.push("Your own ChatGPT plan is signed out.");
+    if (counts.teamPlans) parts.push("Everyone else's ChatGPT plan is disconnected too.");
+    // The connector is a different thing, and stays.
+    if (AI_CHAT_APPS.has(app.id)) parts.push(`Assistants connected in Settings → AI assistants keep working.`);
     return `${parts.join(" ")} ${again}`;
   }
-  if (app.id === "twilio") return `Texts stop going out from your number. Nothing already sent is deleted. ${again}`;
+  if (app.id === "twilio") return `Texts stop going out from your number, and your Twilio account's keys are removed from Crewtavo. Nothing already sent is deleted, and your Twilio account isn't changed. ${again}`;
   if (app.auth === "site") return `Website comes out of the menu. Your website, its editor and everything on it stay as they are. ${again}`;
   return `Crewtavo stops using it right away. Nothing already here is deleted. ${again}`;
 }
@@ -612,7 +653,7 @@ function UninstallWithPassword({ app, busy, error, onUninstall, onClose }: { app
           setPassword("");
         }}
       >
-        <div className="muted" style={{ marginTop: -6 }}>{uninstallBody(app, { assistants: 0, calendars: 0 })}</div>
+        <div className="muted" style={{ marginTop: -6 }}>{uninstallBody(app, { calendars: 0 })}</div>
         <Field label="Your Crewtavo password" hint={PASSWORD_HINT}>
           <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" maxLength={200} required autoFocus />
         </Field>
@@ -716,37 +757,7 @@ function NotAvailable({ app }: { app: AppRow }) {
   );
 }
 
-/**
- * Claude and ChatGPT connect to Crewtavo with the MCP link. While installing (`setup`), it checks
- * every few seconds, so the page turns to installed once the assistant has connected.
- */
-function ConnectorCard({ app, mcpUrl, setup = false }: { app: AppRow; mcpUrl: string; setup?: boolean }) {
-  const steps = CONNECTOR_STEPS[app.id] ?? [];
-  useAssistantConnections(setup ? 5000 : false);
-  return (
-    <section className="card card-pad stack-sm" aria-labelledby="connector-title" style={{ gap: 12 }}>
-      <h2 id="connector-title" className="section-title" style={{ fontSize: 16 }}>Use Crewtavo in {app.name}</h2>
-      <div className="row wrap" style={{ gap: 8 }}>
-        <code className="code-pill grow">{mcpUrl}</code>
-        <Button icon="copy" onClick={() => copyText(mcpUrl, "Connector link copied")}>Copy</Button>
-      </div>
-      {steps.length > 0 && <ol className="app-steps">{steps.map((s) => <li key={s}>{s}</li>)}</ol>}
-      {setup ? (
-        <span className="muted small row" style={{ gap: 8 }} role="status">
-          <Icon name="refresh" size={14} />
-          Once {app.name} has connected, it shows as installed here.
-        </span>
-      ) : (
-        <>
-          <ConnectedAssistants app={app.id} />
-          <AssistantAccess />
-        </>
-      )}
-    </section>
-  );
-}
-
-/** Apps that use a key (a company's own Anthropic key, for example). The key is never shown again. */
+/** Apps that use a key (a company's own Anthropic or OpenAI key, for example). The key is never shown again. */
 export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) {
   const [key, setKey] = useState("");
   const [show, setShow] = useState(false);
@@ -754,7 +765,7 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
   // Stripe decides where clients' payments go: changing its key asks for the person's password too.
   const [password, setPassword] = useState("");
   const save = useMutation({
-    meta: { inline: true, success: stripe ? "Stripe connected" : `${app.name} key saved` },
+    meta: { inline: true, success: stripe ? "Stripe connected" : app.id === "chatgpt" ? "OpenAI key saved" : `${app.name} key saved` },
     mutationFn: () => api.put(`/apps/${app.id}/key`, stripe ? { api_key: key.trim(), password } : { api_key: key.trim() }),
     onSuccess: () => {
       setKey("");
@@ -772,10 +783,12 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
   const stripeSteps = stripe && !app.stripe?.own;
   const fal = app.id === "fal";
   const falSteps = fal && app.status !== "connected";
+  const openai = app.id === "chatgpt";
+  const openaiSteps = openai && app.status !== "connected";
   return (
     <section id="app-setup" className="card card-pad stack-sm" aria-labelledby="key-title" style={{ gap: 10 }}>
       <h2 id="key-title" className="section-title" style={{ fontSize: 16 }}>
-        {app.id === "anthropic" ? "Your own Anthropic key (optional)" : stripe ? (app.stripe?.own ? "Stripe key" : app.stripe ? "Use your own Stripe account" : "Connect your Stripe account") : fal ? (falSteps ? "Connect your fal.ai account" : "fal.ai key") : `${app.name} key`}
+        {app.id === "anthropic" ? "Anthropic API key" : openai ? (openaiSteps ? "Use an OpenAI API key" : "OpenAI key") : stripe ? (app.stripe?.own ? "Stripe key" : app.stripe ? "Use your own Stripe account" : "Connect your Stripe account") : fal ? (falSteps ? "Connect your fal.ai account" : "fal.ai key") : `${app.name} key`}
       </h2>
       {stripeSteps && (
         <>
@@ -805,8 +818,24 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
           </a>
         </>
       )}
+      {openaiSteps && (
+        <>
+          <span className="muted small">For the whole company: everyone's drafts, answers from your guides and receipts use this key, and so does anything Crewtavo drafts by itself. OpenAI bills you directly for what's used.</span>
+          <ol className="app-steps">
+            <li>Click <strong>Get a key from OpenAI</strong> and sign in to OpenAI's API platform (it's separate from a ChatGPT plan).</li>
+            <li>Click <strong>Create new secret key</strong>, name it Crewtavo, and copy the key. OpenAI only shows it once.</li>
+            <li>Add credit under <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Billing</a> if the account has none.</li>
+            <li>Paste the key below. Crewtavo checks it with OpenAI before saving, at no cost.</li>
+          </ol>
+          <a className="btn btn-primary" style={{ justifySelf: "start" }} href={OPENAI_KEYS} target="_blank" rel="noreferrer">
+            <Icon name="external" size={16} />
+            Get a key from OpenAI
+          </a>
+        </>
+      )}
       <span className="muted small">
-        {app.id === "anthropic" ? "Crewtavo's writing help and answers from your guides use this key when you add one. " : null}
+        {app.id === "anthropic" ? "Crewtavo's writing help, answers from your guides and receipt reading use this key when you add one. " : null}
+        {openai && !openaiSteps ? <>Crewtavo's writing help, answers from your guides and receipt reading use this key. <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Check your OpenAI credit</a>. </> : null}
         {fal && !falSteps ? <>Find paving is on the measuring map, next to the takeoff items. <a href={FAL_BILLING} target="_blank" rel="noreferrer">Check your fal.ai credit</a>. </> : null}
         {stripe ? "Crewtavo adds the webhook it needs to your Stripe account. " : null}
         {app.status === "connected" && app.account_label && (!stripe || app.stripe?.own) ? `Saved: ${app.account_label}.` : "It's stored encrypted and never shown again."}
@@ -815,7 +844,7 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
       <form className="stack-sm" onSubmit={submit}>
         <div className="row" style={{ gap: 8 }}>
           <div className="input-group grow">
-            <input className="input" type={show ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder={(stripe ? app.stripe?.own : app.status === "connected") ? "Paste a new key to replace it" : stripe ? "Paste the key from Stripe" : "Paste your key"} value={key} onChange={(e) => { setKey(e.target.value); save.reset(); }} aria-label={stripe ? "Key from Stripe" : `${app.name} API key`} style={{ paddingLeft: 12, paddingRight: 36 }} />
+            <input className="input" type={show ? "text" : "password"} autoComplete="off" spellCheck={false} placeholder={(stripe ? app.stripe?.own : app.status === "connected") ? "Paste a new key to replace it" : stripe ? "Paste the key from Stripe" : "Paste your key"} value={key} onChange={(e) => { setKey(e.target.value); save.reset(); }} aria-label={stripe ? "Key from Stripe" : openai ? "OpenAI API key" : `${app.name} API key`} style={{ paddingLeft: 12, paddingRight: 36 }} />
             <button type="button" className="icon-btn addon-right" style={{ position: "absolute", right: 2, pointerEvents: "auto" }} aria-label={show ? "Hide key" : "Show key"} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={14} /></button>
           </div>
           {!stripe && saveButton}

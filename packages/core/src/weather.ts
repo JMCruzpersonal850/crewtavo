@@ -3,11 +3,13 @@
  * its trade preset's and changes them in Settings → Weather rules (set_weather_rules). Fetching lives
  * in the API.
  */
+import { isPavingWork, pavingWorkLabel, type PavingWork } from "./paving";
 import { addDays } from "./time";
 
 export interface WeatherRule {
   service_id?: string;          // the price list item's id: matched first, so renaming the item keeps its rule
   applies_to?: string;          // its name (all a rule had before ids); neither = whole job
+  work?: string;                // a kind of paving calculator work (PAVING_WORK) instead of an item: jobs priced with the calculator that have it
   min_temp_f?: number;          // e.g. hot-mix asphalt needs 50°F
   max_temp_f?: number;          // e.g. shingles scuff above 90°F
   max_rain_pct?: number;        // e.g. mowing skips above 70%
@@ -75,7 +77,7 @@ export function weatherRuleSummary(rule: WeatherRule): string {
     rule.max_wind_mph != null && `wind at most ${rule.max_wind_mph} mph`,
     rule.requires_dry_hours && `${rule.requires_dry_hours} dry hours after`,
   ].filter(Boolean);
-  return `${rule.applies_to || "Every job"}: ${parts.join(", ") || "no limits"}`;
+  return `${isPavingWork(rule.work) ? pavingWorkLabel(rule.work) : rule.applies_to || "Every job"}: ${parts.join(", ") || "no limits"}`;
 }
 
 /** The rules with each one's price list item called what it's called now (`names`: id → name). */
@@ -87,17 +89,22 @@ export function namedWeatherRules(rules: WeatherRule[], names: Map<string, strin
  * The rules a job's visits are checked against: the job's own when it has any, otherwise the
  * company's (settings.weather_rules, set in Settings) for the services on the job, plus those for
  * every job. A rule's item is matched by id first (`serviceIds`: the job's items' ids → their names
- * now), then by name: rules saved before ids have only that. Both come from JSON people can edit,
- * so anything that isn't a rule is skipped.
+ * now), then by name: rules saved before ids have only that. A rule for a kind of paving calculator
+ * work goes by the kinds on the job's calculator lines (`work`, from pavingWorkOn), which have no
+ * price list item to match. All of it comes from JSON people can edit, so anything that isn't a rule
+ * is skipped.
  */
-export function jobWeatherRules(jobRules: unknown, companyRules: unknown, services: string[], serviceIds = new Map<string, string>()): WeatherRule[] {
+export function jobWeatherRules(jobRules: unknown, companyRules: unknown, services: string[], serviceIds = new Map<string, string>(), work: readonly PavingWork[] = []): WeatherRule[] {
   const list = (rules: unknown) => (Array.isArray(rules) ? (rules.filter((r) => r && typeof r === "object") as WeatherRule[]) : []);
   const own = list(jobRules);
   if (own.length) return own;
   const names = new Set(services.map((s) => s.trim().toLowerCase()));
   const applies = (r: WeatherRule) =>
-    (!r.applies_to && !r.service_id) || (r.service_id != null && serviceIds.has(r.service_id)) || (r.applies_to != null && names.has(String(r.applies_to).trim().toLowerCase()));
-  return namedWeatherRules(list(companyRules).filter(applies), serviceIds);
+    isPavingWork(r.work)
+      ? work.includes(r.work)
+      : (!r.applies_to && !r.service_id) || (r.service_id != null && serviceIds.has(r.service_id)) || (r.applies_to != null && names.has(String(r.applies_to).trim().toLowerCase()));
+  // A rule for calculator work is called by its kind, whatever name it was saved with.
+  return namedWeatherRules(list(companyRules).filter(applies), serviceIds).map((r) => (isPavingWork(r.work) ? { ...r, applies_to: pavingWorkLabel(r.work) } : r));
 }
 
 /** Reasons a visit on `date` breaks its rules; empty when the weather is fine. */

@@ -1,7 +1,9 @@
 /** Checklist templates crews fill in on a visit: inspections, safety steps, sign-offs, each step able to open the guide for how it's done. */
 import { checklistItemKey as slug, MAX_CHECKLIST_ITEMS, normalizeChecklist } from "@crewtavo/core/forms";
+import { isPavingWork, PAVING_WORK, PAVING_WORK_IDS, pavingWorkLabel, type PavingWork } from "@crewtavo/core/paving";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { featureOn } from "@/components/shell/nav";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
@@ -31,6 +33,10 @@ interface Template {
   show_to_client: boolean;
   /** The price list items it goes with: it comes up by itself on jobs with any of them. None: any job. */
   service_ids: string[];
+  /** It comes up by itself on every job. */
+  every_job: boolean;
+  /** The kinds of paving calculator work it goes with (PAVING_WORK): jobs priced there have no price list item. */
+  work: string[];
 }
 interface Service { id: string; name: string; category: string | null; active: boolean }
 
@@ -45,7 +51,7 @@ export function ChecklistSettings() {
   const templates = useQuery({
     queryKey: key,
     queryFn: async () =>
-      unwrap(await supabase().from("checklist_templates").select("id, name, items, active, show_to_client, services:checklist_template_services(service_id)").eq("company_id", session.company.id).order("name")).map(
+      unwrap(await supabase().from("checklist_templates").select("id, name, items, active, show_to_client, every_job, work, services:checklist_template_services(service_id)").eq("company_id", session.company.id).order("name")).map(
         ({ services, ...t }) => ({ ...t, service_ids: services.map((s) => s.service_id) }) as unknown as Template,
       ),
   });
@@ -119,7 +125,7 @@ function TemplateEditor({ template, services, onDelete }: { template: Template; 
     mutationFn: async () => {
       // Checked and tidied the way an AI assistant's are too (packages/core/src/forms.ts).
       const clean = normalizeChecklist(t);
-      unwrap(await supabase().from("checklist_templates").update({ ...clean, items: clean.items as never, active: t.active, show_to_client: t.show_to_client }).eq("id", t.id));
+      unwrap(await supabase().from("checklist_templates").update({ ...clean, items: clean.items as never, active: t.active, show_to_client: t.show_to_client, every_job: t.every_job, work: t.work }).eq("id", t.id));
       unwrap(await supabase().rpc("set_checklist_services", { p_template: t.id, p_services: t.service_ids }));
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["checklist-templates", session.company.id] }),
@@ -136,7 +142,23 @@ function TemplateEditor({ template, services, onDelete }: { template: Template; 
   return (
     <div className="card card-pad stack">
       <Field label="Checklist name"><input className="input" value={t.name} maxLength={120} onChange={(e) => setT({ ...t, name: e.target.value })} /></Field>
-      <ServicesPicker value={t.service_ids} services={services} onChange={(service_ids) => setT({ ...t, service_ids })} />
+      <label className="switch-row">
+        <input type="checkbox" className="switch" checked={t.every_job} onChange={(e) => setT({ ...t, every_job: e.target.checked })} />
+        <span>
+          Use on every job
+          <span className="muted small" style={{ display: "block", fontWeight: 400 }}>It comes up by itself on every visit, whatever the job has on it.</span>
+        </span>
+      </label>
+      {!t.every_job && (
+        <ServicesPicker
+          value={t.service_ids}
+          services={services}
+          onChange={(service_ids) => setT({ ...t, service_ids })}
+          work={t.work.filter(isPavingWork)}
+          calculator={featureOn(session.company.settings, "paving_app")}
+          onWork={(work) => setT({ ...t, work })}
+        />
+      )}
       <label className="switch-row"><input type="checkbox" className="switch" checked={t.active} onChange={(e) => setT({ ...t, active: e.target.checked })} />Crews can use this checklist</label>
       <label className="switch-row">
         <input type="checkbox" className="switch" checked={t.show_to_client} onChange={(e) => setT({ ...t, show_to_client: e.target.checked })} />
@@ -183,14 +205,27 @@ function TemplateEditor({ template, services, onDelete }: { template: Template; 
   );
 }
 
-/** "Use on jobs with": the price list items a checklist goes with, each removable, and a list to add more. */
-function ServicesPicker({ value, services, onChange }: { value: string[]; services: Service[]; onChange: (ids: string[]) => void }) {
+/** A kind of paving calculator work as the list's value, told apart from a price list item's id. */
+const KIND = "calculator:";
+
+/**
+ * "Use on jobs with": the price list items a checklist goes with, each removable, and a list to add
+ * more. With Paving installed the list also has the kinds of work on jobs priced with the paving
+ * calculator (`work`), which have no price list item to go by.
+ */
+function ServicesPicker({ value, services, onChange, work, calculator, onWork }: { value: string[]; services: Service[]; onChange: (ids: string[]) => void; work: PavingWork[]; calculator: boolean; onWork: (work: PavingWork[]) => void }) {
   const chosen = value.map((id) => services.find((s) => s.id === id)).filter((s): s is Service => Boolean(s));
   const addable = services.filter((s) => s.active && !value.includes(s.id));
   const categories = [...new Set(addable.map((s) => s.category?.trim() || "Other"))];
+  const kinds = calculator || work.length ? PAVING_WORK_IDS.filter((w) => !work.includes(w)) : [];
+  const add = (picked: string) => {
+    const kind = picked.startsWith(KIND) ? picked.slice(KIND.length) : null;
+    if (isPavingWork(kind)) onWork([...work, kind]);
+    else if (picked) onChange([...value, picked]);
+  };
   return (
-    <Field label="Use on jobs with" optional hint={value.length ? "It comes up by itself on visits for jobs with any of these." : "With none, crews can pick it on any job."}>
-      {chosen.length > 0 && (
+    <Field label="Use on jobs with" optional hint={value.length || work.length ? "It comes up by itself on visits for jobs with any of these." : "With none, crews can pick it on any job."}>
+      {chosen.length + work.length > 0 && (
         <div className="row wrap" style={{ gap: 6 }}>
           {chosen.map((s) => (
             <span key={s.id} className="tag">
@@ -198,10 +233,21 @@ function ServicesPicker({ value, services, onChange }: { value: string[]; servic
               <button type="button" aria-label={`Remove ${s.name}`} onClick={() => onChange(value.filter((id) => id !== s.id))}><Icon name="x" size={12} strokeWidth={2} /></button>
             </span>
           ))}
+          {work.map((w) => (
+            <span key={w} className="tag">
+              {pavingWorkLabel(w)}
+              <button type="button" aria-label={`Remove ${pavingWorkLabel(w)}`} onClick={() => onWork(work.filter((x) => x !== w))}><Icon name="x" size={12} strokeWidth={2} /></button>
+            </span>
+          ))}
         </div>
       )}
-      <select className="select" value="" disabled={!addable.length} onChange={(e) => e.target.value && onChange([...value, e.target.value])}>
+      <select className="select" value="" disabled={!addable.length && !kinds.length} onChange={(e) => add(e.target.value)}>
         <option value="">{services.length ? "Add from your price list…" : "Your price list is empty"}</option>
+        {kinds.length > 0 && (
+          <optgroup label="Priced with the paving calculator">
+            {kinds.map((w) => <option key={w} value={`${KIND}${w}`}>{PAVING_WORK[w]}</option>)}
+          </optgroup>
+        )}
         {categories.map((c) => (
           <optgroup key={c} label={c}>
             {addable.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

@@ -13,7 +13,7 @@ import { addressLines, contractValues, depositFor, fillIn, resolveSections, sect
 import { pickTemplate, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import type { ClientChecklist } from "@crewtavo/core/forms";
 import { promoRuleWords } from "@crewtavo/core/promos";
-import { countsOn, lineTotal, optionBaseTotal, optionTierLabels, optionTotals, quoteTotals, toCents, type Amount, type OptionLine } from "@crewtavo/core/money";
+import { countsOn, lineTotal, optionBaseTotal, optionTierLabels, optionTotals, quoteTotals, scheduleAmounts, scheduleDueText, scheduleRows, toCents, type Amount, type OptionLine } from "@crewtavo/core/money";
 import { notIncludedText, SITE_ADJUSTMENT_NAME } from "@crewtavo/core/estimates";
 import { isPackagePicturePath, packagePictureSrc } from "@crewtavo/core/presets";
 import { isIsoDate } from "@crewtavo/core/time";
@@ -22,6 +22,7 @@ import { dateIn, formatDate, todayIn } from "@/lib/format";
 import { escapeHtml } from "@/lib/html";
 import { scheduleText } from "../jobs/repeatText";
 import type { DocumentCompany, DocumentContract, DocumentData, DocumentLine, DocumentOption, DocumentSection, DocumentSignature } from "./types";
+import { shortDate } from "./words";
 
 // ---------------------------------------------------------------------------------------------
 // The business
@@ -234,6 +235,20 @@ export interface DocumentQuote {
   pdf_fields?: ReadonlyArray<{ label: string; text: string }>;
   /** What its packages left off (quotes.left_out): the ones the business shows print as "Not included" under the notes. */
   left_out?: unknown;
+  /** How it's paid (quotes.payment_schedule), left out by callers and servers from before. Signed, approval.payment_schedule has the amounts. */
+  payment_schedule?: unknown;
+}
+
+/**
+ * A quote's payment schedule as it prints: signed, each payment as it was kept with the approval;
+ * open, worked out on the total shown (core scheduleAmounts, as the database will keep it). Null
+ * without one.
+ */
+export function quoteSchedule(quote: Pick<DocumentQuote, "payment_schedule" | "approval" | "total">, signed: boolean): DocumentData["schedule"] {
+  const kept = signed && quote.approval && typeof quote.approval === "object" ? scheduleRows((quote.approval as { payment_schedule?: unknown }).payment_schedule) : [];
+  const rows = signed ? kept.map((r) => ({ ...r, amount: Number((r as { amount?: Amount }).amount ?? 0) })) : scheduleAmounts(scheduleRows(quote.payment_schedule), quote.total).rows;
+  if (!rows.length) return null;
+  return rows.map((r, i) => ({ name: `Payment ${i + 1}`, due: scheduleDueText(r, shortDate), amount: r.amount }));
 }
 
 /** "Tax exempt" in the totals, for a tax-exempt client charged no tax (with their certificate number or note). */
@@ -304,6 +319,8 @@ export interface DocumentExtras {
    * none. Left out, a signed quote prints the copy kept with its approval.
    */
   contract?: DocumentContract | null;
+  /** The business's Google reviews, when it prints them on its quotes (the Client Hub's quote sends them). */
+  reviews?: DocumentData["reviews"];
 }
 
 /**
@@ -381,6 +398,8 @@ export function quoteDocument(quote: DocumentQuote, lines: readonly DocumentQuot
     ...exemption(quote.client, quote.tax_amount),
     total: Number(quote.total ?? 0),
     deposit: deposit > 0 ? deposit : null,
+    schedule: quoteSchedule(quote, approval !== null),
+    ...(extras.reviews ? { reviews: extras.reviews } : {}),
     repeats: quote.recurrence_rule ? scheduleText(quote.recurrence_rule, quote.active_months) : null,
     notes: [quote.message?.trim(), notIn].filter(Boolean).join("\n\n") || null,
     signatures: extras.signatures ?? approvalSignatures(quote.approval, quote.approved_at),
@@ -628,8 +647,10 @@ function invoiceCredits(credits: ReadonlyArray<{ amount: Amount; note: string }>
 /**
  * An invoice as its template document: what was billed, what's been paid and refunded (on the
  * business's calendar, `timeZone`), and what's left, with its contract sections after its notes.
+ * `lateFeeNote` (core lateFeeNotice, where a late fee could still go on it) is printed as the last
+ * paragraph of its notes, so the client is told about the fee before one is added.
  */
-export function invoiceDocument(inv: DocumentInvoice, extras: { timeZone: string; contract?: DocumentContract | null }): DocumentData {
+export function invoiceDocument(inv: DocumentInvoice, extras: { timeZone: string; contract?: DocumentContract | null; lateFeeNote?: string | null }): DocumentData {
   // Printed as deductions from the total ("−$500.00"); a refund's negative amount adds back. A
   // payment that was only a tip doesn't change what's owed, so it isn't among them.
   const payments = inv.payments
@@ -655,7 +676,7 @@ export function invoiceDocument(inv: DocumentInvoice, extras: { timeZone: string
     total: Number(inv.total),
     payments,
     balanceDue: Number(inv.balance_due),
-    notes: inv.notes?.trim() || null,
+    notes: [inv.notes?.trim(), extras.lateFeeNote?.trim()].filter(Boolean).join("\n\n") || null,
     ...(extras.contract || inv.checklists?.length ? { contract: { sections: [...(extras.contract?.sections ?? []), ...checklistSections(inv.checklists)] } } : {}),
   };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { afterExit, announceTopLayer } from "@/lib/motion";
 import { Icon } from "./Icon";
+import { t } from "@/lib/i18n";
 
 /**
  * Modal built on native <dialog>: the browser handles focus trapping, Escape and the backdrop.
@@ -104,7 +105,7 @@ export function Dialog({
               <h2 id={titleId}>{view.title}</h2>
               {view.description && <p>{view.description}</p>}
             </div>
-            <button type="button" className="icon-btn dialog-close" aria-label="Close" onClick={onClose}>
+            <button type="button" className="icon-btn dialog-close" aria-label={t("Close")} onClick={onClose}>
               <Icon name="x" size={20} />
             </button>
           </header>

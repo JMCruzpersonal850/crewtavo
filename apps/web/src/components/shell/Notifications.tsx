@@ -13,6 +13,11 @@ import { hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { Icon, type IconName } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
+import { getLocale, t } from "@/lib/i18n";
+import { translateNotice } from "@crewtavo/core/i18n/patterns";
+
+/** A notification as the database or the server wrote it (in English), in the app's language: read by its kind, and left whole in English when it isn't one the app knows. */
+const inMyLanguage = <N extends { kind: string; title: string; body: string | null }>(n: N): N => translateNotice(getLocale(), n);
 
 // By notification kind, and by the first word of an activity's verb ("autopay.failed", "payment_method.expiring") or its subject.
 const ICONS: Record<string, IconName> = { quote: "quote", invoice: "invoice", request: "requests", job: "job", visit: "calendar", client: "clients", equipment: "truck", subs: "users", jobs: "job", applicant: "user", autopay: "card", payment_method: "card" };
@@ -81,8 +86,8 @@ export function NotificationsButton() {
     }
     const fresh = rows.filter((n) => !seen.current!.has(n.id));
     fresh.forEach((n) => seen.current!.add(n.id));
-    for (const n of fresh.filter((n) => !n.read_at).slice(0, 3)) {
-      toast.info(n.title, { description: n.body ?? undefined, action: n.link ? { label: "View", onClick: () => navigate(n.link!) } : undefined });
+    for (const n of fresh.filter((n) => !n.read_at).slice(0, 3).map(inMyLanguage)) {
+      toast.info(n.title, { description: n.body && n.body !== n.title ? n.body : undefined, action: n.link ? { label: t("View"), onClick: () => navigate(n.link!) } : undefined });
     }
   }, [notifications.data, navigate]);
 
@@ -135,18 +140,18 @@ export function NotificationsButton() {
 
   return (
     <>
-      <button ref={button} type="button" className="icon-btn" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} title="Notifications" popovertarget={id} aria-expanded={open}>
+      <button ref={button} type="button" className="icon-btn" aria-label={unread ? t("Notifications, {count} unread", { count: unread }) : t("Notifications")} title={t("Notifications")} popovertarget={id} aria-expanded={open}>
         <Icon name="bell" size={20} />
         {unread > 0 && <span className="dot-badge">{unread > 9 ? "9+" : unread}</span>}
       </button>
-      <div ref={panel} id={id} className="panel" popover="auto" role="dialog" aria-label="Notifications">
+      <div ref={panel} id={id} className="panel" popover="auto" role="dialog" aria-label={t("Notifications")}>
         <div className="panel-head">
-          <h2>Notifications</h2>
+          <h2>{t("Notifications")}</h2>
         </div>
         {showActivity && (
           <div className="underline-tabs" role="tablist" style={{ padding: "0 16px" }}>
-            <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")}>For you{unread ? <span className="badge badge-green">{unread}</span> : null}</button>
-            <button type="button" role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>Activity</button>
+            <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")}>{t("For you")}{unread ? <span className="badge badge-green">{unread}</span> : null}</button>
+            <button type="button" role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}>{t("Activity")}</button>
           </div>
         )}
         <div className="panel-body">
@@ -156,10 +161,10 @@ export function NotificationsButton() {
               {notifications.data?.length === 0 && (
                 <div className="empty-state empty-state-sm">
                   <span className="empty-icon"><Icon name="bell" size={20} /></span>
-                  <h3>You're all caught up</h3>
+                  <h3>{t("You're all caught up")}</h3>
                 </div>
               )}
-              {notifications.data?.map((n) => (
+              {notifications.data?.map(inMyLanguage).map((n) => (
                 <button
                   key={n.id}
                   type="button"
@@ -170,7 +175,8 @@ export function NotificationsButton() {
                   <span className="n-icon"><Icon name={ICONS[n.kind] ?? "bell"} size={16} /></span>
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <div className="n-title">{n.title}</div>
-                    {n.body && <div className="n-body">{n.body}</div>}
+                    {/* A one-line schedule notice is written as both its title and its body: said once. */}
+                    {n.body && n.body !== n.title && <div className="n-body">{n.body}</div>}
                     <div className="n-time">{timeAgo(n.created_at)}</div>
                   </span>
                 </button>
@@ -183,7 +189,7 @@ export function NotificationsButton() {
               {activity.data?.length === 0 && (
                 <div className="empty-state empty-state-sm">
                   <span className="empty-icon"><Icon name="history" size={20} /></span>
-                  <h3>No activity yet</h3>
+                  <h3>{t("No activity yet")}</h3>
                 </div>
               )}
               {activity.data?.map((a) => (

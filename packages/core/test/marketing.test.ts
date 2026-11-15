@@ -19,6 +19,8 @@ import {
   ASK_WHEN,
   DEFAULT_REMINDER_MESSAGE,
   inQuietHours,
+  inTextQuietHours,
+  textQuietHoursEnd,
   marketingOn,
   nextReminder,
   notAsked,
@@ -32,6 +34,13 @@ import {
   rescheduledReminder,
   reviewSettings,
   smsKeyword,
+  asksToStopTexts,
+  textConsentLine,
+  textDisclosure,
+  addStopLine,
+  smsSegments,
+  textsOffWhy,
+  twilioHasStop,
   textsOff,
   EMAIL_NOT_CONNECTED,
   TEXTS_NOT_SET_UP,
@@ -50,6 +59,7 @@ import {
   referralSettings,
   referralsReady,
   referrerLine,
+  referrerDisclosure,
   type CreditReferral,
   type AskRule,
   type Reach,
@@ -117,6 +127,16 @@ describe("times", () => {
     expect(inQuietHours(at("2026-11-05T14:00:00Z"), NY)).toBe(false); // 9:00am
   });
 
+  it("holds a rule's texts from 9pm to 8am in the company's time zone, until the next 8am", () => {
+    expect(inTextQuietHours(at("2026-10-30T00:59:00Z"), NY)).toBe(false); // 8:59pm
+    expect(inTextQuietHours(at("2026-10-30T01:00:00Z"), NY)).toBe(true); // 9:00pm
+    expect(inTextQuietHours(at("2026-10-30T11:59:00Z"), NY)).toBe(true); // 7:59am
+    expect(inTextQuietHours(at("2026-10-30T12:00:00Z"), NY)).toBe(false); // 8:00am
+    expect(textQuietHoursEnd(at("2026-10-30T02:30:00Z"), NY).toISOString()).toBe("2026-10-30T12:00:00.000Z"); // 10:30pm EDT → 8am EDT
+    expect(textQuietHoursEnd(at("2026-10-30T10:00:00Z"), NY).toISOString()).toBe("2026-10-30T12:00:00.000Z"); // 6am → 8am the same day
+    expect(textQuietHoursEnd(at("2026-11-01T02:30:00Z"), NY).toISOString()).toBe("2026-11-01T13:00:00.000Z"); // Oct 31 10:30pm EDT → Nov 1 8am EST
+  });
+
   it("ends quiet hours at the next 9am, across the change back to standard time", () => {
     expect(quietHoursEnd(at("2026-10-30T02:30:00Z"), NY).toISOString()).toBe("2026-10-30T13:00:00.000Z"); // 10:30pm EDT → 9am EDT
     expect(quietHoursEnd(at("2026-10-30T10:00:00Z"), NY).toISOString()).toBe("2026-10-30T13:00:00.000Z"); // 6am → 9am the same day
@@ -180,12 +200,12 @@ describe("channels for a first ask", () => {
   });
 
   it("says why when nothing can go", () => {
-    expect(askChannels("sms", reach({ textsOff: true }), false)).toEqual({ send: [], skip: "Ana texted STOP, so texts to them are off." });
+    expect(askChannels("sms", reach({ textsOff: true }), false)).toEqual({ send: [], skip: "Ana asked not to be texted, so texts to them are off." });
     expect(askChannels("sms", reach({ hasPhone: false }), false).skip).toBe("Ana has no phone number.");
     expect(askChannels("email", reach({ hasEmail: false }), false).skip).toBe("Ana has no email address.");
     expect(askChannels("email", reach({ emailReady: false }), false)).toMatchObject({ send: [], setup: true });
     expect(askChannels("both", reach({ hasEmail: false, hasPhone: false }), false).skip).toBe("Ana has no email address or phone number.");
-    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), true).skip).toBe("Ana texted STOP, so texts to them are off.");
+    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), true).skip).toBe("Ana asked not to be texted, so texts to them are off.");
     expect(askChannels("email", reach({ hasEmail: false }), true).skip).toBe("Ana has no email address.");
     expect(askChannels("sms", reach({ smsReady: false }), false)).toEqual({ send: [], skip: TEXTS_NOT_SET_UP, setup: true });
   });
@@ -195,7 +215,7 @@ describe("channels for a first ask", () => {
     expect(askChannels("both", reach({ textsOff: true, emailReady: false }), false)).toEqual({ send: [], skip: EMAIL_NOT_CONNECTED, setup: true });
     expect(askChannels("both", reach({ smsReady: false, emailReady: false }), false)).toEqual({ send: [], skip: EMAIL_NOT_CONNECTED, setup: true });
     // With no address, the text's reason.
-    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), false).skip).toBe("Ana texted STOP, so texts to them are off.");
+    expect(askChannels("both", reach({ hasEmail: false, textsOff: true }), false).skip).toBe("Ana asked not to be texted, so texts to them are off.");
     expect(askChannels("both", reach({ hasEmail: false, smsReady: false }), false)).toEqual({ send: [], skip: TEXTS_NOT_SET_UP, setup: true });
   });
 
@@ -229,7 +249,7 @@ describe("who's asked by hand", () => {
   it("by a way that reaches them, right away", () => {
     expect(askRefusal(ana, "sms", ready)).toBeNull();
     expect(askRefusal(ana, "sms", { email: true, sms: false })).toBe(TEXTS_NOT_SET_UP);
-    expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "sms", ready)).toBe("Ana texted STOP, so texts to them are off.");
+    expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "sms", ready)).toBe("Ana asked not to be texted, so texts to them are off.");
     expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "both", ready)).toBeNull();
     expect(askRefusal({ ...ana, sms_opt_out_at: "2026-10-01T00:00:00Z" }, "both", { email: false, sms: true })).toBe(EMAIL_NOT_CONNECTED);
     expect(askRefusal({ ...ana, email: "not an address" }, "email", ready)).toBe("Ana has no email address.");
@@ -455,6 +475,104 @@ describe("texts from clients", () => {
   });
 });
 
+describe("a text that asks for texts to stop without the keyword", () => {
+  it("is read as that when it's short and is, or opens with, the ask", () => {
+    const asks = [
+      "stop texting me", "Please stop texting me.", "STOP TEXTING ME!!!", "Stop. Texting. Me.", "pls stop texting", "can you stop texting me", "Could you please stop messaging me?",
+      "please stop", "Stop please", "stop it", "Please stop. Thank you", "unsubscribe me", "Please unsubscribe me from these texts", "unsubscribe please", "no more texts", "No more messages please",
+      "No texts please", "don't text me", "Don’t text me again", "do not text this number", "Do not contact me", "quit texting me", "remove me from your list", "Please remove my number", "take me off your list",
+      "opt me out", "I want to opt out", "I'd like to unsubscribe", "stop sending me texts", "Stop the texts", "stop these messages", "Stop texting me, I sold the house", "i want you to stop texting me",
+    ];
+    for (const body of asks) expect(asksToStopTexts(body), body).toBe(true);
+  });
+
+  it("leaves anything else as an ordinary message", () => {
+    const ordinary = [
+      "Please stop by tomorrow", "can you stop by at 3", "stop by", "Don't stop texting me updates, they help", "Stop at the gate and text me", "No message from you yesterday, are we still on?",
+      "I can't stop thinking about the new deck", "Please stop mowing so early", "stop the mowing service", "Stop texting my husband, text me instead", "Tell the crew to stop texting me", "Why did you stop texting me?",
+      "Please cancel", "remove the old shrubs please", "Take me off Tuesday, I'm away", "No text needed, just come by", "ok", "", null,
+      // Too long to be only that: the office reads it.
+      "Stop texting me about the invoice because I already paid it last week by check and your office confirmed it on the phone",
+    ];
+    for (const body of ordinary) expect(asksToStopTexts(body), String(body)).toBe(false);
+  });
+});
+
+describe("agreeing to texts", () => {
+  it("says under a form's phone box, in the business's name, what giving a number agrees to", () => {
+    expect(textDisclosure("Acme Lawn")).toBe("By giving your number you agree that Acme Lawn may text you about this request and your visits. Msg & data rates may apply. Reply STOP to stop, HELP for help.");
+  });
+
+  it("tells the office where a client's number came from, and when", () => {
+    expect(textConsentLine("booking_form", "Nov 14, 2026")).toBe("They gave this number on your booking form, Nov 14, 2026, agreeing to texts.");
+    expect(textConsentLine("referral_form", "Nov 14, 2026")).toBe("They gave this number on a referral page, Nov 14, 2026, agreeing to texts.");
+    expect(textConsentLine("office", "Nov 14, 2026")).toBe("Number entered by the office, Nov 14, 2026. Text them only if they agreed to it.");
+    // A number from before this was kept.
+    expect(textConsentLine(null, null)).toBe("No record of where this number came from. Text them only if they agreed to it.");
+    // A contact's is their tick.
+    expect(textConsentLine("office", "Nov 14, 2026", true)).toBe("Ticked for texts by the office, Nov 14, 2026.");
+    expect(textConsentLine(null, null, true)).toBe("Ticked for texts before Crewtavo kept who agreed.");
+  });
+});
+
+describe("the line that says how to stop texts", () => {
+  it("counts a text's segments as phones do", () => {
+    expect(smsSegments("")).toBe(1);
+    expect(smsSegments("a".repeat(160))).toBe(1);
+    expect(smsSegments("a".repeat(161))).toBe(2);
+    expect(smsSegments("a".repeat(306))).toBe(2);
+    expect(smsSegments("a".repeat(307))).toBe(3);
+    // A bracket or a euro sign counts twice.
+    expect(smsSegments(`${"a".repeat(158)}[`)).toBe(1);
+    expect(smsSegments(`${"a".repeat(159)}[`)).toBe(2);
+    // Anything outside the phone alphabet (an emoji, a curly quote) makes it 70 to a text.
+    expect(smsSegments(`${"a".repeat(69)}’`)).toBe(1);
+    expect(smsSegments(`${"a".repeat(70)}’`)).toBe(2);
+    expect(smsSegments("See you soon 👍")).toBe(1);
+  });
+
+  it("goes on a line of its own, or straight after when that keeps the text to fewer segments", () => {
+    expect(addStopLine("Acme Lawn: your visit is tomorrow at 9.")).toBe("Acme Lawn: your visit is tomorrow at 9.\n\nReply STOP to opt out.");
+    // 137 characters: with a space it's exactly 160 and one segment, on its own line it would be two.
+    const tight = "a".repeat(137);
+    expect(addStopLine(tight)).toBe(`${tight} Reply STOP to opt out.`);
+    expect(smsSegments(addStopLine(tight))).toBe(1);
+    // Too long to stay one either way: on its own line.
+    const long = "a".repeat(150);
+    expect(addStopLine(long)).toBe(`${long}\n\nReply STOP to opt out.`);
+    expect(addStopLine("See you at 9.  \n")).toBe("See you at 9.\n\nReply STOP to opt out.");
+  });
+
+  it("is left off when the business's own words already say STOP in capitals", () => {
+    expect(addStopLine("See you at 9. Text STOP to end.")).toBe("See you at 9. Text STOP to end.");
+    expect(addStopLine("We'll stop by at 9.")).toBe("We'll stop by at 9.\n\nReply STOP to opt out.");
+  });
+});
+
+describe("why a number's texts are off, as the office reads it", () => {
+  const stop = (over: Partial<Parameters<typeof textsOffWhy>[0] & object> = {}) => ({ source: "office", how: "phone", note: null, set_by_name: "Dana Office", ...over });
+
+  it("says who turned them off and how they were asked", () => {
+    expect(textsOffWhy(stop())).toBe("Turned off by Dana Office: they asked by phone.");
+    expect(textsOffWhy(stop({ how: "in_person", note: "At the Tuesday visit" }))).toBe("Turned off by Dana Office: they asked in person. At the Tuesday visit");
+    expect(textsOffWhy(stop({ how: "other", set_by_name: null }))).toBe("Turned off by the office: they asked.");
+  });
+
+  it("shows the words that asked to stop", () => {
+    expect(textsOffWhy(stop({ source: "phrase", how: "text", note: "please stop texting me", set_by_name: null }))).toBe("They texted “please stop texting me”.");
+  });
+
+  it("says a STOP is Twilio's to lift, which the office's own stops aren't", () => {
+    for (const source of ["keyword", "carrier", null]) {
+      expect(twilioHasStop(source), String(source)).toBe(true);
+      expect(textsOffWhy(stop({ source })), String(source)).toBe("They texted STOP. Twilio won't deliver texts to this number until they text START, so it can't be turned back on here.");
+    }
+    for (const source of ["office", "phrase"]) expect(twilioHasStop(source), source).toBe(false);
+    // Marked on the client alone (a merge, a number changed since): the office can turn it back on.
+    expect(textsOffWhy(null)).toBe("Turned off for this client.");
+  });
+});
+
 describe("referrals", () => {
   it("reads settings.referrals, kept in range as the database keeps a new referral's terms", () => {
     expect(referralSettings({ referrals: { reward: { kind: "amount", value: 50 }, offer: " 10% off ", message: "Hi {{link}}" } }))
@@ -469,6 +587,14 @@ describe("referrals", () => {
     expect(referralSettings(null)).toEqual({ reward: { kind: "amount", value: 0 }, offer: null, message: DEFAULT_REFERRAL_MESSAGE });
     // The old keys were moved by a migration and aren't read.
     expect(referralSettings({ referral_reward: { amount: 50 }, referral_offer: "Old" })).toEqual({ reward: { kind: "amount", value: 0 }, offer: null, message: DEFAULT_REFERRAL_MESSAGE });
+  });
+
+  it("tells the friend, on the referral page, that the person recommending gets a credit when one is set", () => {
+    expect(referrerDisclosure("Ana", "Acme Lawn", { kind: "amount", value: 50 })).toBe("Ana gets a credit from Acme Lawn if you become a client.");
+    expect(referrerDisclosure("Ana", "Acme Lawn", { kind: "percent", value: 10 })).toBe("Ana gets a credit from Acme Lawn if you become a client.");
+    expect(referrerDisclosure(" ", "Acme Lawn", { kind: "amount", value: 50 })).toBe("The person who sent you this gets a credit from Acme Lawn if you become a client.");
+    // Only an offer for the friend, nothing for the client who shares: nothing to disclose.
+    expect(referrerDisclosure("Ana", "Acme Lawn", { kind: "amount", value: 0 })).toBe("");
   });
 
   it("is ready with a credit or an offer", () => {

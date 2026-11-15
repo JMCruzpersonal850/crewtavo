@@ -4,6 +4,7 @@
  * and when someone is on two visits at once (TimeGrid's place, by person).
  */
 import { describe, expect, it } from "vitest";
+import { crewPeople, visitPeople } from "@crewtavo/core/visitPeople";
 import { doubleBookings, eventOnRow, movePeople, onRow, peopleRows } from "../src/features/schedule/people";
 import { conflictsOf, place, type GridExternal, type GridVisit } from "../src/features/schedule/TimeGrid";
 
@@ -34,6 +35,48 @@ describe("rows in the People view", () => {
     expect(onRow(on("ana", "bo"), "me")).toBe(false);
     expect(onRow(on(), "")).toBe(true);
     expect(onRow(on("ana"), "")).toBe(false);
+  });
+});
+
+// A recurring job's visits have a crew and nobody listed: its members are the people on them
+// (visitPeople in @crewtavo/core, the rule the database goes by too).
+describe("a crew's visit with nobody listed", () => {
+  const crews = crewPeople([{ crew_id: "mowing", user_id: "ana" }, { crew_id: "mowing", user_id: "bo" }, { crew_id: "trees", user_id: "cy" }]);
+  const mowing = { crew_id: "mowing", assignees: [] as Array<{ user_id: string }> };
+  const names: Record<string, string> = { me: "You", ana: "Ana", bo: "Bo", cy: "Cy" };
+
+  it("sits on each crew member's row, not on nobody's", () => {
+    expect(onRow(mowing, "ana", crews)).toBe(true);
+    expect(onRow(mowing, "bo", crews)).toBe(true);
+    expect(onRow(mowing, "cy", crews)).toBe(false);
+    expect(onRow(mowing, "", crews)).toBe(false);
+  });
+
+  it("sits only on the rows of the people listed once someone is, and on nobody's with no crew or an empty one", () => {
+    expect(onRow({ crew_id: "mowing", ...on("cy") }, "ana", crews)).toBe(false);
+    expect(onRow({ crew_id: "mowing", ...on("cy") }, "cy", crews)).toBe(true);
+    expect(onRow({ crew_id: null, ...on() }, "", crews)).toBe(true);
+    expect(onRow({ crew_id: "hedges", ...on() }, "", crews)).toBe(true);
+  });
+
+  it("gives a crew member who has left a row while they're still on one of its visits", () => {
+    const team = [{ user_id: "me", active: true }, { user_id: "ana", active: true }, { user_id: "bo", active: false }, { user_id: "cy", active: false }];
+    expect(peopleRows(team, [mowing], (id) => names[id]!, "me", crews).map((p) => p.user_id)).toEqual(["me", "ana", "bo"]);
+  });
+
+  it("dragged off one member's row onto someone else's lists the rest of the crew with them", () => {
+    expect(movePeople(visitPeople(mowing, crews), "ana", "cy")).toEqual(["bo", "cy"]);
+    expect(movePeople(visitPeople(mowing, crews), "ana", "")).toEqual(["bo"]);
+    // Dropped on someone already on it with the crew: nobody changes.
+    expect(movePeople(visitPeople(mowing, crews), undefined, "bo")).toBeNull();
+  });
+
+  it("counts for the double-booking warning: the crew's members are busy then", () => {
+    const tz = "America/New_York";
+    const at = (id: string, start: string, end: string) => ({ id, title: id, kind: "job", status: "scheduled", crew_id: null as string | null, starts_at: `2026-10-16T${start}:00-04:00`, ends_at: `2026-10-16T${end}:00-04:00`, scheduled_on: "2026-10-16" });
+    const visits = [{ ...at("weekly-mow", "09:00", "10:00"), ...mowing }, { ...at("stump", "09:00", "10:00"), crew_id: "mowing", ...on("cy") }];
+    const found = doubleBookings(at("new", "09:30", "10:30"), ["2026-10-16"], ["ana", "cy", "me"], visits, tz, crews);
+    expect(found.map(({ id, clashes }) => [id, clashes.map((c) => c.id)])).toEqual([["ana", ["weekly-mow"]], ["cy", ["stump"]]]);
   });
 });
 

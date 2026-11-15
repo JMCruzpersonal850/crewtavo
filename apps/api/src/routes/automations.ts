@@ -9,9 +9,9 @@ import type { AppEnv } from "../env";
 import { requireCompany, requireUser } from "../lib/auth";
 import { firstName } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson } from "../lib/http";
-import { emailReady, smsConfigured } from "../lib/notify";
+import { emailReady, smsReady } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
-import { buildContext, officeVars, processAutomations, withAutopayLink, withEvent } from "../services/automations";
+import { buildContext, officeVars, previewRecipients, processAutomations, withAutopayLink, withEvent } from "../services/automations";
 import { autopayAvailable, autopayInviteText } from "../services/autopay";
 
 export const automations = new Hono<AppEnv>();
@@ -54,37 +54,46 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
 
   // The latest event of this kind, or else the latest record of the subject's type.
   const event = must(await db.from("activity").select("id, subject_type, subject_id").eq("company_id", companyId).eq("verb", rule.trigger).not("subject_id", "is", null).order("created_at", { ascending: false }).limit(1));
-  let subjectId = event[0]?.subject_id ?? null;
-  if (!subjectId) {
+  const latestRecord = async () => {
     const table = ({ client: "clients", request: "requests", quote: "quotes", job: "jobs", visit: "visits", invoice: "invoices" } as const)[trigger.subject];
     const latest = must(await db.from(table).select("id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1));
-    subjectId = latest[0]?.id ?? null;
-  }
-  if (!subjectId) return c.json({ record: null, pass: false, failed: null, previews: [] });
-
+    return latest[0]?.id ?? null;
+  };
   const admin = adminClient(c.env);
-  const loaded = await buildContext(c.env, admin, companyId, trigger.subject, subjectId, appUrl(c));
+  const load = async (id: string | null) => (id ? buildContext(c.env, admin, companyId, trigger.subject, id, appUrl(c)) : null);
+  let eventId: number | null = event[0]?.id ?? null;
+  let loaded = await load(event[0]?.subject_id ?? null);
+  // No event yet, or its record is gone since (a deleted visit's "cancelled"): the latest record, without the event's own words.
+  if (!loaded) {
+    eventId = null;
+    loaded = await load(await latestRecord());
+  }
   if (!loaded) return c.json({ record: null, pass: false, failed: null, previews: [] });
   // What the event said (a sub's name and price, the card a charge failed on), as a run would have it.
   // The person previewing sees the office's copies of any client links, as the rule's notices carry them.
-  const ctx = await withAutopayLink(c.env, await withEvent(admin, loaded, rule.trigger, event[0]?.id ?? null), rule.trigger, appUrl(c));
+  const ctx = await withAutopayLink(c.env, await withEvent(admin, loaded, rule.trigger, eventId), rule.trigger, appUrl(c));
   const vars = await officeVars(c.env, ctx, appUrl(c));
   const check = evaluateConditions(rule.conditions as Condition[], ctx.facts, ctx.subject);
   const r = (t?: string) => renderTemplate(t ?? "", vars).trim();
   const warnings: string[] = [];
   const canEmail = await emailReady(c.env, companyId);
+  const canText = await smsReady(c.env, companyId);
   const takesAutopay = (rule.actions as Action[]).some((a) => a.type === "invite_autopay") ? await autopayAvailable(c.env, admin, companyId) : true;
+  // Who an email or a text would go to: the client, and their contacts ticked for it.
+  const uses = (type: Action["type"]) => (rule.actions as Action[]).some((a) => a.type === type);
+  const emailTo = uses("send_email") ? await previewRecipients(admin, ctx, rule.trigger, "email") : [];
+  const textTo = uses("send_sms") ? await previewRecipients(admin, ctx, rule.trigger, "sms") : [];
   const previews = (rule.actions as Action[]).map((a) => {
     switch (a.type) {
       case "notify":
         return { type: a.type, title: r(a.title), body: r(a.body) };
       case "send_email":
         if (!canEmail) warnings.push("Email isn't connected yet (Settings → Email), so email actions will fail until it is.");
-        if (!ctx.client?.email) warnings.push(`${ctx.client?.display_name ?? "This client"} has no email address.`);
-        return { type: a.type, to: ctx.client?.email ?? null, title: r(a.subject), body: r(a.body) };
+        if (!emailTo.length) warnings.push(`${ctx.client?.display_name ?? "This client"} has no email address.`);
+        return { type: a.type, to: emailTo.join(", ") || null, title: r(a.subject), body: r(a.body) };
       case "send_sms":
-        if (!smsConfigured(c.env)) warnings.push("Text messaging isn't set up on this server, so text actions will fail until it is.");
-        return { type: a.type, to: ctx.client?.phone ?? null, body: r(a.body) };
+        if (!canText) warnings.push("Texting isn't set up yet (Apps → Twilio), so text actions will fail until it is.");
+        return { type: a.type, to: textTo.join(", ") || null, body: r(a.body) };
       case "add_note":
         return { type: a.type, body: r(a.body) };
       case "create_task":
@@ -96,7 +105,7 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
       case "invite_autopay": {
         if (!takesAutopay) warnings.push("Autopay isn't on (Settings → Payments, and a Stripe key that can save cards), so invites won't go out until it is.");
         const to = a.channel === "sms" ? (ctx.client?.phone ?? null) : (ctx.client?.email ?? null);
-        if (a.channel === "sms" && !smsConfigured(c.env)) warnings.push("Text messaging isn't set up on this server, so text actions will fail until it is.");
+        if (a.channel === "sms" && !canText) warnings.push("Texting isn't set up yet (Apps → Twilio), so text actions will fail until it is.");
         if (a.channel !== "sms" && !canEmail) warnings.push("Email isn't connected yet (Settings → Email), so email actions will fail until it is.");
         if (!to) warnings.push(`${ctx.client?.display_name ?? "This client"} has no ${a.channel === "sms" ? "mobile number" : "email address"}.`);
         // The set-up invite as it goes (a client with a card from Stripe is asked to confirm it instead).

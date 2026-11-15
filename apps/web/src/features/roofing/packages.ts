@@ -10,6 +10,7 @@
  */
 import { followPrice, packageFigures } from "@crewtavo/core/estimates";
 import { materialsPerUnit, unpricedLinks, type MaterialLink } from "@crewtavo/core/materials";
+import { getPreset, presetCustomFields } from "@crewtavo/core/presets";
 import { useQuery } from "@tanstack/react-query";
 import { api, supabase, unwrap } from "@/lib/api";
 import { base64Of } from "@/lib/files";
@@ -142,7 +143,18 @@ export const canEditRanges = (session: Pick<Session, "role">) => hasRole(session
 
 export interface SetupResult {
   services_added: string[];
+  /** The insurance claim fields added to quotes and jobs, by label. Not sent by a server from before them. */
+  fields_added?: string[];
   packages_created: number;
+}
+
+/**
+ * The roofing preset's custom fields (insurance claim details on quotes and jobs) a business doesn't
+ * have yet, by label, each once. `have`: its fields' record and key, archived ones too.
+ */
+export function missingRoofingFields(have: ReadonlyArray<{ record_type: string; key: string }>): string[] {
+  const taken = new Set(have.map((f) => `${f.record_type}:${f.key}`));
+  return [...new Set(presetCustomFields(getPreset("roofing_exteriors")).filter((f) => !taken.has(`${f.record_type}:${f.key}`)).map((f) => f.label))];
 }
 
 /** The standard roofing services and packages, for a business that doesn't have them yet. */
@@ -157,9 +169,10 @@ export function setupMessage(r: SetupResult): string {
   const parts = [
     r.packages_created ? `${r.packages_created} ${r.packages_created === 1 ? "package" : "packages"}` : null,
     r.services_added.length ? `${r.services_added.length} ${r.services_added.length === 1 ? "service" : "services"}` : null,
+    r.fields_added?.length ? `${r.fields_added.length} insurance claim ${r.fields_added.length === 1 ? "field" : "fields"} for quotes and jobs` : null,
   ].filter(Boolean);
   if (!parts.length) return "You already have them";
-  const added = `Added ${parts.join(" and ")}`;
+  const added = `Added ${parts.length > 2 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts.join(" and ")}`;
   return r.packages_created ? `${added}. ${r.packages_created === 1 ? "Its warranty is" : "Their warranties are"} example wording, so have your attorney review ${r.packages_created === 1 ? "it" : "them"}.` : added;
 }
 

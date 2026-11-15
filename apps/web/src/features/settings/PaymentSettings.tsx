@@ -7,7 +7,7 @@
  * Tips stay one switch, in Settings → Company; this page only says where it stands. Cards brought
  * in from Stripe are listed under it (StripeCards).
  */
-import { AUTOPAY_TERMS_MAX, autopayCoversMonthly, autopayTimingText, starterAutopayTerms, type AutopaySettings, type AutopayTiming } from "@crewtavo/core/autopay";
+import { AUTOPAY_BANK_NOTE, AUTOPAY_NO_LIMIT_NOTE, AUTOPAY_TERMS_MAX, autopayBankText, autopayCoversMonthly, autopayTimingText, starterAutopayTerms, TIPS_LAW_NOTE, type AutopaySettings, type AutopayTiming } from "@crewtavo/core/autopay";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -81,6 +81,12 @@ export function paymentForm(s: AutopaySettings): PaymentForm {
     jobs_default: s.jobs_default,
     card_required: s.card_required,
   };
+}
+
+/** The limit as it's typed, for the words clients read: a number above $0, else no limit. */
+export function bankLimit(typed: string): number | null {
+  const max = Math.round(Number(typed) * 100) / 100;
+  return typed.trim() && max > 0 && max <= 1_000_000 ? max : null;
 }
 
 /**
@@ -194,6 +200,11 @@ export function PaymentSettings() {
             <Button size="sm" variant="ghost" icon="undo" style={{ justifySelf: "start" }} onClick={() => set("terms", starter)}>Use the suggested wording</Button>
           )}
 
+          {/* The last paragraph of what clients agree to: written from the limit below, not typed. */}
+          <p className="muted small" style={{ margin: 0 }}>
+            After your terms and when you charge, clients also read: "{autopayBankText({ max_amount: bankLimit(f.max) })}" A client who saves a bank account agrees to that. Changing the limit changes it, for clients who agree from then on.
+          </p>
+
           <div className="form-grid">
             <Field label="When to charge" hint={`Clients read: "We charge ${autopayTimingText({ timing: f.timing, days })}."${f.timing === "now" ? "" : " The wait lets you catch a visit marked done by mistake."}`}>
               <select className="select" value={f.timing} onChange={(e) => set("timing", e.target.value as AutopayTiming)}>
@@ -205,7 +216,7 @@ export function PaymentSettings() {
                 <input className="input" type="number" inputMode="numeric" min={1} max={14} step={1} required value={f.days} onChange={(e) => set("days", e.target.value)} />
               </Field>
             )}
-            <Field label="Most to charge without asking" optional hint="Over this, the charge waits for your OK. Leave it blank for no limit.">
+            <Field label="Most to charge without asking" optional hint={`Over this, the charge waits for your OK. Leave it blank for no limit. ${f.max.trim() ? AUTOPAY_BANK_NOTE : AUTOPAY_NO_LIMIT_NOTE}`}>
               <span className="input-group">
                 <span className="addon">$</span>
                 <input className="input" style={{ paddingLeft: 22 }} inputMode="decimal" value={f.max} onChange={(e) => set("max", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="No limit" />
@@ -247,7 +258,7 @@ export function PaymentSettings() {
         </div>
         <span className="muted small">
           {s.tips
-            ? "Clients choose a tip before they pay, and from the receipt after an automatic charge."
+            ? `Clients choose a tip before they pay, and from the receipt after an automatic charge. ${TIPS_LAW_NOTE}`
             : "Clients aren't offered a tip when they pay or on the receipt, and no tip is charged to a saved card."}
         </span>
         <Link className="small" to="/settings?tab=company" style={{ justifySelf: "start" }}>Change it in Settings → Company</Link>

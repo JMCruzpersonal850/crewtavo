@@ -3,6 +3,7 @@
  * your maps app), who it's for, the crew and people, equipment, gate code and instructions. Edit
  * opens the visit form; nothing changes from here by accident. A sheet on phones.
  */
+import { marketingOn } from "@crewtavo/core/marketing";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
@@ -11,20 +12,23 @@ import { Icon } from "@/components/ui/Icon";
 import { MapsLink } from "@/components/ui/MapsLink";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
-import { EntityStatus, statusLabel } from "@/components/ui/StatusPill";
+import { EntityStatus, visitKindText } from "@/components/ui/StatusPill";
 import { supabase, unwrap, unwrapOne } from "@/lib/api";
 import { addressLine, formatTime } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
-import { hasRole, useSession } from "@/lib/session";
+import { can, hasRole, useSession } from "@/lib/session";
+import { useVisitExtraScope } from "../field/FieldExtras";
 import { usePendingChanges } from "./changeRequests";
 import { lengthLabel } from "./VisitDialog";
+import { intlLocale, msg, t } from "@/lib/i18n";
 
-const day = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
+const day = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString(intlLocale(), { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 
 export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; onClose: () => void; onEdit?: () => void }) {
   const session = useSession();
   const tz = session.company.timezone;
   const office = hasRole(session, "admin", "office", "estimator");
+  const showcases = hasRole(session, "admin", "office") && can(session, "marketing") && marketingOn(session.company.settings);
   const visit = useQuery({
     queryKey: ["visit-details", visitId],
     queryFn: async () =>
@@ -36,7 +40,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
           )
           .eq("id", visitId)
           .maybeSingle(),
-        "This visit",
+        msg("This visit"),
       ),
   });
   const v = visit.data;
@@ -55,17 +59,18 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
     queryFn: async () => unwrap(await supabase().from("property_access").select("gate_code, lockbox_code, instructions").eq("property_id", v!.property!.id))[0] ?? null,
   });
 
+  const extras = useVisitExtraScope(visitId, Boolean(v?.job));
   const client = v?.job?.client ?? v?.request?.client ?? null;
   const place = v ? visitPlace(v) : null;
   const minutes = v?.starts_at && v.ends_at ? Math.round((Date.parse(v.ends_at) - Date.parse(v.starts_at)) / 60_000) : null;
   const when = v
-    ? `${v.scheduled_on ? day(v.scheduled_on) : "Not scheduled yet"}${v.starts_at ? ` · ${formatTime(v.starts_at, tz)}${v.ends_at ? ` – ${formatTime(v.ends_at, tz)}` : ""}` : v.scheduled_on ? " · Anytime" : ""}`
+    ? `${v.scheduled_on ? day(v.scheduled_on) : t("Not scheduled yet")}${v.starts_at ? ` · ${formatTime(v.starts_at, tz)}${v.ends_at ? ` – ${formatTime(v.ends_at, tz)}` : ""}` : v.scheduled_on ? ` · ${t("Anytime")}` : ""}`
     : "";
   const codes = access.data;
   const names = (people.data ?? []).map((p) => p.full_name).filter(Boolean);
 
   return (
-    <Dialog open onClose={onClose} title={v?.title ?? "Visit"} description={v?.job ? <>Job #{v.job.number}{client ? ` · ${client.display_name}` : ""}</> : client?.display_name}>
+    <Dialog open onClose={onClose} title={v?.title ?? t("Visit")} description={v?.job ? <>Job #{v.job.number}{client ? ` · ${client.display_name}` : ""}</> : client?.display_name}>
       <div className="dialog-body">
         {visit.error && <ErrorState error={visit.error} onRetry={() => visit.refetch()} />}
         {visit.isPending && <><Skeleton width="60%" /><Skeleton width="80%" /><Skeleton width="40%" /></>}
@@ -73,11 +78,11 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
           <>
             <div className="row wrap" style={{ gap: 6 }}>
               <EntityStatus kind="visit" status={v.status} />
-              {v.kind !== "job" && <span className="chip">{statusLabel(v.kind)}</span>}
-              {v.route_order && v.status === "scheduled" && <span className="chip"><Icon name="navigation" size={12} />Stop {v.route_order}</span>}
-              {v.time_fixed && v.starts_at && <span className="chip chip-blue"><Icon name="lock" size={12} />Fixed time</span>}
-              {v.series_total && v.series_total > 1 && <span className="chip chip-blue">Day {v.series_day} of {v.series_total}</span>}
-              {asked && <span className="chip chip-blue"><Icon name="calendar" size={12} />Change requested</span>}
+              {v.kind !== "job" && <span className="chip">{visitKindText(v.kind)}</span>}
+              {v.route_order && v.status === "scheduled" && <span className="chip"><Icon name="navigation" size={12} />{t("Stop {number}", { number: v.route_order })}</span>}
+              {v.time_fixed && v.starts_at && <span className="chip chip-blue"><Icon name="lock" size={12} />{t("Fixed time")}</span>}
+              {v.series_total && v.series_total > 1 && <span className="chip chip-blue">{t("Day {day} of {days}", { day: v.series_day, days: v.series_total })}</span>}
+              {asked && <span className="chip chip-blue"><Icon name="calendar" size={12} />{t("Change requested")}</span>}
             </div>
 
             <div className="visit-facts">
@@ -95,8 +100,8 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
                     <MapsLink className="address-link" place={v.property}>{addressLine(v.property)}</MapsLink>
                     {(codes?.gate_code || codes?.lockbox_code) && (
                       <span className="row wrap small" style={{ gap: 12, marginTop: 4 }}>
-                        {codes.gate_code && <span><Icon name="lock" size={12} /> Gate <strong>{codes.gate_code}</strong></span>}
-                        {codes.lockbox_code && <span><Icon name="lock" size={12} /> Lockbox <strong>{codes.lockbox_code}</strong></span>}
+                        {codes.gate_code && <span><Icon name="lock" size={12} /> {t("Gate")} <strong>{codes.gate_code}</strong></span>}
+                        {codes.lockbox_code && <span><Icon name="lock" size={12} /> {t("Lockbox")} <strong>{codes.lockbox_code}</strong></span>}
                       </span>
                     )}
                     {codes?.instructions && <span className="muted small pre-wrap" style={{ display: "block", marginTop: 4 }}>{codes.instructions}</span>}
@@ -142,7 +147,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
               {v.hold_reason && (
                 <>
                   <Icon name="cloud" size={16} />
-                  <div style={{ color: "var(--warning)", fontWeight: 600 }}>Weather: {v.hold_reason}</div>
+                  <div style={{ color: "var(--warning)", fontWeight: 600 }}>{t("Weather: {reason}", { reason: v.hold_reason })}</div>
                 </>
               )}
 
@@ -156,15 +161,30 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
                   </div>
                 </>
               )}
+
+              {/* Extra work on this visit of a repeating job, without prices (the job page has those). */}
+              {extras.data && extras.data.length > 0 && (
+                <>
+                  <Icon name="plus" size={16} />
+                  <div className="stack-sm">
+                    <strong>{t("Extra work on this visit")}</strong>
+                    {extras.data.map((e) => <span key={e.id}>{e.name}{Number(e.quantity) !== 1 || e.unit !== "ea" ? ` · ${Number(e.quantity)} ${e.unit}` : ""}</span>)}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="visit-actions">
-              {onEdit && <Button variant="primary" icon="edit" onClick={onEdit}>Edit</Button>}
-              {place && <MapsLink className="btn" place={place}><Icon name="navigation" size={16} />Directions</MapsLink>}
-              {client?.phone && <a className="btn" href={`tel:${client.phone}`}><Icon name="phone" size={16} />Call</a>}
-              {client?.phone && <a className="btn" href={`sms:${client.phone}`}><Icon name="messages" size={16} />Text</a>}
-              {office && v.job && <Link className="btn" to={`/jobs/${v.job.id}`} onClick={onClose}><Icon name="job" size={16} />Open job</Link>}
-              {!office && <Link className="btn" to={`/field/visits/${v.id}`} onClick={onClose}><Icon name="clipboard" size={16} />Open visit</Link>}
+              {onEdit && <Button variant="primary" icon="edit" onClick={onEdit}>{t("Edit")}</Button>}
+              {place && <MapsLink className="btn" place={place}><Icon name="navigation" size={16} />{t("Directions")}</MapsLink>}
+              {client?.phone && <a className="btn" href={`tel:${client.phone}`}><Icon name="phone" size={16} />{t("Call")}</a>}
+              {client?.phone && <a className="btn" href={`sms:${client.phone}`}><Icon name="messages" size={16} />{t("Text")}</a>}
+              {office && v.job && <Link className="btn" to={`/jobs/${v.job.id}`} onClick={onClose}><Icon name="job" size={16} />{t("Open job")}</Link>}
+              {/* A finished visit's before and after photos, on a page to share (Marketing → Showcases). */}
+              {showcases && v.job && v.status === "completed" && (
+                <Link className="btn" to={`/marketing?tab=showcases&job=${v.job.id}&visit=${v.id}`} onClick={onClose}><Icon name="image" size={16} />{t("Make a showcase")}</Link>
+              )}
+              {!office && <Link className="btn" to={`/field/visits/${v.id}`} onClick={onClose}><Icon name="clipboard" size={16} />{t("Open visit")}</Link>}
             </div>
           </>
         )}

@@ -52,6 +52,8 @@ export interface ReadyJob {
 }
 
 const READY_FIELDS = "id, number, title, kind, billing_mode, pricing, client:clients(display_name, email), financials:job_financials(contract_total)";
+/** Ids asked for in one read (`.in("id", …)`): well inside an address's length, as lib/bulk.ts keeps its writes. */
+const IDS_PER_READ = 100;
 
 /**
  * Jobs waiting for their invoice: finished one-off jobs, per-visit jobs invoiced after each visit
@@ -62,7 +64,8 @@ const READY_FIELDS = "id, number, title, kind, billing_mode, pricing, client:cli
 export async function readyJobs(companyId: string): Promise<ReadyJob[]> {
   const db = supabase();
   const [finished, perVisit, charges, due] = await Promise.all([
-    db.from("jobs").select(READY_FIELDS).eq("company_id", companyId).eq("status", "requires_invoicing").order("number").limit(200),
+    // Every one: jobs are marked finished as their last visit is (20261113000100), and batch invoicing takes them all.
+    everyRow(() => db.from("jobs").select(READY_FIELDS).eq("company_id", companyId).eq("status", "requires_invoicing"), { order: "number", most: Infinity }),
     // The database picks these out (jobs_with_visits_to_invoice): there are too many finished visits to read them all here.
     everyRow(() => db.rpc("jobs_with_visits_to_invoice", { p_company: companyId }).select(READY_FIELDS), { order: "number", most: Infinity }),
     // A server without autopay yet has nothing waiting: the list stays as it was rather than failing.
@@ -71,12 +74,15 @@ export async function readyJobs(companyId: string): Promise<ReadyJob[]> {
     everyRow(() => db.from("due_invoices").select("job_id, month").eq("company_id", companyId), { order: "month", most: Infinity }).catch(() => []),
   ]);
   const charged = new Set(charges.map((c) => c.job_id));
-  const ready = (unwrap(finished) as unknown as ReadyJob[]).filter((j) => !charged.has(j.id));
-  ready.push(...(perVisit as unknown as ReadyJob[]).filter((j) => !charged.has(j.id) && !ready.some((r) => r.id === j.id)));
+  const ready = (finished as unknown as ReadyJob[]).filter((j) => !charged.has(j.id));
+  const listed = new Set(ready.map((j) => j.id));
+  ready.push(...(perVisit as unknown as ReadyJob[]).filter((j) => !charged.has(j.id) && !listed.has(j.id)));
   const months = new Map<string, string[]>();
   for (const d of due) if (!charged.has(d.job_id)) months.set(d.job_id!, [...(months.get(d.job_id!) ?? []), d.month!]);
-  if (months.size) {
-    const monthly = unwrap(await db.from("jobs").select(READY_FIELDS).in("id", [...months.keys()]).eq("status", "active")) as unknown as ReadyJob[];
+  // Their jobs, asked for by id a hundred at a time: a lawn company's whole monthly round is too many ids for one address.
+  const monthlyIds = [...months.keys()];
+  for (let i = 0; i < monthlyIds.length; i += IDS_PER_READ) {
+    const monthly = unwrap(await db.from("jobs").select(READY_FIELDS).in("id", monthlyIds.slice(i, i + IDS_PER_READ)).eq("status", "active").order("number")) as unknown as ReadyJob[];
     ready.push(...monthly.map((j) => ({ ...j, months: months.get(j.id) })));
   }
   return ready;

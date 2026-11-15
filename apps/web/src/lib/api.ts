@@ -8,6 +8,7 @@ import type { Database } from "@crewtavo/core/database";
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, friendlyDbError, isRestarting, OFFLINE, SESSION_EXPIRED } from "./errors";
 import { startMonitoring, type MonitoringConfig } from "./monitoring";
+import { msg, t } from "@/lib/i18n";
 
 export { ApiError } from "./errors";
 
@@ -26,7 +27,7 @@ export interface AppConfig {
    * `emailCodes`: a sub can get a sign-in code by email, since this Crewtavo sends email in some way
    * (its own sender or some company's mailbox). For the whole instance, never one business.
    */
-  features: { ai: boolean; payments: boolean; email: boolean; sms: boolean; emailCodes?: boolean; roofInsights: boolean; devMail?: boolean; findPaving?: boolean };
+  features: { ai: boolean; payments: boolean; email: boolean; sms: boolean; emailCodes?: boolean; smsCodes?: boolean; roofInsights: boolean; devMail?: boolean; findPaving?: boolean; chatgptPlan?: boolean };
   /**
    * Import from Google Drive (Drive's Google Picker), when the deployment sets GOOGLE_CLIENT_ID and
    * GOOGLE_PICKER_API_KEY: the OAuth client, the browser key and the Cloud project number. All public.
@@ -37,12 +38,25 @@ export interface AppConfig {
 
 /**
  * What's on for one business: the instance's own keys (config), or what the business set up itself.
- * Its own mailbox (Settings → Email) turns email on, its own Anthropic key (Apps → Claude) AI, and
- * its fal.ai key (Apps → fal.ai) Find paving on the measuring map.
+ * Its own mailbox (Settings → Email) turns email on, its own Twilio account (Apps → Twilio) texting,
+ * its own Anthropic or OpenAI key (Apps → Claude, Apps → ChatGPT) AI, and its fal.ai key (Apps →
+ * fal.ai) Find paving on the measuring map. The person's own ChatGPT plan turns AI on for them
+ * alone (`chatgptPlan`: it's answering what they ask, so pages say "Using ChatGPT plan").
  */
-export function companyFeatures(features: AppConfig["features"], company: { email_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean }): AppConfig["features"] {
+export function companyFeatures(
+  features: AppConfig["features"],
+  company: { email_connected?: boolean; sms_connected?: boolean; ai_connected?: boolean; fal_connected?: boolean; chatgpt_plan?: boolean },
+): AppConfig["features"] {
   const ownMailbox = Boolean(company.email_connected);
-  return { ...features, email: features.email || ownMailbox, devMail: !ownMailbox && Boolean(features.devMail), ai: features.ai || Boolean(company.ai_connected), findPaving: Boolean(company.fal_connected) };
+  return {
+    ...features,
+    email: features.email || ownMailbox,
+    sms: features.sms || Boolean(company.sms_connected),
+    devMail: !ownMailbox && Boolean(features.devMail),
+    ai: features.ai || Boolean(company.ai_connected),
+    findPaving: Boolean(company.fal_connected),
+    chatgptPlan: Boolean(company.chatgpt_plan),
+  };
 }
 
 // Kept across hot reloads in development so modules that re-import this one keep a live client.
@@ -58,7 +72,7 @@ export function loadConfig(): Promise<AppConfig> {
     .then(async (res) => {
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new ApiError(body.error ?? "Couldn't connect to Crewtavo. Try again in a moment.", res.status);
+        throw new ApiError(body.error ?? msg("Couldn't connect to Crewtavo. Try again in a moment."), res.status);
       }
       const config = (await res.json()) as AppConfig;
       try {
@@ -111,7 +125,7 @@ function signedInFetch(config: AppConfig): typeof fetch {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const publicKeyOnly = new Headers(init?.headers).get("Authorization") === `Bearer ${config.supabaseKey}`;
     // Sign-in requests themselves always go with the public key.
-    if (publicKeyOnly && !url.includes("/auth/v1/") && signInStored()) return Promise.reject(new TypeError("Failed to fetch"));
+    if (publicKeyOnly && !url.includes("/auth/v1/") && signInStored()) return Promise.reject(new TypeError("Failed to fetch")); // i18n-ignore: the browser's own words for no connection, which errors.ts knows
     return globalThis.fetch(input, init);
   };
 }
@@ -143,7 +157,7 @@ export function refreshSignIn(): Promise<"ok" | "offline" | "expired"> {
 
 /** The Supabase client. Available once loadConfig() has resolved (SessionProvider waits for it). */
 export function supabase(): SupabaseClient<Database> {
-  if (!client) throw new Error("Still loading. Try again in a moment.");
+  if (!client) throw new Error(t("Still loading. Try again in a moment."));
   return client;
 }
 
@@ -185,7 +199,7 @@ async function request<T>(method: string, path: string, body?: unknown, options:
   }
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) {
-    const fallback = res.status >= 500 ? "Something went wrong on our end. Try again in a moment." : "Something went wrong. Try again.";
+    const fallback = res.status >= 500 ? msg("Something went wrong on our end. Try again in a moment.") : msg("Something went wrong. Try again.");
     throw new ApiError(json.error ?? fallback, res.status, res.status === 401 ? SESSION_EXPIRED : undefined);
   }
   return json as T;
@@ -198,7 +212,7 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
   if (res.status === 404) return null;
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(json.error ?? "Something went wrong. Try again.", res.status);
+    throw new ApiError(json.error ?? msg("Something went wrong. Try again."), res.status);
   }
   return res.blob();
 }
@@ -209,7 +223,7 @@ async function requestDownload(path: string, body: unknown, options: RequestOpti
   if (res.status === 401 && client && (await refreshSignIn()) === "ok") res = await send("POST", path, body, options);
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new ApiError(json.error ?? "Something went wrong. Try again.", res.status);
+    throw new ApiError(json.error ?? msg("Something went wrong. Try again."), res.status);
   }
   return res.blob();
 }
@@ -232,7 +246,7 @@ type DbResult = { data: unknown; error: { message: string; code?: string; detail
  */
 function dbFailure(result: DbResult): ApiError {
   // The server restarting isn't a database fault to report (a field action retries through it).
-  if (isRestarting(result.status)) return new ApiError("Crewtavo is restarting. Try again in a moment.", result.status!, "restarting");
+  if (isRestarting(result.status)) return new ApiError(msg("Crewtavo is restarting. Try again in a moment."), result.status!, "restarting");
   return friendlyDbError(result.error!);
 }
 
@@ -243,9 +257,10 @@ export function unwrap<R extends DbResult>(result: R): NonNullable<R["data"]> {
 }
 
 /** Like unwrap, but a missing row is an error ("not found") rather than null. */
-export function unwrapOne<R extends DbResult>(result: R, what = "That record"): NonNullable<R["data"]> {
+export function unwrapOne<R extends DbResult>(result: R, what = msg("That record")): NonNullable<R["data"]> {
   if (result.error) throw dbFailure(result);
-  if (result.data == null) throw new ApiError(`${what} wasn't found. It may have been deleted.`, 404, "PGRST116");
+  // Said in the person's language as it's thrown: what's missing is named in it.
+  if (result.data == null) throw new ApiError(t("{what} wasn't found. It may have been deleted.", { what: t(what) }), 404, "PGRST116");
   return result.data as NonNullable<R["data"]>;
 }
 

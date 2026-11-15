@@ -8,6 +8,7 @@
  * can pick their own in Settings → Profile).
  */
 import { STATE_IMAGERY, type MapKeys, type MapSettings } from "@crewtavo/core/imagery";
+import { GOOGLE_MAPS_TERMS_URL, GOOGLE_PRIVACY_URL } from "@crewtavo/core/terms";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
@@ -180,6 +181,13 @@ export function MapsSettings() {
           <>Create an API key. Restrict it to those APIs and to the website <code>{location.origin}/*</code>.</>,
           <>Paste the key below.</>,
         ]}
+        footnote={
+          <>
+            Google Maps features and content in Crewtavo are subject to the{" "}
+            <a href={GOOGLE_MAPS_TERMS_URL} target="_blank" rel="noreferrer">Google Maps/Google Earth Additional Terms of Service</a> and the{" "}
+            <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noreferrer">Google Privacy Policy</a>.
+          </>
+        }
       >
         {maps.google_key && (
           <div className="stack-sm maps-places">
@@ -197,7 +205,7 @@ export function MapsSettings() {
             <span id="google-places-help" className="muted small">
               {places.isPending && places.variables
                 ? "Checking the key with Google…"
-                : "As anyone types an address, on Measure and in calendar entries, the places suggested come from Google Maps instead of OpenStreetMap. Your clients' own addresses still come first. Needs Places API (New) on this key; Google includes 10,000 lookups a month at no charge."}
+                : "As anyone types an address, in calendar entries and on Measure while it shows Google satellite, the places suggested come from Google Maps instead of OpenStreetMap. Your clients' own addresses still come first. Needs Places API (New) on this key; Google includes 10,000 lookups a month at no charge."}
             </span>
             <FormError error={places.error} />
           </div>
@@ -213,7 +221,7 @@ export function MapsSettings() {
 }
 
 function KeyCard({
-  provider, title, badge, current, inherited, intro, steps, saving, error, onSave, children,
+  provider, title, badge, current, inherited, intro, steps, saving, error, onSave, children, footnote,
 }: {
   provider: Provider;
   title: string;
@@ -228,6 +236,8 @@ function KeyCard({
   onSave: (key: string | null) => void;
   /** More settings for this key, shown once it's saved. */
   children?: ReactNode;
+  /** A line under the card, key or no key: whose terms using this provider's maps comes under. */
+  footnote?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -309,6 +319,7 @@ function KeyCard({
         </div>
       )}
       {set && children}
+      {footnote && <span className="muted small">{footnote}</span>}
     </div>
   );
 }

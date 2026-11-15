@@ -9,6 +9,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { LogDialog, type LogKind } from "./EquipmentDialogs";
 import { byUrgency, EQUIPMENT_FIELDS, nextUp, type DueRow, type Equipment, type PaperRow } from "./equipmentData";
+import { t } from "@/lib/i18n";
 
 export function CrewEquipmentCard() {
   const session = useSession();
@@ -34,8 +35,8 @@ export function CrewEquipmentCard() {
   return (
     <section className="stack-sm">
       <div className="section-head">
-        <h2 className="section-title">Your equipment</h2>
-        <Link to="/equipment" className="small">All equipment</Link>
+        <h2 className="section-title">{t("Your equipment")}</h2>
+        <Link to="/equipment" className="small">{t("All equipment")}</Link>
       </div>
       <div className="card">
         {rows.map((e) => {
@@ -47,14 +48,14 @@ export function CrewEquipmentCard() {
               <Link to={`/equipment/${e.id}`} className="grow" style={{ color: "var(--ink)", minWidth: 160 }}>
                 <strong>{e.name}</strong>
                 <span className="muted small" style={{ display: "block" }}>
-                  {e.status === "in_shop" ? "In the shop" : [e.meter !== "none" && e.meter_reading != null ? formatMeter(e.meter_reading, e.meter) : null, due ? `${due.name}: ${due.summary.toLowerCase()}` : next ? `Next: ${next.name}` : null].filter(Boolean).join(" · ")}
+                  {e.status === "in_shop" ? t("In the shop") : [e.meter !== "none" && e.meter_reading != null ? formatMeter(e.meter_reading, e.meter) : null, due ? `${due.name}: ${due.summary.toLowerCase()}` : next ? t("Next: {name}", { name: next.name }) : null].filter(Boolean).join(" · ")}
                 </span>
               </Link>
-              {due && <StatusPill label={due.state === "overdue" ? "Overdue" : "Due soon"} tone={dueTone(due.state)} />}
+              {due && <StatusPill label={due.state === "overdue" ? t("Overdue") : t("Due soon")} tone={dueTone(due.state)} />}
               <span className="row" style={{ gap: 6 }}>
-                {e.meter !== "none" && <Button size="sm" icon="gauge" onClick={() => setLog({ equipment: e, kind: "reading" })}>{e.meter === "miles" ? "Log miles" : "Log hours"}</Button>}
+                {e.meter !== "none" && <Button size="sm" icon="gauge" onClick={() => setLog({ equipment: e, kind: "reading" })}>{e.meter === "miles" ? t("Log miles") : t("Log hours")}</Button>}
                 {/* Outlined like Log hours: My day's green button is the visit's next step. */}
-                {due?.plan && <Button size="sm" icon="check" onClick={() => setLog({ equipment: e, kind: "service", planId: due.plan!.plan_id })}>Mark done</Button>}
+                {due?.plan && <Button size="sm" icon="check" onClick={() => setLog({ equipment: e, kind: "service", planId: due.plan!.plan_id })}>{t("Mark done")}</Button>}
               </span>
             </div>
           );

@@ -3,6 +3,7 @@ import { ApiError, errorMessage, isNotFound, isRestarting } from "@/lib/errors";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { PageHeader } from "./PageHeader";
+import { t } from "@/lib/i18n";
 
 /**
  * Friendly "nothing here yet" with an optional next step. The full one, with its icon, is for a whole
@@ -39,18 +40,18 @@ export function ErrorState({ error, onRetry, title, compact }: { error: unknown;
     return (
       <div className={compact ? "empty-state empty-state-sm" : "empty-state"} role="status">
         <span className="empty-icon"><Icon name="refresh" size={compact ? 20 : 24} /></span>
-        <h3>{title ?? "Crewtavo is restarting"}</h3>
-        <p>This loads again on its own in a moment.</p>
-        {onRetry && <div className="actions"><Button icon="refresh" onClick={onRetry}>Try again</Button></div>}
+        <h3>{title ?? t("Crewtavo is restarting")}</h3>
+        <p>{t("This loads again on its own in a moment.")}</p>
+        {onRetry && <div className="actions"><Button icon="refresh" onClick={onRetry}>{t("Try again")}</Button></div>}
       </div>
     );
   }
   return (
     <div className={`${compact ? "empty-state empty-state-sm" : "empty-state"} error-state`} role="alert">
       <span className="empty-icon"><Icon name={notFound ? "search" : "alert"} size={compact ? 20 : 24} /></span>
-      <h3>{title ?? (notFound ? "Not found" : "Couldn't load this")}</h3>
-      <p>{badLink ? "That link isn't valid. It may be incomplete or mistyped." : errorMessage(error)}</p>
-      {onRetry && !notFound && <div className="actions"><Button icon="refresh" onClick={onRetry}>Try again</Button></div>}
+      <h3>{title ?? (notFound ? t("Not found") : t("Couldn't load this"))}</h3>
+      <p>{badLink ? t("That link isn't valid. It may be incomplete or mistyped.") : errorMessage(error)}</p>
+      {onRetry && !notFound && <div className="actions"><Button icon="refresh" onClick={onRetry}>{t("Try again")}</Button></div>}
     </div>
   );
 }
@@ -70,7 +71,7 @@ export function NoAccess({ title }: { title: string }) {
   return (
     <>
       <PageHeader title={title} />
-      <div className="card"><EmptyState icon="lock" title="You don't have access to this">Ask an admin if you need it.</EmptyState></div>
+      <div className="card"><EmptyState icon="lock" title={t("You don't have access to this")}>{t("Ask an admin if you need it.")}</EmptyState></div>
     </>
   );
 }

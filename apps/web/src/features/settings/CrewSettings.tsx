@@ -84,6 +84,7 @@ export function CrewSettings() {
         <Button type="submit" icon="plus" loading={add.isPending} done={added} doneLabel="Added" disabled={!name.trim() && !added}>Add crew</Button>
         <SaveStatus status={saving.status} />
       </form>
+      <p className="muted small" style={{ margin: 0 }}>The people on a crew are on its visits: they see them on My day, get them in their calendar and hear when one changes. Pick people on a visit to send only them.</p>
       {data.isPending ? <Loading><div className="grid-cards">{[0, 1].map((i) => <CardSkeleton key={i} lines={4} />)}</div></Loading> : data.error ? <div className="card"><ErrorState error={data.error} onRetry={() => data.refetch()} /></div> : !data.data?.crews.length ? (
         <div className="card"><EmptyState inline title="No crews yet" /></div>
       ) : (

@@ -1,10 +1,14 @@
 /**
  * Messaging: send an email or text to a client from the message center, and receive replies to
- * texts (Twilio webhook). Every message is recorded on the client's timeline. A client who texts
- * STOP has texts off (clients.sms_opt_out_at) until they text START, and Crewtavo doesn't text them.
+ * texts (Twilio webhook). Every message is recorded on the client's timeline; a text from a
+ * contact's phone goes there too, and one from a number nobody knows is kept for the office to
+ * attach to a client (services/inboundTexts.ts). A client who texts STOP has texts off
+ * (clients.sms_opt_out_at) until they text START, and no number that texted STOP is texted
+ * (sms_stops, services/textsOff.ts). The office turns texts off, and back on, for someone who
+ * asked another way (POST /clients/:id/texts).
  */
-import { SALES } from "@crewtavo/core";
-import { smsKeyword } from "@crewtavo/core/marketing";
+import { OFFICE, SALES } from "@crewtavo/core";
+import { asksToStopTexts, smsKeyword, STOP_HOWS } from "@crewtavo/core/marketing";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
@@ -13,12 +17,15 @@ import { kickAutomations } from "../lib/background";
 import { requireCompany, requireUser } from "../lib/auth";
 import { safeEqual } from "../lib/crypto";
 import { isEmail, renderEmail } from "../lib/email";
-import { appUrl, dbError, HttpError, must, readJson, uuid } from "../lib/http";
+import { appUrl, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
+import { sentToClient } from "../lib/links";
 import { sendEmail, sendSms } from "../lib/notify";
+import { inboundAccounts } from "../lib/twilio";
 import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
 import { logoImage } from "../services/logo";
-import { noteRefusedText, phoneKey, textsOffRefusal, textsOffTo } from "../services/textsOff";
+import { receiveText } from "../services/inboundTexts";
+import { noteRefusedText, numberStopped, numberStoppedRefusal, phoneKey, setTexts, TextsRefusal, textsOffRefusal, textsOffTo } from "../services/textsOff";
 
 export const messages = new Hono<AppEnv>();
 
@@ -47,23 +54,54 @@ messages.post("/messages/send", requireUser, requireCompany(SALES), async (c) =>
   } else {
     to = body.to || client.phone || "";
     if (!to) throw new HttpError(400, `${client.display_name} has no phone number.`);
-    // Their own phone, after they texted STOP. Another number (a spouse's, say) is the office's to text.
+    // Their own phone, after they texted STOP. Another number (a spouse's, say) is the office's to
+    // text, unless that number texted STOP itself.
     if (textsOffTo(client, to)) throw new HttpError(400, textsOffRefusal(client.display_name));
+    if (await numberStopped(adminClient(c.env), companyId, to)) throw new HttpError(400, numberStoppedRefusal(to));
     if (body.body.length > 1600) throw new HttpError(400, "Texts are limited to 1,600 characters.");
-    result = await sendSms(c.env, { to, body: body.body });
-    await noteRefusedText(adminClient(c.env), client, to, result);
+    result = await sendSms(c.env, { to, body: body.body, company: companyId });
+    await noteRefusedText(adminClient(c.env), client, to, result, companyId);
   }
   const { data: row, error } = await db
     .from("messages")
     .insert({
       company_id: companyId, client_id: client.id, channel: body.channel, direction: "out", subject: body.channel === "email" ? body.subject : null,
       body: body.body, status: result.sent ? "sent" : "failed", external_id: result.id ?? null,
+      recipients: [{ to, name: sentToClient(body.channel, to, client) ? client.display_name : to, ...(result.sent ? {} : { failed: true }) }],
     })
     .select("id")
     .single();
   if (error) throw dbError(error);
   if (!result.sent) throw new HttpError(502, `${result.reason ?? "It wasn't sent."} The message was saved as failed on the client's timeline.`);
   return c.json({ id: row.id, sent: true, to });
+});
+
+/**
+ * The office's "Texts" switch on a client or one of their contacts (services/textsOff.ts setTexts):
+ * off for someone who asked by phone, by email, in person or in a text that wasn't the keyword,
+ * saying how they asked; back on only because they asked for that, and never over a STOP Twilio has.
+ * For owners, admins and the office. Recorded with who set it.
+ */
+messages.post("/clients/:id/texts", requireUser, requireCompany(OFFICE), async (c) => {
+  const clientId = param(c, "id");
+  const body = await readJson(
+    c,
+    z.object({
+      on: z.boolean(),
+      contact_id: uuid.optional(),
+      how: z.enum(STOP_HOWS).optional(),
+      note: z.string().trim().max(500).optional(),
+    }),
+  );
+  if (!body.on && !body.how) throw new HttpError(400, "Say how they asked for texts to stop.");
+  const admin = adminClient(c.env);
+  const { data: who } = await admin.from("profiles").select("full_name").eq("user_id", c.var.userId).maybeSingle();
+  try {
+    return c.json(await setTexts(admin, { companyId: c.var.companyId, clientId, contactId: body.contact_id ?? null, on: body.on, how: body.how ?? null, note: body.note ?? null, by: c.var.userId, byName: who?.full_name ?? null }));
+  } catch (error) {
+    if (error instanceof TextsRefusal) throw new HttpError(400, error.message);
+    throw error;
+  }
 });
 
 /** Twilio's request signature: base64(HMAC-SHA1(auth token, URL + sorted form params)). */
@@ -74,52 +112,41 @@ export async function twilioSignature(token: string, url: string, params: Record
   return btoa(String.fromCharCode(...mac));
 }
 
-/** Incoming texts (set this URL as the Twilio number's messaging webhook). */
+/**
+ * Incoming texts (set this URL as the Twilio number's messaging webhook). Twilio signs each request
+ * with the Auth Token of the account the number is in, so whose text it is comes from which token
+ * signed it: a company's own account (the one the request's AccountSid and To name, lib/twilio.ts
+ * inboundAccounts), whose texts are that company's alone, or the server's, whose number every
+ * company without its own shares. A request no known token signed is refused.
+ */
 messages.post("/webhooks/twilio", async (c) => {
-  const token = c.env.TWILIO_AUTH_TOKEN;
-  if (!token) throw new HttpError(501, "Texting isn't configured.");
   const form = Object.fromEntries((await c.req.formData()).entries()) as Record<string, string>;
+  const admin = adminClient(c.env);
+  const accounts = await inboundAccounts(c.env, admin, form);
+  if (!accounts.length) throw new HttpError(501, "Texting isn't configured.");
   // Twilio signs the exact address it posts to: APP_URL, or one this instance had before a switch.
   const signature = c.req.header("x-twilio-signature") ?? "";
-  const signedFor = async (base: string) => safeEqual(await twilioSignature(token, `${base}/api/webhooks/twilio`, form), signature);
-  let signed = await signedFor(appUrl(c));
-  for (const base of signed ? [] : (await addressHistory(c.env)).origins) if (await signedFor(base)) signed = true;
-  if (!signed) throw new HttpError(403, "Bad signature.");
+  const signedBy = async (base: string) => {
+    for (const account of accounts) if (safeEqual(await twilioSignature(account.token, `${base}/api/webhooks/twilio`, form), signature)) return account;
+    return null;
+  };
+  let account = await signedBy(appUrl(c));
+  for (const base of account ? [] : (await addressHistory(c.env)).origins) account ??= await signedBy(base);
+  if (!account) throw new HttpError(403, "Bad signature.");
 
   const from = phoneKey(form.From);
   const body = (form.Body ?? "").slice(0, 10_000);
   if (!from || !body) return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
   // STOP or START: what Twilio itself acted on when it says (Advanced Opt-Out), else the words.
   const optOut = (form.OptOutType ?? "").toUpperCase();
-  const keyword = optOut === "STOP" ? "stop" : optOut === "START" ? "start" : optOut ? null : smsKeyword(body);
-  const admin = adminClient(c.env);
-  // Match the sender to clients by phone number (last 10 digits), across companies using this number.
-  const { data: candidates } = await admin.from("clients").select("id, company_id, phone, display_name").not("phone", "is", null).ilike("phone", `%${from.slice(-4)}%`).limit(50);
-  const matches = (candidates ?? []).filter((cl) => phoneKey(cl.phone) === from);
-  for (const client of matches) {
-    await admin.from("messages").insert({
-      company_id: client.company_id, client_id: client.id, channel: "sms", direction: "in", status: "received",
-      body, external_id: form.MessageSid ?? null, sent_by: null,
-    });
-    // Texts off from now, or back on: only a change is news (a YES that's an ordinary reply isn't).
-    let changed = false;
-    if (keyword === "stop") {
-      const { data } = await admin.from("clients").update({ sms_opt_out_at: new Date().toISOString() }).eq("id", client.id).is("sms_opt_out_at", null).select("id");
-      changed = Boolean(data?.length);
-    } else if (keyword === "start") {
-      const { data } = await admin.from("clients").update({ sms_opt_out_at: null }).eq("id", client.id).not("sms_opt_out_at", "is", null).select("id");
-      changed = Boolean(data?.length);
-    }
-    const notice = changed && keyword === "stop"
-      ? { title: `${client.display_name} turned off texts`, body: "They texted STOP. Crewtavo won't text them until they text START." }
-      : changed
-        ? { title: `${client.display_name} turned texts back on`, body: `They texted ${body.trim().slice(0, 20).toUpperCase()}, so Crewtavo can text them again.` }
-        : { title: "New text from a client", body: body.slice(0, 200) };
-    const { data: office } = await admin.from("memberships").select("user_id").eq("company_id", client.company_id).eq("active", true).in("role", ["owner", "admin", "office"]);
-    if (office?.length) {
-      await admin.from("notifications").insert(office.map((m) => ({ company_id: client.company_id, user_id: m.user_id, kind: "client", title: notice.title.slice(0, 300), body: notice.body, link: `/messages?client=${client.id}` })));
-    }
-    kickAutomations(c, client.company_id);
-  }
+  const word = optOut === "STOP" ? "stop" : optOut === "START" ? "start" : optOut ? null : smsKeyword(body);
+  // Not the keyword, but words that plainly ask to stop ("please stop texting me"): honoured as one.
+  // Twilio did nothing about it, so it's kept as a phrase, which the office can lift if they ask.
+  const phrase = !optOut && !word && asksToStopTexts(body);
+  const keyword = phrase ? "stop" : word;
+  // Filed under the client or contact whose number it is, or kept as from an unknown number
+  // (services/inboundTexts.ts), for the companies on the account that signed it.
+  const touched = await receiveText(admin, { from: form.From!, body, sid: form.MessageSid ?? null, keyword, phrase }, account.companies);
+  for (const company of touched) kickAutomations(c, company);
   return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
 });

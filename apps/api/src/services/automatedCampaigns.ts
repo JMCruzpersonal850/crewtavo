@@ -9,8 +9,9 @@
  * client gets at most one re-engage email every 6 months and one win-back email for each quote
  * (begin_campaign_send holds to both, even at the same moment). Close pending quotes is the
  * quote_followup rule, a follow-up to a quote the client asked for: it keeps going while Marketing
- * is off and to clients who unsubscribed from marketing, with no unsubscribe link, as it always has,
- * and is only tracked.
+ * is off. Whether a nudge to approve a quote is commercial is arguable, so it takes the safe side
+ * of the FTC's CAN-SPAM guide: it carries the one-click unsubscribe link too, and isn't sent to a
+ * client who unsubscribed from marketing (their contacts' copies included).
  *
  * Clients who haven't had a visit in a while: the hourly "inactive" task (tasks.ts) asks the
  * database to queue each company's client.inactive runs (emit_inactive_clients), from 10am in its
@@ -24,7 +25,9 @@ import { emailReady } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { companyFooter, officeVars, Skip, type RunContext } from "./automations";
 import { emailClient } from "./marketingEmail";
+import { addressList, recipientsColumn, recipientsFor, sendToEach } from "./recipients";
 import { Busy, WaitUntil } from "./reviews";
+import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
 
 export const CAMPAIGN_EMAIL_NOT_CONNECTED = "Email isn't connected yet, so campaign emails can't be sent. An admin can connect it in Settings → Email.";
 /** How long a campaign email's Client Hub link lasts: a year, as a review link does, since campaign emails are kept. */
@@ -194,6 +197,8 @@ export async function sendCampaignEmail(
     const reason = await winBackReason(admin, ctx);
     if (reason) return new Skip(reason);
   }
+  // A quote's follow-up respects the marketing opt-out as the marketing campaigns do (the engine skips their whole run).
+  if (!campaign.marketing && client.marketing_opt_out) return new Skip(`${client.display_name} unsubscribed from marketing`);
   if (campaign.marketing) {
     // The business's to fix, so the run fails rather than skips.
     if (!(await emailReady(env, ctx.company.id))) {
@@ -203,6 +208,14 @@ export async function sendCampaignEmail(
     if (!baseUrl) {
       await letGo(admin, ctx);
       throw new Error("APP_URL isn't set, so campaign links can't be built.");
+    }
+    // No postal address, no marketing email (services/senderAddress.ts). A campaign that was on
+    // already doesn't just go quiet: the owners hear once, and the client is emailed once it's added.
+    const noAddress = senderAddressProblem(ctx.company);
+    if (noAddress) {
+      await letGo(admin, ctx);
+      await tellAddressNeeded(admin, ctx.company.id);
+      throw new Error(noAddress);
     }
   }
   const email = client.email!.trim();
@@ -239,7 +252,8 @@ export async function sendCampaignEmail(
     baseUrl: baseUrl!,
     footer: companyFooter(ctx.company),
     track: trackedLinks(baseUrl!, row.track_token, links),
-    unsubscribe: campaign.marketing,
+    // Every campaign email has the link, the quote follow-up included.
+    unsubscribe: true,
     // {{link}} on its own line is a button named for where it goes: the Hub's home, or the quote.
     buttons: typeof ctx.vars.link === "string" ? { [ctx.vars.link]: linkButton(campaign.key) } : undefined,
   });
@@ -251,9 +265,28 @@ export async function sendCampaignEmail(
   if (!result.sent) throw new Error(reason);
   // The timeline's copy has the office's link: the client's own can say yes to a card, or tip on one.
   const kept = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
+  // A quote's follow-up is about the client's work, not marketing, so their contacts ticked for
+  // emails get a copy (services/recipients.ts), with the office's link and nothing tracked. A copy
+  // that doesn't go is noted on the message; the client's went, so the run isn't tried again for it.
+  const own = { to: email, name: client.display_name, contact_id: null };
+  const others = campaign.marketing ? [] : (await recipientsFor(admin, ctx.company.id, client, "email", ctx.company.settings)).filter((person) => person.contact_id);
+  const copies = await sendToEach(others, (person) =>
+    emailClient(env, {
+      companyId: ctx.company.id,
+      company: ctx.company,
+      client: { id: client.id, email: person.to },
+      subject: render(action.subject, kept),
+      text: render(action.body, kept),
+      baseUrl: baseUrl!,
+      footer: companyFooter(ctx.company),
+      unsubscribe: false,
+      buttons: typeof kept.vars.link === "string" ? { [kept.vars.link]: linkButton(campaign.key) } : undefined,
+    }),
+  );
   await admin.from("messages").insert({
     company_id: ctx.company.id, client_id: client.id, channel: "email", direction: "out", subject: render(action.subject, kept), body: render(action.body, kept),
     related_type: ctx.subject, related_id: ctx.id, external_id: result.id ?? null, sent_by: null,
+    recipients: recipientsColumn({ went: [own, ...copies.went], failed: copies.failed }),
   });
-  return `Emailed ${email}`;
+  return `Emailed ${addressList([own, ...copies.went])}`;
 }

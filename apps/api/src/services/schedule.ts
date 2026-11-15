@@ -34,20 +34,24 @@ export const VISIT_FIELDS =
 /** Whether a date is one of the days in `off` (daysOff()). */
 const isOff = (off: readonly number[], date: string) => off.includes(weekday(date));
 
-/** Change a visit's people or equipment to `wanted`, touching only what was added or removed. */
+/**
+ * Change a visit's people or equipment to `wanted`, touching only what was added or removed. New
+ * ones go on before old ones come off: a visit with nobody listed goes by its crew, so a list left
+ * empty for a moment would tell the whole crew they're on it, and then that they're off again.
+ */
 async function syncLinks(s: Scope, table: "visit_assignees" | "visit_equipment", column: "user_id" | "equipment_id", visitId: string, wanted: string[], notYours: string) {
   const current = (must(await s.db.from(table).select(column).eq("visit_id", visitId)) as unknown as Array<Record<string, string>>).map((r) => r[column]!);
   const next = [...new Set(wanted)];
   const removed = current.filter((x) => !next.includes(x));
   const added = next.filter((x) => !current.includes(x));
+  if (added.length) {
+    const ins = await s.db.from(table).insert(added.map((id) => ({ company_id: s.companyId, visit_id: visitId, [column]: id })) as never);
+    if (ins.error) throw ins.error.code === "42501" ? new HttpError(403, notYours) : dbError(ins.error);
+  }
   if (removed.length) {
     const del = await s.db.from(table).delete().eq("visit_id", visitId).in(column, removed).select(column);
     if (del.error) throw dbError(del.error);
     if (del.data.length < removed.length) throw new HttpError(403, notYours);
-  }
-  if (added.length) {
-    const ins = await s.db.from(table).insert(added.map((id) => ({ company_id: s.companyId, visit_id: visitId, [column]: id })) as never);
-    if (ins.error) throw ins.error.code === "42501" ? new HttpError(403, notYours) : dbError(ins.error);
   }
 }
 
@@ -320,13 +324,15 @@ export async function scheduleRange(s: Scope, from: string, to: string, crew?: s
     for (let offset = 1000; rows.length === offset; offset += 1000) rows.push(...must(await page(offset)));
     return rows;
   };
-  const [scheduled, unscheduled, crews, events] = await Promise.all([
+  const [scheduled, unscheduled, crews, events, members] = await Promise.all([
     allScheduled(),
     s.db.from("visits").select(VISIT_FIELDS).eq("company_id", s.companyId).eq("status", "unscheduled").limit(200),
     s.db.from("crews").select("id, name, color").eq("company_id", s.companyId).eq("active", true).order("name"),
     calendarEvents(s, from, to, crew),
+    // Who's on each crew: a visit with nobody listed has its crew's members on it (visitPeople()).
+    s.db.from("crew_members").select("crew_id, user_id").eq("company_id", s.companyId).order("crew_id").order("user_id").limit(1000),
   ]);
-  return { visits: scheduled, unscheduled: must(unscheduled), crews: must(crews), events };
+  return { visits: scheduled, unscheduled: must(unscheduled), crews: must(crews), events, crew_members: must(members) };
 }
 
 /** Rain day: move every open visit from one date to another, keeping each visit's local time. */
@@ -412,7 +418,11 @@ export async function findTime(s: Scope, body: { date_from: string; days: number
   return { timezone: tz, slots };
 }
 
-/** On-demand work (snow, storm cleanup): one visit per chosen job on a date. */
+/**
+ * On-demand work (snow, storm cleanup): one visit per chosen job on a date. Each gets a crew and
+ * nobody listed, so the crew's members are the people on it (visitPeople): the database tells them
+ * (private.visit_crew_told), folded into one notification each.
+ */
 export async function bulkVisits(s: Scope, body: { job_ids: string[]; date: string; crew_id?: string }): Promise<{ created: number }> {
   if (!DISPATCH.includes(s.role) || !s.permissions.includes("schedule")) throw new HttpError(403, "Your role can't schedule the whole team.");
   const jobs = must(await s.db.from("jobs").select("id, title, property_id, default_crew_id").eq("company_id", s.companyId).in("id", body.job_ids));

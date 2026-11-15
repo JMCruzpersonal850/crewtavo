@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { AppEnv } from "../env";
 import { processAutomations } from "../services/automations";
 import { processCampaigns } from "../services/campaigns";
+import { processPostcards } from "../services/postcards";
 import { appUrl } from "./http";
 import { reportError } from "./monitoring";
 
@@ -25,4 +26,9 @@ export function kickAutomations(c: Context<AppEnv>, companyId: string) {
 
 export function kickCampaign(c: Context<AppEnv>, campaignId: string) {
   runInBackground(c, processCampaigns(c.env, { campaignId, baseUrl: appUrl(c) }));
+}
+
+/** A postcard campaign just sent makes its first cards now, not at the next minute. */
+export function kickPostcards(c: Context<AppEnv>, campaignId: string) {
+  runInBackground(c, processPostcards(c.env, { campaignId }));
 }

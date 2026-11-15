@@ -39,8 +39,9 @@ a.card-row:hover, button.card-row:hover { background: var(--fill); color: inheri
 }
 .btn:hover { background: var(--fill); border-color: var(--border-strong); color: var(--ink); }
 .btn:active:not(:disabled) { transform: scale(0.97); }
-.btn:focus-visible { outline: none; box-shadow: var(--ring); }
-/* A file picker inside a label (its input is .sr-only, so it can take focus): the label shows it. */
+/* The outline of base.css's :focus-visible, with the soft glow inside it. */
+.btn:focus-visible { box-shadow: var(--ring); }
+/* A file picker inside a label (its input is .sr-only, so it can take focus): the label shows it (and base.css gives it the outline). */
 label.btn:focus-within { box-shadow: var(--ring); }
 .btn-primary { background: var(--green-solid); border-color: var(--green-solid); color: #fff; box-shadow: 0 1px 2px rgba(44, 97, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
 .btn-primary:hover { background: var(--green-solid-hover); border-color: var(--green-solid-hover); color: #fff; }
@@ -125,7 +126,8 @@ a.tag:hover { border-color: var(--border-strong); color: var(--ink); }
   width: 100%; min-width: 0; height: var(--control); padding: 0 10px; border: 1px solid var(--button-border); border-radius: var(--radius-control);
   background: var(--surface); font-weight: 400; transition: border-color var(--dur-fast), box-shadow var(--dur-fast); box-shadow: var(--shadow-xs);
 }
-.input::placeholder, .textarea::placeholder { color: var(--text-4); }
+/* An example in an empty field is read like any other words: --text-3 is 5.2:1 on a field in the light theme (--text-4 was 3.0:1). */
+.input::placeholder, .textarea::placeholder { color: var(--text-3); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--border-strong); }
 .select { appearance: none; -webkit-appearance: none; padding-right: 30px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235f6f76' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center; }
 :root.dark .select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b5b3ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
@@ -181,7 +183,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform var(--dur) var(--ease-spring); }
 .switch:checked { background: var(--green); }
 .switch:checked::after { transform: translateX(16px); }
-.switch:focus-visible { outline: none; box-shadow: var(--ring); }
+.switch:focus-visible { box-shadow: var(--ring); }
 .switch:disabled { opacity: 0.5; cursor: not-allowed; }
 .switch-row { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
 
@@ -432,7 +434,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   font-weight: 600; font-size: var(--fs-14); color: var(--ink); text-align: left; white-space: nowrap;
 }
 .menu-item svg { color: var(--text-3); }
-.menu-item:hover, .menu-item:focus-visible { background: var(--fill-2); outline: none; color: var(--ink); }
+.menu-item:hover, .menu-item:focus-visible { background: var(--fill-2); color: var(--ink); }
 .menu-item[data-danger] { color: var(--danger); }
 .menu-item[data-danger] svg { color: var(--danger); }
 .menu-item[data-danger]:hover { background: var(--danger-tint); }
@@ -627,6 +629,39 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .thumb-pick[aria-pressed="true"] .thumb-pick-badge { background: var(--green); color: #fff; box-shadow: none; }
 .thumb-pick:disabled { cursor: not-allowed; }
 .thumb-pick:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Drawing on a photo (components/DrawOnPhoto.tsx): the pen in the bottom-right corner of a photo, a 44 px target like OK to share's. */
+.thumb-draw { position: absolute; right: 0; bottom: 0; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: #fff; }
+.thumb-draw-badge { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: rgba(15, 42, 53, 0.62); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.92); }
+.thumb-draw:focus-visible { outline: none; }
+.thumb-draw:focus-visible .thumb-draw-badge { box-shadow: var(--ring); }
+/* A photo with a drawing: a link to the photo as taken, top left. Fixed colours: it sits on a photo. */
+.thumb-original { position: absolute; left: 6px; top: 6px; padding: 2px 7px; border-radius: var(--radius-pill); background: rgba(15, 42, 53, 0.78); color: #fff; font-size: var(--fs-12); font-weight: 600; line-height: 18px; text-decoration: none; }
+.thumb-original:hover, .thumb-original:focus-visible { background: rgba(15, 42, 53, 0.95); color: #fff; }
+
+/* ---------- Photo editor (components/PhotoEditor.tsx) ---------- */
+/* The whole screen, dark around the photo whatever the theme, so colours on it read true. */
+.photo-editor { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #151515; color: #f2f2f2; display: none; }
+/* A column: the bars take what they need (the tool bar wraps to two or three rows on a phone) and the stage takes exactly what's left. */
+.photo-editor[open] { display: flex; flex-direction: column; }
+.photo-editor::backdrop { background: #151515; }
+.photo-editor-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: #202020; }
+.photo-editor-bar .input { background: #fff; color: #111; }
+/* Its field is white whatever the theme, so its example isn't the theme's colour. */
+.photo-editor-bar .input::placeholder { color: #5f6f76; }
+/* The photo always fits whole inside the stage, upright or on its side: the canvas is placed against the stage's own box
+   (its size comes from the column, never from the photo), 8px in from each edge, and the editor sets its size in pixels
+   (core fitInside). The max sizes say the same without the script, so nothing rests on a row sized by its content. */
+.photo-editor-stage { flex: 1 1 0; min-height: 0; min-width: 0; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.photo-editor-stage canvas { position: absolute; inset: 8px; margin: auto; display: block; max-width: calc(100% - 16px); max-height: calc(100% - 16px); width: auto; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+.photo-editor-tool { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: #f2f2f2; cursor: pointer; }
+.photo-editor-tool:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.photo-editor-tool[aria-pressed="true"] { background: #f2f2f2; color: #151515; }
+.photo-editor-tool:disabled { opacity: 0.35; cursor: not-allowed; }
+.photo-editor-tool:focus-visible, .photo-editor-swatch:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.photo-editor-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); cursor: pointer; }
+.photo-editor-swatch[aria-pressed="true"] { border-color: #151515; box-shadow: 0 0 0 3px #f2f2f2; }
+.photo-editor-problem { color: #ffb4a9; }
+@media (max-width: 600px) { .photo-editor-tools { justify-content: center; } }
 
 /* ---------- Timeline (activity, notes) ---------- */
 .timeline { display: grid; }

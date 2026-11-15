@@ -10,6 +10,7 @@ import { getExtensionField, getSchema, type InputRule } from "@tiptap/core";
 import { orderedListInputRegex } from "@tiptap/extension-list";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { contractExtensions } from "../src/components/ui/editorExtensions";
 import { SAMPLE_DOCUMENT } from "../src/features/documents/build";
@@ -21,6 +22,7 @@ import {
   contractSummary,
   exampleIds,
   inLibraryOrder,
+  missingStarters,
   moveSection,
   nextSort,
   packagesInOrder,
@@ -148,6 +150,38 @@ describe("the example sections", () => {
     const cancel = starterRows(null, "co-1", 0).find((r) => r.title === "Your right to cancel");
     expect(cancel).toMatchObject({ place: "signatures", initials: true });
     expect(STARTER_NOTE).toMatch(/attorney/);
+  });
+
+  it("words the right to cancel as the FTC's rule does, and adds the Notice of Cancellation it refers to", () => {
+    const rows = starterRows("roofing_exteriors", "co-1", 0);
+    expect(rows.find((r) => r.title === "Your right to cancel")!.body).toBe(
+      "<p><strong>You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction. See the attached notice of cancellation form for an explanation of this right.</strong></p>",
+    );
+    const notice = rows.find((r) => r.title === "Notice of Cancellation")!;
+    expect(notice).toMatchObject({ place: "terms", initials: false });
+    expect(notice.body).toContain("You may CANCEL this transaction, without any Penalty or Obligation, within THREE BUSINESS DAYS from the above date.");
+    expect(notice.body).toContain("I HEREBY CANCEL THIS TRANSACTION.");
+  });
+
+  it("offers a library that has sections already the examples it's missing, by title", () => {
+    const all = starterRows("roofing_exteriors", "co-1", 0);
+    // A business that took the examples before the notice was one of them.
+    const before = all.filter((r) => r.title !== "Notice of Cancellation");
+    expect(missingStarters(before, "roofing_exteriors").map((s) => s.title)).toEqual(["Notice of Cancellation"]);
+    expect(missingStarters(all, "roofing_exteriors")).toEqual([]);
+    // Renamed in another case is still theirs; one they deleted is offered again.
+    expect(missingStarters([...before.filter((r) => r.title !== "Liens"), { title: " notice of cancellation " }], "roofing_exteriors").map((s) => s.title)).toEqual(["Liens"]);
+    const page = readFileSync(new URL("../src/features/settings/ContractSettings.tsx", import.meta.url), "utf8");
+    expect(page).toContain("items={missing.map((s) => ({ label: s.title, disabled: addStarter.isPending, onSelect: () => addStarter.mutate(s) }))}");
+  });
+
+  it("still marks the right to cancel as an example where a library has its earlier wording", () => {
+    const earlier =
+      "<p>If you signed this agreement at your home, you may cancel it <strong>within three business days</strong> after the day you signed, without any penalty.</p>" +
+      "<p>To cancel, let {Business name} know in writing (a letter or an email is fine) by midnight of the third business day. If you cancel, we'll return any payment you made within 10 business days.</p>";
+    const now = starterRows(null, "co-1", 0).find((r) => r.title === "Your right to cancel")!.body;
+    const ids = exampleIds([{ id: "old", body: earlier }, { id: "new", body: now }, { id: "own", body: "<p>Our own words.</p>" }], null);
+    expect([...ids].sort()).toEqual(["new", "old"]);
   });
 
   it("marks the sections still worded as an example, until their words change", () => {

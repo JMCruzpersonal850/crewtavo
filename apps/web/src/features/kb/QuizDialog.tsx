@@ -10,6 +10,7 @@ import { FormError } from "@/components/ui/Field";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
+import { t } from "@/lib/i18n";
 
 export interface QuizQuestion { question: string; options: string[] }
 
@@ -23,7 +24,7 @@ export function QuizDialog({ pageId, title, questions, onClose }: { pageId: stri
     mutationFn: async () => unwrap(await supabase().rpc("acknowledge_guide", { p_page: pageId, p_answers: answers.map((a) => a ?? -1) })),
     onSuccess: (notRight) => {
       if (notRight.length) return setWrong(notRight);
-      toast.success("Marked as read");
+      toast.success(t("Marked as read"));
       queryClient.invalidateQueries({ queryKey: ["kb", company.id] });
       onClose();
     },
@@ -39,7 +40,7 @@ export function QuizDialog({ pageId, title, questions, onClose }: { pageId: stri
   const left = answers.filter((a) => a === null).length;
 
   return (
-    <Dialog open onClose={onClose} title="Check what you read" description={`Answer ${questions.length === 1 ? "this question" : `these ${questions.length} questions`} to confirm you've read “${title}”.`}>
+    <Dialog open onClose={onClose} title={t("Check what you read")} description={t.plural(questions.length, { one: "Answer this question to confirm you've read “{title}”.", other: "Answer these {count} questions to confirm you've read “{title}”." }, { title })}>
       <form className="stack" onSubmit={submit}>
         {questions.map((q, i) => (
           <fieldset key={i} className="quiz-question" data-wrong={wrong.includes(i) || undefined} aria-describedby={wrong.includes(i) ? `quiz-wrong-${i}` : undefined}>
@@ -50,15 +51,15 @@ export function QuizDialog({ pageId, title, questions, onClose }: { pageId: stri
                 <span>{o}</span>
               </label>
             ))}
-            {wrong.includes(i) && <p id={`quiz-wrong-${i}`} className="error-text" role="alert">Not quite. Have another look at the guide.</p>}
+            {wrong.includes(i) && <p id={`quiz-wrong-${i}`} className="error-text" role="alert">{t("Not quite. Have another look at the guide.")}</p>}
           </fieldset>
         ))}
         <FormError error={check.error} />
         <div className="form-actions">
-          {left > 0 && <span className="muted small">{left} to answer</span>}
+          {left > 0 && <span className="muted small">{t("{count} to answer", { count: left })}</span>}
           <span className="spacer" />
-          <Button onClick={onClose}>Back to the guide</Button>
-          <Button type="submit" variant="primary" loading={check.isPending} disabled={left > 0}>Confirm I've read it</Button>
+          <Button onClick={onClose}>{t("Back to the guide")}</Button>
+          <Button type="submit" variant="primary" loading={check.isPending} disabled={left > 0}>{t("Confirm I've read it")}</Button>
         </div>
       </form>
     </Dialog>

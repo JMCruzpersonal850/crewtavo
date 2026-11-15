@@ -1,5 +1,5 @@
 import { autopayDueText, autopaySettings, methodLabel } from "@crewtavo/core/autopay";
-import { lateFeeAmount, lateFeeOn, lateFeeSettings } from "@crewtavo/core/billing";
+import { lateFeeAmount, lateFeeCouldApply, lateFeeNotice, lateFeeOn, lateFeeSettings } from "@crewtavo/core/billing";
 import { shownCustomFields } from "@crewtavo/core/customFields";
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
@@ -38,12 +38,16 @@ import { DiscountRows } from "../quotes/PromoRow";
 import { paidWords } from "./creditRules";
 import { AddWorkDialog } from "./AddWorkDialog";
 import { recordPayment, type PaymentMethod } from "./recordPayment";
+import { owedAgainNote, recordRefund, refundToasts, type RefundResult } from "./recordRefund";
 import { ReferralCredits } from "./ReferralCredits";
 import { SendDialog } from "../quotes/SendDialog";
 import { refundable, stripeCharge, stripeRefundable, stripeRefundToasts, type StripeRefundResult } from "./refunds";
 import { settle } from "./settle";
 import { autopayBankNote, bankPayment, bankPaymentNote, paidInStripe, paymentAmount, RECORD_IN_STRIPE } from "./stripeInvoices";
 import { chargeOutcomeText, type ChargeResult } from "./charges";
+import { EditInvoiceDialog } from "./EditInvoiceDialog";
+import { editOffer } from "./editInvoice";
+import { lateFeeControls } from "./lateFees";
 import { CustomFieldsCard, useCustomFields } from "../customFields/CustomFields";
 
 const METHODS: Record<string, string> = { check: "Check", cash: "Cash", card: "Card", ach: "Bank transfer", other: "Other" };
@@ -61,7 +65,7 @@ function InvoicePageScreen() {
   const session = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [dialog, setDialog] = useState<null | "send" | "payment" | "work">(null);
+  const [dialog, setDialog] = useState<null | "send" | "payment" | "work" | "edit">(null);
   const [refunding, setRefunding] = useState<null | { id: string; amount: number; method: string }>(null);
   const [stripeRefund, setStripeRefund] = useState<null | { id: string; amount: number; tip_amount: number; method: string; processor_ref: string | null }>(null);
   const today = todayIn(session.company.timezone);
@@ -74,7 +78,7 @@ function InvoicePageScreen() {
       const [row, autopay, credits] = await Promise.all([
         supabase()
           .from("invoices")
-          .select("*, promo:promo_codes(code, kind, value, description), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), job:jobs(id, number, title, po_number, kind, billing_mode, property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, option:quote_options!quotes_option_fkey(name, warranty), package:roof_packages!quotes_roof_package_fkey(name, warranty))), lines:invoice_line_items(id, name, description, quantity, unit, unit_price, taxable, sort, service_id, discount_quote_id, time_entry_ids, material_ids), payments(id, amount, tip_amount, method, received_at, processor, processor_ref, notes, fee_amount, payout:payouts(arrival_on, status)), stripe:stripe_invoices(stripe_id, origin, status, number, hosted_url, livemode, amount_due, created_at, detached_at, processing_at, collection, purpose)")
+          .select("*, promo:promo_codes(code, kind, value, description), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), job:jobs(id, number, title, po_number, kind, billing_mode, property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, option:quote_options!quotes_option_fkey(name, warranty), package:roof_packages!quotes_roof_package_fkey(name, warranty))), lines:invoice_line_items(id, name, description, quantity, unit, unit_price, taxable, sort, service_id, discount_quote_id, time_entry_ids, material_ids, kind), payments(id, amount, tip_amount, method, received_at, processor, processor_ref, notes, fee_amount, payout:payouts(arrival_on, status)), stripe:stripe_invoices(stripe_id, origin, status, number, hosted_url, livemode, amount_due, created_at, detached_at, processing_at, collection, purpose)")
           .eq("id", id)
           .order("sort", { referencedTable: "invoice_line_items" })
           .order("received_at", { referencedTable: "payments" })
@@ -174,6 +178,12 @@ function InvoicePageScreen() {
     },
   });
   // Undone from its toast (see takeOff below), which also says when it fails.
+  // Remove late fee: the fee line comes off and late fees are off for it (the database does both, and says why when it can't).
+  const removeLateFee = useMutation({
+    meta: { success: "Late fee removed", tone: "invoice" },
+    mutationFn: async () => unwrap(await supabase().rpc("remove_late_fee", { p_invoice: id })),
+    onSuccess: refresh,
+  });
   const removePayment = useMutation({
     meta: { inline: true },
     mutationFn: async (paymentId: string) => unwrap(await supabase().from("payments").delete().eq("id", paymentId)),
@@ -230,11 +240,13 @@ function InvoicePageScreen() {
   const daysLate = inv.due_on && balance > 0 && !draft && !isVoid && !writtenOff ? Math.floor((Date.parse(today) - Date.parse(inv.due_on)) / 86_400_000) : 0;
   // Late fees (Settings → Company): the day this one's goes on, once, if it's still owed then.
   const lateFee = lateFeeSettings(session.company.settings);
-  const feeDay = lateFeeOn(inv, lateFee);
+  const feeDay = lateFeeOn(inv, lateFee, session.company.timezone);
   const lateFeeDay = feeDay && feeDay > today ? feeDay : null;
   // Charged no tax for being exempt (one sent before they were keeps the tax it was sent with).
   const taxExempt = Boolean(inv.client?.tax_exempt) && Number(inv.tax_rate) === 0;
   const lastPayment = inv.payments.at(-1);
+  // Written off by a refund's "Take it off the invoice too": what's left is money given back, not a debt given up on.
+  const refundedOff = writtenOff && balance > 0 && -inv.payments.filter((p) => Number(p.amount) < 0).reduce((sum, p) => sum + Number(p.amount), 0) >= balance - 0.005;
   // The Stripe invoice that matters now: the live one, else the latest. A tip added after an
   // automatic charge is its own small Stripe invoice, and isn't the one for this invoice's bill.
   const billed = inv.stripe.filter((s) => s.purpose !== "tip");
@@ -269,6 +281,12 @@ function InvoicePageScreen() {
   const editable = draft && !charging;
   // Made in Stripe: paid as Stripe billed it, so its total changes there, not here.
   const fromStripe = inv.stripe.some((s) => s.origin === "stripe");
+  // Edit invoice: a sent invoice's lines, changed in place with its payments as they are (the
+  // database's edit_invoice). It waits while the client is paying the amount as it stands.
+  const editing = editOffer(inv, { fromStripe, charging, bankOnItsWay: Boolean(bank) || clearing });
+  // Remove late fee, the "No late fee on this invoice" tick, and what's said once one was taken off.
+  const fees = lateFeeControls(inv, { feesOn: Boolean(lateFee), fromStripe });
+  const feeTotal = inv.lines.filter((l) => l.kind === "late_fee").reduce((sum, l) => sum + Number(l.quantity) * Number(l.unit_price), 0);
   // And while it's open there, so do its payments.
   const paysInStripe = paidInStripe(inv.stripe);
   // Charge card: not while a charge is going, or a bank payment (in a Stripe account left too, while
@@ -284,12 +302,15 @@ function InvoicePageScreen() {
     if (ok) chargeCard.mutate(balance);
   };
 
-  // A payment marked by mistake goes at once, with Undo, and the balance goes back up with it.
+  // A payment marked by mistake goes at once, with Undo, and the balance goes back up with it. On a
+  // paid invoice past its due date, the toast says what that means (the database raises no past-due
+  // event that day: 20261113000430_owed_again_without_chasing.sql).
   type Loaded = typeof inv;
   const takeOff = (payment: Loaded["payments"][number]) => {
     const key = ["invoice", id];
     undoable({
       title: "Payment removed",
+      description: owedAgainNote(inv, Number(payment.amount), today) ?? undefined,
       tone: "invoice",
       hide: () => {
         void queryClient.cancelQueries({ queryKey: key });
@@ -325,6 +346,7 @@ function InvoicePageScreen() {
                 { separator: true },
                 { label: "Mark as sent", icon: "check", hidden: !draft || !inv.lines.length || charging, onSelect: () => update.mutate({ status: "sent" }) },
                 { label: "Record payment", icon: "dollar", hidden: !draft || !inv.lines.length || charging || clearing, onSelect: () => setDialog("payment") },
+                { label: "Edit invoice", icon: "edit", hidden: !editing.offered, disabled: Boolean(editing.waits), title: editing.waits ?? undefined, onSelect: () => setDialog("edit") },
                 { label: "Move back to draft", icon: "undo", hidden: draft || isVoid || writtenOff || inv.payments.length > 0 || fromStripe || charging || clearing, onSelect: () => update.mutate({ status: "draft", sent_at: null }) },
                 {
                   label: "Write off",
@@ -342,6 +364,21 @@ function InvoicePageScreen() {
                   },
                 },
                 { label: "Undo write-off", icon: "undo", hidden: !writtenOff, onSelect: () => writeOff.mutate(false) },
+                {
+                  label: "Remove late fee",
+                  icon: "x",
+                  hidden: !fees.remove || charging,
+                  // The client is paying the amount with the fee in it.
+                  disabled: Boolean(bank) || clearing,
+                  onSelect: async () => {
+                    const ok = await confirm({
+                      title: `Remove the ${formatMoneyCents(feeTotal)} late fee?`,
+                      body: `It comes off invoice #${inv.number}, and no late fee is added to this invoice again.`,
+                      confirmLabel: "Remove late fee",
+                    });
+                    if (ok) removeLateFee.mutate();
+                  },
+                },
                 {
                   label: "Void invoice",
                   icon: "x",
@@ -383,7 +420,9 @@ function InvoicePageScreen() {
         <div className="callout">
           <Icon name="archive" size={20} />
           <div className="grow">
-            Written off{inv.written_off_at ? ` on ${formatDate(inv.written_off_at)}` : ""}: {formatMoneyCents(balance)} isn't counted as owed. If the client pays after all, record it and the invoice is marked paid.
+            {refundedOff
+              ? `Refunded and taken off${inv.written_off_at ? ` on ${formatDate(inv.written_off_at)}` : ""}: the ${formatMoneyCents(balance)} given back isn't counted as owed.`
+              : `Written off${inv.written_off_at ? ` on ${formatDate(inv.written_off_at)}` : ""}: ${formatMoneyCents(balance)} isn't counted as owed. If the client pays after all, record it and the invoice is marked paid.`}
           </div>
           <Button size="sm" icon="undo" disabled={writeOff.isPending} onClick={() => writeOff.mutate(false)}>Undo write-off</Button>
         </div>
@@ -433,7 +472,7 @@ function InvoicePageScreen() {
       {daysLate > 0 && !bank && !clearing && (
         <div className="callout callout-danger">
           <Icon name="alert" size={20} />
-          <div className="grow">{daysLate} {daysLate === 1 ? "day" : "days"} past due. {formatMoneyCents(balance)} is still owed.{lateFeeDay ? ` A ${formatMoneyCents(lateFeeAmount(balance, lateFee!))} late fee goes on ${formatDate(lateFeeDay)}.` : ""}</div>
+          <div className="grow">{daysLate} {daysLate === 1 ? "day" : "days"} past due. {formatMoneyCents(balance)} is still owed.{lateFeeDay ? ` A ${formatMoneyCents(lateFeeAmount(balance, lateFee!))} late fee goes on ${formatDate(lateFeeDay)}.` : ""}{inv.past_due_notice_pending ? " It was paid and is owed again, so the client isn't reminded today." : ""}</div>
           {/* A failed charge's callout above has the reminder already. */}
           {!chargeFailed && <Button size="sm" icon="send" onClick={() => setDialog("send")}>Send a reminder</Button>}
         </div>
@@ -456,6 +495,13 @@ function InvoicePageScreen() {
           />
           {editable && inv.job && ["standard", "visits"].includes(inv.kind) && (
             <div><Button size="sm" icon="clock" onClick={() => setDialog("work")}>Add logged hours and materials</Button></div>
+          )}
+          {/* Sent: its lines change through Edit invoice, in one step, with its payments left as they are. */}
+          {editing.offered && (
+            <div className="row wrap" style={{ gap: 8, alignItems: "center" }}>
+              <Button size="sm" icon="edit" disabled={Boolean(editing.waits)} onClick={() => setDialog("edit")}>Edit invoice</Button>
+              {editing.waits && <span className="muted small">{editing.waits}</span>}
+            </div>
           )}
           <NotesCard value={inv.notes} editable={!isVoid} onEdit={save.edited} onUnchanged={unchanged} onSave={(notes) => saveField({ notes })} />
           <section className="stack">
@@ -511,7 +557,8 @@ function InvoicePageScreen() {
               })}
             </div>
           </section>
-          <InvoicePaper invoice={inv} />
+          {/* What the client's copy says about a late fee, where one could still go on this invoice. */}
+          <InvoicePaper invoice={inv} lateFeeNote={lateFeeCouldApply(inv, lateFee, fromStripe) ? lateFeeNotice(lateFee, formatMoneyCents) : null} />
         </div>
         <aside className="narrow stack">
           <div className="card card-pad totals">
@@ -562,6 +609,13 @@ function InvoicePageScreen() {
                 ))}
               </div>
             )}
+            {/* Late fees for this invoice: off with a tick before one goes on, and said once one was taken off. */}
+            {fees.tick && (
+              <label className="checkbox small">
+                <input type="checkbox" checked={Boolean(inv.no_late_fee)} disabled={edit.isPending} onChange={(e) => saveField({ no_late_fee: e.target.checked })} /> No late fee on this invoice
+              </label>
+            )}
+            {fees.note && <span className="muted small">{fees.note}</span>}
             {inv.sent_at && <span className="muted small">Sent {formatDate(inv.sent_at)}</span>}
             {inv.job?.po_number && <span className="muted small">PO {inv.job.po_number}</span>}
           </div>
@@ -572,10 +626,11 @@ function InvoicePageScreen() {
       </div>
 
       {dialog === "send" && <SendDialog kind="invoice" id={inv.id} number={inv.number} email={inv.client?.email ?? null} phone={inv.client?.phone ?? null} textsOffSince={inv.client?.sms_opt_out_at} onClose={() => setDialog(null)} onSent={refresh} />}
+      {dialog === "edit" && <EditInvoiceDialog invoice={{ id: inv.id, number: inv.number, updated_at: inv.updated_at, lines: inv.lines }} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "work" && inv.job && <AddWorkDialog invoiceId={inv.id} jobId={inv.job.id} onClose={() => { setDialog(null); refresh(); }} />}
       {dialog === "payment" && <PaymentDialog invoice={{ id: inv.id, client_id: inv.client_id, balance, draft }} bank={bankNote} onClose={() => setDialog(null)} onSaved={refresh} />}
-      {refunding && <RefundDialog invoice={{ id: inv.id, client_id: inv.client_id }} payment={refunding} left={refundable(refunding, inv.payments)} onClose={() => setRefunding(null)} onSaved={refresh} />}
-      {stripeRefund && <StripeRefundDialog payment={stripeRefund} left={stripeRefundable(stripeRefund, inv.payments)} onClose={() => setStripeRefund(null)} onSaved={refreshSoon} />}
+      {refunding && <RefundDialog invoice={{ id: inv.id, client_id: inv.client_id, status: inv.status, due_on: inv.due_on, balance_due: balance }} payment={refunding} left={refundable(refunding, inv.payments)} onClose={() => setRefunding(null)} onSaved={refresh} />}
+      {stripeRefund && <StripeRefundDialog invoice={{ status: inv.status, due_on: inv.due_on, balance_due: balance }} payment={stripeRefund} left={stripeRefundable(stripeRefund, inv.payments)} onClose={() => setStripeRefund(null)} onSaved={refreshSoon} />}
     </>
   );
 }
@@ -592,9 +647,13 @@ const limitText = (amount: number) => (Number.isInteger(amount) ? formatMoney(am
  * ("Includes visits from before autopay started"); and when it's over the company's limit, with no
  * reason given.
  */
-function approvalText(charge: { last_error: string | null }, balance: number, cap: number | null): string {
+function approvalText(charge: { last_error: string | null; method?: { type: string } | null }, balance: number, cap: number | null): string {
   if (charge.last_error) return `${clause(charge.last_error).replace(/^Includes /, "It includes ")}, so it waits for your OK.`;
-  if (cap != null && balance > cap) return `${formatMoneyCents(balance)} is over your ${limitText(cap)} limit, so it waits for your OK.`;
+  if (cap != null && balance > cap) {
+    // A bank account agreed to the limit as the most charged without notice (core autopayBankText).
+    const bank = charge.method?.type === "us_bank_account" ? " They pay from a bank account, and your autopay terms promise them the amount and date at least 10 days before a charge over the limit: send them that before you OK it." : "";
+    return `${formatMoneyCents(balance)} is over your ${limitText(cap)} limit, so it waits for your OK.${bank}`;
+  }
   return "It waits for your OK before it's charged.";
 }
 
@@ -621,7 +680,7 @@ function needsClientReason(charge: { source: string; failures: number; last_erro
  * template (its default, as the link uses), with the template's terms and its invoice sections filled
  * in for this invoice. It follows the edits above as they're saved.
  */
-function InvoicePaper({ invoice }: { invoice: DocumentInvoice & { custom_fields: unknown } & { client: { display_name: string; billing_address: unknown } | null; job: { property: unknown; quote?: InvoiceQuote | null } | null } }) {
+function InvoicePaper({ invoice, lateFeeNote }: { invoice: DocumentInvoice & { custom_fields: unknown } & { client: { display_name: string; billing_address: unknown } | null; job: { property: unknown; quote?: InvoiceQuote | null } | null }; lateFeeNote: string | null }) {
   const session = useSession();
   const id = useId();
   const { template, isPending } = useDocumentTemplate(null);
@@ -650,7 +709,7 @@ function InvoicePaper({ invoice }: { invoice: DocumentInvoice & { custom_fields:
           <DocumentSheet
             template={contractTemplate(template, contract)}
             company={letterhead.data ?? documentCompany(session.company)}
-            data={invoiceDocument({ ...invoice, pdf_fields: shownCustomFields(fields, invoice.custom_fields, "pdf") }, { timeZone: session.company.timezone, contract })}
+            data={invoiceDocument({ ...invoice, pdf_fields: shownCustomFields(fields, invoice.custom_fields, "pdf") }, { timeZone: session.company.timezone, contract, lateFeeNote })}
           />
         </>
       ) : (
@@ -783,43 +842,49 @@ function PaymentDialog({ invoice, bank, onClose, onSaved }: { invoice: { id: str
   );
 }
 
-/** `left` is what hasn't been refunded yet (earlier refunds count against the payment). */
-function RefundDialog({ invoice, payment, left, onClose, onSaved }: { invoice: { id: string; client_id: string }; payment: { id: string; amount: number; method: string }; left: number; onClose: () => void; onSaved: () => void }) {
+/**
+ * Record a refund of a payment taken by hand. `left` is what hasn't been refunded yet (earlier
+ * refunds count against the payment). A refund puts the balance back up by what went back, so
+ * "Take it off the invoice too" writes that off, as the refund through Stripe does (recordRefund.ts),
+ * and nobody asks the client to pay again for what they were given back. Left on the invoice, the
+ * dialog says what that means when the invoice is past its due date.
+ */
+function RefundDialog({ invoice, payment, left, onClose, onSaved }: { invoice: { id: string; client_id: string; status: string; due_on: string | null; balance_due: number }; payment: { id: string; amount: number; method: string }; left: number; onClose: () => void; onSaved: () => void }) {
   const session = useSession();
+  const today = todayIn(session.company.timezone);
   const [amount, setAmount] = useState(left.toFixed(2));
-  const [date, setDate] = useState(todayIn(session.company.timezone));
+  const [date, setDate] = useState(today);
   const [notes, setNotes] = useState("");
+  const [takeOff, setTakeOff] = useState(true);
   const value = Number(amount);
   const tooMuch = value > left + 0.005;
   const limit = left < payment.amount ? `the ${formatMoneyCents(left)} left to refund on this payment` : `the ${formatMoneyCents(payment.amount)} payment`;
+  const pastDue = owedAgainNote(invoice, value > 0 ? value : 0, today);
   const save = useMutation({
-    meta: { inline: true, success: "Refund recorded", tone: "invoice" },
+    meta: { inline: true, success: (result: RefundResult) => refundToasts(result, takeOff).success, tone: "invoice" },
     mutationFn: async () => {
       if (!(value > 0)) throw new Error("Enter an amount greater than zero.");
       if (tooMuch) throw new Error(`That's more than ${limit}.`);
-      // Check again against the latest payments, in case a refund was just recorded elsewhere.
-      const latest = unwrap(await supabase().from("payments").select("amount, method, processor").eq("invoice_id", invoice.id));
-      const now = refundable(payment, latest);
-      if (value > now + 0.005) throw new Error(now > 0 ? `Only ${formatMoneyCents(now)} of this payment is left to refund.` : "This payment has already been refunded.");
-      unwrap(
-        await supabase().from("payments").insert({
-          company_id: session.company.id,
-          invoice_id: invoice.id,
-          client_id: invoice.client_id,
-          amount: -Math.round(value * 100) / 100,
-          method: payment.method as "check",
-          received_at: new Date(`${date}T12:00:00`).toISOString(),
-          notes: notes.trim() ? `Refund: ${notes.trim()}` : "Refund",
-        }),
-      );
+      return recordRefund({
+        companyId: session.company.id,
+        invoice,
+        payment,
+        amount: value,
+        receivedAt: new Date(`${date}T12:00:00`).toISOString(),
+        notes: notes.trim() || null,
+        takeOff,
+      });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // Ticked but not taken off: other money is still owed on it.
+      const { note } = refundToasts(result, takeOff);
+      if (note) toast.info(note.title, note.description ? { description: note.description } : undefined);
       onSaved();
       onClose();
     },
   });
   return (
-    <Dialog open onClose={onClose} title="Record a refund" description="Record money you gave back to the client. The invoice balance goes back up by this amount.">
+    <Dialog open onClose={onClose} title="Record a refund" description="Record money you gave back to the client.">
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <div className="form-grid">
           <Field label="Amount" requiredMessage="Enter the amount you gave back." error={tooMuch ? `More than ${limit}.` : null}>
@@ -828,6 +893,14 @@ function RefundDialog({ invoice, payment, left, onClose, onSaved }: { invoice: {
           <Field label="Refunded on"><input className="input" type="date" value={date} max={todayIn(session.company.timezone)} onChange={(e) => setDate(e.target.value)} required /></Field>
         </div>
         <Field label="Note" optional><input className="input" placeholder="Check number or reason" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={180} /></Field>
+        <div className="stack-sm">
+          <label className="checkbox"><input type="checkbox" checked={takeOff} onChange={(e) => setTakeOff(e.target.checked)} /> Take it off the invoice too</label>
+          <span className="muted small">
+            {takeOff
+              ? "The invoice stays settled: what you gave back isn't asked for again."
+              : `The balance goes back up by the refund, and the client will be asked for it.${pastDue ? ` ${pastDue}` : ""}`}
+          </span>
+        </div>
         <FormError error={save.error} />
         <div className="form-actions">
           <FormChecks />
@@ -847,11 +920,14 @@ function RefundDialog({ invoice, payment, left, onClose, onSaved }: { invoice: {
  * When other money is still owed on it too, nothing is written off, and the office is told how much
  * is still asked for.
  */
-function StripeRefundDialog({ payment, left, onClose, onSaved }: { payment: { id: string; method: string }; left: number; onClose: () => void; onSaved: () => void }) {
+function StripeRefundDialog({ invoice, payment, left, onClose, onSaved }: { invoice: { status: string; due_on: string | null; balance_due: number }; payment: { id: string; method: string }; left: number; onClose: () => void; onSaved: () => void }) {
+  const session = useSession();
   const [amount, setAmount] = useState(left.toFixed(2));
   const [writeOff, setWriteOff] = useState(true);
   const value = Number(amount);
   const tooMuch = value > left + 0.005;
+  // Left on a paid invoice past its due date: it reads past due, and the client isn't reminded that day.
+  const pastDue = owedAgainNote(invoice, value > 0 ? value : 0, todayIn(session.company.timezone));
   const save = useMutation({
     // "Refund sent to Stripe", unless the note below says it all (stripeRefundToasts).
     meta: { inline: true, success: (result: StripeRefundResult) => stripeRefundToasts(result, writeOff).success, tone: "invoice" },
@@ -876,7 +952,7 @@ function StripeRefundDialog({ payment, left, onClose, onSaved }: { payment: { id
         </Field>
         <div className="stack-sm">
           <label className="checkbox"><input type="checkbox" checked={writeOff} onChange={(e) => setWriteOff(e.target.checked)} /> Take it off the invoice too</label>
-          {!writeOff && <span className="muted small">The balance goes back up by the refund, and the client will be asked for it.</span>}
+          {!writeOff && <span className="muted small">The balance goes back up by the refund, and the client will be asked for it.{pastDue ? ` ${pastDue}` : ""}</span>}
         </div>
         <FormError error={save.error} />
         <div className="form-actions">

@@ -1,4 +1,5 @@
 /** Small pieces chat screens share: role colors, avatars, names and time labels. */
+import { browserOrSpanish, t } from "@/lib/i18n";
 import type { CSSProperties } from "react";
 import type { ChatColor } from "@crewtavo/core/chat";
 import { Icon } from "@/components/ui/Icon";
@@ -35,15 +36,15 @@ const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.g
 /** "Today", "Yesterday", "Monday, October 19" (with the year when it isn't this one). */
 export function dayLabel(iso: string, now = new Date()): string {
   const d = new Date(iso);
-  if (sameDay(d, now)) return "Today";
+  if (sameDay(d, now)) return t("Today");
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (sameDay(d, yesterday)) return "Yesterday";
-  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", ...(d.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }) });
+  if (sameDay(d, yesterday)) return t("Yesterday");
+  return d.toLocaleDateString(browserOrSpanish(), { weekday: "long", month: "long", day: "numeric", ...(d.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }) });
 }
 
-export const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-export const shortTime = (iso: string) => timeLabel(iso).replace(/\s?[AP]M$/i, "");
+export const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString(browserOrSpanish(), { hour: "numeric", minute: "2-digit" });
+export const shortTime = (iso: string) => timeLabel(iso).replace(/\s?([AP]M|[ap]\.\s?m\.)$/i, "");
 
 /** When a message shows its sender again: a new person, a new day, or five minutes later. */
 export function startsGroup(prev: { author_id: string | null; created_at: string } | undefined, next: { author_id: string | null; created_at: string }): boolean {

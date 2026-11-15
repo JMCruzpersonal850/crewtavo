@@ -11,6 +11,8 @@ import { phoneDisplay, phoneE164 } from "@crewtavo/core/phone";
 import { SIGN_IN_CODE_DIGITS } from "@crewtavo/core/subs";
 import { api, supabase, type AppConfig } from "@/lib/api";
 import type { SubLogin } from "@/lib/session";
+import { translateError } from "@crewtavo/core/i18n/patterns";
+import { getLocale, msg, t } from "@/lib/i18n";
 
 /** How long before "Send a new code" works again. The API allows 3 codes per number or address in 15 minutes. */
 export const RESEND_SECONDS = 60;
@@ -29,19 +31,25 @@ export function afterAsking(answer: { sent: boolean }, address: string, now: num
   return answer.sent ? { step: "code", address, sentAt: now } : { step: "off" };
 }
 
-type CodeFeatures = Partial<Pick<AppConfig["features"], "sms" | "emailCodes" | "email">> | undefined;
+type CodeFeatures = Partial<Pick<AppConfig["features"], "sms" | "smsCodes" | "emailCodes" | "email">> | undefined;
+
+/**
+ * Whether this Crewtavo texts sign-in codes at all, before anyone is known: its own Twilio account
+ * or any company's (features.smsCodes). A server from before companies had their own says only `sms`.
+ */
+const textsCodes = (features: CodeFeatures) => Boolean(features?.smsCodes ?? features?.sms);
 
 /**
  * What the sign-in page offers someone on a new phone: a code by text, by email (this Crewtavo can't
  * text but can email), or asking the office. It goes by the whole Crewtavo, since nobody is known yet.
  */
 export function newPhoneOffer(features: CodeFeatures): CodeWay | "ask_office" {
-  if (features?.sms) return "text";
+  if (textsCodes(features)) return "text";
   return features?.emailCodes ? "email" : "ask_office";
 }
 
 /** With texting on, the code by text comes first, and email is there for a sub with no phone on file. */
-export const emailInstead = (features: CodeFeatures) => Boolean(features?.sms && features.emailCodes);
+export const emailInstead = (features: CodeFeatures) => Boolean(textsCodes(features) && features?.emailCodes);
 
 /**
  * The links under the sign-in form for someone on a new phone, first one first: a code by text and,
@@ -51,9 +59,9 @@ export const emailInstead = (features: CodeFeatures) => Boolean(features?.sms &&
 export function newPhoneOffers(features: CodeFeatures): Array<{ way: CodeWay; label: string }> | "ask_office" {
   const offer = newPhoneOffer(features);
   if (offer === "ask_office") return offer;
-  if (offer === "email") return [{ way: "email", label: "Subcontractor? Get a sign-in code by email" }];
-  const text = { way: "text" as const, label: "Subcontractor? Get a sign-in code by text" };
-  return emailInstead(features) ? [text, { way: "email", label: "No phone on file? Get a code by email instead" }] : [text];
+  if (offer === "email") return [{ way: "email", label: t("Subcontractor? Get a sign-in code by email") }];
+  const text = { way: "text" as const, label: t("Subcontractor? Get a sign-in code by text") };
+  return emailInstead(features) ? [text, { way: "email", label: t("No phone on file? Get a code by email instead") }] : [text];
 }
 
 /**
@@ -84,52 +92,50 @@ export const subSignsInOnHomeScreen = (features: CodeFeatures, sub: Pick<SubLogi
 export function homeScreenSignInNote(features: CodeFeatures, sub: Pick<SubLogin, "own_sign_in" | "has_phone" | "has_email"> | null | undefined): string | null {
   if (!sub || sub.own_sign_in === false) return null;
   const ways = subCodeWays(features, sub);
-  if (ways.text) return "In the Home Screen app, tap Get a sign-in code by text to sign in.";
-  if (ways.email) return "In the Home Screen app, tap Get a sign-in code by email to sign in.";
+  if (ways.text) return t("In the Home Screen app, tap Get a sign-in code by text to sign in.");
+  if (ways.email) return t("In the Home Screen app, tap Get a sign-in code by email to sign in.");
   return null;
 }
 
-export const ASK_THE_OFFICE = "On a new phone? Ask the office to text you a new sign-in link.";
+/** Shown with t(), as the next two are. */
+export const ASK_THE_OFFICE = msg("On a new phone? Ask the office to text you a new sign-in link.");
 
 /** After asking for a code on a Crewtavo that can't text (the API's { sent: false, reason: "sms_off" }). */
-export const TEXTING_OFF = `This Crewtavo isn't set up to send texts yet. ${ASK_THE_OFFICE}`;
+export const TEXTING_OFF = msg("This Crewtavo isn't set up to send texts yet. On a new phone? Ask the office to text you a new sign-in link.");
 
 /** Under the code: what to do when nothing comes, since the answer never says whether the number or address has a sign-in. */
 export const NOTHING_CAME: Record<CodeWay, string> = {
-  text: "Nothing after a few minutes? Ask the office for a new sign-in link.",
-  email: "Nothing after a few minutes? Check your spam folder. Still nothing? Ask the office for a new sign-in link.",
+  text: msg("Nothing after a few minutes? Ask the office for a new sign-in link."),
+  email: msg("Nothing after a few minutes? Check your spam folder. Still nothing? Ask the office for a new sign-in link."),
 };
 
 /** The sub's Profile → Signing in: how to get back in on a new phone. */
 export function signingInNote(companyName: string, ways: CodeWays): string {
-  const start = "There's no password. You stay signed in on this phone until you sign out.";
-  const fallback = `If no code comes, ask ${companyName} for a new sign-in link.`;
-  if (ways.text) {
-    const email = ways.email ? " No number on file? Tap Get a code by email instead, and we'll email one to the address they have." : "";
-    return `${start} On a new phone, open Crewtavo and tap Get a sign-in code by text. We'll text a code to the number ${companyName} has for you.${email} ${fallback}`;
-  }
-  if (ways.email) return `${start} On a new phone, open Crewtavo and tap Get a sign-in code by email. We'll email a code to the address ${companyName} has for you. ${fallback}`;
-  return `${start} On a new phone, ask ${companyName} to text you a new sign-in link.`;
+  const company = companyName;
+  if (ways.text && ways.email) return t("There's no password. You stay signed in on this phone until you sign out. On a new phone, open Crewtavo and tap Get a sign-in code by text. We'll text a code to the number {company} has for you. No number on file? Tap Get a code by email instead, and we'll email one to the address they have. If no code comes, ask {company} for a new sign-in link.", { company });
+  if (ways.text) return t("There's no password. You stay signed in on this phone until you sign out. On a new phone, open Crewtavo and tap Get a sign-in code by text. We'll text a code to the number {company} has for you. If no code comes, ask {company} for a new sign-in link.", { company });
+  if (ways.email) return t("There's no password. You stay signed in on this phone until you sign out. On a new phone, open Crewtavo and tap Get a sign-in code by email. We'll email a code to the address {company} has for you. If no code comes, ask {company} for a new sign-in link.", { company });
+  return t("There's no password. You stay signed in on this phone until you sign out. On a new phone, ask {company} to text you a new sign-in link.", { company });
 }
 
 /** The "Sign out?" question a sub is asked first, since there's no password: how they get back in. */
 export function signOutNote(companyName: string, ways: CodeWays): string {
-  if (ways.text && ways.email) return "There's no password. To get back in, open Crewtavo and get a sign-in code by text or by email.";
-  if (ways.text) return "There's no password. To get back in, open Crewtavo and tap Get a sign-in code by text.";
-  if (ways.email) return "There's no password. To get back in, open Crewtavo and tap Get a sign-in code by email.";
-  return `There's no password. To get back in, ask ${companyName} to text you a new sign-in link.`;
+  if (ways.text && ways.email) return t("There's no password. To get back in, open Crewtavo and get a sign-in code by text or by email.");
+  if (ways.text) return t("There's no password. To get back in, open Crewtavo and tap Get a sign-in code by text.");
+  if (ways.email) return t("There's no password. To get back in, open Crewtavo and tap Get a sign-in code by email.");
+  return t("There's no password. To get back in, ask {company} to text you a new sign-in link.", { company: companyName });
 }
 
 /** What's wrong with the number typed, in the API's words, or null when it's a whole number. */
 export function phoneProblem(input: string): string | null {
-  if (!input.trim()) return "Enter your phone number.";
-  return phoneE164(input) ? null : "Enter your phone number with the area code.";
+  if (!input.trim()) return t("Enter your phone number.");
+  return phoneE164(input) ? null : t("Enter your phone number with the area code.");
 }
 
 /** What's wrong with the email address typed, in the API's words, or null when it's a whole address. */
 export function emailProblem(input: string): string | null {
-  if (!input.trim()) return "Enter your email address.";
-  return emailKey(input) ? null : "Enter your email address, like name@example.com.";
+  if (!input.trim()) return t("Enter your email address.");
+  return emailKey(input) ? null : t("Enter your email address, like name@example.com.");
 }
 
 /** The number or address as the API takes it (E.164, or trimmed and lower-cased), or what's wrong with it. */
@@ -142,8 +148,8 @@ export function readAddress(way: CodeWay, input: string): { address: string } | 
 /** "We texted a code to (540) 555-0101 …", without saying whether that number or address has a sign-in. */
 export const sentTo = (way: CodeWay, address: string) =>
   way === "text"
-    ? `We texted a code to ${phoneDisplay(address)} if it belongs to a subcontractor's sign-in.`
-    : `We emailed a code to ${address} if it belongs to a subcontractor's sign-in.`;
+    ? t("We texted a code to {phone} if it belongs to a subcontractor's sign-in.", { phone: phoneDisplay(address) })
+    : t("We emailed a code to {email} if it belongs to a subcontractor's sign-in.", { email: address });
 
 /** 6 digits standing on their own, not part of a longer number. */
 const WHOLE_CODE = new RegExp(`(?<![0-9])[0-9]{${SIGN_IN_CODE_DIGITS}}(?![0-9])`);
@@ -167,13 +173,13 @@ export const filledAtOnce = (before: string, after: string) => wholeCode(after) 
 /** Seconds until "Send a new code" works again, counted from when the last one went. */
 export const resendIn = (sentAt: number, now: number) => Math.max(0, Math.ceil(RESEND_SECONDS - (now - sentAt) / 1000));
 
-export const resendLabel = (seconds: number) => (seconds > 0 ? `Send a new code in ${seconds}s` : "Send a new code");
+export const resendLabel = (seconds: number) => (seconds > 0 ? t("Send a new code in {seconds}s", { seconds }) : t("Send a new code"));
 
 /**
  * What went wrong, in the API's own words ("That code isn't right…", "Too many codes asked for…"),
  * which say what to do next. Not the sign-in page's general wording for Supabase's errors.
  */
-export const codeProblem = (error: unknown) => (error instanceof Error && error.message ? error.message : "Something went wrong. Try again.");
+export const codeProblem = (error: unknown) => (error instanceof Error && error.message ? translateError(getLocale(), error.message) : t("Something went wrong. Try again."));
 
 /** Texts a code to the number, if it belongs to a sub's sign-in. `sent` is false when this Crewtavo can't text. */
 export const askForCode = (phone: string) => api.post<{ sent: boolean; reason?: string }>("/auth/text-code", { phone });
@@ -188,7 +194,7 @@ export const askFor = (way: CodeWay, address: string) => (way === "text" ? askFo
 async function redeem(answer: Promise<{ token_hash: string; type: "magiclink" }>): Promise<void> {
   const { token_hash, type } = await answer;
   const { error } = await supabase().auth.verifyOtp({ token_hash, type });
-  if (error) throw new Error("Couldn't sign you in. Ask for a new code and try again.");
+  if (error) throw new Error(t("Couldn't sign you in. Ask for a new code and try again."));
 }
 
 /** Signs in with the code from the text. Throws the API's plain words when it's wrong. */

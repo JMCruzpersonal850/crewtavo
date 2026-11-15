@@ -1,4 +1,4 @@
-import { FORMULA_VARIABLES } from "@crewtavo/core";
+import { FORMULA_VARIABLES, REPORT_PROVIDER, REPORT_TITLE, roofReportCollection } from "@crewtavo/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 
@@ -88,6 +88,29 @@ describe("saving a measurement", () => {
     state.writes = [];
     await post("/measurements", { id: "00000000-0000-4000-8000-0000000000aa", geojson: shapes({ type: "Polygon", coordinates: [RECT] }) });
     expect(state.writes[0].row).not.toHaveProperty("snapshot_path");
+  });
+
+  it("saves a roof typed in from a report like a drawn one, with the report's numbers", async () => {
+    const report = { squares: 28.5, pitch: "6/12", eave_ft: 186, rake_ft: 0, ridge_ft: 42.5, hip_ft: 96, valley_ft: 38, waste_pct: 12 };
+    const res = await post("/measurements", { title: REPORT_TITLE, provider: REPORT_PROVIDER, roof_pitch: "6/12", waste_pct: 12, geojson: roofReportCollection(report, { lat: 37.13, lng: -80.41 }) });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ roofing_squares: 31.92, total_length_ft: 362.5 });
+    const row = state.writes[0].row as { sections: Array<{ kind: string; value: number; edge?: string }> };
+    expect(row).toMatchObject({ title: "Roof measurements from a report", provider: "report", roof_pitch: "6/12", waste_pct: 12, roofing_squares: 31.92 });
+    expect(row.sections.filter((s) => s.kind === "Length").map((s) => [s.edge, s.value])).toEqual([["eave", 186], ["ridge", 42.5], ["hip", 96], ["valley", 38]]);
+
+    // The estimate's lines fill from it exactly as from a drawing.
+    state.measurement = { total_area_sqft: 2549.12, total_area_sqyd: 283.24, total_length_ft: 362.5, sections: row.sections, roof_pitch: "6/12", waste_pct: 12 };
+    state.lines = [
+      { id: "line-1", name: "Architectural shingle roof", formula: "squares", service: null },
+      { id: "line-2", name: "Tear-off and disposal", formula: "roof_squares", service: null },
+      { id: "line-3", name: "Drip edge", formula: "eave_ft + rake_ft", service: null },
+      { id: "line-4", name: "Ridge cap", formula: "ridge_ft + hip_ft", service: null },
+      { id: "line-5", name: "Valley flashing", formula: "valley_ft", service: null },
+      { id: "line-6", name: "Steep roof charge", formula: "steep_squares", service: null },
+    ];
+    const filled = await (await post("/quotes/00000000-0000-4000-8000-0000000000b1/apply-measurement", { measurement_id: "00000000-0000-4000-8000-0000000000c1" })).json();
+    expect(filled.lines.map((l: { value: number }) => l.value)).toEqual([31.92, 28.5, 186, 138.5, 38, 0]);
   });
 
   it("keeps the plan sheet lined up on the map, and the imagery choice", async () => {

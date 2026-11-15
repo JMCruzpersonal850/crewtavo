@@ -7,7 +7,66 @@ quote, invoice, Client Hub, booking form, emails and texts in Spanish, while the
 working in English. Business content stays as the business typed it: service names, checklist
 items, SOPs and notes.
 
-Nothing here is built yet. This is the plan.
+**Built (2026-11-14): the crew's side, as Jobber offers it.** A team member chooses Español in
+Settings → Profile → Language, or answers My day's question when their phone speaks Spanish
+("¿Usar Crewtavo en español?"), or picks it under the sign-in screens. What's built:
+
+- The layer: `packages/core/src/i18n` (`t`, `t.plural`, contexts, `msg`, `translator(locale)`),
+  `<T>` and the locale store in `apps/web/src/lib/i18n.tsx`, and the Spanish catalog in
+  `packages/core/src/i18n/es/` with its `GLOSSARY.md`. The web app loads Spanish as its own file,
+  only for someone using it; the service worker keeps it for no signal.
+- `profiles.locale` (`en`, `es`, null), in `/me` and its PATCH and on the team list (an "Español"
+  chip). Null follows the choice made on that device, else English: a phone set to Spanish only
+  makes My day ask, so nobody's app changes language without them choosing it.
+- In Spanish: the shell (navigation, account menu, sign-in and sign-out, dialogs, empty states,
+  errors and toasts), the field app (My day, the visit, the clock and crew clock, the clock at the
+  property, checklists' chrome, photos and the photo editor, adding work, materials, receipts and
+  their reading, equipment hours and maintenance from My day, plans, billing in the field, a sub's
+  My jobs and My paperwork), team chat, reading guides, the schedule as a crew sees it, timesheets,
+  their profile and notification settings. Dates, times, money and numbers are `es-US`.
+- Whose language: always the signed-in person's own (`profiles.locale`), English when they've
+  never chosen. It's kept on the device only while they're signed in, and leaves it when they sign
+  out, so a shared tablet is English for the next person. A language picked on the sign-in page is
+  saved with whoever then signs in (`apps/web/src/lib/i18n.tsx`).
+- Dates and times are `es-US` only on the screens that are in Spanish; the office's screens, still
+  in English, keep `en-US` for someone using Spanish, and files that are downloaded are always `en-US`.
+- Notifications to a team member (the bell, push, email and texts): read by their kind and their
+  English shape, not rewritten in the database (section 6 changes there):
+  `packages/core/src/i18n/es/notices.ts`, used by `services/delivery.ts` and the bell. A sentence is
+  split around its date, so a title with " on " or ": " in it stays whole; what somebody typed (a
+  chat message, a client's reason) is never read as a sentence; and a notification the tables don't
+  fully know stays in English whole. Old rows, and rows an older server writes during an update,
+  read in Spanish too. Error messages a crew can meet are in `es/errors.ts` the same way.
+- Checks: `packages/core/test/i18n.test.ts` (every t()/msg()/<T> text has its Spanish, nothing left
+  over, placeholders match; and every notification sentence is held against the text of the
+  database function that writes it, in `supabase/migrations`, so a change of wording there fails
+  the test) and `apps/web/test/i18n.test.ts` (the crew's screens, `COVERED` in `scripts/i18n.mjs`,
+  have no English outside t()). `node scripts/i18n.mjs report <folder>` lists what's left anywhere;
+  `missing` prints the lines to write; `wrap` does the plain part of a folder.
+
+#### What the coverage check can't see
+
+It reads JSX text, text props and text calls, and also strings kept in a variable, built in a
+template literal, picked by `?:`, given as a fallback or returned by a small helper. It goes by
+where a string stands and how it's written, so some English still gets past it:
+
+- One word by itself (or lower-case words) given as an argument, kept in a list, or kept under a
+  key that isn't a text key: `label("Draft")`, `["Day", "Week"]`, `{ status: "Queued" }`. Only
+  several words starting with a capital are caught there.
+- A sentence that starts lower-case and isn't in a template literal, unless it's a branch of
+  `?:`, a fallback, a variable or a return.
+- Words given to the calls it takes for code (`CODE_CALLS`: `join(" and ")`, `replace(x, "words")`),
+  and words put together with `+` from pieces of one word each.
+- `t(variable)`: nothing checks that the variable's text was marked with `msg()`, so it can have
+  no Spanish line and show in English.
+- Text that arrives from somewhere else: a file that isn't covered, the server, the database.
+  Those are translated by their shape (`es/errors.ts`, `es/notices.ts`) or not at all.
+- Anything on a line marked `i18n-ignore` (English on purpose: said to the office or to a client,
+  details for support, a search word).
+
+Not built yet: the client side (phase 2), the office (phase 3), invites in a language, the KB's
+Spanish search and Ask in the person's language (section 7), and notifications by key (section 6:
+the shape tables do it for now). Everything below is still the plan for those.
 
 ---
 
@@ -107,8 +166,8 @@ msg("Schedule")                                       // marks a module-level co
 
 | Surface | Language, in order of preference |
 |---|---|
-| Staff app, signed in | `profiles.locale` → device setting → `navigator.languages` → `en` |
-| Sign-in, onboarding, setup (no profile yet) | device setting → `navigator.languages` → `en` |
+| Staff app, signed in | `profiles.locale` → `en` (as built: never the device's leftover choice, and the phone's own language only makes My day ask) |
+| Sign-in, onboarding, setup (no profile yet) | what was picked on the sign-in page in the last hour (saved with whoever then signs in) → `en` |
 | Client pages (`/hub`, `/book`, `/u`, `/refer`) and the iPad roofing visit, sign and signed pages | `clients.locale` → business default → browser (booking only) → `en`, with an **English / Español** switch on the page |
 | Email, SMS and push to staff | the recipient's `profiles.locale` |
 | Email and SMS to clients, printed and Hub documents, Stripe | `clients.locale` → business default |

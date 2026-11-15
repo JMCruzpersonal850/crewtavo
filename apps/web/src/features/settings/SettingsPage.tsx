@@ -25,6 +25,7 @@ import { ProfileSettings } from "./ProfileSettings";
 import { RolesSettings } from "./RolesSettings";
 import { SalesAreaSettings } from "./SalesAreaSettings";
 import { ScheduleSettings } from "./ScheduleSettings";
+import { t } from "@/lib/i18n";
 import { settingsGroups, type SettingsTab } from "./sections";
 import { StorageSettings } from "./StorageSettings";
 import { TeamSettings } from "./TeamSettings";
@@ -46,22 +47,22 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title={sub ? "Profile" : "Settings"} />
+      <PageHeader title={sub ? t("Profile") : t("Settings")} />
       <div className={sub ? undefined : "settings-layout"}>
-        {!sub && <nav className="settings-nav" aria-label="Settings sections">
+        {!sub && <nav className="settings-nav" aria-label={t("Settings sections")}>
           {groups.map((g) => (
             <div key={g.title} className="settings-group">
-              <span className="settings-group-title">{g.title}</span>
+              <span className="settings-group-title">{t(g.title)}</span>
               {g.items.map((item) =>
                 "tab" in item ? (
                   <button key={item.tab} type="button" className="nav-link" aria-current={tab === item.tab ? "page" : undefined} onClick={() => setParams({ tab: item.tab }, { replace: true })}>
                     <Icon name={item.icon} />
-                    {item.label}
+                    {t(item.label)}
                   </button>
                 ) : (
                   <Link key={item.to} to={item.to} className="nav-link">
                     <Icon name={item.icon} />
-                    {item.label}
+                    {t(item.label)}
                     <span className="settings-out" aria-hidden="true"><Icon name="chevronRight" size={14} /></span>
                   </Link>
                 ),

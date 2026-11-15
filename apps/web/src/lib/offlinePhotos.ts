@@ -18,6 +18,8 @@ import { supabase, unwrap } from "./api";
 import { ApiError, errorMessage, isAuthError, isNetworkError, isRestarting } from "./errors";
 import { storedExtension, storedType, uploadBody, uploadOnce } from "./files";
 import { toast } from "./toast";
+import { t } from "@/lib/i18n";
+import type { SavedMarks } from "@crewtavo/core/photoMarkup";
 
 export interface PhonePhoto {
   /** Made on the phone: the attachment's id and the file's name in storage. */
@@ -33,6 +35,12 @@ export interface PhonePhoto {
   size: number;
   /** What goes up: the photo, already shrunk. */
   body: Blob;
+  /**
+   * The photo drawn on before it was added (the photo editor): a copy that goes up beside it and is
+   * shown instead, while the photo as taken is kept (attachments.marked_path), with the marks that
+   * made it so it can be drawn on again from the photo as taken (attachments.marks).
+   */
+  marked?: { path: string; body: Blob; marks?: SavedMarks | null };
   takenAt: number;
   /** False when the phone wouldn't keep it: it's only in memory, and closing the app loses it. */
   kept: boolean;
@@ -42,9 +50,11 @@ export interface PhonePhoto {
 }
 
 /** A photo as the phone's storage holds it: its bytes rather than a Blob, which some iPhones can't read back. */
-interface StoredPhoto extends Omit<PhonePhoto, "body" | "kept" | "sending" | "problem"> {
+interface StoredPhoto extends Omit<PhonePhoto, "body" | "kept" | "sending" | "problem" | "marked"> {
   bytes: ArrayBuffer;
   type: string;
+  /** Its drawing, the same way. */
+  marked?: { path: string; bytes: ArrayBuffer; type: string; marks?: SavedMarks | null };
 }
 
 const DB = "crewtavo-phone";
@@ -58,10 +68,10 @@ const STORAGE_WAIT = 5_000;
  */
 function inStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
-    const late = setTimeout(() => reject(new Error("The phone's storage didn't answer.")), STORAGE_WAIT);
+    const late = setTimeout(() => reject(new Error(t("The phone's storage didn't answer."))), STORAGE_WAIT);
     const fail = (error: unknown) => {
       clearTimeout(late);
-      reject(error ?? new Error("The phone's storage refused."));
+      reject(error ?? new Error(t("The phone's storage refused.")));
     };
     const opening = indexedDB.open(DB, 1);
     opening.onupgradeneeded = () => void opening.result.createObjectStore(STORE, { keyPath: "id" });
@@ -113,8 +123,8 @@ export const photosWaiting = (userId: string) => photos.filter((p) => p.userId =
 
 async function keep(photo: PhonePhoto): Promise<boolean> {
   try {
-    const { body, kept: _kept, sending: _sending, problem: _problem, ...rest } = photo;
-    const stored: StoredPhoto = { ...rest, bytes: await body.arrayBuffer(), type: body.type };
+    const { body, kept: _kept, sending: _sending, problem: _problem, marked, ...rest } = photo;
+    const stored: StoredPhoto = { ...rest, bytes: await body.arrayBuffer(), type: body.type, ...(marked && { marked: { path: marked.path, bytes: await marked.body.arrayBuffer(), type: marked.body.type, ...(marked.marks && { marks: marked.marks }) } }) };
     await inStore("readwrite", (store) => store.put(stored));
     return true;
   } catch {
@@ -138,13 +148,19 @@ function askToStay() {
 /**
  * Adds a photo to a visit: shrunk, written to the phone, then sent (now, or once there's signal).
  * Resolves false when the phone wouldn't keep it, so the screen can say so as it's taken. Throws
- * when the photo can't be sent at all (too big).
+ * when the photo can't be sent at all (too big). `marked`: the photo drawn on (the photo editor),
+ * kept and sent with it, in the visit's folder beside it, with the marks that made it (`marksFor`).
  */
-export async function addVisitPhoto(at: { userId: string; companyId: string; visitId: string }, file: File): Promise<boolean> {
+export async function addVisitPhoto(at: { userId: string; companyId: string; visitId: string }, file: File, marked?: Blob | null, marksFor?: (path: string) => SavedMarks | null): Promise<boolean> {
   const body = await uploadBody(file);
   const id = crypto.randomUUID();
-  const path = `${at.companyId}/visit/${at.visitId}/${id}.${storedExtension(file, body)}`;
-  const photo: PhonePhoto = { userId: at.userId, companyId: at.companyId, visitId: at.visitId, id, path, fileName: file.name.slice(0, 200), contentType: storedType(path, file), size: file.size, body, takenAt: Date.now(), kept: false, sending: false };
+  const folder = `${at.companyId}/visit/${at.visitId}/`;
+  const path = `${folder}${id}.${storedExtension(file, body)}`;
+  const markedPath = `${folder}${crypto.randomUUID()}.jpg`;
+  const photo: PhonePhoto = {
+    userId: at.userId, companyId: at.companyId, visitId: at.visitId, id, path, fileName: file.name.slice(0, 200), contentType: storedType(path, file), size: file.size, body, takenAt: Date.now(), kept: false, sending: false,
+    ...(marked && { marked: { path: markedPath, body: marked, marks: marksFor?.(markedPath) ?? null } }),
+  };
   askToStay();
   photo.kept = await keep(photo);
   set([...photos, photo]);
@@ -185,18 +201,26 @@ async function load(userId: string) {
   const fresh = stored
     .filter((p) => p.userId === userId && !held(p.id))
     .sort((a, b) => a.takenAt - b.takenAt)
-    .map(({ bytes, type, ...rest }): PhonePhoto => ({ ...rest, body: new Blob([bytes], { type }), kept: true, sending: false }));
+    .map(({ bytes, type, marked, ...rest }): PhonePhoto => ({
+      ...rest, body: new Blob([bytes], { type }), kept: true, sending: false,
+      ...(marked && { marked: { path: marked.path, body: new Blob([marked.bytes], { type: marked.type }), ...(marked.marks && { marks: marked.marks }) } }),
+    }));
   if (fresh.length) set([...fresh, ...photos]);
 }
 
 /**
- * Sends one photo: the file, then its row on the visit. Both are safe to repeat: the file's path is
- * taken already (uploadOnce), and a row with this id is this same photo.
+ * Sends one photo: the file (and its drawing), then its row on the visit. All are safe to repeat:
+ * a file's path is taken already (uploadOnce), and a row with this id is this same photo.
  */
 export async function uploadPhonePhoto(photo: PhonePhoto) {
   await uploadOnce(photo.path, photo.body);
+  if (photo.marked) await uploadOnce(photo.marked.path, photo.marked.body);
   try {
-    unwrap(await supabase().from("attachments").insert({ id: photo.id, company_id: photo.companyId, owner_type: "visit", owner_id: photo.visitId, path: photo.path, file_name: photo.fileName, content_type: photo.contentType, size_bytes: photo.size }));
+    unwrap(
+      await supabase()
+        .from("attachments")
+        .insert({ id: photo.id, company_id: photo.companyId, owner_type: "visit", owner_id: photo.visitId, path: photo.path, file_name: photo.fileName, content_type: photo.contentType, size_bytes: photo.size, ...(photo.marked && { marked_path: photo.marked.path, ...(photo.marked.marks && { marks: photo.marked.marks as never }) }) }),
+    );
   } catch (error) {
     if (!(error instanceof ApiError && error.code === "23505")) throw error;
   }
@@ -226,7 +250,7 @@ async function send() {
       try {
         await to.upload(next);
       } catch (error) {
-        failure = error ?? new Error("Upload failed.");
+        failure = error ?? new Error(t("Upload failed."));
       }
       // Removed, or signed out, meanwhile: nothing more to do with it.
       if (!held(next.id)) continue;
@@ -247,7 +271,7 @@ async function send() {
       // stays on the phone, and isn't tried again until the person asks or the app next opens.
       const problem = errorMessage(failure);
       change(next.id, { sending: false, problem });
-      toast.error("A photo didn't upload", { description: `${problem} It's still on this phone.` });
+      toast.error(t("A photo didn't upload"), { description: `${problem} ${t("It's still on this phone.")}` });
     }
   } finally {
     busy = false;

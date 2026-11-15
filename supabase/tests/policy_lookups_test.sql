@@ -375,7 +375,8 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub": "b6000000-0000-0000-0000-000000000007", "role": "authenticated"}', true);
-select t60.check((select array_agg(title order by title) from public.visits) = '{Mow}', 'crew read their own visit');
+-- Cree is listed on Mow, and on the Mowing crew, which has a visit with nobody listed (20261113000210_visit_people.sql).
+select t60.check((select array_agg(title order by title) from public.visits) = '{"Crew visit",Mow}', 'crew read the visits they''re on: the one they''re listed on, and their crew''s with nobody listed');
 select t60.check((select array_agg(display_name order by display_name) from public.clients) = '{"Lima client"}', 'and its client');
 select t60.check((select array_agg(title) from public.jobs) = '{"Weekly mowing"}', 'and its job');
 select set_config('request.jwt.claims', '{"sub": "b6000000-0000-0000-0000-000000000006", "role": "authenticated"}', true);

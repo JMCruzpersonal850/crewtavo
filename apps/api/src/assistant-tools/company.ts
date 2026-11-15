@@ -93,13 +93,13 @@ export const companyTools = {
       const website = a.website?.trim() ? (/^https?:\/\//.test(a.website) ? a.website.trim() : `https://${a.website.trim()}`) : a.website === undefined ? undefined : null;
 
       // The shop is where routes start: find it again when its address changes.
-      let depot: { lat: number; lng: number } | null = previous.depot ?? null;
+      let depot: { lat: number; lng: number; source?: string } | null = previous.depot ?? null;
       let located: boolean | null = null;
       const oldAddress = (c.address ?? {}) as Record<string, string>;
       if (a.address?.line1 && (a.address.line1 !== oldAddress.line1 || a.address.city !== oldAddress.city || !depot)) {
-        const hit = await geocodeAddress([a.address.line1, a.address.city, a.address.region, a.address.postal_code].filter(Boolean).join(", "), ctx.env.GOOGLE_MAPS_SERVER_KEY).catch(() => null);
+        const hit = await geocodeAddress([a.address.line1, a.address.city, a.address.region, a.address.postal_code].filter(Boolean).join(", ")).catch(() => null);
         located = Boolean(hit);
-        depot = hit ? { lat: hit.lat, lng: hit.lng } : null;
+        depot = hit ? { lat: hit.lat, lng: hit.lng, source: hit.source } : null;
       }
       const hours = { ...a.working_hours, ...(a.workdays && { days: [...new Set(a.workdays.map((d) => DAY_NAMES.indexOf(d)))].sort() }) };
       // Only what changes, merged into the settings as they are then, so a change made meanwhile

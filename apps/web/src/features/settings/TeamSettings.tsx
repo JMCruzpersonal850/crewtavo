@@ -27,7 +27,7 @@ import { limitable, setsAllowances, useStorageOverview, type StoragePerson } fro
 import { AllowanceDialog } from "./StorageSettings";
 import { PASSWORD_HINT } from "../apps/catalog";
 
-export interface Member { user_id: string; role: Role; role_id: string | null; active: boolean; labor_rate: number | null; profile: { full_name: string; email: string | null; color: string | null; avatar_url: string | null } | null }
+export interface Member { user_id: string; role: Role; role_id: string | null; active: boolean; labor_rate: number | null; profile: { full_name: string; email: string | null; color: string | null; avatar_url: string | null; locale?: string | null } | null }
 /** Someone invited who hasn't set up their account yet, and when their latest link went out. */
 interface PendingInvite { user_id: string; sent_at: string }
 /** What an invite (new or resent) did: emailed or not, and the link to copy either way. */
@@ -131,7 +131,10 @@ export function TeamSettings() {
                           <span className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: m.profile?.color || "var(--text-3)" }}><Face name={name} photo={m.profile?.avatar_url} /></span>
                         )}
                         <span>
-                          <strong>{name}</strong>{me && <span className="chip" style={{ marginLeft: 6 }}>You</span>}<div className="muted small">{m.profile?.email}</div>
+                          <strong>{name}</strong>{me && <span className="chip" style={{ marginLeft: 6 }}>You</span>}
+                          {/* Their own choice of language (Settings → Profile → Language): their screens and notices are in it. */}
+                          {m.profile?.locale === "es" && <span className="chip" style={{ marginLeft: 6 }} title="Uses Crewtavo in Spanish">Español</span>}
+                          <div className="muted small">{m.profile?.email}</div>
                           {sentAt && (
                             <div className="row" style={{ gap: 6, marginTop: 2 }}>
                               <StatusPill label="Invite pending" tone="warning" />

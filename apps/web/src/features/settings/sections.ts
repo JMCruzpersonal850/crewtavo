@@ -6,6 +6,7 @@
  */
 import { featureOn } from "@/components/shell/nav";
 import type { IconName } from "@/components/ui/Icon";
+import { msg } from "@/lib/i18n";
 import { can, hasRole, isSub, type Session } from "@/lib/session";
 
 export type SettingsTab = "profile" | "company" | "payments" | "schedule" | "address" | "hosting" | "storage" | "team" | "roles" | "crews" | "sales-areas" | "prices" | "templates" | "contracts" | "checklists" | "custom-fields" | "client-notifications" | "email" | "calendars" | "assistants" | "maps" | "data" | "license" | "weather";
@@ -20,16 +21,16 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
   const sellsPackages = canSell && can(session, "sales");
   const managesEmail = isAdmin && (can(session, "apps") || can(session, "settings"));
   const connectsApps = isAdmin && can(session, "apps");
-  const profile: SettingsItem = { tab: "profile", label: "Profile", icon: "user", keywords: "my account name photo picture avatar password phone notifications theme dark mode appearance spare keys recovery calendar feed directions maps app measure map default imagery" };
+  const profile: SettingsItem = { tab: "profile", label: msg("Profile"), icon: "user", keywords: "my account name photo picture avatar password phone notifications theme dark mode appearance language idioma español spanish spare keys recovery calendar feed directions maps app measure map default imagery" };
   // A sub's settings are their own profile and notifications.
-  if (isSub(session)) return [{ title: "You", items: [profile] }];
+  if (isSub(session)) return [{ title: msg("You"), items: [profile] }];
 
   const groups: Array<{ title: string; items: Array<SettingsItem | false | undefined> }> = [
-    { title: "You", items: [profile] },
+    { title: msg("You"), items: [profile] },
     {
       title: "Business",
       items: [
-        isAdmin && { tab: "company", label: "Company", icon: "home", keywords: "business name address phone email website brand color sales tax time zone workday hours quotes valid invoice due" },
+        isAdmin && { tab: "company", label: "Company", icon: "home", keywords: "business name address phone email website brand color sales tax time zone workday hours quotes valid invoice due jobs last visit finished mark work complete requires invoicing numbering next number invoice number quote number job number starting number" },
         // Autopay's terms, timing and cap, and the cards brought in from Stripe: for the people who look after money.
         isAdmin && can(session, "invoices") && { tab: "payments", label: "Payments", icon: "card", keywords: "payments autopay automatic charge card on file saved card bank receipts tips tip stripe limit cap terms refund" },
         isAdmin && { tab: "schedule", label: "Schedule and routes", icon: "navigation", keywords: "routes route optimize organize order stops lawn mowing drive time driving speed shop automatic time steps 5 minutes 15 minutes precision calendar snap" },
@@ -50,7 +51,7 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
       items: [
         managesSettings && { to: "/booking", label: "Online booking", icon: "globe", keywords: "booking form request form website embed intake" },
         // The same people as Automations, since each switch is one of its rules.
-        isOffice && can(session, "automations") && { tab: "client-notifications", label: "Client notifications", icon: "bell", keywords: "reminders follow-ups notifications visit reminder assessment on my way quote invoice past due review job follow-up emails texts" },
+        isOffice && can(session, "automations") && { tab: "client-notifications", label: "Client notifications", icon: "bell", keywords: "reminders follow-ups notifications visit booked moved rescheduled cancelled confirmation reminder assessment on my way quote invoice past due review job follow-up emails texts" },
         managesEmail && { tab: "email", label: "Email", icon: "mail", keywords: "smtp outgoing mail sender gmail outlook mailbox" },
       ],
     },
@@ -65,10 +66,10 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
       ],
     },
     {
-      title: "Automate and connect",
+      title: msg("Automate and connect"),
       items: [
         connectsApps && { tab: "calendars", label: "Calendars", icon: "calendar", keywords: "google calendar outlook apple ics calendar file import sync" },
-        { tab: "assistants", label: "AI assistants", icon: "sparkle", keywords: "claude chatgpt mcp connector ai assistant access permissions read only full access" },
+        { tab: "assistants", label: msg("AI assistants"), icon: "sparkle", keywords: "claude chatgpt mcp connector ai assistant access permissions read only full access" },
         isOffice && can(session, "automations") && { to: "/automations", label: "Automations", icon: "bolt", keywords: "rules reminders follow ups workflows" },
       ],
     },
@@ -82,7 +83,7 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
         isAdmin && can(session, "settings") && { tab: "storage", label: "Storage", icon: "hardDrive", keywords: "storage space room disk files photos uploads limit quota full gb tb volume bucket who's using usage per person role trash" },
       ],
     },
-    { title: "About", items: [{ tab: "license", label: "Terms and license", icon: "file", keywords: "terms license agpl open source source code version updates about" }] },
+    { title: msg("About"), items: [{ tab: "license", label: msg("Terms and license"), icon: "file", keywords: "terms license agpl open source source code version updates about" }] },
   ];
   return groups.map((g) => ({ title: g.title, items: g.items.filter((i): i is SettingsItem => Boolean(i)) })).filter((g) => g.items.length);
 }

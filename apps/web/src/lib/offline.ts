@@ -1,8 +1,8 @@
 /**
  * The crew's day on the phone, for job sites with no signal. What My day and a visit show is kept
- * in this browser's storage, and field actions (on my way, start, complete, checklist, notes, work
- * added from the price list) made offline wait in order and go out when the connection is back, even if the app was closed in
- * between. Those screens are kept for crews and subs (OFFLINE_LEVELS), and a sub's My jobs too (only
+ * in this browser's storage, and field actions (on my way, start, complete, the clock, checklist,
+ * notes, work added from the price list) made offline wait in order and go out when the connection
+ * is back, even if the app was closed in between. Those screens are kept for crews and subs (OFFLINE_LEVELS), and a sub's My jobs too (only
  * to read: answering an offer needs signal). Office screens aren't kept:
  * they hold prices and client details that don't belong on a crew phone. Cleared when the person signs
  * out; when the app signs them out (an expired sign-in), only their unsent field actions are kept,
@@ -22,6 +22,7 @@ import { dehydrate, hydrate, onlineManager, type DehydratedState, type Mutation,
 import { ApiError, isAuthError, isNetworkError, isRestarting, SESSION_EXPIRED } from "./errors";
 import { forgetPhonePhotos, photosWaiting, startPhotoQueue, subscribePhonePhotos } from "./offlinePhotos";
 import { forgetRecents } from "./recent";
+import { t } from "./i18n";
 
 // React Query assumes it's online until it hears otherwise; a phone that opens the app with no
 // signal is offline from the start, so field actions queue instead of failing.
@@ -37,7 +38,7 @@ const KEEP = new Set(["field", "field-visit", "field-jobs", "checklist", "runnin
 const isGuide = (key: readonly unknown[]) => key[0] === "kb" && key[2] === "page";
 const kept = (key: readonly unknown[]) => KEEP.has(String(key[0])) || isGuide(key);
 /** Mutations that can wait for a connection (their functions are registered with setMutationDefaults). */
-export const OFFLINE_MUTATIONS = new Set(["visit-status", "checklist-save", "visit-notes", "photo-share", "job-line-add"]);
+export const OFFLINE_MUTATIONS = new Set(["visit-status", "clock", "checklist-save", "visit-notes", "photo-share", "job-line-add"]);
 /** Field actions run one at a time, in the order they were made. */
 export const FIELD_SCOPE = { id: "field-sync" };
 /** Room for everything saved, cached screens included. Unsent actions are saved even past it. */
@@ -302,6 +303,9 @@ export const WAITING_CACHE = "crewtavo-waiting";
 
 type SyncRegistration = ServiceWorkerRegistration & { sync?: { register: (tag: string) => Promise<void> } };
 
+/** Where the worker finds its notification's words, apart from the counts (public/sw.js waitingWords). */
+const WORDS_CACHE = "crewtavo-words";
+
 /** Everyone's waiting field actions on this phone, as the service worker counts them. */
 async function waitingOnPhone(cache: Cache) {
   let total = 0;
@@ -325,6 +329,9 @@ function tellServiceWorker(userId: string, waiting: number) {
       const entry = `/waiting/${encodeURIComponent(userId)}`;
       if (waiting) await cache.put(entry, new Response(String(waiting)));
       else await cache.delete(entry);
+      // The worker's own notification, in the app's language: it can't read the app's (public/sw.js).
+      const words = (n: number) => t.plural(n, { one: "{count} update is waiting to be sent. Open Crewtavo to send them.", other: "{count} updates are waiting to be sent. Open Crewtavo to send them." }, { count: n === 1 ? 1 : "{count}" });
+      await (await caches.open(WORDS_CACHE)).put("/waiting", new Response(JSON.stringify({ one: words(1), other: words(2) })));
       const registration = (await navigator.serviceWorker.getRegistration()) as SyncRegistration | undefined;
       if (!registration) return;
       if (waiting) await registration.sync?.register(SYNC_TAG);
@@ -502,10 +509,17 @@ export const pendingFieldActions = (queryClient: QueryClient) => queryClient.get
  */
 export function signOutWarning(updates: number, photos: number): { title: string; body: string } | null {
   if (!updates && !photos) return null;
-  const parts = [updates ? (updates === 1 ? "1 update" : `${updates} updates`) : "", photos ? (photos === 1 ? "1 photo" : `${photos} photos`) : ""].filter(Boolean);
   const one = updates + photos === 1;
+  const updatesText = t.plural(updates, { one: "{count} update", other: "{count} updates" });
+  const photosText = t.plural(photos, { one: "{count} photo", other: "{count} photos" });
   return {
-    title: `${parts.join(" and ")} ${one ? "hasn't" : "haven't"} sent yet`,
-    body: `${one ? "It's waiting on this phone and goes" : "They're waiting on this phone and go"} out when you have signal. Signing out now deletes ${one ? "it" : "them"}.`,
+    title: updates && photos
+      ? t("{updates} and {photos} haven't sent yet", { updates: updatesText, photos: photosText })
+      : updates
+        ? t.plural(updates, { one: "{count} update hasn't sent yet", other: "{count} updates haven't sent yet" })
+        : t.plural(photos, { one: "{count} photo hasn't sent yet", other: "{count} photos haven't sent yet" }),
+    body: one
+      ? t("It's waiting on this phone and goes out when you have signal. Signing out now deletes it.")
+      : t("They're waiting on this phone and go out when you have signal. Signing out now deletes them."),
   };
 }

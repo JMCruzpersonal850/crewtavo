@@ -10,6 +10,7 @@ import { queryClient } from "@/lib/queryClient";
 import type { ToastTone } from "@/lib/toast";
 import { undoable } from "@/lib/undo";
 import { Button, cx } from "./Button";
+import { t } from "@/lib/i18n";
 
 /** What's picked among `pageIds`. A new `reset` (another filter, a search) starts with nothing picked. */
 export function useSelection(pageIds: readonly string[], reset: string) {
@@ -62,16 +63,16 @@ export function SelectionBar({ selection, noun, children }: { selection: Selecti
   const count = selection.ids.length;
   return (
     <>
-      <span className="sr-only" role="status">{count ? `${count} selected` : ""}</span>
+      <span className="sr-only" role="status">{count ? t("{count} selected", { count }) : ""}</span>
       <div className={cx("select-bar", !count && "mobile-only")}>
         <label className="select-bar-all">
-          <SelectAllBox selection={selection} label={`Select all ${noun} on this page`} />
-          <span aria-hidden="true">{count ? `${count} selected` : "Select all"}</span>
+          <SelectAllBox selection={selection} label={t("Select all {noun} on this page", { noun })} />
+          <span aria-hidden="true">{count ? t("{count} selected", { count }) : t("Select all")}</span>
         </label>
         {count > 0 && (
           <>
             <div className="select-bar-actions">{children}</div>
-            <Button size="sm" variant="ghost" onClick={selection.clear}>Clear</Button>
+            <Button size="sm" variant="ghost" onClick={selection.clear}>{t("Clear")}</Button>
           </>
         )}
       </div>

@@ -5,12 +5,12 @@
  */
 import {
   Archive, ArchiveRestore, ArrowLeft, AtSign, ArrowRight, Banknote, Bell, Bold, BookOpen, Calculator, Calendar, CalendarCheck, Camera, ChartColumn, ChartLine, Check, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, CircleCheck, CircleQuestionMark, ClipboardCheck, Clock, Cloud, CloudSnow, CodeXml, Command, Copy, CreditCard, DollarSign, Download, Ellipsis, ExternalLink, Eye, File, FileImage,
+  ChevronRight, ChevronUp, Circle, CircleCheck, CircleQuestionMark, ClipboardCheck, Clock, Cloud, CloudSnow, CodeXml, Command, Copy, CreditCard, DollarSign, Download, Ellipsis, ExternalLink, Eye, File, FileImage,
   FileSpreadsheet, Folder, FolderInput, FolderOpen, FolderPlus, Funnel, Gauge, Gift, Globe, GripVertical, HardDrive, Hash, Heading, Hexagon, Highlighter, History, House, Image,
   Inbox, Info, Italic, Kanban, Landmark, Layers, LayoutGrid, Link, List, ListChecks, ListOrdered, Lock, LogOut, Mail, Map, MapPin, Maximize, Megaphone, Menu, Minimize, MessageSquareText,
-  MessageSquareWarning, MessagesSquare, Minus, Monitor, Moon, Package, Palette, Paperclip, PenLine, Signature, Tablet, Type, MousePointer2, Navigation,
+  MessageSquareWarning, MessagesSquare, Minus, Monitor, Moon, MoveUpRight, Package, Palette, Paperclip, PenLine, Signature, Tablet, Type, MousePointer2, Navigation,
   Pause, Pencil, Percent, Phone, Pin, PinOff, Play, Plus, Printer, Quote,  ReceiptText, Redo2, RefreshCw, Reply, Ruler, Scissors, Search, Send, SeparatorHorizontal,
-  Settings, Share, Smartphone, SmilePlus, Snowflake, Sparkles, Spline, SquareUserRound, Star, StickyNote, Sun, Table, Tag, Thermometer, ThumbsUp, Trash, TriangleAlert, TriangleRight, Truck, Underline, Undo2, Upload,
+  Settings, Share, Smartphone, SmilePlus, Snowflake, Sparkles, Spline, Square, SquareUserRound, Star, StickyNote, Sun, Table, Tag, Thermometer, ThumbsUp, Trash, TriangleAlert, TriangleRight, Truck, Underline, Undo2, Upload,
   User, Users, Video, WifiOff, Wind, Wrench, X, Zap, ZoomIn, ZoomOut, createLucideIcon, type LucideIcon,
 } from "lucide-react";
 
@@ -224,6 +224,10 @@ const ICONS = {
   maximize: Maximize,
   minimize: Minimize,
   highlighter: Highlighter,
+  /** The photo editor's shapes. */
+  circle: Circle,
+  square: Square,
+  arrowUpRight: MoveUpRight,
   /** A repair or a tool (equipment); a job is the hard hat. */
   wrench: Wrench,
 } satisfies Record<string, LucideIcon>;

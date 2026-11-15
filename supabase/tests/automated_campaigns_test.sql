@@ -162,7 +162,8 @@ select tac.check((select not enabled and trigger = 'quote.lost' and delay_minute
                          and actions -> 0 ->> 'body' like E'%\n\nThanks,\n{{company.name}}\n{{company.phone}}' and actions -> 0 ->> 'body' not like '%or call%'
                     from public.automation_rules where company_id = :'co' and template_key = 'win_back_lost_quotes'),
   'and Win back lost quotes: off, 30 days after a quote is marked lost, if it still is, its phone under the name so none leaves no gap');
-select tac.check((select count(*) = 14 from public.automation_rules where company_id = :'co'), 'fourteen starter rules in all');
+-- And the three that tell clients a visit is booked, moved or cancelled (20261113000510_visit_notice_rules.sql).
+select tac.check((select count(*) = 17 from public.automation_rules where company_id = :'co'), 'seventeen starter rules in all');
 delete from public.automation_rules where company_id in (:'co', :'birch') and template_key in ('reengage_past_clients', 'win_back_lost_quotes', 'review_after_job');
 select tac.check(private.add_campaign_rules() >= 4, 'add_campaign_rules gives every business without them the two rules');
 select tac.check((select count(*) = 4 from public.automation_rules where company_id in (:'co', :'birch') and template_key in ('reengage_past_clients', 'win_back_lost_quotes') and not enabled)
@@ -173,7 +174,7 @@ select tac.check((select bool_and(actions -> 0 ->> 'body' like E'%{{company.name
                    where company_id in (:'co', :'birch') and template_key in ('reengage_past_clients', 'win_back_lost_quotes')),
   'with the wording that reads well without a phone');
 select private.install_default_automations(:'co');
-select tac.check((select count(*) = 14 from public.automation_rules where company_id = :'co'), 'setting up the starter rules again adds only what''s missing');
+select tac.check((select count(*) = 17 from public.automation_rules where company_id = :'co'), 'setting up the starter rules again adds only what''s missing');
 select tac.rule(:'co', 'reengage_past_clients') as reengage \gset
 select tac.rule(:'co', 'win_back_lost_quotes') as winback \gset
 select tac.rule(:'co', 'quote_followup') as followup \gset

@@ -257,6 +257,111 @@ export const LOCATION_PROBLEMS: Record<LocationProblem, string> = {
   gone: "This location isn't in the Google account anymore. Pick it again, or another one.",
 };
 
+// ---------------------------------------------------------------------------------------------
+// Fresh reviews (20261113001860_google_reviews_kept_while_fresh.sql)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A review is a copy of what's on Google, kept and shown only while the sync keeps seeing it there:
+ * for this many days after it last did (reviews.seen_at). 29, so the tidy that runs once a day never
+ * leaves a copy past 30. The database's policy and tidy_reviews use the same number, and a test
+ * compares them.
+ */
+export const REVIEW_FRESH_DAYS = 29;
+
+/** The time a review must have been seen on Google since, to be shown or reused anywhere. */
+export const reviewsFreshSince = (now: Date | number = Date.now()): string => new Date(Number(now) - REVIEW_FRESH_DAYS * 86_400_000).toISOString();
+
+/** Whether something last heard from Google at `at` (a review's seen_at, a sync's last_synced_at) is still fresh. */
+export const isFresh = (at: string | null | undefined, now: Date | number = Date.now()): boolean => Boolean(at) && Date.parse(at!) > Number(now) - REVIEW_FRESH_DAYS * 86_400_000;
+
+// ---------------------------------------------------------------------------------------------
+// Reviews shown on quotes (settings.quote_reviews, 20261113001130_reviews_on_quotes.sql)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * How many reviews a quote shows, and how many characters of each one's words there's room for: in
+ * the Client Hub, and on the quote's PDF (a printed page). A longer review is cut there only beside
+ * a link to read all of it on Google (fitReviews).
+ */
+export const QUOTE_REVIEWS = 3;
+export const HUB_REVIEW_CHARS = 600;
+export const PDF_REVIEW_CHARS = 280;
+
+/** A Google review as the server reads it for a quote (public.reviews). */
+export interface QuoteReviewRow {
+  reviewer_name: string | null;
+  reviewer_anonymous: boolean;
+  rating: number | null;
+  comment: string | null;
+  posted_at: string;
+  /** 1 to 3: picked by the office in Marketing → Reviews, in this order. */
+  quote_pick?: number | null;
+  /** Taken off Google: never shown. */
+  deleted_at?: string | null;
+}
+
+/** A review as a quote carries it: the reviewer's name and their words as they are on Google. */
+export interface QuoteReview {
+  name: string;
+  rating: number;
+  date: string;
+  text: string;
+}
+
+/** The reviewer as Google names them, unchanged; "A Google user" for an anonymous one, or when Google gave no name. */
+export const reviewerDisplayName = (review: { reviewer_name: string | null; reviewer_anonymous: boolean }): string => reviewerName(review) ?? "A Google user";
+
+/**
+ * A review's words where there's room for `max` characters: all of them when they fit, else the
+ * start, ending at a word with "…". Nothing else about them changes (line breaks stay), and a cut
+ * one is only shown with a link to the whole review on Google.
+ */
+export function cutReview(text: string | null | undefined, max: number): { text: string; cut: boolean } {
+  const whole = (text ?? "").trim();
+  if (whole.length <= max) return { text: whole, cut: false };
+  const start = whole.slice(0, max - 1);
+  const space = start.search(/\s\S*$/);
+  return { text: `${(space > max / 2 ? start.slice(0, space) : start).replace(/[\s.,;:!?-]+$/, "")}…`, cut: true };
+}
+
+/**
+ * The reviews as a layout with room for `max` characters of each shows them. A review too long to
+ * show whole is cut, when there's a link to read it on Google; with no link it's left out, so a
+ * review is never shown shortened with nowhere to read the rest.
+ */
+export function fitReviews<T extends { text: string }>(reviews: readonly T[], max: number, link: string | null | undefined): Array<T & { cut: boolean }> {
+  return reviews.flatMap((r) => {
+    const fitted = cutReview(r.text, max);
+    return fitted.cut && !link ? [] : [{ ...r, ...fitted }];
+  });
+}
+
+/**
+ * The link to a business's profile on Google Maps, where its reviews can be read: the one Google
+ * gives for the location, else one made from its place ID the way Google's Maps URLs are written.
+ * Null when Google gave neither.
+ */
+export function profileLink(location: { maps_uri?: string | null; place_id?: string | null; title?: string | null }): string | null {
+  if (location.maps_uri && /^https:\/\//.test(location.maps_uri)) return location.maps_uri;
+  if (!location.place_id) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.title?.trim() || "Google")}&query_place_id=${encodeURIComponent(location.place_id)}`;
+}
+
+/**
+ * The reviews a quote shows: the ones the office picked, in their order; when none of those is still
+ * on Google, the newest with 5 stars and words. Three at most, each with the reviewer's name and
+ * words as Google has them. None at all when there are none to show.
+ */
+export function quoteReviews(rows: readonly QuoteReviewRow[]): QuoteReview[] {
+  const live = rows.filter((r) => !r.deleted_at && r.rating != null && r.rating >= 1 && r.rating <= 5);
+  const picked = live.filter((r) => r.quote_pick != null).sort((a, b) => a.quote_pick! - b.quote_pick!);
+  const chosen = picked.length
+    ? picked
+    : live.filter((r) => r.rating === 5 && (r.comment ?? "").trim()).sort((a, b) => Date.parse(b.posted_at) - Date.parse(a.posted_at));
+  return chosen.slice(0, QUOTE_REVIEWS).map((r) => ({ name: reviewerDisplayName(r), rating: r.rating!, date: r.posted_at.slice(0, 10), text: (r.comment ?? "").trim() }));
+}
+
 /** The Google Cloud project number in an OAuth client ID ("123456789012-abc.apps.googleusercontent.com"), which Google's access form asks for. */
 export function projectNumber(clientId: string | null | undefined): string | null {
   return /^(\d{6,})-/.exec(clientId ?? "")?.[1] ?? null;

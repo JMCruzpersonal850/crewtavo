@@ -692,6 +692,8 @@ html.dark .app-shot-light, html:not(.dark) .app-shot-dark { display: none; }
 @media (max-width: 600px) { .app-info > div { grid-template-columns: 1fr; gap: 2px; } }
 .app-access { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
 .app-steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: var(--fs-14); color: var(--text-2); }
+/* A link inside a step sits in running text: underlined, so it is not told apart by colour alone. */
+.app-steps a, .maps-steps a { text-decoration: underline; }
 .app-details > summary { list-style: none; display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
 .app-details > summary::-webkit-details-marker { display: none; }
 .app-details > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur-fast); margin-right: 4px; }
@@ -750,6 +752,12 @@ html.dark .app-shot-light, html:not(.dark) .app-shot-dark { display: none; }
 .measure-map-skeleton > span:last-child { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .measure-map .maplibregl-ctrl-group { border-radius: var(--radius-control); box-shadow: var(--shadow-sm); }
 .measure-map .maplibregl-ctrl-group button { width: var(--control); height: var(--control); }
+/* Google's attribution while its tiles show (googleAttribution.ts): its logo at its own size in
+   the bottom left corner, clear of everything else, and its credit for what's on screen in the
+   bottom right, in full and always in view. Neither takes taps from the map. */
+.measure-map .maplibregl-ctrl.measure-google-logo { margin: 10px; line-height: 0; pointer-events: none; user-select: none; }
+.measure-map .measure-google-logo img { display: block; width: 105px; height: 22px; max-width: none; }
+.measure-map .maplibregl-ctrl.measure-google-credit { max-width: min(70vw, 460px); margin: 0; padding: 1px 6px; background: rgb(255 255 255 / 0.78); color: #1f1f1f; font: 11px/1.45 system-ui, sans-serif; text-align: right; overflow-wrap: anywhere; pointer-events: none; }
 
 /* Tools down the left edge of the map, big enough for a thumb. */
 .measure-rail { position: absolute; top: 12px; left: 12px; z-index: 3; display: grid; gap: 4px; padding: 5px; border-radius: var(--radius-card); background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow-md); backdrop-filter: blur(6px); }
@@ -1565,3 +1573,15 @@ button.hub-btn { width: 100%; border: 0; font: inherit; font-size: var(--fs-16);
   .post-thumb { width: 44px; height: 44px; }
   .post-card-name { display: none; }
 }
+
+/* Google's attribution for Places content shown without a map (How you compare), as its Places API
+   policies ask: the words "Google Maps" in Roboto or a sans-serif, weight 400, 12 to 16px, in its
+   grey (#5E5E5E) on a light page and white on a dark one, never wrapped. Don't restyle it. Google's
+   content sits in a bordered box of its own (.google-box), with the attribution at the bottom of
+   the same box, so it's clear which content is Google's. */
+.google-box { border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
+.google-box > .card-row:first-child { border-top: 0; }
+.google-box > .google-notice { padding: 10px 20px 12px; border-top: 1px solid var(--row-divider); }
+.google-notice { display: grid; gap: 4px; }
+.google-attribution { font-family: Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 13px; font-style: normal; font-weight: 400; letter-spacing: normal; line-height: 1.4; color: #5e5e5e; white-space: nowrap; }
+:root.dark .google-attribution { color: #fff; }

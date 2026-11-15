@@ -4,6 +4,7 @@ import { App } from "./App";
 import { loadConfig } from "./lib/api";
 import { startSlidingIndicators } from "./lib/indicator";
 import { lockZoomInApp, watchInstall } from "./lib/install";
+import { startLocale, tellIfSpanishDidntLoad } from "./lib/i18n";
 import { registerServiceWorker } from "./lib/push";
 import { initTheme } from "./lib/theme";
 import "@fontsource-variable/figtree";
@@ -20,8 +21,13 @@ watchInstall();
 lockZoomInApp();
 startSlidingIndicators();
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// Spanish, for whoever chose it, loads before the first screen (English has nothing to load). It
+// gets a few seconds: after that the app opens in English and says so, with a way to try again.
+void startLocale().then(() => {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+  tellIfSpanishDidntLoad();
+});

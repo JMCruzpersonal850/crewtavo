@@ -7,7 +7,7 @@
  */
 import { ADMINS, OFFICE } from "@crewtavo/core";
 import { marketingOn } from "@crewtavo/core/marketing";
-import { projectNumber, REPLY_MAX, SIGNIN_MESSAGE, type ReviewProblem } from "@crewtavo/core/reviews";
+import { isFresh, projectNumber, REPLY_MAX, reviewsFreshSince, SIGNIN_MESSAGE, type ReviewProblem } from "@crewtavo/core/reviews";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
@@ -18,7 +18,7 @@ import { runInBackground } from "../lib/background";
 import { dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
-import { companyAnthropicKey, countAiAsk } from "../services/ai";
+import { askerOf, countAiAsk } from "../services/ai";
 import {
   checkAccess,
   firstSyncProgress,
@@ -56,14 +56,15 @@ async function requireMarketing(c: Ctx, message = MARKETING_OFF_REPLIES) {
  * (a location to pick), the problem in the way (approval, not_enabled, signin, location, error), or
  * ok. With the location, how far the first sync has got (only while it's coming in: nothing in the
  * way and Marketing on), Google's own average and count, and the review link Google gives, for
- * owners and admins to use.
+ * owners and admins to use. Reviews and figures count only while the sync has seen them on Google
+ * lately (core REVIEW_FRESH_DAYS): after that it's as if they weren't here.
  */
 googleReviews.get("/reviews/google", requireUser, requireCompany(OFFICE, "marketing"), async (c) => {
   const admin = adminClient(c.env);
   const [row, sync, kept, company] = await Promise.all([
     admin.from("integrations").select("status, settings").match({ company_id: c.var.companyId, provider: "google_business" }).maybeSingle(),
     admin.from("review_syncs").select("*").eq("company_id", c.var.companyId).maybeSingle(),
-    admin.from("reviews").select("id", { count: "exact", head: true }).eq("company_id", c.var.companyId).is("deleted_at", null),
+    admin.from("reviews").select("id", { count: "exact", head: true }).eq("company_id", c.var.companyId).is("deleted_at", null).gt("seen_at", reviewsFreshSince()),
     companySettings(c),
   ]);
   if (row.error) throw dbError(row.error);
@@ -96,7 +97,8 @@ googleReviews.get("/reviews/google", requireUser, requireCompany(OFFICE, "market
     first_synced_at: s?.first_synced_at ?? null,
     syncing: Boolean(s?.locked_until && Date.parse(s.locked_until) > Date.now()),
     progress: integration?.status === "connected" && on ? firstSyncProgress(s, business) : null,
-    google: { average_rating: s?.average_rating ?? null, total_reviews: s?.total_reviews ?? null },
+    // Google's figures only while the sync has heard them lately, as with the reviews themselves.
+    google: isFresh(s?.last_synced_at) ? { average_rating: s?.average_rating ?? null, total_reviews: s?.total_reviews ?? null } : { average_rating: null, total_reviews: null },
     reviews,
     review_link: connected ? reviewLinkOffer(company.settings, business) : { current: null, suggested: null },
     own_app: Boolean(own),
@@ -154,7 +156,7 @@ googleReviews.post("/reviews/:id/suggest", requireUser, requireCompany(OFFICE, "
   const review = await loadReview(admin, c.var.companyId, id);
   await countAiAsk(c.env, c.var.companyId, c.var.userId);
   const text = await suggestReply(c.env, admin, {
-    apiKey: await companyAnthropicKey(c.env, admin, c.var.companyId),
+    asker: askerOf(c),
     company: { name: company.name, phone: company.phone, email: company.email },
     review,
     draft: body.draft,

@@ -5,8 +5,12 @@ import {
   contractStarters,
   contractValues,
   depositFor,
+  EARLIER_STARTER_BODIES,
   FILL_INS,
   fillIn,
+  FTC_CANCEL_STATEMENT,
+  NOTICE_OF_CANCELLATION,
+  NOTICE_OF_CANCELLATION_TITLE,
   resolveSections,
   sectionsHash,
   type ContractSection,
@@ -298,7 +302,7 @@ describe("sectionsHash", () => {
 
 describe("contractStarters", () => {
   const known = new Set(FILL_INS.map((f) => f.token.toLowerCase()));
-  const common = ["Payment", "Changes to the work", "Warranty", "Permits and inspections", "Cleanup", "Delays beyond our control", "Liens", "Your right to cancel"];
+  const common = ["Payment", "Changes to the work", "Warranty", "Permits and inspections", "Cleanup", "Delays beyond our control", "Liens", "Your right to cancel", "Notice of Cancellation"];
 
   it("gives every business the common sections", () => {
     expect(contractStarters("general").map((s) => s.title)).toEqual(common);
@@ -313,12 +317,56 @@ describe("contractStarters", () => {
     expect(titles("lawn_exterior")).toEqual(["Access and pets", "Weather"]);
   });
 
+  it("says the late fee in the Payment section for a business that charges one, and nothing about one otherwise", () => {
+    const line = "An invoice still unpaid 7 days after its due date gets a late fee of $25.00, added once.";
+    const payment = (options?: { lateFeeLine?: string | null }) => contractStarters("general", options).find((s) => s.title === "Payment")!.body;
+    expect(payment({ lateFeeLine: line })).toContain(`<li>The rest is due when the work is done.</li><li>${line}</li>`);
+    expect(payment()).not.toMatch(/late fee/i);
+    expect(payment({ lateFeeLine: null })).toBe(payment());
+    // Whatever the line says goes in as words: no markup, and nothing that reads as a fill-in.
+    expect(payment({ lateFeeLine: "A fee of <b>{Total}</b> & more" })).toContain("<li>A fee of &lt;b&gt;Total&lt;/b&gt; &amp; more</li>");
+    // Only the Payment section changes.
+    const others = (options?: { lateFeeLine?: string | null }) => contractStarters("roofing_exteriors", options).filter((s) => s.title !== "Payment");
+    expect(others({ lateFeeLine: line })).toEqual(others());
+  });
+
   it("asks for initials on the right to cancel, above the signatures", () => {
     for (const trade of ["general", "roofing_exteriors", "paving", "lawn_exterior"]) {
       const starters = contractStarters(trade);
       expect(starters.filter((s) => s.initials || s.place === "signatures").map((s) => s.title)).toEqual(["Your right to cancel"]);
       expect(starters.find((s) => s.title === "Warranty")?.body).toContain("{Warranty}");
     }
+  });
+
+  it("states the right to cancel in the FTC's own sentence, in bold above the signatures, with the Notice of Cancellation it refers to", () => {
+    // 16 CFR 429.1(a), as published.
+    expect(FTC_CANCEL_STATEMENT).toBe(
+      "You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction. See the attached notice of cancellation form for an explanation of this right.",
+    );
+    for (const trade of ["general", "roofing_exteriors", "paving", "lawn_exterior"]) {
+      const starters = contractStarters(trade);
+      const cancel = starters.find((s) => s.title === "Your right to cancel")!;
+      expect(cancel).toEqual({ title: "Your right to cancel", body: `<p><strong>${FTC_CANCEL_STATEMENT}</strong></p>`, place: "signatures", initials: true });
+      // The notice comes right after it, on the terms pages, every paragraph in bold.
+      const notice = starters[starters.indexOf(cancel) + 1]!;
+      expect(notice).toMatchObject({ title: "Notice of Cancellation", place: "terms", initials: false });
+      expect(notice.body.match(/<p><strong>/g)).toHaveLength(NOTICE_OF_CANCELLATION.length);
+    }
+    // 16 CFR 429.1(b)'s form, as published.
+    const notice = contractStarters("roofing_exteriors").find((s) => s.title === "Notice of Cancellation")!.body;
+    for (const words of [
+      "You may CANCEL this transaction, without any Penalty or Obligation, within THREE BUSINESS DAYS from the above date.",
+      "If you cancel, any property traded in, any payments made by you under the contract or sale, and any negotiable instrument executed by you will be returned within TEN BUSINESS DAYS following receipt by the seller of your cancellation notice, and any security interest arising out of the transaction will be cancelled.",
+      "If you cancel, you must make available to the seller at your residence, in substantially as good condition as when received, any goods delivered to you under this contract or sale, or you may, if you wish, comply with the instructions of the seller regarding the return shipment of the goods at the seller's expense and risk.",
+      "If you do make the goods available to the seller and the seller does not pick them up within 20 days of the date of your Notice of Cancellation, you may retain or dispose of the goods without any further obligation. If you fail to make the goods available to the seller, or if you agree to return the goods to the seller and fail to do so, then you remain liable for performance of all obligations under the contract.",
+      "To cancel this transaction, mail or deliver a signed and dated copy of this Cancellation Notice or any other written notice, or send a telegram, to {Business name}, at ",
+      " NOT LATER THAN MIDNIGHT OF ",
+      "I HEREBY CANCEL THIS TRANSACTION.",
+      "(Buyer's signature)",
+    ]) expect(notice, words).toContain(words);
+    // The paraphrase it replaces is remembered, so a library that still has it still says it's an example.
+    expect(EARLIER_STARTER_BODIES.some((body) => body.includes("you may cancel it <strong>within three business days</strong>"))).toBe(true);
+    expect(contractStarters("general").some((s) => EARLIER_STARTER_BODIES.includes(s.body))).toBe(false);
   });
 
   it("fits the library, uses only real fill-ins and plain markup, and makes no legal promises", () => {
@@ -328,7 +376,8 @@ describe("contractStarters", () => {
         expect(s.body.length, s.title).toBeLessThanOrEqual(CONTRACT_LIMITS.body);
         for (const token of s.body.match(/\{[^{}]*\}/g) ?? []) expect(known.has(token.toLowerCase()), token).toBe(true);
         for (const tag of s.body.match(/<\/?([a-z0-9]+)[^>]*>/g) ?? []) expect(tag, s.title).toMatch(/^<\/?(p|ul|li|strong)>$/);
-        expect(s.body, s.title).not.toMatch(/legal|enforceable|compl(y|ies|iant|iance)|binding/i);
+        // The notice is the FTC's form word for word ("comply with the instructions of the seller"); the rest are ours and promise nothing.
+        if (s.title !== NOTICE_OF_CANCELLATION_TITLE) expect(s.body, s.title).not.toMatch(/legal|enforceable|compl(y|ies|iant|iance)|binding/i);
       }
     }
   });

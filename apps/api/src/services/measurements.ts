@@ -10,6 +10,7 @@ import {
   FormulaError,
   pavingQuantities,
   savedRoofingQuantities,
+  usesDepth,
   type FormulaVariable,
   type Section,
 } from "@crewtavo/core";
@@ -79,32 +80,63 @@ export interface AppliedLine {
   name: string;
   field?: string;
   value?: number;
+  /** The depth its formula was given, for a line whose formula reads one. */
+  depth_in?: number | null;
   error?: string;
+}
+
+/** The depths sent with a measurement to apply. */
+export interface SentDepths {
+  /** One depth for every line: all an app from before each line had its own sends. */
+  depthIn?: number | null;
+  /** A depth for a line, by its id: what the office confirmed for it. */
+  depths?: Readonly<Record<string, number>> | null;
+  /** An item's own default depth comes before the one depth for every line. */
+  itemDepths?: boolean;
+}
+
+/**
+ * The depth a line's formula gets. The one confirmed for the line, if any. Otherwise, as it always
+ * was, the one depth sent for every line, else the drawing's; an item's own default only fills in
+ * when there's neither. With `itemDepths` the item's default comes first, so 6 inches of stone
+ * isn't priced at the 2 inches typed for the asphalt.
+ */
+export function lineDepth(line: { id: string; service?: { default_depth_in?: number | string | null } | null }, sent: SentDepths, drawn: number | null): number | null {
+  const own = sent.depths?.[line.id];
+  if (own != null) return own;
+  const item = line.service?.default_depth_in != null ? Number(line.service.default_depth_in) : null;
+  return sent.itemDepths ? item ?? sent.depthIn ?? drawn : sent.depthIn ?? drawn ?? item;
 }
 
 /**
  * Fill a quote's line quantities (or prices) from a measurement using each line's formula, and tie
  * the measurement to the quote. Lines whose formula can't be worked out say why instead. With
  * `lineIds`, only those lines are filled (a line just added or changed on the estimate), so the
- * others keep quantities set by hand and a newer measurement nobody chose to apply.
+ * others keep quantities set by hand and a newer measurement nobody chose to apply. Each line whose
+ * formula reads a depth gets its own (lineDepth): `more.depths` by line, its item's default, or the
+ * one depth for every line.
  */
-export async function applyMeasurement(db: Db, companyId: string, quoteId: string, measurementId: string, depthIn?: number | null, lineIds?: readonly string[] | null) {
+export async function applyMeasurement(db: Db, companyId: string, quoteId: string, measurementId: string, depthIn?: number | null, lineIds?: readonly string[] | null, more: Pick<SentDepths, "depths" | "itemDepths"> = {}) {
   const m = must(await db.from("measurements").select(MEASUREMENT_VALUE_FIELDS).eq("id", measurementId).eq("company_id", companyId).maybeSingle(), "Measurement not found.");
   const vars = measurementVariables(m as MeasurementValues, depthIn);
+  // The drawing's own depth, whatever was sent.
+  const drawn = measurementVariables(m as MeasurementValues).depth_in;
 
-  let query = db.from("quote_line_items").select("id, name, formula, service:services(formula_target)").eq("quote_id", quoteId);
+  let query = db.from("quote_line_items").select("id, name, formula, service:services(formula_target, default_depth_in)").eq("quote_id", quoteId);
   if (lineIds) query = query.in("id", [...lineIds]);
   const lines = must(await query);
   const results: AppliedLine[] = [];
-  for (const line of lines as Array<{ id: string; name: string; formula: string | null; service: { formula_target: string } | null }>) {
+  for (const line of lines as Array<{ id: string; name: string; formula: string | null; service: { formula_target: string; default_depth_in: number | null } | null }>) {
     if (!line.formula) continue;
+    const deep = usesDepth(line.formula);
+    const depth = deep ? lineDepth(line, { depthIn, ...more }, drawn) : vars.depth_in;
     try {
-      const value = formulaValue(line.formula, vars);
+      const value = formulaValue(line.formula, { ...vars, depth_in: depth });
       const field = line.service?.formula_target === "unit_price" ? "unit_price" : "quantity";
       const change = field === "unit_price" ? { unit_price: Math.round(value * 100) / 100 } : { quantity: value };
       const { error } = await db.from("quote_line_items").update(change).eq("id", line.id);
       if (error) throw dbError(error);
-      results.push({ id: line.id, name: line.name, field, value });
+      results.push({ id: line.id, name: line.name, field, value, ...(deep ? { depth_in: depth } : {}) });
     } catch (error) {
       if (!(error instanceof FormulaError)) throw error;
       results.push({ id: line.id, name: line.name, error: error.message });

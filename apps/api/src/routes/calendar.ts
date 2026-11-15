@@ -77,20 +77,22 @@ interface VisitRow {
   job: unknown;
   property: unknown;
 }
+/** A crew's visit, with the people listed on it: with none, its crew's members are on it (visitPeople()). */
+type CrewVisitRow = VisitRow & { assignees?: Array<{ user_id: string }> | null };
 const PAGE = 1000; // PostgREST's row limit per request
 const MAX_EVENTS = 2000;
 
-/** Every row up to MAX_EVENTS, a page at a time (each query must have a fixed order). */
-async function pages<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
+/** Every row up to `max` (MAX_EVENTS unless less is wanted), a page at a time (each query must have a fixed order). */
+async function pages<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>, max = MAX_EVENTS): Promise<T[]> {
   const rows: T[] = [];
-  while (rows.length < MAX_EVENTS) {
+  while (rows.length < max) {
     const { data, error } = await page(rows.length, rows.length + PAGE - 1);
     if (error) throw dbError(error);
     const got = (data ?? []) as T[];
     rows.push(...got);
     if (got.length < PAGE) break;
   }
-  return rows.slice(0, MAX_EVENTS);
+  return rows.slice(0, max);
 }
 
 calendar.get("/calendar-feed", requireUser, requireCompany(), async (c) => {
@@ -143,19 +145,29 @@ calendar.get("/calendar/:file", async (c) => {
 
   const from = shift(-30);
   const to = shift(180);
-  const visitsIn = () =>
-    admin.from("visits").select(VISIT_FIELDS).eq("company_id", feed.company_id).gte("scheduled_on", from).lte("scheduled_on", to).neq("status", "unscheduled");
+  const visitsIn = (first = from, last = to) =>
+    admin.from("visits").select(VISIT_FIELDS).eq("company_id", feed.company_id).gte("scheduled_on", first).lte("scheduled_on", last).neq("status", "unscheduled");
 
   let visits: VisitRow[];
   if (everything) {
-    visits = await pages<VisitRow>((a, b) => visitsIn().order("scheduled_on").order("id").range(a, b));
+    // What's to come first, soonest first, then the last month with the room that's left: recurring
+    // visits are on the schedule a year ahead, so a busy schedule can fill the feed, and it's the
+    // weeks ahead a calendar is for.
+    const coming = await pages<VisitRow>((a, b) => visitsIn(today).order("scheduled_on").order("id").range(a, b));
+    const past = await pages<VisitRow>((a, b) => visitsIn(from, shift(-1)).order("scheduled_on", { ascending: false }).order("id").range(a, b), MAX_EVENTS - coming.length);
+    visits = [...past.reverse(), ...coming];
   } else {
-    // Field crew see only the visits they're on (as in the app); crew leads also get their crews' visits.
-    // Their visits come through the assignments, filtered to the feed's dates, rather than as a
-    // list of ids in the URL (a long-serving crew member's list outgrows the header size limit).
-    const crews = canSeeAll(member.role) ? (await admin.from("crew_members").select("crew_id").eq("company_id", feed.company_id).eq("user_id", feed.user_id)).data : null;
+    // Field crew see only the visits they're on (as in the app): the ones they're listed on, and
+    // their crews' visits with nobody listed (a recurring job's, mostly). Crew leads also get their
+    // crews' other visits. The ones they're listed on come through the assignments, filtered to the
+    // feed's dates, rather than as a list of ids in the URL (a long-serving crew member's list
+    // outgrows the header size limit).
+    const crews = (await admin.from("crew_members").select("crew_id").eq("company_id", feed.company_id).eq("user_id", feed.user_id)).data;
     const crewIds = (crews ?? []).map((r) => r.crew_id);
-    const [assigned, crewVisits] = await Promise.all([
+    const ofCrews = (first: string, last: string, order: { ascending: boolean }) => (a: number, b: number) =>
+      admin.from("visits").select(`${VISIT_FIELDS}, assignees:visit_assignees(user_id)`).eq("company_id", feed.company_id).in("crew_id", crewIds)
+        .gte("scheduled_on", first).lte("scheduled_on", last).neq("status", "unscheduled").order("scheduled_on", order).order("id").range(a, b);
+    const [assigned, crewComing] = await Promise.all([
       pages<{ visit: VisitRow }>((a, b) =>
         admin
           .from("visit_assignees")
@@ -168,10 +180,16 @@ calendar.get("/calendar/:file", async (c) => {
           .order("visit_id")
           .range(a, b),
       ),
-      crewIds.length ? pages<VisitRow>((a, b) => visitsIn().in("crew_id", crewIds).order("scheduled_on").order("id").range(a, b)) : Promise.resolve([]),
+      // What's to come first, then the last month with the room that's left, as for the whole schedule.
+      crewIds.length ? pages<CrewVisitRow>(ofCrews(today, to, { ascending: true })) : Promise.resolve([]),
     ]);
-    const byId = new Map([...assigned.map((r) => r.visit), ...crewVisits].map((v) => [v.id, v]));
-    visits = [...byId.values()].sort((x, y) => (x.scheduled_on ?? "").localeCompare(y.scheduled_on ?? "") || x.id.localeCompare(y.id));
+    const crewPast = crewIds.length ? await pages<CrewVisitRow>(ofCrews(from, shift(-1), { ascending: false }), MAX_EVENTS - crewComing.length) : [];
+    const theirs = [...crewPast, ...crewComing].filter((v) => canSeeAll(member.role) || !v.assignees?.length);
+    const byId = new Map([...assigned.map((r) => r.visit), ...theirs].map((v) => [v.id, v]));
+    const sorted = [...byId.values()].sort((x, y) => (x.scheduled_on ?? "").localeCompare(y.scheduled_on ?? "") || x.id.localeCompare(y.id));
+    const coming = sorted.filter((v) => (v.scheduled_on ?? "") >= today).slice(0, MAX_EVENTS);
+    const room = MAX_EVENTS - coming.length;
+    visits = [...(room > 0 ? sorted.filter((v) => (v.scheduled_on ?? "") < today).slice(-room) : []), ...coming];
   }
 
   const base = appUrl(c);
@@ -486,6 +504,8 @@ calendar.put("/calendars/google/visits", ...manage, async (c) => {
     await readable(() => deleteVisitsCalendar(c.env, admin, c.var.companyId, state.push_calendar_id!));
     delete settings.push_calendar_id;
     delete settings.push_calendar_name;
+    // The day its visits had reached: a new calendar starts over.
+    delete settings.visits_through;
     const { error } = await admin.from("integrations").update({ settings: asJson(settings) }).eq("company_id", c.var.companyId).eq("provider", "google_calendar");
     if (error) throw dbError(error);
     await admin.from("outbox").update({ done_at: new Date().toISOString() }).match({ company_id: c.var.companyId, topic: "calendar.visit" }).is("done_at", null);

@@ -2,7 +2,7 @@
  * Dashboard and scheduling: the calendar feed, moving visits, rain-day shifts, routing, find-a-time.
  * The scheduling itself is in services/schedule.ts, which AI assistants' tools use too.
  */
-import { DISPATCH, WITH_SUBS } from "@crewtavo/core";
+import { arrivalWindowMin, DISPATCH, OFFICE, SALES, timeZoneLabel, WITH_SUBS } from "@crewtavo/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -10,7 +10,9 @@ import type { AppEnv } from "../env";
 import { requireCompany, requireUser } from "../lib/auth";
 import { appUrl, dbError, HttpError, isoDate, must, param, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
+import { adminClient } from "../lib/supabase";
 import { geocodeAddress, suggestPlaces } from "../services/external";
+import { bookAskedTime, nextOpenings } from "../services/onlineBooking";
 import { geocodeLater, geocodeProperty } from "../services/properties";
 import { answerVisitChange } from "../services/visitChanges";
 import { bulkVisits, createVisits, findTime, generateVisits, MAX_ROUTE_STOPS, newVisitInput, previewRoute, saveRoute, scheduleRange, shiftDay, undoRoute, updateVisit, visitChangeInput, type Scope } from "../services/schedule";
@@ -52,7 +54,7 @@ schedule.post("/jobs/:id/generate-visits", requireUser, requireCompany(DISPATCH,
  */
 schedule.post("/geocode", requireUser, requireCompany(), async (c) => {
   const body = await readJson(c, z.object({ address: z.string().trim().min(5).max(300), world: z.boolean().optional() }));
-  const result = await geocodeAddress(body.address, c.env.GOOGLE_MAPS_SERVER_KEY, { world: body.world });
+  const result = await geocodeAddress(body.address, { world: body.world });
   return c.json(result ? { found: true, ...result } : { found: false });
 });
 
@@ -200,4 +202,42 @@ schedule.post("/visit-changes/:id/approve", requireUser, requireCompany(DISPATCH
 schedule.post("/visit-changes/:id/decline", requireUser, requireCompany(DISPATCH), async (c) => {
   const body = await readJson(c, z.object({ note: z.string().trim().max(2000).optional() }));
   return c.json(await answerVisitChange(scope(c), c.env, param(c, "id"), { approve: false, note: body.note }, appUrl(c)));
+});
+
+/**
+ * A request whose client picked a time on a booking form that needs the office's OK: book it at
+ * that time. The answer is `taken` when something has been booked there since; `force` books it
+ * anyway. The client is told it's confirmed.
+ */
+schedule.post("/requests/:id/book-asked-time", requireUser, requireCompany(SALES, "sales"), async (c) => {
+  const body = await readJson(c, z.object({ force: z.boolean().optional() }).default({}));
+  return c.json(await bookAskedTime(scope(c), c.env, param(c, "id"), body.force ?? false, appUrl(c)));
+});
+
+/**
+ * The next few times a booking form would offer a client, for the office to check its settings
+ * against as they're typed (Settings → Online booking): the form's own, or with `form_id` left out,
+ * a new form's.
+ */
+schedule.post("/booking-forms/openings", requireUser, requireCompany(OFFICE, "settings"), async (c) => {
+  const body = await readJson(
+    c,
+    z.object({
+      form_id: uuid.optional(),
+      slot_minutes: z.number().int().min(15).max(480).nullable().optional(),
+      lead_time_days: z.number().int().min(0).max(30).optional(),
+      max_per_day: z.number().int().min(1).max(50).nullable().optional(),
+      crew_id: uuid.nullable().optional(),
+    }),
+  );
+  const company = must(await c.var.db.from("companies").select("id, name, phone, timezone, settings").eq("id", c.var.companyId).maybeSingle());
+  // A crew of this company's only (the read is the person's own).
+  if (body.crew_id) must(await c.var.db.from("crews").select("id").eq("company_id", c.var.companyId).eq("id", body.crew_id).maybeSingle(), "That crew isn't on your team anymore.");
+  if (body.form_id) must(await c.var.db.from("intake_forms").select("id").eq("company_id", c.var.companyId).eq("id", body.form_id).maybeSingle(), "Form not found.");
+  const form = {
+    id: body.form_id ?? "00000000-0000-0000-0000-000000000000", name: "", kind: "assessment", pick_time: true, requires_approval: false,
+    slot_minutes: body.slot_minutes ?? null, lead_time_days: body.lead_time_days ?? 0, max_per_day: body.max_per_day ?? null, crew_id: body.crew_id ?? null,
+  };
+  const tz = company.timezone || "UTC";
+  return c.json({ timezone: tz, timezone_label: timeZoneLabel(tz), window_min: arrivalWindowMin(company.settings), slots: await nextOpenings(adminClient(c.env), company, form) });
 });

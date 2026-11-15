@@ -51,7 +51,7 @@ Supabase: Postgres (all data, RLS per company), Auth (staff sign-in, OAuth serve
           Storage (photos, receipts, PDFs), Realtime (schedule board), Cron (optional scheduler)
 
 Outbound from the API: QuickBooks Online, Zoho Books, Google Calendar, Stripe, Twilio, Resend,
-Google Geocoding and Solar API (optional), US Census and OpenStreetMap geocoders, Open-Meteo, Anthropic (Claude)
+Google Solar API (optional), US Census and OpenStreetMap geocoders, Open-Meteo, Anthropic (Claude)
 Inbound to the API: Claude and ChatGPT over MCP at /mcp; Stripe webhooks; public booking forms
 ```
 
@@ -124,7 +124,7 @@ data:
 
 | Real-world need | Generic feature | Where it lives |
 |---|---|---|
-| Weekly or bi-weekly mowing, season start and end | Recurring jobs: RRULE plus active months; visits generated 60 days ahead | `jobs.recurrence_rule`, `core/recurrence.ts`, recurrence task |
+| Weekly or bi-weekly mowing, season start and end | Recurring jobs: RRULE plus active months; visits generated a year ahead | `jobs.recurrence_rule`, `core/recurrence.ts`, recurrence task |
 | Rain day: shift Friday to Saturday | Weather check plus a bulk "shift day" action | `api/services/weather.ts`, `POST /api/schedule/shift` |
 | Snow events, holiday lights | Bulk-create visits for chosen jobs on a date | `POST /api/schedule/bulk-visits` |
 | Commercial plans, multi-site clients | Many properties per client; fixed-schedule billing | `properties`, `jobs.billing_mode` |
@@ -193,7 +193,7 @@ written; a test fails if one changes without its list.
 | Clients, properties, jobs, visits, SOPs | Any member | Office and up (crew leads can update visits) |
 | Quotes, services | Any member | Owner, admin, office, estimator |
 | Invoices, payments, expenses | Owner, admin, office | Owner, admin, office |
-| Gate codes | Office and up, plus crew assigned to a visit there today | Office and up |
+| Gate codes | Office and up, plus the crew on a visit there today (the people listed on it, or its crew's members when nobody is listed) | Office and up |
 | Time entries | Own entries, plus office and up | Own entries until approved; office approves |
 | Integrations | Owner, admin | API only |
 
@@ -214,7 +214,7 @@ Inspired by Jobber's calendar, built on our own tables:
 - A **job** holds the work and billing. A **visit** is one trip to a property, with a time window,
   crew, assignees and status. Assessments, tasks and events are visits without a job.
 - **Recurring jobs** store an RRULE (`FREQ=WEEKLY;INTERVAL=2;BYDAY=TU`), optional active months
-  (season), and a default start time and duration. A daily task generates visits 60 days ahead with
+  (season), and a default start time and duration. A daily task generates visits a year ahead with
   a `recurrence_key` (the date), so reruns never duplicate and moved visits stay moved.
 - **Anytime visits** have a date but no fixed time; route optimization orders them (nearest
   neighbor plus 2-opt, real road routing as an upgrade).
@@ -393,7 +393,7 @@ key** restricted to the Solar API.
 | `followups` | Hourly | Marks invoices overdue (by each company's local date), emits visit reminders and "A saved card expires next month" events for automations, and reads back from Stripe autopay bank payments on their way for over a day |
 | `weather` | Every 6 hours | Flags visits whose weather rules fail tomorrow |
 | `snow` | Hourly | With the Snow app, by each company's forecast source: from 10am to 10pm its time, tells a snow customer's crew, its people and the schedulers what the snow from 6pm today through tomorrow calls for (the plow, so many pushes, or salt), once, and again if it grows; from 4am to 10pm on the day, tells them of a storm that's here (fallen since 6pm last night and still coming by 6pm) and that they weren't told that much about; warns salting customers of freezing rain or a refreeze; asks the subcontractors who'd go out whether they can; and logs each storm, with what fell written in the day after |
-| `recurrence` | Daily | Generates visits for recurring jobs 60 days ahead |
+| `recurrence` | Daily | Generates visits for recurring jobs a year ahead |
 
 On Cloudflare these run from Cron Triggers in the same Worker. On Vercel they're Vercel Cron
 requests to `/api/cron/<task>` with `CRON_SECRET`. The Vercel Hobby plan only allows daily crons,

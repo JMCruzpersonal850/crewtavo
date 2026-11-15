@@ -1,4 +1,5 @@
 import { FT_PER_M, haversineM } from "@crewtavo/core/geo";
+import { t } from "@/lib/i18n";
 
 /** Where a clock started or stopped, as time_entry_places() returns it: the phone's place, or why there was none, and whose phone it was. */
 export interface StoredPlace {
@@ -32,15 +33,30 @@ export function distanceLabel(meters: number): string {
  */
 export function describePlace(place: StoredPlace, site: Site | null): { text: string; tone: "good" | "warning" | "plain"; mapUrl: string | null; title?: string } {
   if (place.lat == null || place.lng == null) {
-    const text = place.missing === "denied" ? "location turned off" : place.missing === "unsupported" ? "phone can't share location" : "no location found";
+    const text = place.missing === "denied" ? t("location turned off") : place.missing === "unsupported" ? t("phone can't share location") : t("no location found");
     return { text, tone: "warning", mapUrl: null };
   }
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`;
-  const title = place.accuracy != null ? `Accurate to about ${distanceLabel(place.accuracy)}` : undefined;
-  const rough = place.accuracy != null && place.accuracy > ROUGH_M ? " (rough location)" : "";
-  if (!site) return { text: `see map${rough}`, tone: "plain", mapUrl, title };
+  const title = place.accuracy != null ? t("Accurate to about {distance}", { distance: distanceLabel(place.accuracy) }) : undefined;
+  const rough = place.accuracy != null && place.accuracy > ROUGH_M ? t(" (rough location)") : "";
+  if (!site) return { text: `${t("see map")}${rough}`, tone: "plain", mapUrl, title };
   const meters = haversineM([place.lng, place.lat], [site.lng, site.lat]);
-  const where = site.kind === "shop" ? "the shop" : "the job";
-  if (meters <= ON_SITE_M + Math.min(place.accuracy ?? 0, ON_SITE_M)) return { text: `at ${where}`, tone: "good", mapUrl, title };
-  return { text: `${distanceLabel(meters)} from ${where}${rough}`, tone: "warning", mapUrl, title };
+  const shop = site.kind === "shop";
+  if (meters <= ON_SITE_M + Math.min(place.accuracy ?? 0, ON_SITE_M)) return { text: shop ? t("at the shop") : t("at the job"), tone: "good", mapUrl, title };
+  const distance = distanceLabel(meters);
+  return { text: `${shop ? t("{distance} from the shop", { distance }) : t("{distance} from the job", { distance })}${rough}`, tone: "warning", mapUrl, title };
+}
+
+/**
+ * What the phone did by itself on an entry (the clock at the property: Settings → Company → Time
+ * clock), for the office to tell it from a tap. A visit's clock starts as they arrive and stops as
+ * they leave; on the whole-day clock, travel starts as they leave one and stops at the next. Null
+ * for a tap's clock.
+ */
+export function atPropertyNote(entry: { category: string; geofence_in?: boolean | null; geofence_out?: boolean | null }): string | null {
+  const visit = entry.category === "visit";
+  if (entry.geofence_in && entry.geofence_out) return visit ? t("Started and stopped by the phone at the property") : t("Started by the phone on leaving a property, stopped on arriving at a property");
+  if (entry.geofence_in) return visit ? t("Started by the phone on arriving at the property") : t("Started by the phone on leaving a property");
+  if (entry.geofence_out) return visit ? t("Stopped by the phone on leaving the property") : t("Stopped by the phone on arriving at a property");
+  return null;
 }

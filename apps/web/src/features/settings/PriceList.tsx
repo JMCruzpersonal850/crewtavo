@@ -2,6 +2,7 @@
  * Products and services: prices and costs that fill quotes, with optional measurement formulas, and
  * a picture of each for the iPad's site visit (the business's own photo, else a drawing of it).
  */
+import { usesDepth } from "@crewtavo/core/formulas";
 import { PAVING_SAMPLE, PAVING_VARIABLE_NAMES, PAVING_VARIABLES } from "@crewtavo/core/paving";
 import { ROOFING_SAMPLE, ROOFING_VARIABLE_NAMES, ROOFING_VARIABLES } from "@crewtavo/core/roofing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,13 @@ import { ServicePicture } from "../roofing/visit/ServicePicture";
 import { ImportPriceListDialog } from "./ImportPriceList";
 import styles from "./PriceList.module.css";
 
+/** A depth typed for an item: the inches, null for none, or undefined when it isn't a depth (services.default_depth_in takes over 0 up to 48). */
+export function itemDepth(text: string): number | null | undefined {
+  if (!text.trim()) return null;
+  const depth = Number(text);
+  return Number.isFinite(depth) && depth > 0 && depth <= 48 ? Math.round(depth * 100) / 100 : undefined;
+}
+
 const SAMPLE = { area_sqft: 1000, area_sqyd: 111.1, length_ft: 100, count: 4, depth_in: 2, pitch_factor: 1.12, waste: 0.1, waste_pct: 10, eave_ft: 120, rake_ft: 80, ridge_ft: 40, hip_ft: 0, valley_ft: 20, ...ROOFING_SAMPLE, ...PAVING_SAMPLE };
 
 export function PriceList() {
@@ -40,7 +48,7 @@ export function PriceList() {
   const key = ["services", session.company.id, "all"];
   const services = useQuery({
     queryKey: key,
-    queryFn: async () => unwrap(await supabase().from("services").select("id, name, category, description, unit, unit_price, unit_cost, taxable, formula, formula_target, active, add_to_every_job, sort, picture").eq("company_id", session.company.id).order("sort").order("name")),
+    queryFn: async () => unwrap(await supabase().from("services").select("id, name, category, description, unit, unit_price, unit_cost, taxable, formula, formula_target, default_depth_in, active, add_to_every_job, sort, picture").eq("company_id", session.company.id).order("sort").order("name")),
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["services", session.company.id] });
   const add = useMutation({
@@ -156,6 +164,29 @@ export function PriceList() {
                           <option value="quantity">Sets the quantity</option>
                           <option value="unit_price">Sets the price</option>
                         </select>
+                      )}
+                      {usesDepth(s.formula) && (
+                        <label className="row small" style={{ gap: 6, marginTop: 4 }} title="The depth this item's formula starts with when a drawing fills a quote. Each line's depth is shown to confirm then.">
+                          Depth
+                          <input
+                            key={s.default_depth_in ?? "none"}
+                            className="input input-sm"
+                            style={{ width: 64 }}
+                            inputMode="decimal"
+                            defaultValue={s.default_depth_in ?? ""}
+                            disabled={!canEdit}
+                            placeholder="Any"
+                            aria-label={`${s.name}: depth in inches`}
+                            onBlur={(e) => {
+                              const depth = itemDepth(e.target.value);
+                              if (depth === undefined) {
+                                toast.error("A depth is more than 0 and at most 48 inches.");
+                                e.target.value = s.default_depth_in == null ? "" : String(s.default_depth_in);
+                              } else if (depth !== (s.default_depth_in ?? null)) change({ id: s.id, patch: { default_depth_in: depth } });
+                            }}
+                          />
+                          in
+                        </label>
                       )}
                     </td>
                     <td>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { jobCosts } from "../src/features/jobs/jobCosts";
+import { costJobRows } from "@crewtavo/core/reports";
+import { jobCosts, jobPageCosts } from "../src/features/jobs/jobCosts";
 import {
   actionLabel,
   agreedToast,
@@ -299,9 +300,53 @@ describe("the job's costs", () => {
   it("does the same for time on the job, and says nothing when the lines had no labor in them", () => {
     expect(jobCosts({ contract: 0, lines, labor: 300, expenses: 0, crewPay: [] })).toMatchObject({ materials: 3020, margin: null, actualLabor: true });
     expect(jobCosts({ contract: 100, lines: [{ quantity: 1, unit_cost: 50 }], labor: 10, expenses: 0, crewPay: [] }).note).toBeNull();
+    // Extra work on a repeating job's visits: billed on top of the price, and costed as the job's lines are.
+    const extras = jobCosts({ contract: 45, lines: [{ quantity: 1, unit_cost: 20 }], labor: 0, expenses: 0, crewPay: [], extras: { price: 120, lines: [{ quantity: 2, unit_cost: 25 }] } });
+    expect(extras).toMatchObject({ extras: 120, materials: 70, profit: 95, margin: 58 });
+    expect(jobCosts({ contract: 45, lines: [], labor: 0, expenses: 0, crewPay: [] }).extras).toBe(0);
   });
   it("keeps the labor estimate while the job's time costs nothing yet (no rate set, or a clock running)", () => {
     expect(jobCosts({ contract: 10000, lines, labor: 0, expenses: 0, crewPay: [] })).toMatchObject({ materials: 4910, leftOut: 0, actualLabor: false, note: null });
+  });
+  it("counts a material as logged in place of its line's estimate, and says so", () => {
+    // 40 tons estimated at $92; the plant tickets came to 44.
+    const byTon = [{ quantity: 40, unit_cost: 92, unit_labor_cost: null, service_id: "hot", unit: "ton" }];
+    const logged = [{ service_id: "hot", name: "Hot-mix asphalt surface", unit: "ton", quantity: 22 }, { service_id: "hot", name: "Hot-mix asphalt surface", unit: "ton", quantity: 22 }, { service_id: null, name: "Diesel", unit: "gal", quantity: 30 }];
+    const c = jobCosts({ contract: 5720, lines: byTon, labor: 0, expenses: 0, crewPay: [], logged });
+    expect(c).toMatchObject({ materials: 4048, materialAdjustment: 368, total: 4048, profit: 1672 });
+    expect(c.materialRows).toEqual([
+      { name: "Hot-mix asphalt surface", unit: "ton", used: 44, estimated: 40, unit_cost: 92, estimated_cost: 3680, actual_cost: 4048 },
+      { name: "Diesel", unit: "gal", used: 30, estimated: null, unit_cost: null, estimated_cost: null, actual_cost: null },
+    ]);
+    expect(c.materialNote).toBe("Line item costs count Hot-mix asphalt surface as logged, not as estimated: $368.00 over the estimate.");
+    expect(jobCosts({ contract: 5720, lines: byTon, labor: 0, expenses: 0, crewPay: [], logged: [{ service_id: "hot", name: "Hot-mix", unit: "ton", quantity: 40 }] }).materialNote).toBe(
+      "Line item costs count Hot-mix as logged, not as estimated: the same as the estimate.",
+    );
+    // Nothing logged that's on the lines: the estimate stands and nothing is said.
+    expect(jobCosts({ contract: 5720, lines: byTon, labor: 0, expenses: 0, crewPay: [], logged: [logged[2]!] })).toMatchObject({ materials: 3680, materialNote: null });
+  });
+  it("leaves out expenses marked as already in the line items, and says how much", () => {
+    const c = jobCosts({ contract: 10000, lines, labor: 0, expenses: 100, expensesInLines: 4875.5, crewPay: [] });
+    expect(c).toMatchObject({ materials: 4910, expenses: 100, total: 5010 });
+    expect(c.expenseNote).toBe("$4,875.50 of expenses are marked as already in the line item costs, so they aren't counted again.");
+    expect(jobCosts({ contract: 10000, lines, labor: 0, expenses: 100, crewPay: [] }).expenseNote).toBeNull();
+  });
+  it("costs the job page from the job's rows with the function the hourly profit check uses", () => {
+    // The same job apps/api/test/profitAlerts.test.ts feeds the check: a sub agreed at $7,500 with a new price waiting.
+    const rows = {
+      price: 10000,
+      lines: [{ quantity: 2, unit_cost: 400, unit_labor_cost: 50, service_id: "s-rock", unit: "ton" }, { quantity: 1, unit_cost: 200 }],
+      time: [{ id: "t20", started_at: "2026-11-10T13:00:00Z", ended_at: "2026-11-10T21:00:00Z" }, { id: "t21", started_at: "2026-11-11T13:00:00Z", ended_at: null }],
+      rates: { t20: 50, t21: 50 },
+      pay: [{ amount: 7500, payees: 1 }],
+      expenses: [{ amount: "200.00", in_line_costs: false }, { amount: "640.00", in_line_costs: true }],
+      logged: [{ service_id: "s-rock", name: "Rock", unit: "ton", quantity: 3 }],
+    };
+    const page = jobPageCosts(rows);
+    const check = costJobRows(rows);
+    expect([page.total, page.profit, page.crew, page.labor, page.expenses, page.materials]).toEqual([check.cost, check.profit, check.crew, check.labor, check.expenses, check.materials]);
+    expect(page).toMatchObject({ total: 9350, crew: 7500, labor: 400, expenses: 200, materials: 1250, margin: Math.round(check.margin!) });
+    expect(page.expenseNote).toBe("$640.00 of expenses are marked as already in the line item costs, so they aren't counted again.");
   });
 });
 

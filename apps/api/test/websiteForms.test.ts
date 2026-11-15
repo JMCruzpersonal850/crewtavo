@@ -136,6 +136,24 @@ describe("a message from the website's own form", () => {
     expect(current.emails[0]!.html).toContain("Open the request");
   });
 
+  it("notes for the office that the client's number came from the website's form", async () => {
+    const submit = async (onFile: Record<string, unknown> | null, phone?: string) => {
+      const db = fakeDb({
+        tables: { website_forms: () => form(), clients: () => onFile },
+        rpc: { website_form_request: () => ({ request_id: REQUEST_ID, number: 7, client_id: "c1", property_id: "p1", new_property: false, matched: false }) },
+      });
+      await post({ name: "Jane Smith", email: "jane@example.com", ...(phone ? { phone } : {}), message: "Fridays?" });
+      await Promise.all(current.background);
+      return db.queries.filter((q) => q.table === "clients").flatMap((q) => q.calls.filter(([name]) => name === "update").map(([, row]) => row.sms_consent_source));
+    };
+    // The number sent is the one on their record: where it came from is kept.
+    expect(await submit({ phone: "(540) 555-0101", sms_consent_source: null }, "540 555 0101")).toEqual(["website_form"]);
+    // A client already here with another number keeps it, and a form's word from before stays.
+    expect(await submit({ phone: "(540) 555-0199", sms_consent_source: null }, "540 555 0101")).toEqual([]);
+    expect(await submit({ phone: "(540) 555-0101", sms_consent_source: "booking_form" }, "540 555 0101")).toEqual([]);
+    expect(await submit({ phone: "(540) 555-0101", sms_consent_source: null })).toEqual([]);
+  });
+
   it("answers fetch() with JSON, from any website", async () => {
     withForm();
     const res = await post({ email: "jane@example.com", message: "Hi" }, { Accept: "application/json" });

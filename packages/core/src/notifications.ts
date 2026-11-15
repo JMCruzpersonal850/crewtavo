@@ -1,29 +1,32 @@
+import { msg } from "./i18n";
+
 /**
  * Kinds of notification a person can also get by email, text or a push to their phone (the bell in
- * the app always shows everything). Mirrors the check on public.notification_prefs.
+ * the app always shows everything). Mirrors the check on public.notification_prefs. The words are
+ * shown with t() (Settings → Profile can be in Spanish).
  */
 export const NOTIFICATION_TOPICS = [
-  { key: "schedule", label: "My schedule changes", hint: "Added to or taken off a visit, moved or cancelled" },
-  { key: "client", label: "Messages from clients", hint: "Texts and Client Hub messages" },
-  { key: "time", label: "Clock reminders", hint: "When a clock has been running too long" },
-  { key: "equipment", label: "Equipment maintenance", hint: "Service coming due or overdue, tags and inspection stickers running out" },
+  { key: "schedule", label: msg("My schedule changes"), hint: msg("Added to or taken off a visit, moved or cancelled") },
+  { key: "client", label: msg("Messages from clients"), hint: msg("Texts and Client Hub messages") },
+  { key: "time", label: msg("Clock reminders"), hint: msg("When a clock has been running too long") },
+  { key: "equipment", label: msg("Equipment maintenance"), hint: msg("Service coming due or overdue, tags and inspection stickers running out") },
   // People with the subs area only (packages/core/src/roles.ts).
-  { key: "subs", label: "Subcontractors", hint: "Insurance running out, paperwork a sub sends in, and answers to job offers" },
+  { key: "subs", label: msg("Subcontractors"), hint: msg("Insurance running out, paperwork a sub sends in, and answers to job offers") },
   // Owners, admins and office staff with the marketing area, while Google Business Profile brings
   // reviews in (apps/api/src/services/googleReviews.ts). By email only 1 and 2 stars (byEmail).
   // Owners and admins who connect apps hear when it needs them (reviewNoticesFor).
-  { key: "reviews", label: "Google reviews", hint: "New reviews, low ratings first. Email only for 1 and 2 stars" },
+  { key: "reviews", label: msg("Google reviews"), hint: msg("New reviews, low ratings first. Email only for 1 and 2 stars") },
   // The same people, while Marketing → Social posts (apps/api/src/services/social.ts): an automatic
   // post scheduled (push only, byEmail), and a post that didn't all go or may have gone.
-  { key: "social", label: "Social posts", hint: "Automatic posts coming up, and posts that didn't go. Email only for those that didn't" },
+  { key: "social", label: msg("Social posts"), hint: msg("Automatic posts coming up, and posts that didn't go. Email only for those that didn't") },
   // Subs only: their job offers and their pay (on by default, texts too: an offer waits for their answer).
-  { key: "jobs", label: "My jobs", hint: "Job offers, and what you're owed and paid" },
-  { key: "alerts", label: "Other alerts", hint: "Leads handed to you, and your company's automations, like a quote being approved" },
-  { key: "chat", label: "Team chat", hint: "When someone @mentions you or your role" },
+  { key: "jobs", label: msg("My jobs"), hint: msg("Job offers, and what you're owed and paid") },
+  { key: "alerts", label: msg("Other alerts"), hint: msg("Leads handed to you, and your company's automations, like a quote being approved") },
+  { key: "chat", label: msg("Team chat"), hint: msg("When someone @mentions you or your role") },
   // Owners and admins: Railway's warnings (services/hosting.ts) and storage nearing its limit
   // (services/storageUsage.ts), and owners: the nightly database backup failing (services/backups.ts).
   // Off Railway, Settings → Profile calls it "Storage and backups".
-  { key: "hosting", label: "Railway", hint: "Before the trial runs out, or when the bill goes over the plan, storage fills up or the nightly backup stops working" },
+  { key: "hosting", label: msg("Railway"), hint: msg("Before the trial runs out, or when the bill goes over the plan, storage fills up or the nightly backup stops working") },
 ] as const;
 export type NotificationTopic = (typeof NOTIFICATION_TOPICS)[number]["key"];
 
@@ -67,9 +70,9 @@ export function reviewNoticesFor(who: { role: string; permissions: readonly stri
 }
 
 /** The topic's words for someone who hears only when Google Business Profile needs them. */
-export const REVIEW_ACCESS_HINT = "When Google Business Profile needs signing in again or a location picked";
+export const REVIEW_ACCESS_HINT = msg("When Google Business Profile needs signing in again or a location picked");
 /** The Social posts topic's hint for those same owners and admins: they hear only about Facebook & Instagram's sign-in. */
-export const SOCIAL_ACCESS_HINT = "When Facebook & Instagram needs signing in again";
+export const SOCIAL_ACCESS_HINT = msg("When Facebook & Instagram needs signing in again");
 
 /**
  * The kinds that tell owners and admins the company's email or texts have stopped going out

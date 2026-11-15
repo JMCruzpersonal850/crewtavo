@@ -21,6 +21,8 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { localDate } from "@crewtavo/core/time";
 import { Breakdown, Change, Kpi, KpiStrip, ReportCard, ReportTable, TrendChart, type Column, type Part } from "./Charts";
 import { agingBuckets, previousRange, serviceFigures } from "@crewtavo/core/reports";
+import { ReceiptDrafts } from "../jobs/ReceiptDrafts";
+import { CostsWithoutJob, costsWithoutJobKey } from "./CostsWithoutJob";
 import { byJobs, jobRates, loadProfit } from "./jobCosts";
 import { bucketize, bucketizeShifted, bucketsFor, resolveRange, shortDate, type Range } from "./range";
 import { both, pct, plural, RangeHeader, rangeQuery, SectionHead, sum, TabBody, useRangeParams } from "./shared";
@@ -619,6 +621,7 @@ function Profit({ range }: { range: Range }) {
   const { company } = session;
   const costs = can(session, "job_costs");
   const cid = company.id;
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["finance", cid, "profit", range.from, range.to],
     placeholderData: keepPreviousData,
@@ -639,6 +642,18 @@ function Profit({ range }: { range: Range }) {
               {costs && <Kpi label="Job profit" value={formatMoney(profit)} hint={revenue ? `${Math.round((profit / revenue) * 100)}% margin` : undefined} tone={profit < 0 ? "bad" : undefined} />}
               {costs && <Kpi label="Below target margin" value={d.target ? formatNumber(below.length) : "—"} hint={d.target ? `Target ${d.target}%` : "No target set"} tone={below.length ? "bad" : undefined} />}
             </KpiStrip>
+            {/* Receipts for any job, or none: each waits as a draft until it's checked and saved as an expense. */}
+            {costs && hasRole(session, "admin", "office") && (
+              <ReportCard title="Receipts and supplier invoices" subtitle="Several at once: each is read, then waits here to be checked and saved as an expense on its job">
+                <ReceiptDrafts onSaved={() => Promise.all([queryClient.invalidateQueries({ queryKey: ["finance", cid, "profit"] }), queryClient.invalidateQueries({ queryKey: costsWithoutJobKey(cid) })])} />
+              </ReportCard>
+            )}
+            {/* The ones saved with no job: nothing else lists them, so they're kept findable here. */}
+            {costs && hasRole(session, "admin", "office") && (
+              <ReportCard title="Costs that aren't on a job" subtitle="Expenses saved without a job. Open one to change it, put it on a job, mark it reimbursed or delete it">
+                <CostsWithoutJob onChanged={() => queryClient.invalidateQueries({ queryKey: ["finance", cid, "profit"] })} />
+              </ReportCard>
+            )}
             {costs && (
               <ReportCard title="Job profitability" subtitle="Labor, sub and crew pay, expenses and materials against each job's contract total">
                 <ReportTable
@@ -690,15 +705,19 @@ function Services({ range }: { range: Range }) {
       ]);
       if (!costs) return serviceFigures(sold, items);
       const ids = [...new Set(sold.flatMap((l) => (l.invoice?.job_id ? [l.invoice.job_id] : [])))];
-      const [jobLines, time, expenses, rates, crewPay] = await Promise.all([
+      const [jobLines, time, expenses, rates, crewPay, costLines, materials] = await Promise.all([
         // Everything the jobs have been invoiced, whenever: their labor is split across all of it.
         byJobs(ids, (jobs) => everyRow(() => db.from("invoice_line_items").select(SERVICE_LINES).eq("company_id", cid).in("invoice.job_id", jobs).not("invoice.status", "in", "(draft,void)").not("invoice.kind", "in", "(deposit,progress,retainage)"))),
         byJobs(ids, (jobs) => everyRow(() => db.from("time_entries").select("id, job_id, started_at, ended_at").in("job_id", jobs))),
-        byJobs(ids, (jobs) => everyRow(() => db.from("expenses").select("job_id, amount").in("job_id", jobs))),
+        byJobs(ids, (jobs) => everyRow(() => db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", jobs))),
         jobRates(true, ids),
         byJobs(ids, (jobs) => db.rpc("job_pay_costs", { p_jobs: jobs }).then(unwrap)),
+        // The jobs' own lines and what was logged on them: logged materials over or under the estimate
+        // count here as they do on the job and in Profit.
+        byJobs(ids, (jobs) => everyRow(() => db.from("job_line_items").select("job_id, quantity, unit_cost, unit_labor_cost, service_id, unit, parts").in("job_id", jobs))),
+        byJobs(ids, (jobs) => everyRow(() => db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", jobs))),
       ]);
-      return serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (t) => Number(rates[t.id] ?? 0), crewPay });
+      return serviceFigures(sold, items, { jobLines, time, expenses, rateOf: (t) => Number(rates[t.id] ?? 0), crewPay, costLines, materials });
     },
   });
   const key = (s: ServiceRow) => s.service_id ?? "other";

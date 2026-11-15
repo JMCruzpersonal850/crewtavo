@@ -49,7 +49,8 @@ test("new client → request → quote → approved in the portal → job", asyn
   // Sent by email; the dialog shows the client's link.
   await page.getByRole("button", { name: "Send quote" }).click();
   const send = page.getByRole("dialog", { name: "Send quote" });
-  await expect(send.getByRole("textbox", { name: "To", exact: true })).toHaveValue(email);
+  // The client is ticked to start with; their contacts and other addresses can be added.
+  await expect(send.getByRole("group", { name: "Send to" }).getByRole("checkbox", { name: new RegExp(email) })).toBeChecked();
   await send.getByRole("button", { name: "Send email" }).click();
   const sent = page.getByRole("dialog", { name: "Sent" });
   await expect(sent.getByText(`Emailed to ${email}`)).toBeVisible();

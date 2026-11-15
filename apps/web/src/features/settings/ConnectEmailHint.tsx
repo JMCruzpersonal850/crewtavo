@@ -11,3 +11,14 @@ export function ConnectEmailHint({ then = "to turn it on" }: { then?: string }) 
     <> An owner can turn it on in Settings → Email.</>
   );
 }
+
+/** The same for texting: the business connects its own Twilio account on the Apps page. */
+export function ConnectTextingHint({ then = "to turn it on" }: { then?: string }) {
+  const session = useSession();
+  const canConnect = hasRole(session, "admin") && can(session, "apps");
+  return canConnect ? (
+    <> <Link to="/apps/twilio" className="strong">Connect Twilio</Link> {then}.</>
+  ) : (
+    <> An owner can turn it on in Apps → Twilio.</>
+  );
+}

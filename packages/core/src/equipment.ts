@@ -3,6 +3,7 @@
  * and the dates its paperwork (tags, inspection stickers) runs to. Due states are worked out in
  * Postgres (public.equipment_due, public.equipment_paperwork); these turn them into words.
  */
+import { intlLocale, t } from "./i18n";
 
 export const EQUIPMENT_KINDS = [
   { key: "truck", label: "Truck or vehicle", meter: "miles" },
@@ -79,7 +80,7 @@ export function presetInterval(p: PlanPreset, meter: Meter | string): Required<P
   return { every_meter, every_count: p.every_count ?? null, every_unit: p.every_count ? p.every_unit ?? "month" : null };
 }
 
-const number = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+const number = (n: number) => n.toLocaleString(intlLocale(), { maximumFractionDigits: 1 });
 const plural = (n: number, one: string, many = `${one}s`) => (Math.abs(n) === 1 ? one : many);
 
 /** "hours" / "hour", "miles" / "mile". */
@@ -87,7 +88,13 @@ export const meterUnit = (meter: Meter | string, n = 2) => (meter === "miles" ? 
 
 /** "1,240.5 hours", "52,310 miles". */
 export const formatMeter = (value: number | null | undefined, meter: Meter | string) =>
-  value == null || meter === "none" ? "" : `${number(Number(value))} ${meterUnit(meter, Number(value))}`;
+  value == null || meter === "none" ? "" : meterWords(Number(value), meter);
+
+/** "1,240.5 hours", "1 mile", in the app's language. */
+const meterWords = (n: number, meter: Meter | string) =>
+  meter === "miles"
+    ? t.plural(n, { one: "{count} mile", other: "{count} miles" }, { count: number(n) })
+    : t.plural(n, { one: "{count} hour", other: "{count} hours" }, { count: number(n) });
 
 const unitWords: Record<IntervalUnit, string> = { day: "day", week: "week", month: "month", year: "year" };
 
@@ -137,17 +144,24 @@ export function dueProgress(d: DueInfo): number | null {
  */
 export function dueSummary(d: DueInfo): string {
   const { meterLeft, daysLeft, byMeter, byDate } = remaining(d);
-  const unit = (n: number) => meterUnit(d.meter, n);
-  if (meterLeft != null && meterLeft <= 0) return meterLeft === 0 ? "Due now" : `${number(-meterLeft)} ${unit(-meterLeft)} over`;
-  if (daysLeft != null && daysLeft < 0) return `${-daysLeft} ${plural(-daysLeft, "day")} overdue`;
-  if (daysLeft === 0) return "Due today";
+  const miles = d.meter === "miles";
+  if (meterLeft != null && meterLeft <= 0) {
+    if (meterLeft === 0) return t("Due now");
+    const over = { count: number(-meterLeft) };
+    return miles ? t.plural(-meterLeft, { one: "{count} mile over", other: "{count} miles over" }, over) : t.plural(-meterLeft, { one: "{count} hour over", other: "{count} hours over" }, over);
+  }
+  if (daysLeft != null && daysLeft < 0) return t.plural(-daysLeft, { one: "{count} day overdue", other: "{count} days overdue" });
+  if (daysLeft === 0) return t("Due today");
   const leadWithMeter =
     meterLeft != null &&
     (daysLeft == null ||
       (byMeter != null && byDate != null ? byMeter <= byDate : d.state === "due_soon" && daysLeft > 14));
-  if (leadWithMeter) return `Due in ${number(meterLeft)} ${unit(meterLeft)}`;
-  if (daysLeft != null) return daysLeft === 1 ? "Due tomorrow" : `Due in ${daysLeft} ${plural(daysLeft, "day")}`;
-  return "Not scheduled";
+  if (leadWithMeter) {
+    const left = { count: number(meterLeft) };
+    return miles ? t.plural(meterLeft, { one: "Due in {count} mile", other: "Due in {count} miles" }, left) : t.plural(meterLeft, { one: "Due in {count} hour", other: "Due in {count} hours" }, left);
+  }
+  if (daysLeft != null) return daysLeft === 1 ? t("Due tomorrow") : t.plural(daysLeft, { one: "Due in {count} day", other: "Due in {count} days" });
+  return t("Not scheduled");
 }
 
 /** Status pill tone for a due state. */
@@ -228,9 +242,9 @@ export function renewalChoices(kind: string, expiresOn: string | null, today: st
 
 /** "Ran out 3 days ago", "Runs out today", "Runs out tomorrow", "Runs out in 12 days", "Current", "Doesn't expire". */
 export function expirySummary(daysLeft: number | null, expiresOn: string | null): string {
-  if (!expiresOn || daysLeft == null) return "Doesn't expire";
-  if (daysLeft < 0) return daysLeft === -1 ? "Ran out yesterday" : `Ran out ${-daysLeft} days ago`;
-  if (daysLeft === 0) return "Runs out today";
-  if (daysLeft === 1) return "Runs out tomorrow";
-  return daysLeft <= 30 ? `Runs out in ${daysLeft} days` : "Current";
+  if (!expiresOn || daysLeft == null) return t("Doesn't expire");
+  if (daysLeft < 0) return daysLeft === -1 ? t("Ran out yesterday") : t("Ran out {count} days ago", { count: -daysLeft });
+  if (daysLeft === 0) return t("Runs out today");
+  if (daysLeft === 1) return t("Runs out tomorrow");
+  return daysLeft <= 30 ? t("Runs out in {count} days", { count: daysLeft }) : t("Current");
 }

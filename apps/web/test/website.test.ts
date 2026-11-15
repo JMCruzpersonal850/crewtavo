@@ -20,7 +20,7 @@ describe("Website in the menu", () => {
 
   it("counts Sveltia CMS as installed by its address", () => {
     const sveltia = { id: "sveltia", auth: "site", status: "disconnected" } as AppRow;
-    expect(isInstalled(sveltia, new Set())).toBe(false);
-    expect(isInstalled({ ...sveltia, status: "connected" }, new Set())).toBe(true);
+    expect(isInstalled(sveltia)).toBe(false);
+    expect(isInstalled({ ...sveltia, status: "connected" })).toBe(true);
   });
 });

@@ -22,6 +22,7 @@ import { HelpButton } from "./Help";
 import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
 import { RestartBanner } from "./RestartBanner";
+import { getLocale, showScreenLang, t } from "@/lib/i18n";
 
 function useVisibleGroups(): NavItem[][] {
   const session = useSession();
@@ -78,7 +79,7 @@ function OfflinePill() {
   return (
     <div ref={ref} className="offline-banner" role="status" {...topLayerProps}>
       <Icon name="wifiOff" size={16} />
-      You're offline. Visit updates are saved and sent when you reconnect; other changes need a connection.
+      {t("You're offline. Visit updates are saved and sent when you reconnect; other changes need a connection.")}
     </div>
   );
 }
@@ -119,6 +120,13 @@ export function AppShell() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  // The page says which language this screen is in, for screen readers: Spanish on the crew's
+  // screens for someone using Spanish, English on the office's (lib/i18n.tsx screenLang).
+  useEffect(() => {
+    showScreenLang(location.pathname, location.search);
+  }, [location.pathname, location.search]);
+  // The navigation is in the person's language on every screen: on an English one it says so itself.
+  const shellLang = getLocale() === "es" ? "es" : undefined;
   const navigate = useNavigate();
   const navigation = useNavigation();
   const online = useOnline();
@@ -140,10 +148,10 @@ export function AppShell() {
   const signOut = async () => {
     if (sub && session.subcontractor?.own_sign_in !== false) {
       const ok = await confirm({
-        title: "Sign out?",
+        title: t("Sign out?"),
         body: signOutNote(session.company.name, subCodeWays(session.config.features, session.subcontractor)),
-        confirmLabel: "Sign out",
-        cancelLabel: "Stay signed in",
+        confirmLabel: t("Sign out"),
+        cancelLabel: t("Stay signed in"),
       });
       if (!ok) return;
     }
@@ -175,10 +183,10 @@ export function AppShell() {
   }, [location.pathname]);
 
   const badge = (item: NavItem) => {
-    if (item.to === "/field/jobs" && offers) return <span className="badge badge-green nav-badge" aria-label={`${offers} waiting for your answer`}>{offers}</span>;
+    if (item.to === "/field/jobs" && offers) return <span className="badge badge-green nav-badge" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>;
     if (item.to === "/requests" && counts.data?.requests) return <span className="badge badge-green nav-badge">{counts.data.requests}</span>;
-    if (item.to === "/chat" && chat.mentions) return <span className="badge badge-red nav-badge" aria-label={`${chat.mentions} ${chat.mentions === 1 ? "mention" : "mentions"}`}>{chat.mentions}</span>;
-    if (item.to === "/chat" && chat.unread) return <span className="nav-badge nav-dot" aria-label="New messages" />;
+    if (item.to === "/chat" && chat.mentions) return <span className="badge badge-red nav-badge" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span>;
+    if (item.to === "/chat" && chat.unread) return <span className="nav-badge nav-dot" aria-label={t("New messages")} />;
     return null;
   };
   // A section stays highlighted on its related screens (Settings while in Automations, and so on).
@@ -195,8 +203,8 @@ export function AppShell() {
       {!online && <OfflinePill />}
       <RestartBanner />
 
-      <aside className="sidebar" aria-label="Primary">
-        <Link to={sub ? "/field" : "/"} className="brand" aria-label="Crewtavo home" viewTransition>
+      <aside className="sidebar" aria-label={t("Primary")} lang={shellLang}>
+        <Link to={sub ? "/field" : "/"} className="brand" aria-label={t("Crewtavo home")} viewTransition>
           <BrandLockup size={30} />
         </Link>
         <nav className="nav">
@@ -207,27 +215,27 @@ export function AppShell() {
               {group.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
                   <Icon name={item.icon} />
-                  {item.label}
+                  {t(item.label)}
                   {badge(item)}
                 </NavLink>
               ))}
             </div>
           ))}
         </nav>
-        <nav className="nav nav-bottom" aria-label="Settings">
+        <nav className="nav nav-bottom" aria-label={t("Settings")}>
           <NavLink to={settings.to} className={navClass(settings)} viewTransition>
             <Icon name={settings.icon} />
-            {settings.label}
+            {t(settings.label)}
           </NavLink>
         </nav>
       </aside>
 
       <div className="main">
-        <header className="topbar" data-scrolled={scrolled || undefined}>
+        <header className="topbar" data-scrolled={scrolled || undefined} lang={shellLang}>
           <div className="business">
             <BusinessTile name={session.company.name} settings={session.company.settings} />
             {session.companies.length > 1 ? (
-              <select className="business-name" aria-label="Switch business" value={session.company.id} onChange={(e) => session.switchCompany(e.target.value)}>
+              <select className="business-name" aria-label={t("Switch business")} value={session.company.id} onChange={(e) => session.switchCompany(e.target.value)}>
                 {session.companies.map((m) => (
                   <option key={m.company.id} value={m.company.id}>{m.company.name}</option>
                 ))}
@@ -238,27 +246,27 @@ export function AppShell() {
           </div>
           {!sub && (
             <>
-              <button type="button" className="search" onClick={openPalette} aria-label="Search (⌘K)">
+              <button type="button" className="search" onClick={openPalette} aria-label={t("Search (⌘K)")}>
                 <Icon name="search" size={16} />
-                <span>Search</span>
-                <kbd className="kbd">{navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K"}</kbd>
+                <span>{t("Search")}</span>
+                <kbd className="kbd">{navigator.platform.toLowerCase().includes("mac") ? "⌘K" : t("Ctrl K")}</kbd>
               </button>
-              <button type="button" className="icon-btn mobile-only" onClick={openPalette} aria-label="Search"><Icon name="search" size={20} /></button>
-              <Link className="icon-btn hide-mobile" to="/messages" aria-label="Messages" title="Messages"><Icon name="messages" size={20} /></Link>
+              <button type="button" className="icon-btn mobile-only" onClick={openPalette} aria-label={t("Search")}><Icon name="search" size={20} /></button>
+              <Link className="icon-btn hide-mobile" to="/messages" aria-label={t("Messages")} title={t("Messages")}><Icon name="messages" size={20} /></Link>
             </>
           )}
           <HelpButton />
           <NotificationsButton />
           <Menu
-            label="Account"
+            label={t("Account")}
             triggerClassName="icon-btn"
             trigger={<span className="avatar" style={{ width: 30, height: 30, fontSize: 11, background: session.profile.color || "var(--avatar)" }}><Face name={session.profile.full_name || shownEmail} photo={session.profile.avatar_url} /></span>}
             items={[
-              { heading: session.profile.full_name || shownEmail || "Account" },
-              { label: "Your profile", icon: "user", onSelect: () => navigate("/settings?tab=profile") },
-              { label: "Settings", icon: "settings", hidden: sub, onSelect: () => navigate("/settings") },
+              { heading: session.profile.full_name || shownEmail || t("Account") },
+              { label: t("Your profile"), icon: "user", onSelect: () => navigate("/settings?tab=profile") },
+              { label: t("Settings"), icon: "settings", hidden: sub, onSelect: () => navigate("/settings") },
               { separator: true },
-              { label: "Sign out", icon: "logout", onSelect: () => void signOut() },
+              { label: t("Sign out"), icon: "logout", onSelect: () => void signOut() },
             ]}
           />
         </header>
@@ -266,21 +274,21 @@ export function AppShell() {
         <Screen key={location.pathname} />
       </div>
 
-      <nav className="mobile-nav" aria-label="Primary" data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, 1fr)` }}>
+      <nav className="mobile-nav" aria-label={t("Primary")} lang={shellLang} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, 1fr)` }}>
         {tabs.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => (active(item, isActive) ? "active" : "")} aria-current={current(item)} viewTransition>
             <span className="mobile-tab-icon">
               <Icon name={item.icon} size={20} />
-              {item.to === "/field/jobs" && offers > 0 && <span className="badge badge-green mobile-tab-badge" aria-label={`${offers} waiting for your answer`}>{offers}</span>}
+              {item.to === "/field/jobs" && offers > 0 && <span className="badge badge-green mobile-tab-badge" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
               {item.to === "/chat" && (chat.mentions ? <span className="badge badge-red mobile-tab-badge">{chat.mentions}</span> : chat.unread ? <span className="nav-dot mobile-tab-badge" /> : null)}
             </span>
-            {item.label}
+            {t(item.label)}
           </NavLink>
         ))}
         {!sub && (
           <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}>
             <Icon name="menu" size={20} />
-            More
+            {t("More")}
           </button>
         )}
       </nav>
@@ -288,13 +296,13 @@ export function AppShell() {
       {moreShown && (
         <>
           <div className="sheet-backdrop" data-leaving={!moreVisible || undefined} onClick={() => setMoreOpen(false)} />
-          <div className="sheet" role="dialog" aria-label="All sections" data-leaving={!moreVisible || undefined}>
+          <div className="sheet" role="dialog" aria-label={t("All sections")} data-leaving={!moreVisible || undefined}>
             <MobileCreate onDone={() => setMoreOpen(false)} />
             <nav className="nav">
               {[...groups.flat(), settings].map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} onClick={() => setMoreOpen(false)} viewTransition>
                   <Icon name={item.icon} />
-                  {item.label}
+                  {t(item.label)}
                   {badge(item)}
                 </NavLink>
               ))}
@@ -342,16 +350,16 @@ function CreateMenu() {
   if (!items.length) return null;
   return (
     <Menu
-      label="Create"
+      label={t("Create")}
       align="start"
       triggerClassName="nav-link create-trigger"
       trigger={
         <>
           <span className="nav-create-dot"><Icon name="plus" size={12} /></span>
-          Create
+          {t("Create")}
         </>
       }
-      items={items.map((item) => ({ label: item.label, icon: item.icon, onSelect: () => navigate(item.to) }))}
+      items={items.map((item) => ({ label: t(item.label), icon: item.icon, onSelect: () => navigate(item.to) }))}
     />
   );
 }
@@ -374,7 +382,7 @@ function MobileCreate({ onDone }: { onDone: () => void }) {
           }}
         >
           <Icon name={item.icon} size={20} />
-          New {item.label.toLowerCase()}
+          {item.newLabel}
         </button>
       ))}
     </div>

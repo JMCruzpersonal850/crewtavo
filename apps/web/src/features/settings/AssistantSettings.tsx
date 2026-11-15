@@ -1,12 +1,17 @@
 /**
- * Settings → AI assistants, for everyone: the link that connects Claude or ChatGPT to Crewtavo, the
- * assistants you've connected and what each can change, and, for owners and admins, the company's
- * own limits and what assistants did (features/apps/AssistantAccess.tsx).
+ * Settings → AI assistants, for everyone: the one place to add Crewtavo to Claude or ChatGPT (the
+ * connector link and the steps for each), the assistants you've connected and what each can change,
+ * and, for owners and admins, the company's own limits and what assistants did
+ * (features/apps/AssistantAccess.tsx). The Claude and ChatGPT pages under Apps point here.
+ *
+ * Also here, because it's each person's own: using your ChatGPT plan for Crewtavo's own AI
+ * (features/apps/ChatGptPlan.tsx).
  */
 import { Button } from "@/components/ui/Button";
 import { copyText } from "@/lib/clipboard";
 import { hasRole, useSession } from "@/lib/session";
 import { AssistantAccess, ConnectedAssistants } from "@/features/apps/AssistantAccess";
+import { ChatGptPlanCard } from "@/features/apps/ChatGptPlan";
 import { CONNECTOR_STEPS } from "@/features/apps/assistantConnections";
 
 export function AssistantSettings() {
@@ -34,6 +39,8 @@ export function AssistantSettings() {
         </details>
       </section>
       <ConnectedAssistants card />
+      {/* Not an assistant that uses Crewtavo, but Crewtavo's own AI on this person's ChatGPT plan: shown to whoever may connect one. */}
+      {session.role !== "subcontractor" && <ChatGptPlanCard where="settings" />}
       {hasRole(session, "admin") && (
         <section className="card card-pad stack-sm">
           <strong>For everyone at {session.company.name}</strong>

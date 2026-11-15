@@ -150,6 +150,9 @@ select public.chat_set_enabled(:'co', true);
 select id as general from public.chat_channels where company_id = :'co' and name = 'general' \gset
 insert into public.chat_messages (company_id, channel_id, author_id, body) values (:'co', :'general', 'd1070000-0000-0000-0000-000000000001', 'Roof at 1 Oak St starts today');
 commit;
+-- A crew member's acknowledgement of the location notice (20261113001810): theirs and the office's to
+-- read, not a sub's. Only the person themselves can record one through the app, so it's put here directly.
+insert into public.worker_notices (company_id, user_id, notice) values (:'co', 'd1070000-0000-0000-0000-000000000004', 'clock_location');
 
 -- Papa Paving. Pat puts Al on one of Papa's visits, though Al has no sign-in there.
 begin;
@@ -275,6 +278,22 @@ insert into public.pay_period_lines (company_id, period_id, user_id, hours, amou
 insert into public.payments (company_id, client_id, invoice_id, amount, method) values (:'co', :'c1', :'roof_invoice', 100, 'check');
 insert into public.payouts (company_id, processor_ref, amount, status, arrival_on) values (:'co', 'po_t1070', 100, 'paid', current_date);
 insert into public.recurrence_skips (company_id, job_id, recurrence_key) values (:'co', :'j1', 'k1');
+-- Extra work on one visit of a repeating job, with its price (20261113000900_visit_extras.sql): the office's.
+insert into public.jobs (company_id, client_id, property_id, title, kind, recurrence_rule) values (:'co', :'c1', :'p1', 'Gutter cleaning plan', 'recurring', 'FREQ=MONTHLY') returning id as jr \gset
+insert into public.visits (company_id, job_id, property_id, title, scheduled_on) values (:'co', :'jr', :'p1', 'Clean the gutters', private.company_today(:'co') + 30) returning id as vr \gset
+insert into public.visit_extras (company_id, visit_id, name, unit_price) values (:'co', :'vr', 'Downspout repair', 85);
+-- A receipt waiting to be confirmed, and where a job stands against the profit line
+-- (20261113001210_receipt_reading.sql, 20261113001200_job_profit_alerts.sql): the office's with job costs.
+insert into public.expense_drafts (company_id, job_id, receipt_path, user_id) values (:'co', :'j1', :'co' || '/receipts/t1070.jpg', 'd1070000-0000-0000-0000-000000000001');
+insert into public.job_profit_alerts (company_id, job_id, below, margin, line) values (:'co', :'j1', true, 8, 20);
+-- The owner's own ChatGPT plan, its sealed tokens and a sign-in under way (20261113001900_chatgpt_plans.sql):
+-- each person's own connection, and the server's alone for the other two.
+insert into public.chatgpt_plans (user_id, company_id, status, client_id, account_email) values ('d1070000-0000-0000-0000-000000000001', :'co', 'connected', 'oaiapp_t1070', 'oz@oscar.test');
+insert into public.chatgpt_plan_secrets (user_id, company_id, ciphertext) values ('d1070000-0000-0000-0000-000000000001', :'co', 'sealed');
+insert into public.chatgpt_sign_ins (state, user_id, company_id, ciphertext, expires_at) values ('t1070-state-t1070-state-t1070', 'd1070000-0000-0000-0000-000000000001', :'co', 'sealed', now() + interval '10 minutes');
+-- A change of prices across repeating jobs, with each line's old and new price (20261113000950_price_changes.sql): the office's.
+insert into public.price_changes (id, company_id, change, summary, jobs, lines) values ('d1070000-0000-0000-0000-0000000000e1', :'co', '{"kind": "percent", "value": 5, "round": "cent"}', 'Up 5%', 1, 1);
+insert into public.price_change_lines (company_id, change_id, job_id, line_id, name, quantity, old_price, new_price) values (:'co', 'd1070000-0000-0000-0000-0000000000e1', :'jr', gen_random_uuid(), 'Gutter cleaning', 1, 120, 126);
 insert into public.referrals (company_id, referrer_client_id, referred_name) values (:'co', :'c1', 'Neighbor Ned');
 -- A referral credit Ann earned, which goes on her new invoice as its line goes in, one taken off
 -- another invoice, and an ask for referrals.
@@ -301,6 +320,20 @@ insert into public.social_posts (company_id, source, attachment_ids, caption, ne
 insert into public.social_post_networks (post_id, company_id, network, status) values (:'social_post', :'co', 'facebook', 'posted');
 insert into public.social_post_images (company_id, post_id, n, variant, attachment_id, path, token, width, height, bytes, expires_at)
 values (:'co', :'social_post', 0, 'feed', :'porch', :'co' || '/social/' || :'social_post' || '/0-feed.jpg', repeat('b', 32), 10, 10, 100, now() + interval '7 days');
+-- A postcard mailed to Ann, a showcase of the roof job, and how Oscar compares on Google
+-- (20261113001400_postcards.sql, 20261113001410_showcases.sql, 20261113001420_review_comparison.sql): the office's, never a sub's.
+insert into public.postcard_campaigns (company_id, name) values (:'co', 'Spring postcard') returning id as postcard \gset
+insert into public.postcard_recipients (company_id, campaign_id, client_id, name, address) values (:'co', :'postcard', :'c1', 'Ann', '{"line1": "1 Main St", "city": "Radford", "region": "VA", "postal_code": "24141"}');
+-- One card of it mailed to Oscar's own address first (20261113001575_postcard_proofs.sql).
+insert into public.postcard_proofs (company_id, campaign_id, mode, size, address, image_token, image_path)
+values (:'co', :'postcard', 'test', '4x6', '{"line1": "9 Shop Rd", "city": "Radford", "region": "VA", "postal_code": "24141"}', repeat('p', 32), :'co' || '/postcards/proofs/front.jpg');
+select id as roof_before from public.attachments where owner_type = 'visit' and owner_id = :'v1' and file_name = 'before.jpg' \gset
+insert into public.showcases (company_id, job_id, title) values (:'co', :'j1', 'New roof') returning id as showcase \gset
+insert into public.showcase_photos (company_id, showcase_id, attachment_id, role) values (:'co', :'showcase', :'roof_before', 'before');
+-- A copy of a showcase photo that's no longer shown, waiting for the server to delete it (20261113001580_showcases_come_down.sql).
+insert into public.stale_public_files (company_id, path) values (:'co', :'co' || '/showcases/' || :'showcase' || '/old.jpg');
+insert into public.review_comparisons (company_id, enabled) values (:'co', true);
+insert into public.review_places (company_id, place_id, is_own) values (:'co', 'place-1070', true);
 insert into public.roof_packages (company_id, name) values (:'co', 'Good') returning id as roof_package \gset
 insert into public.roof_package_items (company_id, package_id, service_id, kind) values (:'co', :'roof_package', :'shingles_service', 'included');
 insert into public.service_materials (company_id, service_id, item_number, name, uom, per_unit) values (:'co', :'shingles_service', 'ABC-1', 'Shingle bundle', 'BD', 3);
@@ -323,6 +356,11 @@ insert into public.storage_allowances (company_id, role_key, limit_bytes) values
 insert into public.visit_change_requests (company_id, visit_id, client_id, kind, reason) values (:'co', :'v1', :'c1', 'cancel', 'Rain all week');
 -- Ann and Bob marked not the same client (20261106000100_client_merge.sql): the office's, never a sub's.
 insert into public.client_duplicate_dismissals (company_id, client_a, client_b) values (:'co', least(:'c1'::uuid, :'c2'::uuid), greatest(:'c1'::uuid, :'c2'::uuid));
+-- A number that texted STOP to Oscar, and a text from a number nobody there knows
+-- (20261113000300_contact_messages.sql, 20261113000310_unknown_texts.sql): the office's, never a sub's.
+insert into public.sms_stops (company_id, phone_key, phone) values (:'co', '5405550190', '+15405550190');
+insert into public.sms_stop_changes (company_id, phone_key, phone, texts_on, source) values (:'co', '5405550190', '+15405550190', false, 'keyword');
+insert into public.unknown_texts (company_id, from_phone, phone_key, body) values (:'co', '+15405550191', '5405550191', 'Do you do gutters?');
 -- A custom field on the business's jobs (20261103000700_custom_fields.sql): the team's, never a sub's.
 insert into public.custom_field_definitions (company_id, record_type, key, label, type) values (:'co', 'job', 'permit', 'Permit number', 'text');
 -- Ann's attic fan at the house Al roofs, serviced on his visit (20261106000200_property_equipment.sql): the team's, never a sub's.
@@ -433,6 +471,8 @@ select t1070.check(t1070.sorted(array(
       and concat(p.qual, ' ', p.with_check) ~ 'private\.(worker_companies|sub_companies|sub_clock_companies|my_subs|my_sub_ids|my_sub_visits)\(')) = t1070.sorted(array[
     'public.attachments', 'public.checklist_responses', 'public.checklist_templates', 'public.equipment', 'public.job_pay', 'public.jobs', 'public.memberships',
     'public.notification_prefs', 'public.notifications', 'public.plan_files', 'public.properties', 'public.requests', 'public.sub_documents', 'public.time_entries',
+    -- A sub on the clock reads the changes to their own time, as they read the time itself (20261113001800).
+    'public.time_entry_changes',
     'public.visit_assignees', 'public.visit_equipment', 'public.visits', 'storage.objects']),
   'the rules that let a sub in are on the tables decided for them, and no others');
 select t1070.check(not exists (
@@ -502,6 +542,8 @@ select t1070.expect_error(format('insert into public.visit_assignees (company_id
 select t1070.expect_error(format('insert into public.invoices (company_id, client_id) values (%L, %L)', :'co', :'c1'), 'or an invoice');
 select t1070.expect_error(format('insert into public.messages (company_id, client_id, channel, direction, body) values (%L, %L, %L, %L, %L)', :'co', :'c1', 'note', 'internal', 'Hi'), 'or a note on a client');
 select t1070.expect_error(format('insert into public.expenses (company_id, amount, user_id, job_id) values (%L, 10, %L, %L)', :'co', 'd1070000-0000-0000-0000-000000000005', :'j1'), 'or a receipt');
+select t1070.expect_error(format('select public.save_read_expense(%L)', jsonb_build_object('company_id', :'co', 'amount', 10, 'job_id', :'j1')), 'or a read one');
+select t1070.expect_error(format('insert into public.expense_drafts (company_id, receipt_path) values (%L, %L)', :'co', :'co' || '/receipts/sub.jpg'), 'or one to confirm');
 select t1070.expect_error(format('insert into public.job_materials (company_id, job_id, name, quantity, unit, logged_by) values (%L, %L, %L, 1, %L, %L)', :'co', :'j1', 'Nails', 'box', 'd1070000-0000-0000-0000-000000000005'), 'or materials');
 select t1070.expect_error(format('insert into public.chat_messages (company_id, channel_id, author_id, body) values (%L, %L, %L, %L)', :'co', :'general', 'd1070000-0000-0000-0000-000000000005', 'Hi'), 'or post in team chat');
 select t1070.expect_error(format('insert into public.time_entries (company_id, user_id, category, started_at) values (%L, %L, %L, now())', :'co', 'd1070000-0000-0000-0000-000000000005', 'visit'), 'or clock in');
@@ -545,13 +587,22 @@ select t1070.check(array(
   -- Confirming a guide is read (its quiz answered), and its quiz and feedback: through
   -- private.readable_guide, which a sub never passes (is_member leaves subs out).
   'acknowledge_guide(uuid, integer[])',
+  -- Saying they've read what's saved about where they are (20261113001810): anyone with a sign-in at the
+  -- company records their own, a sub on the clock included, and nobody's but their own.
+  'acknowledge_worker_notices(uuid, text[], timestamp with time zone)',
   -- Adding work on site: the team on the visit only, never a sub (the job's prices are the client's).
   'add_field_line(uuid, uuid, numeric, uuid)',
-  'answer_sub_offer(uuid, boolean, text, integer, uuid)', 'apply_promo_code(text, uuid, text, uuid, uuid[])',
+  'answer_sub_offer(uuid, boolean, text, integer, uuid)',
+  -- Changing prices across repeating jobs (and price_change_history, price_change_preview and undo_price_change below): owners, admins and
+  -- the office with Quotes and sales only (each checks), never a sub.
+  'apply_price_change(uuid, uuid, jsonb, jsonb)',
+  'apply_promo_code(text, uuid, text, uuid, uuid[])',
   'apply_quote_options(uuid, jsonb, text, uuid[], jsonb)', 'apply_referral_credit(uuid, uuid)', 'approve_autopay_charge(uuid)',
   -- The company's switch for AI assistants, for the person's own assistant: on for anyone signed in
   -- themselves, and a business someone only subs for isn't counted (and tells them nothing).
   'assistant_switch()',
+  -- Attaching an unknown number's texts to a client: whoever may edit clients, never a sub.
+  'attach_unknown_texts(uuid, text, uuid, text, text)',
   'automated_campaign_states(uuid)',
   'autopay_pause(uuid, boolean)', 'autopay_set_settings(uuid, jsonb)', 'autopay_vouch(uuid, uuid[], text)', 'call_off_autopay_charge(uuid)',
   'campaign_audience(uuid, jsonb)', 'campaign_audience_choices(uuid)', 'campaign_recipient_results(uuid, integer, integer, text)', 'campaign_results(uuid, uuid)',
@@ -566,16 +617,29 @@ select t1070.check(array(
   -- Money added up for Home, Invoices and Deposits (collected_by_day, invoice_summary, stripe_fees): each
   -- runs as the caller, and a sub reads no payments or invoices, so they get nothing or zeros.
   'collected_by_day(uuid, date, date)', 'company_basics(uuid)', 'convert_quote_to_job(uuid)',
-  'create_company(text, text, text)', 'create_invoice_for_job(uuid, text, numeric, date)', 'dashboard(uuid)', 'dismiss_client_duplicate(uuid, uuid, uuid)',
+  'create_company(text, text, text)', 'create_invoice_for_job(uuid, text, numeric, date)', 'dashboard(uuid)',
+  -- Deleting a time entry with a reason (20261113001800): runs as the caller, so a sub deletes no more this way than with a plain delete.
+  'delete_time_entry(uuid, text)',
+  'dismiss_client_duplicate(uuid, uuid, uuid)',
   'drive_clients(uuid, text, integer)', 'drive_list(uuid, text, uuid, text, integer)', 'drive_restore(text, uuid)', 'drive_root(uuid)',
   'drive_set_enabled(uuid, boolean)', 'drive_trash(uuid)', 'drive_trash_file(uuid)', 'drive_trash_folder(uuid)', 'drive_trash_version(uuid)',
-  'drive_versions(uuid)', 'duplicate_quote(uuid, text, uuid, uuid, text, jsonb)',
+  'drive_versions(uuid)',
+  -- Dropping a job's scheduled payments that have no invoice, before it's billed visit by visit: owners, admins and the office with invoices only (it checks), never a sub.
+  'drop_unmade_installments(uuid)',
+  'duplicate_quote(uuid, text, uuid, uuid, text, jsonb)',
+  -- Editing a sent invoice's lines: owners, admins and the office with invoices only (it checks), never a sub.
+  'edit_invoice(uuid, jsonb, boolean, timestamp with time zone)',
   'equipment_conflicts(uuid, uuid[], date, timestamp with time zone, timestamp with time zone, uuid)', 'global_search(uuid, text, integer)',
   'guide_feedback(uuid, boolean, text)', 'guide_quiz(uuid)',
   -- Bringing work over from Jobber: an owner's or admin's, never a sub's.
-  'import_jobber(uuid, text, jsonb)', 'inactive_client_count(uuid, integer)', 'invoice_summary(uuid, date)',
+  'import_jobber(uuid, text, jsonb)', 'inactive_client_count(uuid, integer)',
+  -- Invoicing a payment of a quote's schedule early: owners, admins and the office with invoices only (it checks), never a sub.
+  'invoice_installment(uuid)',
+  'invoice_summary(uuid, date)',
   -- The checklists a job's items bring up: a sub's, for the jobs of their own visits (as job_scope).
   'job_checklists(uuid)',
+  -- What's on a job to log materials against, by name and unit: the office's and the crew's, never a sub's.
+  'job_estimated_materials(uuid)',
   'job_material_costs(uuid)', 'job_pay_accept(uuid, uuid[])', 'job_pay_cancel(uuid)', 'job_pay_costs(uuid[])', 'job_pay_covers(uuid, uuid, uuid)', 'job_pay_mark_done(uuid, date)',
   'job_pay_mark_paid(uuid[], text, date, text, numeric)', 'job_pay_start(uuid, uuid, uuid, uuid[])', 'job_pay_suggest(uuid, uuid, uuid, uuid[])',
   'job_pay_unmark_paid(uuid[])', 'job_promo_discounts(uuid)', 'job_scope(uuid)',
@@ -583,27 +647,50 @@ select t1070.check(array(
   'job_state(jobs)',
   -- The same, counted per state for the Jobs list's tabs.
   'job_state_counts(uuid)',
+  -- How many visits closing or archiving a job would remove: the office and estimators only, 0 for a sub.
+  'job_visits_to_remove(uuid)',
   -- Jobs with finished visits to invoice: runs as the caller, so a sub gets no more than the jobs of their own visits.
   'jobs_with_visits_to_invoice(uuid)', 'last_referral_ask(uuid, uuid)', 'last_review_ask(uuid, uuid)',
   'marketing_set_enabled(uuid, boolean)', 'marketing_summary(uuid)', 'material_choices(uuid)', 'merge_clients(uuid, uuid, uuid)',
   -- Saving a screen's own settings: runs as the caller, so owners and admins only, never a sub.
   'merge_company_settings(uuid, jsonb)', 'my_crew_ids(uuid)', 'my_sub_offers(boolean, uuid)',
-  'my_sub_pay_totals(uuid)', 'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
+  'my_sub_pay_totals(uuid)',
+  -- The next request, quote, job and invoice numbers (and set_next_number below): owners and admins only, never a sub.
+  'next_numbers(uuid)',
+  -- Who a postcard goes to, with their addresses: runs as the caller, so the office's clients only, none for a sub.
+  'postcard_audience(uuid, jsonb)', 'postcard_audience_summary(uuid, jsonb)',
+  -- What postcards brought in: the office with Marketing only (it checks), never a sub.
+  'postcard_results(uuid, uuid)',
+  'price_change_history(uuid, integer)', 'price_change_preview(uuid, jsonb)',
+  'promo_code_jobs(uuid, boolean)', 'promo_code_usage(uuid)', 'put_quote_package(uuid, uuid, jsonb, boolean)',
   -- The quote follow-up after an exact price goes out: the office and estimators with Sales only, never a sub.
   'quote_exact_sent(uuid)',
+  -- Why a quote can't be sent as it is (a payment's date to set, or past): runs as the caller, who reads only the quotes they can see. A sub sees none.
+  'quote_send_problem(uuid)',
   'record_photos(uuid, uuid, uuid)', 'referral_auto_apply(uuid, boolean)', 'referral_credits_for(uuid, uuid)', 'referral_give_credit(uuid)', 'referral_no_reward(uuid)',
-  'referral_set_given(uuid)', 'referral_stats(uuid, timestamp with time zone, timestamp with time zone)', 'remove_promo_code(text, uuid)',
+  'referral_set_given(uuid)', 'referral_stats(uuid, timestamp with time zone, timestamp with time zone)',
+  -- Taking a late fee off an invoice: owners, admins and the office with invoices only (it checks), never a sub.
+  'remove_late_fee(uuid)',
+  'remove_promo_code(text, uuid)',
   'remove_quote_option(uuid, uuid)', 'remove_referral_credit(uuid)',
   -- Renewing tags or an inspection sticker: runs as the caller, and only equipment managers can change them, never a sub.
   'renew_equipment_document(uuid, date, text, uuid)',
   'request_manual_charges(uuid, uuid[], numeric[])', 'review_stats(uuid)',
+  -- Saving a read receipt as an expense: runs as the caller, so a sub can no more add one this way than any other.
+  'save_read_expense(jsonb, jsonb, uuid)',
   'search_sops(uuid, text, integer, boolean)', 'send_sub_offer(uuid, timestamp with time zone)',
   -- Runs as the caller: no rule lets a sub link a checklist to an item.
-  'set_checklist_services(uuid, uuid[])', 'set_job_discount_billing(uuid, uuid, boolean)',
+  'set_checklist_services(uuid, uuid[])',
+  -- Whether a client's contacts get the client's messages: owners and admins only, never a sub.
+  'set_contact_messages(uuid, boolean)', 'set_job_discount_billing(uuid, uuid, boolean)', 'set_next_number(uuid, text, bigint)',
   'set_photo_shareable(uuid, boolean)', 'set_promo_code_jobs(uuid, boolean)',
+  -- Reviews on quotes: owners, admins and the office with the marketing area only (it checks), never a sub.
+  'set_quote_reviews(uuid, boolean, boolean, uuid[])',
   -- The standard storm prices: the owner and the office, as for a snow customer's own prices, never a sub.
   'set_snow_storm_prices(uuid, jsonb)',
   'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
+  -- Turning on what clients are told about their visits: the office with the Automations area only, never a sub.
+  'set_visit_notices(uuid, boolean, boolean)',
   -- Weather rules: the owner and the office with Settings only, never a sub.
   'set_weather_rules(uuid, jsonb)',
   -- Where forecasts come from: the same people as the weather rules, never a sub.
@@ -617,7 +704,10 @@ select t1070.check(array(
   'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
   -- Installs Paving, Roofing or Snow: owners and admins who connect apps only, never a sub.
   'trade_app_set_enabled(uuid, text, boolean)',
-  'trash_delete_forever(uuid, jsonb)', 'visit_autopay(uuid)', 'visit_contact(uuid)', 'web_analytics_save(uuid, jsonb)', 'web_stats(uuid, date, date)',
+  'trash_delete_forever(uuid, jsonb)', 'undo_price_change(uuid, uuid)', 'visit_autopay(uuid)', 'visit_contact(uuid)',
+  -- A visit's extra work without prices: a sub's, for the jobs of their own visits (as job_scope).
+  'visit_extra_scope(uuid)',
+  'web_analytics_save(uuid, jsonb)', 'web_stats(uuid, date, date)',
   'website_forms_set_enabled(uuid, boolean)', 'withdraw_sub_offer(uuid)']::text[],
   'the functions a signed-in person can call are the known list (a new one needs a decision about subs, here)');
 -- Signing in with a code, by text or by email (20261025005001_sign_in_codes.sql,
@@ -632,6 +722,9 @@ select t1070.check(not exists (select 1 from unnest(array['public.sign_in_code_s
 select t1070.check(not exists (select 1 from unnest(array['public.storage_snapshot(uuid, uuid)', 'public.storage_set_default(uuid, bigint, text)']) as f
   where has_function_privilege('authenticated', f, 'execute') or has_function_privilege('anon', f, 'execute')),
   'the storage check before an upload, and the default limit, are the server''s alone');
+-- So is reading a published showcase for a visitor (20261113001580_showcases_come_down.sql): the server asks, with its visitor limits.
+select t1070.check(not has_function_privilege('authenticated', 'public.showcase_view(text)', 'execute') and not has_function_privilege('anon', 'public.showcase_view(text)', 'execute'),
+  'reading a showcase for a visitor is the server''s alone');
 -- And so are the referral page's lead and recording a referral ask (20261031000100_referral_credits.sql,
 -- 20261031000120_referral_asks.sql): the server checks the link, Turnstile and the 6 months first.
 select t1070.check(not exists (select 1 from unnest(array['public.record_referral(uuid, uuid, text, text, text, jsonb, text)',
@@ -679,10 +772,10 @@ select t1070.check((select row(name, timezone, currency, phone, logo)::text = ro
     and array(select jsonb_object_keys(settings) order by 1) = '{branding,clock,working_hours}' from public.company_basics(:'co')),
   'company_basics: the name, time zone, currency, phone and logo, and only the clock, branding and working hours settings');
 select t1070.check(not exists (select 1 from public.company_basics(:'other')), 'and nothing about another company');
-select t1070.check(public.my_crew_ids(:'co') = '{}' and not exists (select 1 from public.material_choices(:'co')) and not exists (select 1 from public.job_material_costs(:'j1'))
+select t1070.check(public.my_crew_ids(:'co') = '{}' and not exists (select 1 from public.material_choices(:'co')) and not exists (select 1 from public.job_material_costs(:'j1')) and not exists (select 1 from public.job_estimated_materials(:'j1'))
   and not exists (select 1 from public.time_entry_places(:'co', array[:'cy_entry']::uuid[])) and not exists (select 1 from public.chat_overview(:'co'))
   and not exists (select 1 from public.chat_members(:'general')),
-  'no crews, price list, material costs, clock places or chat');
+  'no crews, price list, material costs, what a job''s materials are estimated as, clock places or chat');
 select t1070.expect_error(format('select public.add_field_line(%L, %L, 1)', :'v1', :'shingles_service'), 'add_field_line refuses, even on their own visit');
 select t1070.expect_error(format('select public.chat_mark_read(%L)', :'general'), 'chat_mark_read refuses');
 select t1070.expect_error(format('select public.chat_set_enabled(%L, false)', :'co'), 'chat_set_enabled refuses');

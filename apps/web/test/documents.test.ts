@@ -10,6 +10,7 @@ import { DEFAULT_TEMPLATE, templateSettings, type TemplateSettings } from "@crew
 import { getPreset } from "@crewtavo/core/presets";
 import { SITE_ADJUSTMENT_NAME } from "@crewtavo/core/estimates";
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -48,6 +49,7 @@ import {
   websiteLabel,
   withInitials,
 } from "../src/features/documents/build";
+import { contrastRatio } from "../src/features/documents/words";
 import { invoiceFill } from "../src/features/documents/data";
 import { documentBlocks, EstimateDocument } from "../src/features/documents/EstimateDocument";
 import styles from "../src/features/documents/EstimateDocument.module.css";
@@ -149,6 +151,35 @@ describe("words and numbers on the page", () => {
       address: ["1 Main"],
       logo: `/api/public/logo/${co}/abc.png`,
     });
+  });
+
+  it("puts words on a brand color at 4.5:1 or better, whatever the color (WCAG 1.4.3)", () => {
+    // Every color on a grid across the whole range: 46,656 of them, the awkward mid-tones included.
+    let worst = { ratio: 21, color: "" };
+    for (let r = 0; r <= 255; r += 7.285) for (let g = 0; g <= 255; g += 7.285) for (let b = 0; b <= 255; b += 7.285) {
+      const color = `#${[r, g, b].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`;
+      const ratio = contrastRatio(inkOn(color), color);
+      if (ratio < worst.ratio) worst = { ratio, color };
+    }
+    expect(worst.ratio, `the worst is ${worst.color} at ${worst.ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    // The mid-tones white and ink both miss on (3.87:1 at worst, each) get black.
+    expect(contrastRatio("#ffffff", "#e8590c")).toBeLessThan(4.5);
+    expect(contrastRatio("#0f2a35", "#e8590c")).toBeLessThan(4.5);
+    expect(inkOn("#e8590c")).toBe("#000000");
+    expect(contrastRatio("#000000", "#e8590c")).toBeGreaterThanOrEqual(4.5);
+    // Where white or ink is enough, it's still the one used: dark colors get white, light ones ink.
+    expect(inkOn("#3b7d23")).toBe("#ffffff");
+    expect(inkOn("#ffffff")).toBe("#0f2a35");
+    expect(inkOn("not a color")).toBe("#ffffff");
+    expect(contrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 5);
+  });
+
+  it("uses the one rule on the Client Hub and the showcase page too", () => {
+    const hub = readFileSync(new URL("../src/features/hub/HubPage.tsx", import.meta.url), "utf8");
+    expect(hub).toContain('import { inkOn } from "@/features/documents/words";');
+    // The Hub's own rule put white on colors as light as mid-grey (2.1:1).
+    expect(hub).not.toContain("function inkOn(");
+    expect(readFileSync(new URL("../src/features/public/ShowcasePage.tsx", import.meta.url), "utf8")).toContain('["--on-brand" as string]: inkOn(brand)');
   });
 
   it("keeps words readable on the template's color", () => {
@@ -293,6 +324,18 @@ describe("a quote as a document", () => {
     const invoice = { number: 5, issued_on: "2026-10-01", due_on: null, subject: "Roof", notes: null, subtotal: 0, discount_amount: 0, tax_amount: 0, total: 0, retainage_amount: 0, balance_due: 0, lines: [], payments: [] };
     expect(invoiceDocument({ ...invoice, pdf_fields: fields }, { timeZone: "UTC" }).facts).toEqual(["Permit number: P-1042", "Unit: Heat pump"]);
     expect(invoiceDocument(invoice, { timeZone: "UTC" })).not.toHaveProperty("facts");
+  });
+
+  it("prints an invoice's late fee line as the last paragraph of its notes, on the page the client gets", () => {
+    const invoice = { number: 5, issued_on: "2026-10-01", due_on: "2026-10-31", subject: "Roof", notes: "Thank you.", subtotal: 0, discount_amount: 0, tax_amount: 0, total: 0, retainage_amount: 0, balance_due: 0, lines: [], payments: [] };
+    const line = "A late fee of $25.00 is added once if this invoice is still unpaid 7 days after its due date.";
+    const doc = invoiceDocument(invoice, { timeZone: "UTC", lateFeeNote: line });
+    expect(doc.notes).toBe(`Thank you.\n\n${line}`);
+    expect(page({}, doc)).toContain(line);
+    expect(invoiceDocument({ ...invoice, notes: null }, { timeZone: "UTC", lateFeeNote: line }).notes).toBe(line);
+    // Nothing to say (late fees off, or none could go on this invoice): the notes are as written.
+    expect(invoiceDocument(invoice, { timeZone: "UTC", lateFeeNote: null }).notes).toBe("Thank you.");
+    expect(invoiceDocument({ ...invoice, notes: null }, { timeZone: "UTC" }).notes).toBeNull();
   });
 
   it("says Tax exempt for a tax-exempt client charged no tax, with their certificate number", () => {

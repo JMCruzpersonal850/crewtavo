@@ -162,7 +162,7 @@ beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date
 afterEach(() => vi.useRealTimers());
 
 describe("campaign emails with a slow mail server", () => {
-  const company = { name: "Acme Lawn Care", email: null, phone: null, address: {}, settings: { marketing: { enabled: true } } };
+  const company = { name: "Acme Lawn Care", email: null, phone: null, address: { line1: "1 Main St", city: "Radford", region: "VA", postal_code: "24141" }, settings: { marketing: { enabled: true } } };
   function campaignTables(people: number) {
     return {
       campaigns: [{ id: "camp-1", company_id: "co-1", status: "sending", subject: "Fall cleanup", body: "Hi {{client.first_name}}, leaves are coming.", company, sent_count: 0, failed_count: 0, finished_at: null }],

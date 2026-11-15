@@ -2,9 +2,15 @@
  * Jobs and recurring services: made and changed the way the job screens make them
  * (apps/web/src/features/jobs/JobDialogs.tsx), with services from the price list as their lines,
  * and a recurring job's upcoming visits made right away (services/schedule.ts generateVisits).
- * Also importing a whole schedule from another system: repeating series, one-time jobs and tasks.
+ * Also importing a whole schedule from another system: repeating series, one-time jobs and tasks;
+ * extra work on one visit of a repeating job (visit_extras: billed once with that visit, by the
+ * database's rules); and changing prices across repeating jobs, previewed first and applied only as
+ * previewed (price_change_preview, apply_price_change), the way the Jobs page does it.
  */
-import { billingText, buildSimpleRule, describeRule, localDate, normalizeKey, occurrenceDates, parseRule, ruleDay, sameStreet, zonedTimeToUtc } from "@crewtavo/core";
+import {
+  billingText, buildSimpleRule, describeRule, extraState, extraStateText, localDate, normalizeKey, occurrenceDates, parseRule, priceChangeGroups, priceChangeTotals, ruleDay, sameStreet,
+  VISIT_HORIZON_DAYS, zonedTimeToUtc, type PriceChange, type PriceChangePreview,
+} from "@crewtavo/core";
 import { z } from "zod";
 import { createVisits, generateVisits } from "../services/schedule";
 import { customFieldsArg, customFieldsPatch } from "./customFields";
@@ -53,6 +59,52 @@ const lineInput = z.object({
   unit: z.string().trim().min(1).max(20).optional(),
   taxable: z.boolean().optional(),
 });
+
+/** A change of prices across repeating jobs, as the tools take it (core PriceChange is what the database is asked). */
+const priceChangeInput = {
+  kind: z.enum(["percent", "amount"]).describe("percent: by a percentage. amount: by an amount added to (or taken off) each line's price."),
+  value: z.number().min(-100000).max(100000).refine((v) => v !== 0, "Give a change that isn't zero.").describe("Above 0 raises prices, below lowers them: 5 with percent is up 5%, -2 with amount is $2 off each line."),
+  round: z.enum(["cent", "half", "dollar"]).default("cent").describe("Round each new price to the cent, to 50 cents or to the dollar."),
+  line_service_id: z.uuid().optional().describe("Only this price list item's lines (list_services). Without it, every priced line."),
+  with_service_id: z.uuid().optional().describe("Only jobs that have a line for this price list item."),
+  client_tag: z.string().trim().min(1).max(100).optional().describe("Only jobs of clients with this tag."),
+  crew_id: z.uuid().optional().describe("Only jobs whose usual crew is this one."),
+  job_ids: z.array(z.uuid()).max(2000).optional().describe("Only these jobs."),
+};
+const priceChangeOfArgs = (a: { kind: "percent" | "amount"; value: number; round: "cent" | "half" | "dollar"; line_service_id?: string; with_service_id?: string; client_tag?: string; crew_id?: string; job_ids?: string[] }): PriceChange => ({
+  kind: a.kind,
+  value: a.value,
+  round: a.round,
+  ...(a.line_service_id && { line_service_id: a.line_service_id }),
+  ...((a.with_service_id || a.client_tag || a.crew_id || a.job_ids) && {
+    jobs: { ...(a.with_service_id && { service_id: a.with_service_id }), ...(a.client_tag && { client_tag: a.client_tag }), ...(a.crew_id && { crew_id: a.crew_id }), ...(a.job_ids && { job_ids: a.job_ids }) },
+  }),
+});
+
+/** What a change would do, from the database (nothing is changed). */
+async function previewPrices(ctx: ToolContext, change: PriceChange): Promise<PriceChangePreview> {
+  const { data, error } = await ctx.db.rpc("price_change_preview", { p_company: ctx.companyId, p_change: change as never });
+  if (error) throw new Error(friendly(error.message));
+  return data as unknown as PriceChangePreview;
+}
+
+/** A job's extra work on single visits, each with its visit's day and where it stands (core extraState). */
+async function extraWork(ctx: ToolContext, filter: { job_id?: string; visit_id?: string }) {
+  let q = ctx.db
+    .from("visit_extras")
+    .select("id, job_id, visit_id, service_id, name, description, quantity, unit, unit_price, taxable, invoice_id, visit_was_on, added_in_field_at, visit:visits(id, status, scheduled_on, invoice_id), invoice:invoices(number, status)")
+    .eq("company_id", ctx.companyId);
+  if (filter.visit_id) q = q.eq("visit_id", filter.visit_id);
+  if (filter.job_id) q = q.eq("job_id", filter.job_id);
+  const { data, error } = await q.order("created_at").limit(500);
+  if (error) return null;
+  return (data ?? []).map(({ visit, invoice, ...e }) => ({
+    ...e,
+    visit_date: visit?.scheduled_on ?? e.visit_was_on,
+    added_by_crew: Boolean(e.added_in_field_at),
+    state: extraStateText(extraState(e, visit), invoice?.number),
+  }));
+}
 
 /** Price lines for a job, from the price list where they name an item. */
 async function jobLines(ctx: ToolContext, jobId: string, lines: ReadonlyArray<z.infer<typeof lineInput>>) {
@@ -117,7 +169,8 @@ const jobFields = {
   ...customFieldsArg,
 };
 
-const VISIT_DATES_AHEAD = 60;
+/** A recurring job's visits are made this far ahead (the same year the nightly task keeps). */
+const VISIT_DATES_AHEAD = VISIT_HORIZON_DAYS;
 
 export const jobTools = {
   list_jobs: tool({
@@ -170,13 +223,117 @@ export const jobTools = {
       return {
         job: { ...job, repeats: job.recurrence_rule ? describeRule(job.recurrence_rule) : null, billing: billingText(job), months_to_invoice: due.data ?? [] },
         lines: lines.error ? "Your role doesn't see prices." : lines.data,
+        // Extra work on single visits of a repeating job: billed once with its visit, never part of the job's price.
+        ...(job.kind === "recurring" && { extra_work: (await extraWork(ctx, { job_id: a.job_id })) ?? [] }),
         next_visits: visits,
       };
     },
   }),
+  list_extra_work: tool({
+    description:
+      "Extra work on single visits of a repeating job (mulch, an aeration, a storm cleanup): what, how many, its price, the visit's date, whether the crew added it on site, and where it stands (billed when the visit is done, ready to invoice, on an invoice, or not billed because its visit was cancelled or removed). It's billed once, on the invoice that bills its visit, and doesn't change the job's price. Give a job or one visit. Only for a role that sees prices.",
+    input: z.object({ job_id: z.uuid().optional(), visit_id: z.uuid().optional(), ...companyArg }),
+    run: async (ctx, a) => {
+      if (!a.job_id && !a.visit_id) throw new Error("Give a job_id or a visit_id.");
+      const extras = await extraWork(ctx, a);
+      if (!extras) throw new Error("Your role doesn't see prices.");
+      return { extra_work: extras };
+    },
+  }),
+  add_extra_work: tool({
+    description:
+      "Put extra work on one visit of a repeating job: an item from the price list (service_id) or a typed line (name and unit_price), and how many. It's billed once, on the invoice that bills that visit, once the visit is done, and doesn't change the job's price or repeat on other visits. On an autopay job its invoice waits for the office's OK before the card is charged. Not on a one-off job (add a line with update_job), a cancelled visit, or a visit already on an invoice. To move one to another visit of the same job, give extra_id and the new visit_id.",
+    input: z.object({
+      visit_id: z.uuid().describe("The visit it's done on (get_job's next_visits, or get_schedule)."),
+      extra_id: z.uuid().optional().describe("An extra already there, to move it to this visit instead of adding one."),
+      service_id: z.uuid().optional().describe("A price list item (list_services): its name, unit, price and tax come with it."),
+      name: z.string().trim().min(1).max(200).optional().describe("For work that isn't on the price list."),
+      description: z.string().trim().max(2000).nullable().optional(),
+      quantity: z.number().gt(0).max(100000).default(1),
+      unit_price: z.number().min(0).max(1e7).optional().describe("Overrides the price list's price."),
+      unit: z.string().trim().min(1).max(20).optional(),
+      taxable: z.boolean().optional(),
+      ...companyArg,
+    }),
+    area: "jobs",
+    run: async (ctx, a) => {
+      if (a.extra_id) {
+        await changed(ctx.db.from("visit_extras").update({ visit_id: a.visit_id }).eq("id", a.extra_id).eq("company_id", ctx.companyId).select("id"), "That extra work");
+        return { moved: true, extra_work: await extraWork(ctx, { visit_id: a.visit_id }) };
+      }
+      const visit = await one(ctx.db.from("visits").select("id, job_id").eq("id", a.visit_id).eq("company_id", ctx.companyId).maybeSingle(), "That visit");
+      if (!visit.job_id) throw new Error("Extra work goes on a visit for a job.");
+      const [line] = await jobLines(ctx, visit.job_id, [a]);
+      const { sort: _sort, ...row } = line!;
+      const added = await one(ctx.db.from("visit_extras").insert({ ...row, visit_id: a.visit_id }).select("id").single(), "That visit");
+      return { added: true, id: added.id, extra_work: await extraWork(ctx, { visit_id: a.visit_id }) };
+    },
+  }),
+  delete_extra_work: tool({
+    description: "Remove extra work from a visit. Not once it's on an invoice: change the invoice instead (edit_invoice), or void it.",
+    input: z.object({ extra_id: z.uuid(), ...companyArg }),
+    area: "jobs",
+    destructive: true,
+    run: async (ctx, a) => {
+      await changed(ctx.db.from("visit_extras").delete().eq("id", a.extra_id).eq("company_id", ctx.companyId).select("id"), "That extra work");
+      return { deleted: true };
+    },
+  }),
+  preview_price_change: tool({
+    description:
+      "What changing prices across repeating jobs would do, with nothing changed: each active repeating job it reaches, each line's old and new price, the job's old and new price for a visit (or a month, for a fixed price), totals, and for jobs on autopay whether the new price is over the company's autopay limit (those charges would wait for the office's OK; clients aren't asked to agree again). Lines at $0, discounts, one-off jobs and extra work on single visits are never changed. Always show the person this before change_prices. For owners, admins and the office with Quotes and sales.",
+    input: z.object({ ...priceChangeInput, limit: z.number().int().min(1).max(500).default(100).describe("How many jobs to list; the totals count them all."), ...companyArg }),
+    run: async (ctx, a) => {
+      const preview = await previewPrices(ctx, priceChangeOfArgs(a));
+      return { ...preview, jobs: preview.jobs.slice(0, a.limit), jobs_not_listed: Math.max(0, preview.jobs.length - a.limit) };
+    },
+  }),
+  change_prices: tool({
+    description:
+      "Change prices across repeating jobs, exactly as preview_price_change showed. Give the same change, and expect: the jobs, lines and new_price from that preview's totals. If the preview would come out differently now, nothing is changed and you're told to preview again. It changes the jobs' lines from now on: invoices already made keep their prices, and nothing is sent to clients. Each job's activity records its old and new prices. It can be undone with undo_price_change until one of the jobs is invoiced. Only after the person has seen the preview and said yes.",
+    input: z.object({
+      ...priceChangeInput,
+      expect: z.object({ jobs: z.number().int().min(1), lines: z.number().int().min(1), new_price: z.number() }).describe("The totals of the preview the person agreed to: jobs, lines and new_price."),
+      ...companyArg,
+    }),
+    area: "jobs",
+    run: async (ctx, a) => {
+      const change = priceChangeOfArgs(a);
+      const preview = await previewPrices(ctx, change);
+      const totals = priceChangeTotals(preview.jobs);
+      if (totals.jobs !== a.expect.jobs || totals.lines !== a.expect.lines || Math.abs(totals.new_price - a.expect.new_price) > 0.005) {
+        throw new Error(`That isn't what the change would do now (${totals.jobs} jobs, ${totals.lines} lines, new prices come to ${totals.new_price.toFixed(2)}). Preview it again and show the person before changing anything.`);
+      }
+      // A group of whole jobs a call, each one transaction, all under one id so the change is one to undo.
+      const id = crypto.randomUUID();
+      let jobs = 0;
+      for (const group of priceChangeGroups(preview.jobs)) {
+        const { error } = await ctx.db.rpc("apply_price_change", { p_company: ctx.companyId, p_id: id, p_change: change as never, p_lines: group.lines as never });
+        if (error) throw new Error(jobs ? `Prices changed on ${jobs} of ${totals.jobs} jobs. The rest weren't changed: ${friendly(error.message)}` : friendly(error.message));
+        jobs += group.jobs;
+      }
+      return { changed: true, price_change_id: id, summary: preview.summary, jobs, lines: totals.lines, old_price: totals.old_price, new_price: totals.new_price };
+    },
+  }),
+  undo_price_change: tool({
+    description:
+      "Undo a whole price change (change_prices, or Change prices on the Jobs page): every line it changed goes back to its old price, except lines someone has changed since. Refused once an invoice has been made for one of its jobs since. Without price_change_id it lists the latest changes, with which can still be undone.",
+    input: z.object({ price_change_id: z.uuid().optional(), ...companyArg }),
+    area: "jobs",
+    run: async (ctx, a) => {
+      if (!a.price_change_id) {
+        const { data, error } = await ctx.db.rpc("price_change_history", { p_company: ctx.companyId });
+        if (error) throw new Error(friendly(error.message));
+        return { price_changes: data };
+      }
+      const { data, error } = await ctx.db.rpc("undo_price_change", { p_company: ctx.companyId, p_id: a.price_change_id });
+      if (error) throw new Error(friendly(error.message));
+      return { undone: true, ...(data as { restored: number; left: number }) };
+    },
+  }),
   create_job: tool({
     description:
-      "Make a job for a client: one-off work, or a recurring service (give repeat). Its lines come from the price list or are custom. A recurring job's visits for the next two months are scheduled right away (needs the Schedule area); a one-off job's visit can be scheduled with visit. A lead becomes an active client.",
+      "Make a job for a client: one-off work, or a recurring service (give repeat). Its lines come from the price list or are custom. A recurring job's visits for the next year are scheduled right away (needs the Schedule area); a one-off job's visit can be scheduled with visit. A lead becomes an active client.",
     input: z.object({
       client_id: z.uuid(),
       property_id: z.uuid().optional().describe("Default: the client's only property."),
@@ -192,7 +349,7 @@ export const jobTools = {
   }),
   update_job: tool({
     description:
-      "Change a job: its title, instructions, crew, visit time and length, billing (a recurring job's pricing and invoice_schedule), how it repeats, first or last date, season, custom fields, or its lines (lines replaces them all, apart from a promo code's discount, which stays). Set ends_on (or repeat.times) to stop a recurring job, status archived to put it away. paused pauses a recurring job (a vacation, the off season) until resume_on, or until paused is set false: its upcoming visits that haven't started come off, and no new visits, monthly invoices or plan charges are made while it's paused; resuming makes its visits again from today. Work you mark done (requires_invoicing) on a job charged automatically (autopay) waits for the office to approve its charge. A recurring job's new visits follow the change; the ones already on the schedule change too (title, crew, time) only with upcoming_visits, so ask the person whether they want that.",
+      "Change a job: its title, instructions, crew, visit time and length, billing (a recurring job's pricing and invoice_schedule), how it repeats, first or last date, season, custom fields, or its lines (lines replaces them all, apart from a promo code's discount, which stays). Set ends_on (or repeat.times) to stop a recurring job, status archived to put it away: archiving or closing (completed) a recurring job takes the upcoming visits its schedule made off the schedule, unless work is logged on them, and setting it active again makes them again. A one-off job moves to requires_invoicing by itself when its last visit is finished. paused pauses a recurring job (a vacation, the off season) until resume_on, or until paused is set false: its upcoming visits that haven't started come off, and no new visits, monthly invoices or plan charges are made while it's paused; resuming makes its visits again from today. Work you mark done (requires_invoicing) on a job charged automatically (autopay) waits for the office to approve its charge. A recurring job's new visits follow the change; the ones already on the schedule change too (title, crew, time) only with upcoming_visits, so ask the person whether they want that.",
     input: z.object({
       job_id: z.uuid(),
       ...jobFields,
@@ -257,7 +414,7 @@ export const jobTools = {
   }),
   import_schedule: tool({
     description:
-      "Bring a schedule in from another system, up to 500 items: repeating series (recurring jobs), one-time jobs with their visit, and tasks or events with no client. Each is placed by client_id or property_id, or found by the address (a property's street) or the client's name. Run it with mode \"preview\" first: it says where each item goes and what it can't place, without changing anything. Then the same items with mode \"commit\". Items already here (same client, title and schedule) are skipped, so running it again adds nothing twice. Recurring jobs get their visits for the next two months.",
+      "Bring a schedule in from another system, up to 500 items: repeating series (recurring jobs), one-time jobs with their visit, and tasks or events with no client. Each is placed by client_id or property_id, or found by the address (a property's street) or the client's name. Run it with mode \"preview\" first: it says where each item goes and what it can't place, without changing anything. Then the same items with mode \"commit\". Items already here (same client, title and schedule) are skipped, so running it again adds nothing twice. Recurring jobs get their visits for the next year.",
     input: z.object({
       mode: z.enum(["preview", "commit"]),
       items: z

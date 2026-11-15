@@ -4,6 +4,7 @@
  * it's taking longer than usual (.skeleton-slow, all CSS).
  */
 import type { CSSProperties } from "react";
+import { t } from "@/lib/i18n";
 
 export function Skeleton({ width, height = 12, radius, circle, style }: { width?: number | string; height?: number | string; radius?: number; circle?: boolean; style?: CSSProperties }) {
   return <span className={circle ? "skeleton skeleton-circle" : "skeleton"} style={{ width: width ?? "100%", height, borderRadius: radius, ...style }} aria-hidden="true" />;
@@ -18,10 +19,10 @@ export function SkeletonText({ lines = 3, lastWidth = "60%" }: { lines?: number;
 }
 
 /** Shown over the top of a skeleton that's still up after three seconds; out of the flow, so nothing moves. */
-const SlowCaption = () => <span className="skeleton-slow" aria-hidden="true">Taking longer than usual…</span>;
+const SlowCaption = () => <span className="skeleton-slow" aria-hidden="true">{t("Taking longer than usual…")}</span>;
 
 /** Wrapper that announces loading to screen readers and delays the fade-in. */
-export function Loading({ children, label = "Loading", className }: { children: React.ReactNode; label?: string; className?: string }) {
+export function Loading({ children, label = t("Loading"), className }: { children: React.ReactNode; label?: string; className?: string }) {
   return (
     <div className={className ? `skeleton-wrap ${className}` : "skeleton-wrap"} role="status" aria-live="polite" aria-busy="true">
       <span className="sr-only">{label}…</span>
@@ -121,7 +122,7 @@ export function DetailSkeleton() {
 export function ShellSkeleton() {
   return (
     <div className="shell skeleton-wrap" role="status" aria-busy="true">
-      <span className="sr-only">Loading Crewtavo…</span>
+      <span className="sr-only">{t("Loading Crewtavo…")}</span>
       <aside className="sidebar" aria-hidden="true">
         <div className="row" style={{ margin: "0 0 14px 6px" }}><Skeleton width={34} height={34} radius={8} /><Skeleton width={100} height={14} /></div>
         {Array.from({ length: 11 }, (_, i) => (

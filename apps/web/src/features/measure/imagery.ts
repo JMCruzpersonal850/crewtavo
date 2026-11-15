@@ -17,9 +17,11 @@ import {
   esriImageryTiles,
   GOOGLE_SESSION_URL,
   googleSatelliteTiles,
+  googleViewportUrl,
   stateImagery,
   stateImageryAt,
   stateTileUrl,
+  type GoogleViewport,
   type MapKeys,
   type MapSettings,
   type StateImagery,
@@ -68,7 +70,8 @@ export function imageryInfo(id: ImageryId): ImageryInfo {
 /**
  * The credit for a source, as shown on the map and under a saved drawing. Public-domain sources
  * don't legally need one, but their publishers ask for it; DC's (CC BY), OpenStreetMap's (ODbL),
- * Esri's and Google's terms require it.
+ * Esri's and Google's terms require it. Google's is this only until Google says what to show for
+ * what's on screen (googleViewportCredit), and when it can't be asked.
  */
 export function imageryCredit(id: ImageryId): string {
   const state = stateOf(id);
@@ -252,6 +255,44 @@ async function googleSession(key: string): Promise<string> {
   return body.session;
 }
 
+/**
+ * What the map shows, as Google's viewport request takes it. The map counts zoom in 512-pixel
+ * tiles and Google's tiles are 256, so the tiles in view are one level further in; the edges are
+ * kept on the globe (Google takes each strictly inside its range), and a view wider than the world
+ * asks about all of it.
+ */
+export function googleViewport(bounds: { north: number; south: number; east: number; west: number }, mapZoom: number): GoogleViewport {
+  const inside = (value: number, limit: number) => Math.round(Math.min(limit, Math.max(-limit, value)) * 1e6) / 1e6;
+  // 190 is the same meridian as -170.
+  const wrap = (lng: number) => ((((lng + 180) % 360) + 360) % 360) - 180;
+  const world = bounds.east - bounds.west >= 360;
+  return {
+    zoom: Math.min(22, Math.max(0, Math.floor(mapZoom) + 1)),
+    north: inside(bounds.north, 89.999999),
+    south: inside(bounds.south, 89.999999),
+    east: world ? 179.999999 : inside(wrap(bounds.east), 179.999999),
+    west: world ? -179.999999 : inside(wrap(bounds.west), 179.999999),
+  };
+}
+
+/**
+ * The data credit Google asks to be shown with its tiles for what's on screen (the viewport
+ * request's `copyright`), asked with the session the tiles use. Null when Google can't be asked or
+ * doesn't say: the map keeps the plain credit then.
+ */
+export async function googleViewportCredit(key: string, view: GoogleViewport): Promise<string | null> {
+  let session: string;
+  try {
+    session = await googleSession(key);
+  } catch {
+    return null;
+  }
+  const res = await fetch(googleViewportUrl(key, session, view), { signal: AbortSignal.timeout(8000) }).catch(() => null);
+  if (!res?.ok) return null;
+  const body = (await res.json().catch(() => null)) as { copyright?: unknown } | null;
+  return typeof body?.copyright === "string" && body.copyright.trim() ? body.copyright.trim() : null;
+}
+
 function googleKeyProblem(status: number, error?: { message?: string; status?: string }): string {
   const text = `${error?.status ?? ""} ${error?.message ?? ""}`;
   if (/not valid|API_KEY_INVALID/i.test(text)) return "Google didn't accept this key. Check that you copied all of it.";
@@ -361,7 +402,9 @@ export async function rasterSource(id: ImageryId, keys: MapKeys): Promise<Raster
       return { type: "raster", tiles: [esriImageryTiles(keys.esri_key)], tileSize: 512, maxzoom: 19, attribution };
     case "google":
       if (!keys.google_key) throw new KeyError("Google satellite needs a key. An admin can add one in Settings > Maps.", "google");
-      return { type: "raster", tiles: [googleSatelliteTiles(keys.google_key, await googleSession(keys.google_key))], tileSize: 256, maxzoom: 21, attribution };
+      // No attribution here: the map shows Google's logo and its credit for what's on screen itself,
+      // where it can't be folded away (googleAttribution.ts).
+      return { type: "raster", tiles: [googleSatelliteTiles(keys.google_key, await googleSession(keys.google_key))], tileSize: 256, maxzoom: 21 };
     case "street":
       return null; // drawn from the street map's own layers
     case "usgs":

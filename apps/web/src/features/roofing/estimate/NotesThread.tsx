@@ -4,7 +4,9 @@
  * with photos. Only the team sees them, never the homeowner. On site (composer "site") the note box
  * comes first and everything is sized for a finger; in the office the thread comes first.
  */
+import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ChangeEvent, type FormEvent } from "react";
+import { canDrawOn, DrawOnPhoto, OriginalLink } from "@/components/DrawOnPhoto";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Face } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
@@ -183,9 +185,14 @@ function Avatar({ author }: { author: NoteAuthor | undefined }) {
 }
 
 function Photo({ photo, n, canDelete, onDelete }: { photo: QuotePhoto; n: number; canDelete: boolean; onDelete: () => void }) {
+  const session = useSession();
+  const queryClient = useQueryClient();
   const label = photo.caption || `Photo ${n}`;
   return (
     <span className={styles.photo}>
+      {/* Drawn on: shown with the drawing, the photo as taken a tap away. */}
+      {photo.marked_path && <OriginalLink url={photo.originalUrl} label={label} />}
+      {canDrawOn(session, photo) && <DrawOnPhoto photo={photo} label={label} onSaved={() => void queryClient.invalidateQueries({ queryKey: ["quote-notes"] })} />}
       {photo.url ? (
         <a href={photo.url} target="_blank" rel="noreferrer" aria-label={`Open ${label}`}>
           <img src={photo.url} alt={label} loading="lazy" />

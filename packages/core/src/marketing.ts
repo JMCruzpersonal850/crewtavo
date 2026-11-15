@@ -92,6 +92,22 @@ export function quietHoursEnd(at: Date, timeZone: string): Date {
   return zonedTimeToUtc(localTime(at, timeZone) < "09:00" ? day : addDays(day, 1), "09:00", timeZone);
 }
 
+/**
+ * Between 9pm and 8am in the company's time zone, when a rule's text to a client waits for morning
+ * (47 CFR 64.1200(c)(1) keeps solicitations to 8am to 9pm at the called party's location; nobody
+ * wants a reminder at midnight either). Review asks keep their own, longer wait (inQuietHours).
+ */
+export function inTextQuietHours(at: Date, timeZone: string): boolean {
+  const time = localTime(at, timeZone);
+  return time >= "21:00" || time < "08:00";
+}
+
+/** The next 8am in the company's time zone. */
+export function textQuietHoursEnd(at: Date, timeZone: string): Date {
+  const day = localDate(at, timeZone);
+  return zonedTimeToUtc(localTime(at, timeZone) < "08:00" ? day : addDays(day, 1), "08:00", timeZone);
+}
+
 /** 1:30pm, `days` days after the ask, in the company's time zone. */
 export function reminderAt(sentAt: Date, days: number, timeZone: string): Date {
   return zonedTimeToUtc(addDays(localDate(sentAt, timeZone), days), REMINDER_TIME, timeZone);
@@ -163,12 +179,12 @@ export interface AskPlan {
   setup?: true;
 }
 
-/** "Ana texted STOP, so texts to them are off." */
-export const textsOffReason = (name: string) => `${name} texted STOP, so texts to them are off.`;
+/** "Ana asked not to be texted, so texts to them are off." Whether they texted STOP or told the office. */
+export const textsOffReason = (name: string) => `${name} asked not to be texted, so texts to them are off.`;
 export const EMAIL_NOT_CONNECTED = "Email isn't connected yet, so review asks can't go by email. An admin can connect it in Settings → Email.";
 export const TEXTS_NOT_SET_UP = "Texting isn't set up on this Crewtavo, so review asks can't go by text.";
 
-/** A client who texted STOP gets no texts from Crewtavo. */
+/** A client who texted STOP, or asked the office to stop texts, gets no texts from Crewtavo. */
 export const textsOff = (client: { sms_opt_out_at?: string | null } | null | undefined) => Boolean(client?.sms_opt_out_at);
 
 /**
@@ -554,6 +570,44 @@ export function withStopLine(text: string): string {
   return /\bSTOP\b/.test(text) ? text : `${text.trimEnd()}\n\n${STOP_LINE}`;
 }
 
+/** The characters a text can use and still be 160 to a segment (GSM 03.38's basic set); the ones after the space count as two. */
+const GSM_BASIC = new Set("@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà");
+const GSM_EXTENDED = new Set("^{}\\[~]|€");
+
+/**
+ * How many segments a text goes as (each is billed, and long ones arrive in parts): 160 characters
+ * in one, or 153 to a part, while every character is in the phone alphabet; with anything else (an
+ * emoji, a curly quote) 70 in one, or 67 to a part.
+ */
+export function smsSegments(text: string): number {
+  let units = 0;
+  let plain = true;
+  for (const char of text) {
+    if (GSM_BASIC.has(char)) units += 1;
+    else if (GSM_EXTENDED.has(char)) units += 2;
+    else {
+      plain = false;
+      break;
+    }
+  }
+  if (plain) return units <= 160 ? 1 : Math.ceil(units / 153);
+  return text.length <= 70 ? 1 : Math.ceil(text.length / 67);
+}
+
+/**
+ * A text with STOP_LINE after it, for the first text a number gets and for promotional ones (Twilio's
+ * messaging policy: the initial message says how to opt out). On a line of its own when that fits
+ * in as many segments as joining it on with a space would take, so a short text stays one segment
+ * where it can; left alone when the business's own words already say STOP in capitals.
+ */
+export function addStopLine(text: string): string {
+  if (/\bSTOP\b/.test(text)) return text;
+  const body = text.trimEnd();
+  const tight = `${body} ${STOP_LINE}`;
+  const apart = `${body}\n\n${STOP_LINE}`;
+  return smsSegments(apart) <= smsSegments(tight) ? apart : tight;
+}
+
 /**
  * What a text from a client means: "stop" (texts off), "start" (back on) or null (an ordinary text).
  * Read as Twilio reads it: the whole message is the word, in any case, with spaces before it and
@@ -570,6 +624,128 @@ export function smsKeyword(body: string | null | undefined): "stop" | "start" | 
   if (STOP_WORDS.includes(word)) return "stop";
   if (START_WORDS.includes(word)) return "start";
   return null;
+}
+
+/**
+ * Under the phone box on a public form, in the business's name: what giving a number agrees to.
+ * Twilio's messaging policy wants a recipient "informed of the sender's identity, how a recipient's
+ * phone number will be used" and "made aware of how to withdraw" before they're texted.
+ */
+export const textDisclosure = (company: string) =>
+  `By giving your number you agree that ${company} may text you about this request and your visits. Msg & data rates may apply. Reply STOP to stop, HELP for help.`;
+
+/** Where a number that gets texts came from (clients.sms_consent_source, client_contacts.sms_consent_source). */
+export type TextConsentSource = "booking_form" | "referral_form" | "website_form" | "hub" | "office";
+
+/**
+ * Where a client's number came from, for the office: "Given on your booking form". `on` is the day,
+ * already written out. Null source: a number from before this was kept.
+ */
+export function textConsentLine(source: string | null | undefined, on: string | null, contact = false): string {
+  const when = on ? `, ${on}` : "";
+  switch (source) {
+    case "booking_form": return `They gave this number on your booking form${when}, agreeing to texts.`;
+    case "referral_form": return `They gave this number on a referral page${when}, agreeing to texts.`;
+    case "website_form": return `They gave this number on your website's form${when}.`;
+    case "hub": return `They gave this number in their Client Hub${when}.`;
+    case "office": return contact ? `Ticked for texts by the office${when}.` : `Number entered by the office${when}. Text them only if they agreed to it.`;
+    default: return contact ? "Ticked for texts before Crewtavo kept who agreed." : "No record of where this number came from. Text them only if they agreed to it.";
+  }
+}
+
+/**
+ * For the business, where it sets texting up: who it may text is its own to see to. Twilio's
+ * messaging policy: "you must obtain prior express consent from the message recipient", and
+ * promotional messages need "prior express written consent from the recipient".
+ */
+export const TEXT_CONSENT_HINT =
+  "Text only people who agreed to get texts from you. Texts that promote something (a sale, a discount, a new service) need their agreement in writing.";
+
+/** Under "Text the client" in a rule: the same, in a line. */
+export const RULE_TEXT_CONSENT_HINT = "Goes to clients who agreed to get your texts. A text that promotes something needs their agreement in writing.";
+
+/** Under "Email the client" in a rule: these emails carry no unsubscribe link, so they aren't for promotions. */
+export const RULE_EMAIL_HINT = "For messages about a client's own work. For promotions, use Marketing → Campaigns: a rule's email has no unsubscribe link.";
+
+/** Beside the office's Marketing switch on a client who unsubscribed. */
+export const RESUBSCRIBE_HINT = "They unsubscribed. Turn this back on only if they asked you to.";
+
+/** Under the review ask's message: what Google doesn't allow of a business asking for reviews. */
+export const REVIEW_ASK_RULES = "Don't offer anything for a review, and don't ask only your happy clients: Google doesn't allow either.";
+/** Google's "Prohibited & restricted content" for Maps contributions: merchants may not offer incentives for reviews or selectively solicit positive ones. */
+export const REVIEW_ASK_POLICY_URL = "https://support.google.com/contributionpolicy/answer/7400114";
+
+/** How someone asked the office to stop their texts (sms_stops.how). */
+export const STOP_HOWS = ["phone", "email", "in_person", "text", "other"] as const;
+export type StopHow = (typeof STOP_HOWS)[number];
+export const STOP_HOW_LABELS: Record<StopHow, string> = { phone: "By phone", email: "By email", in_person: "In person", text: "In a text", other: "Another way" };
+
+/**
+ * A stop Twilio has too: the person texted the keyword, or Twilio refused a text because they had
+ * (sms_stops.source; a row from before sources were kept is one of those). Only their START lifts
+ * it. One the office set, or that came from words that ask to stop, is Crewtavo's alone.
+ */
+export const twilioHasStop = (source: string | null | undefined) => source == null || source === "keyword" || source === "carrier";
+
+/** A number's stop as the office reads it (sms_stops). */
+export interface TextStop {
+  source: string | null;
+  how: string | null;
+  note: string | null;
+  set_by_name: string | null;
+}
+
+/**
+ * Why texts to a number are off, for the line under the office's switch. `stop` is null when only
+ * the client is marked (their number changed since, or a merge brought it).
+ */
+export function textsOffWhy(stop: TextStop | null): string {
+  if (!stop) return "Turned off for this client.";
+  if (stop.source === "office") {
+    const how = stop.how && stop.how !== "other" ? ` ${STOP_HOW_LABELS[stop.how as StopHow]?.toLowerCase() ?? ""}`.trimEnd() : "";
+    return `Turned off by ${stop.set_by_name?.trim() || "the office"}: they asked${how}.${stop.note?.trim() ? ` ${stop.note.trim()}` : ""}`;
+  }
+  if (stop.source === "phrase") return `They texted “${(stop.note ?? "").trim().slice(0, 160)}”.`;
+  return "They texted STOP. Twilio won't deliver texts to this number until they text START, so it can't be turned back on here.";
+}
+
+/** As long as a text can be, tidied, and still be read as only asking for texts to stop. */
+const OPT_OUT_MAX = 80;
+const TEXTS = "(?:texts?|txts?|text messages?|messages?|msgs?|sms)";
+/** "please", "hi, can you", "I want you to": what people put in front of the ask. */
+const OPT_OUT_LEAD = "(?:(?:please|pls|plz|kindly|hey|hi|hello|ok|okay) )*(?:(?:can|could|would|will) (?:you|u) (?:please |pls |plz )?)?(?:(?:i (?:want|need|would like)|id like) (?:(?:you|u) )?to )?";
+/** What may follow "stop texting" and the like: themselves, their number, or a please. Not "my husband". */
+const OPT_OUT_ME = "(?: (?:me|us|this number|this phone|my number|my phone|my cell|here|now|immediately|already|altogether|please|pls|plz|thanks|thank you|ty)\\b.*)?";
+/** Asks that name texting, so they can open a longer (still short) message: "stop texting me, I sold the house". */
+const OPT_OUT_OPENERS = [
+  `(?:stop|quit|cease) (?:texting|txting|messaging|contacting)${OPT_OUT_ME}`,
+  `(?:stop|quit|cease) (?:sending )?(?:me |us )?(?:the |these |those |all |your |any |any more |more |all the |all these |all of these |all your )?${TEXTS}\\b.*`,
+  `(?:dont|do not|never) (?:text|txt|message|contact) (?:me|us|this number|this phone|my number|my phone|my cell)\\b.*`,
+  `no (?:more|further) ${TEXTS}\\b.*`,
+  `unsubscribe (?:me|us|this number|my number|my phone)\\b.*`,
+  `(?:remove|delete) (?:me|us|my number|this number|my phone)(?: from (?:your|this|the|all) (?:\\w+ )?(?:list|lists|texts|messages))?(?: (?:please|pls|plz|thanks|thank you|ty|now))*`,
+  `take (?:me|us|my number|this number) off(?: (?:of )?(?:your|this|the|all) (?:\\w+ )?(?:list|lists|texts|messages))?(?: (?:please|pls|plz|thanks|thank you|ty|now))*`,
+  `opt (?:me|us) out\\b.*`,
+  `(?:opt out|unsubscribe)(?: (?:of|from) (?:the |these |all |your |all your )?${TEXTS})?(?: (?:please|pls|plz|thanks|thank you|ty|now))*`,
+];
+/** Asks that are only that when they're the whole message: "please stop" is, "please stop by tomorrow" isn't. */
+const OPT_OUT_WHOLE = [`(?:stop|optout)(?: (?:it|this|these|now|all))?(?: (?:please|pls|plz|thanks|thank you|ty|now))*`, `no ${TEXTS}(?: (?:please|pls|plz|thanks|thank you|ty))*`];
+const OPT_OUT = new RegExp(`^${OPT_OUT_LEAD}(?:${[...OPT_OUT_OPENERS, ...OPT_OUT_WHOLE].join("|")})$`);
+
+/**
+ * Whether a text plainly asks for texts to stop without being the bare keyword: "stop texting me",
+ * "please stop", "unsubscribe me", "no more texts". Twilio only acts on the keyword alone, but a
+ * person may say it any reasonable way, so these are honoured too. Only a short message that is, or
+ * opens with, such an ask counts; anything else ("please stop by tomorrow", "don't stop texting me")
+ * stays an ordinary message for the office to read.
+ */
+export function asksToStopTexts(body: string | null | undefined): boolean {
+  const words = (body ?? "")
+    .toLowerCase()
+    .replace(/['\u2019]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return words.length > 0 && words.length <= OPT_OUT_MAX && OPT_OUT.test(words);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -652,6 +828,17 @@ export function referrerLine(reward: ReferralReward, currency = "USD"): string {
   return reward.kind === "percent"
     ? `You'll get ${percentWords(reward.value)} of their first job back as a credit on your next invoice.`
     : `You'll get a ${creditMoney(reward.value, currency)} credit on your next invoice once they pay their first one.`;
+}
+
+/**
+ * On a referral page, to the friend: that the person recommending the business gets something for
+ * it. 16 CFR 255.5 (the FTC's Endorsement Guides): a connection between an endorser and the seller
+ * "that might materially affect the weight or credibility of the endorsement", and that the
+ * audience wouldn't expect, "must be disclosed clearly and conspicuously". "" when no credit is set.
+ */
+export function referrerDisclosure(referrer: string, company: string, reward: ReferralReward): string {
+  if (reward.value <= 0) return "";
+  return `${referrer.trim() || "The person who sent you this"} gets a credit from ${company} if you become a client.`;
 }
 
 /**

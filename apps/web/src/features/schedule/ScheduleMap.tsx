@@ -9,6 +9,7 @@ import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useExtendedMap } from "@/lib/extendMap";
+import { t } from "@/lib/i18n";
 
 export interface MapPin {
   id: string;
@@ -84,12 +85,12 @@ export function ScheduleMap({ pins, onOpen }: { pins: MapPin[]; onOpen: (id: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  if (failed) return <p className="muted">This browser can't show the map (WebGL is turned off or not supported). Try an up-to-date Chrome, Edge, Safari or Firefox, or turn on hardware acceleration.</p>;
+  if (failed) return <p className="muted">{t("This browser can't show the map (WebGL is turned off or not supported). Try an up-to-date Chrome, Edge, Safari or Firefox, or turn on hardware acceleration.")}</p>;
   return (
     <div className="schedule-map-frame" data-extended={extend.extended || undefined}>
-      <div ref={el} className="schedule-map" role="region" aria-label="Map of the day's visits" />
+      <div ref={el} className="schedule-map" role="region" aria-label={t("Map of the day's visits")} />
       {extend.available && (
-        <button type="button" className="map-extend" onClick={() => extend.setExtended(!extend.extended)} title={extend.extended ? "Back to the page" : "Fill the screen with the map"} aria-label="Full-screen map" aria-pressed={extend.extended}>
+        <button type="button" className="map-extend" onClick={() => extend.setExtended(!extend.extended)} title={extend.extended ? t("Back to the page") : t("Fill the screen with the map")} aria-label={t("Full-screen map")} aria-pressed={extend.extended}>
           <Icon name={extend.extended ? "minimize" : "maximize"} size={16} />
         </button>
       )}

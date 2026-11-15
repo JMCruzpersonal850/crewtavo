@@ -14,6 +14,8 @@ import pestControl from "./presets/pest_control.json";
 import plumbing from "./presets/plumbing.json";
 import poolService from "./presets/pool_service.json";
 import roofingExteriors from "./presets/roofing_exteriors.json";
+import type { CustomFieldRecord, CustomFieldType } from "./customFields";
+import { isPavingWork, pavingWorkLabel, type PavingWork } from "./paving";
 import type { WeatherRule } from "./weather";
 
 export interface PresetService {
@@ -24,6 +26,8 @@ export interface PresetService {
   unit_cost?: number;
   category?: string;
   formula_name?: string;
+  /** The depth, in inches, its formula starts with when a measurement fills a quote (services.default_depth_in). */
+  default_depth_in?: number;
 }
 
 export interface PresetFormula {
@@ -43,8 +47,10 @@ export interface PresetChecklistItem {
 /**
  * A checklist crews fill in on a visit (checklist_templates). `services` names the price list items
  * it goes with, exactly as this preset's `services` name them: a visit whose job has one of them
- * brings the checklist up, ready to fill in. Leave it out for a checklist for any job. Item keys are
- * unique within the checklist (lowercase words joined by _).
+ * brings the checklist up, ready to fill in. Leave it out for a checklist for any job. `every_job`
+ * brings it up on every job; `work` (kinds of paving calculator work, PAVING_WORK) on jobs priced
+ * with the paving calculator that have one of them, which have no price list item to go by. Item
+ * keys are unique within the checklist (lowercase words joined by _).
  *
  *   {
  *     "name": "Snow and salt route stop",
@@ -59,6 +65,8 @@ export interface PresetChecklistItem {
 export interface PresetChecklist {
   name: string;
   services?: string[];
+  every_job?: boolean;
+  work?: PavingWork[];
   items: PresetChecklistItem[];
 }
 
@@ -128,6 +136,21 @@ export interface PresetPackage {
   warranty?: string;
 }
 
+/**
+ * A custom field a trade starts with (custom_field_definitions), on each of `records`. One on both
+ * quotes and jobs carries its value from a quote to the job made from it, as any custom field of
+ * the same key and type does. Roofing's insurance claim details are these.
+ */
+export interface PresetCustomField {
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  records: CustomFieldRecord[];
+  choices?: string[];
+  show_on_pdf?: boolean;
+  show_in_portal?: boolean;
+}
+
 export interface TradePreset {
   id: string;
   name: string;
@@ -138,6 +161,7 @@ export interface TradePreset {
   checklists: PresetChecklist[];
   intake_forms: PresetIntakeForm[];
   weather_rules: WeatherRule[];
+  custom_fields?: PresetCustomField[];
   sop_categories: string[];
 }
 
@@ -161,6 +185,26 @@ export function getPreset(id: string): TradePreset {
   const preset = PRESETS[id];
   if (!preset) throw new RangeError(`Unknown trade preset "${id}"`);
   return preset;
+}
+
+/** A preset's custom fields as custom_field_definitions rows (without the company): one for each record a field is on, in the preset's order. */
+export function presetCustomFields(preset: TradePreset) {
+  return (preset.custom_fields ?? []).flatMap((f, i) =>
+    f.records.map((record) => ({ record_type: record, key: f.key, label: f.label, type: f.type, choices: f.choices ?? [], show_on_pdf: f.show_on_pdf === true, show_in_portal: f.show_in_portal === true, sort: i })),
+  );
+}
+
+/**
+ * A preset's weather rules as a new business's settings keep them: a rule for a price list item
+ * names it by id as well (`idOf`: the id the item was just given), and one for a kind of paving
+ * calculator work is called by its kind, as set_weather_rules would save it.
+ */
+export function presetWeatherRules(preset: TradePreset, idOf: (service: string | undefined) => string | undefined): WeatherRule[] {
+  return preset.weather_rules.map((r) => {
+    if (isPavingWork(r.work)) return { ...r, applies_to: pavingWorkLabel(r.work) };
+    const id = idOf(r.applies_to);
+    return id ? { ...r, service_id: id } : r;
+  });
 }
 
 const EXAMPLE_WARRANTIES = new Set(

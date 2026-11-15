@@ -82,7 +82,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
 
 -- ===== The terms ==================================================================================
 
-select tmpa.check(private.autopay_starter_terms('pool_service') = 'We charge the card on file after each pool service visit, or once a month for a monthly plan, and for other invoices we send you. You''ll get a receipt each time. Turn it off anytime from your client page or by calling us.'
+select tmpa.check(private.autopay_starter_terms('pool_service') = 'We charge the card or bank account on file after each pool service visit, or once a month for a monthly plan, and for other invoices we send you. You''ll get a receipt each time. Turn it off anytime from your client page or by calling us.'
     and (select bool_and(private.autopay_covers_monthly(private.autopay_starter_terms(t))) from unnest(array['lawn_exterior', 'cleaning', 'pool_service', 'pest_control', 'general', 'snow']) t)
     and not private.autopay_covers_monthly(private.autopay_starter_terms('paving'))
     and not private.autopay_covers_monthly('We charge the card on file after each pool service visit, and for other invoices we send you.'),

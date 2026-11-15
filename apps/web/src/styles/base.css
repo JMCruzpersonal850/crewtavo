@@ -13,7 +13,25 @@ a:hover { color: var(--green-dark); }
  * or a bare one in a nav, a tab bar or a list of links (contents, steps). At an element's weight, so a screen's own rule wins.
  */
 a:where(:not([class], nav a, [role="tablist"] a, .underline-tabs a, li > a):hover) { text-decoration: underline; text-underline-offset: 2px; }
-:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus-ring, var(--green)); outline-offset: 2px; }
+/*
+ * Keyboard focus on anything that's pressed (a button, a link, a tab, a menu item, a switch, a tick
+ * box) always shows that outline: no screen's own rule can take it away. Many did, in favour of a
+ * faint glow (--ring: about 1.35:1 on white, where WCAG 1.4.11 asks for 3:1). --green is 5.07:1 on
+ * white and clears 3:1 on every surface of the light and the dark theme (test/focusRing.test.ts).
+ * A screen on a colour of its own sets --focus-ring; one that clips its edges sets outline-offset.
+ */
+:is(button, a, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"],
+  input:is([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="range"], [type="file"])):focus-visible {
+  outline: 2px solid var(--focus-ring, var(--green)) !important;
+}
+/* A file picker or a choice drawn by its label (the input itself is out of sight): the label shows the focus. */
+label:is(.btn, .hub-choice):has(input:focus-visible) { outline: 2px solid var(--focus-ring, var(--green)); outline-offset: 2px; }
+/* On a dark panel of the app's own, the outline is the panel's text colour; on a dark one that isn't themed, white. */
+.toast, .restart-banner, .task-island-pill, .task-island-list { --focus-ring: var(--on-solid); }
+.photo-editor, .hub-refer { --focus-ring: #fff; }
+/* Inside something that clips its edges (a menu, a photo's tile), the outline is drawn just inside the control. */
+.menu-item:focus-visible, .imagery-option:focus-visible, .thumb :focus-visible { outline-offset: -2px; }
 h1, h2, h3 { margin: 0; letter-spacing: var(--tracking-tight); }
 img, svg { flex-shrink: 0; }
 ::selection { background: var(--green-tint-2); }

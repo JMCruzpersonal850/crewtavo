@@ -10,6 +10,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cancelTask, dismissTask, taskFraction, useTasks, type Task } from "@/lib/tasks";
 import { Icon } from "./Icon";
 import { motion, play, topLayerProps, useSpace, useTopLayer } from "./topLayer";
+import { t } from "@/lib/i18n";
 
 /** A dot in the middle of the pill, then a circle as tall as it, then the whole pill. */
 const DOT = "inset(calc(50% - 4px) calc(50% - 4px) round 999px)";
@@ -86,7 +87,7 @@ export function TaskIsland() {
             className="task-island-main"
             aria-expanded={open}
             aria-controls={open ? "task-island-list" : undefined}
-            aria-label={`${says(head)}${others ? `, and ${others} more` : ""}. Show background tasks`}
+            aria-label={others ? t("{task}, and {others} more. Show background tasks", { task: says(head), others }) : t("{task}. Show background tasks", { task: says(head) })}
             onClick={() => setOpen(!open)}
           >
             <TaskMark task={head} />
@@ -94,7 +95,7 @@ export function TaskIsland() {
             {others > 0 && <span className="task-island-count" data-failed={failedOthers || undefined}>+{others}</span>}
           </button>
           {head.status === "failed" && (
-            <button type="button" className="task-island-dismiss" aria-label="Dismiss" onClick={() => dismissTask(head.id)}>
+            <button type="button" className="task-island-dismiss" aria-label={t("Dismiss")} onClick={() => dismissTask(head.id)}>
               <Icon name="x" size={14} />
             </button>
           )}
@@ -102,7 +103,7 @@ export function TaskIsland() {
       )}
       {/* After the pill, so Tab goes on into it; drawn above the pill (order in components.css). */}
       {open && (
-        <div className="task-island-list" id="task-island-list" role="group" aria-label="Background tasks">
+        <div className="task-island-list" id="task-island-list" role="group" aria-label={t("Background tasks")}>
           {list.map((task) => <TaskRow key={task.id} task={task} onCancel={() => main.current?.focus()} />)}
         </div>
       )}
@@ -117,8 +118,8 @@ function headline(list: Task[]): Task | undefined {
 }
 
 function says(task: Task): string {
-  if (task.status === "running") return task.stopping ? "Stopping…" : task.label;
-  return task.message ?? (task.status === "done" ? "Done" : task.status === "stopped" ? "Stopped" : "That didn't go through");
+  if (task.status === "running") return task.stopping ? t("Stopping…") : task.label;
+  return task.message ?? (task.status === "done" ? t("Done") : task.status === "stopped" ? t("Stopped") : t("That didn't go through"));
 }
 
 /** `onCancel`: Cancel turns into a disabled "Stopping…" (or the row goes), so focus moves to the pill rather than the page. */
@@ -146,10 +147,10 @@ function TaskRow({ task, onCancel }: { task: Task; onCancel: () => void }) {
             cancelTask(task.id);
           }}
         >
-          {task.stopping ? "Stopping…" : "Cancel"}
+          {task.stopping ? t("Stopping…") : t("Cancel")}
         </button>
       )}
-      {task.status === "failed" && <button type="button" className="task-row-action" onClick={() => dismissTask(task.id)}>Dismiss</button>}
+      {task.status === "failed" && <button type="button" className="task-row-action" onClick={() => dismissTask(task.id)}>{t("Dismiss")}</button>}
     </div>
   );
 }

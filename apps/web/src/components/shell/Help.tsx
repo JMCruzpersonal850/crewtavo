@@ -10,6 +10,7 @@ import { Link, useLocation } from "react-router-dom";
 import { hasRole, isSub, useSession } from "@/lib/session";
 import { Button } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
+import { t } from "@/lib/i18n";
 
 const DOCS = "https://crewtavo.com/docs/";
 
@@ -128,30 +129,30 @@ export function HelpButton() {
 
   return (
     <>
-      <button ref={button} type="button" className="icon-btn" aria-label="Help" title="Help" popovertarget={id} aria-expanded={open}>
+      <button ref={button} type="button" className="icon-btn" aria-label={t("Help")} title={t("Help")} popovertarget={id} aria-expanded={open}>
         <Icon name="help" size={20} />
       </button>
-      <div ref={panel} id={id} className="panel" popover="auto" role="dialog" aria-label="Help">
+      <div ref={panel} id={id} className="panel" popover="auto" role="dialog" aria-label={t("Help")}>
         <div className="panel-head">
-          <h2>Help</h2>
+          <h2>{t("Help")}</h2>
         </div>
         <div className="panel-body">
           <form className="stack-sm" style={{ padding: "0 16px 14px" }} onSubmit={ask}>
-            <label htmlFor={`${id}-q`} className="small" style={{ fontWeight: 600 }}>Ask AI about Crewtavo</label>
-            <input id={`${id}-q`} name="question" className="input" required pattern=".*\S.*" placeholder="How do I send invoices in a batch?" autoComplete="off" />
+            <label htmlFor={`${id}-q`} className="small" style={{ fontWeight: 600 }}>{t("Ask AI about Crewtavo")}</label>
+            <input id={`${id}-q`} name="question" className="input" required pattern=".*\S.*" placeholder={t("How do I send invoices in a batch?")} autoComplete="off" />
             <div className="row">
-              <Button type="submit" value="claude" icon="external" className="grow">Ask Claude</Button>
-              <Button type="submit" value="chatgpt" icon="external" className="grow">Ask ChatGPT</Button>
+              <Button type="submit" value="claude" icon="external" className="grow">{t("Ask Claude")}</Button>
+              <Button type="submit" value="chatgpt" icon="external" className="grow">{t("Ask ChatGPT")}</Button>
             </div>
-            <span className="muted small">It reads Crewtavo's docs to answer. Leave out client names.</span>
+            <span className="muted small">{t("It reads Crewtavo's docs to answer. Leave out client names.")}</span>
           </form>
-          <HelpRow icon="book" title={page ? "Docs for this screen" : "Crewtavo docs"} body="crewtavo.com/docs" href={`${DOCS}${page ? `${page}/` : ""}`} onClick={close} />
-          {!sub && <HelpRow icon="clipboard" title="Your company's guides" body="Knowledge base" to="/kb" onClick={close} />}
-          {!sub && <HelpRow icon="sparkle" title="Connect Claude or ChatGPT" body="Have it do the work in Crewtavo" to="/settings?tab=assistants" onClick={close} />}
+          <HelpRow icon="book" title={page ? t("Docs for this screen") : t("Crewtavo docs")} body="crewtavo.com/docs" href={`${DOCS}${page ? `${page}/` : ""}`} onClick={close} />
+          {!sub && <HelpRow icon="clipboard" title={t("Your company's guides")} body={t("Knowledge base")} to="/kb" onClick={close} />}
+          {!sub && <HelpRow icon="sparkle" title={t("Connect Claude or ChatGPT")} body={t("Have it do the work in Crewtavo")} to="/settings?tab=assistants" onClick={close} />}
           {admin ? (
-            <HelpRow icon="alert" title="Report a problem" body="Public on GitHub, with no promise of a reply. Leave out client details." href={report} onClick={close} />
+            <HelpRow icon="alert" title={t("Report a problem")} body={t("Public on GitHub, with no promise of a reply. Leave out client details.")} href={report} onClick={close} />
           ) : (
-            <p className="muted small" style={{ padding: "12px 16px", borderTop: "1px solid var(--row-divider)", margin: 0 }}>Stuck on something else? Ask someone at {session.company.name}.</p>
+            <p className="muted small" style={{ padding: "12px 16px", borderTop: "1px solid var(--row-divider)", margin: 0 }}>{t("Stuck on something else? Ask someone at {company}.", { company: session.company.name })}</p>
           )}
         </div>
       </div>

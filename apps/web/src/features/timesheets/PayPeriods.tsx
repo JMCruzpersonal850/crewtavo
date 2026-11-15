@@ -6,7 +6,7 @@
  * tools (apps/api/src/services/pay.ts).
  */
 import { breakPay, SHORT_BREAK_MINUTES, type BreakPay } from "@crewtavo/core/breaks";
-import { mondayOf } from "@crewtavo/core/pay";
+import { mondayOf, STATE_OVERTIME_NOTE } from "@crewtavo/core/pay";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
@@ -21,6 +21,7 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { addDaysIso, formatMoney, formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { owedFor, PAY_COLUMNS, payRows, pieceJobs, waitingFor, type PayPerson } from "./payCsv";
+import { inEnglish } from "@/lib/i18n";
 
 type PersonPay = PayPerson;
 interface Summary { from: string; to: string; period_id: string | null; status: string; people: PersonPay[]; hours: number; hourly_amount: number; piece_amount: number; amount: number; overtime_hours: number; overtime_note: string | null; unapproved_hours: number; running_clocks: number }
@@ -76,7 +77,7 @@ export function PayPeriods() {
   // Marking paid is refused while anyone it marks has time not approved (piece pay alone included).
   const waiting = waitingFor(unpaid);
   const piece = (d?.piece_amount ?? 0) > 0;
-  const exportCsv = () => d && downloadCsv(`pay-${d.from}-to-${d.to}.csv`, toCsv(payRows(d.people, methodLabel), [...PAY_COLUMNS]));
+  const exportCsv = () => d && downloadCsv(`pay-${d.from}-to-${d.to}.csv`, inEnglish(() => toCsv(payRows(d.people, methodLabel), [...PAY_COLUMNS])));
 
   return (
     <div className="stack">
@@ -143,7 +144,8 @@ export function PayPeriods() {
           ))}
           <p className="muted small" style={{ margin: 12 }}>
             Approved time at each person's pay rate{piece ? ", plus piece pay for work done on jobs in this period" : ""}. {BREAK_RULE[breakPay(session.company.settings)]}{" "}
-            {d.overtime_note ?? "Hours over 40 in a week are shown for your payroll service; the amounts here are at straight time."}
+            {d.overtime_note ?? "Hours over 40 in a week are shown for your payroll service; the amounts here are at straight time."}{" "}
+            {STATE_OVERTIME_NOTE}
             {d.people.some((p) => (p.already_paid_hours ?? 0) > 0) && " Hours already paid with another period aren't counted again."}
           </p>
         </section>

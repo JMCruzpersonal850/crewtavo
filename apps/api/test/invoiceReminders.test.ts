@@ -21,6 +21,13 @@ vi.mock("../src/integrations/stripe", async (original) => ({
   ...(await original<typeof import("../src/integrations/stripe")>()),
   stripeAccess: async () => (stripe.key ? { key: stripe.key, own: true } : null),
 }));
+// The server's own client, which reads who a client's message goes to: their contacts, the
+// company's switch and the numbers that texted STOP (services/recipients.ts).
+const server = vi.hoisted(() => ({ tables: {} as Record<string, unknown> }));
+vi.mock("../src/lib/supabase", async (original) => ({
+  ...(await original<typeof import("../src/lib/supabase")>()),
+  adminClient: () => stubDb(server.tables),
+}));
 vi.mock("../src/lib/links", async (original) => ({
   ...(await original<typeof import("../src/lib/links")>()),
   clientLink: async (_env: Env, baseUrl: string, link: { id: string }) => `${baseUrl}/u/${link.id}`,
@@ -38,7 +45,11 @@ function stubDb(tables: Record<string, unknown>): Db {
   const from = (table: string) => {
     const result = { data: tables[table] ?? null, error: null };
     const builder: Record<string, unknown> = {};
-    for (const name of ["select", "eq", "in", "insert"]) builder[name] = () => builder;
+    for (const name of ["select", "eq", "in", "order", "limit"]) builder[name] = () => builder;
+    builder.insert = (row: unknown) => {
+      if (table === "messages") logged.push(row as { recipients: unknown });
+      return builder;
+    };
     builder.maybeSingle = builder.single = () => Promise.resolve(result);
     builder.then = (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve(result).then(resolve, reject);
     return builder;
@@ -46,8 +57,13 @@ function stubDb(tables: Record<string, unknown>): Db {
   return { from } as unknown as Db;
 }
 
+/** The messages kept on the client's timeline. */
+const logged: Array<{ recipients: unknown }> = [];
+
 afterEach(() => {
   sent.length = 0;
+  logged.length = 0;
+  server.tables = {};
   stripe.key = null;
   vi.useRealTimers();
 });
@@ -84,5 +100,29 @@ describe("a payment reminder", () => {
     expect(noStripe).toContain("You can view it online:");
     expect(noStripe).not.toContain("pay it online");
     expect(withStripe).toContain("You can view and pay it online:");
+  });
+
+  it("goes to the client and their contacts ticked for emails, once the company has that on", async () => {
+    const contacts = [
+      { id: "c-1", name: "Mo Manager", email: "mo@example.com", phone: null, notify_email: true, notify_sms: true },
+      { id: "c-2", name: "Sam Spouse", email: "sam@example.com", phone: null, notify_email: false, notify_sms: true },
+      // The client's own address again, in other letters: one email, not two.
+      { id: "c-3", name: "Pat at work", email: " PAT@Example.com", phone: null, notify_email: true, notify_sms: false },
+    ];
+    const tables = { invoices: [invoice("inv-1", 7, "2026-12-15")], stripe_invoices: [], clients: { id: "client-1", ...client, sms_opt_out_at: null } };
+    const scope = { db: stubDb({ ...tables, companies: company }), env, companyId: CO, baseUrl: "https://ops.example.com" };
+
+    server.tables = { client_contacts: contacts };
+    expect(await remindInvoices(scope, ["inv-1"])).toEqual({ sent: 1, skipped: [] });
+    expect(sent.map((m) => m.to)).toEqual(["pat@example.com", "mo@example.com"]);
+    // One message on the timeline, saying who got it.
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.recipients).toEqual([{ to: "pat@example.com", name: "Pat Lee" }, { to: "mo@example.com", name: "Mo Manager" }]);
+
+    // A company that had contacts before the ticks did anything: nobody new until it says yes.
+    sent.length = 0;
+    const held = stubDb({ ...tables, companies: { ...company, settings: { contact_messages: { enabled: false, pending: true } } } });
+    await remindInvoices({ ...scope, db: held }, ["inv-1"]);
+    expect(sent.map((m) => m.to)).toEqual(["pat@example.com"]);
   });
 });

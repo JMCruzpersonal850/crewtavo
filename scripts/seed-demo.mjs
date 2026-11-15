@@ -225,7 +225,7 @@ const hoaQuote = await quote("Meadowbrook HOA", "Clubhouse lot sealcoat and rest
 const approvedQuote = await quote("Summit Ridge Builders", "Phase 2 subdivision roads (binder + surface)", "approved", [
   line("Grade and compact stone base", 410),
   line("Hot-mix asphalt surface", 620),
-  line("Mobilization and trucking", 24),
+  line("Mobilization and trucking", 7),
 ], { approved_at: daysAgo(10) });
 
 const jobId = await must(db.rpc("convert_quote_to_job", { p_quote: approvedQuote }), "convert quote");
@@ -270,6 +270,8 @@ const visits = await must(
   "visits",
 );
 await must(db.from("visit_assignees").insert([visits[0], visits[1], visits[3]].flatMap((v) => [c({ visit_id: v.id, user_id: crewIds[0] }), c({ visit_id: v.id, user_id: crewIds[1] })])), "assignees");
+// Demo clients aren't told their demo visits are booked (a new company's "visit booked" rule is on).
+for (const v of visits) await must(admin.rpc("call_off_visit_notice", { p_visit: v.id }), "no booked message");
 
 // --- Invoices ------------------------------------------------------------------------------
 const contract = await must(db.from("job_financials").select("contract_total").eq("job_id", jobId).single(), "contract");
@@ -402,7 +404,11 @@ const pastJobs = [
   await paidJob("Ben Okafor", "Driveway patch and sealcoat", [jobLine("Asphalt patch", 64), jobLine("Sealcoat", 1450)], 9, "check", "Check #3381"),
 ];
 const storageJob = await job("Rocky Mount Self Storage", "Lot patch and sealcoat", [jobLine("Asphalt patch", 220), jobLine("Sealcoat", 21500)], { default_crew_id: sealCrew.id, po_number: "RMSS-1102" });
-await must(db.from("visits").insert(visit({ job_id: storageJob, property_id: propOf[byName["Rocky Mount Self Storage"]], title: "Patch and sealcoat, storage lot", starts_at: at(1, "08:00"), ends_at: at(1, "14:00"), crew_id: sealCrew.id })), "storage visit");
+const storageVisit = await must(
+  db.from("visits").insert(visit({ job_id: storageJob, property_id: propOf[byName["Rocky Mount Self Storage"]], title: "Patch and sealcoat, storage lot", starts_at: at(1, "08:00"), ends_at: at(1, "14:00"), crew_id: sealCrew.id })).select("id").single(),
+  "storage visit",
+);
+await must(admin.rpc("call_off_visit_notice", { p_visit: storageVisit.id }), "no booked message");
 await job("Town of Rocky Mount", "Crosswalks and stop bars, Franklin St", [jobLine("Crosswalks and stop bars", 340)], { default_crew_id: sealCrew.id, po_number: "WO-24-131" });
 
 // --- A paving takeoff: the clubhouse lot outlined on the aerial, saved as Measure saves it -------

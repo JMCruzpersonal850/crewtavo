@@ -105,8 +105,8 @@ export async function reachesThisInstance(env: Env, domain: string): Promise<boo
   }
 }
 
-/** Client links, webhooks and sign-in pages work on every address; only the app itself moves. */
-const STAYS = /^\/(api|auth|rest|storage|mcp|\.well-known|assets|hub|book|u|refer|oauth)(\/|$)/;
+/** Client links, showcase pages, webhooks and sign-in pages work on every address; only the app itself moves. */
+const STAYS = /^\/(api|auth|rest|storage|mcp|\.well-known|assets|hub|book|u|refer|s|oauth)(\/|$)/;
 
 /**
  * Where a page opened on an old address should go now, or null to serve it here. Only page loads

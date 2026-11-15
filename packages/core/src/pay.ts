@@ -44,6 +44,10 @@ export interface PiecePay { user_id: string; total: number | string }
 export const PIECE_OVERTIME_NOTE =
   "Hours over 40 in a week are flagged for your payroll service. With piece pay, overtime is worked out from total pay and hours, which your payroll service does.";
 
+/** Said under every pay period: the hours over 40 are the federal weekly rule only. */
+export const STATE_OVERTIME_NOTE =
+  "State daily overtime isn't worked out. Where your state has daily overtime, or premiums for missed meal and rest breaks, your payroll service works those out from the hours.";
+
 /** What someone was marked paid for a period, as it was recorded then (their pay_period_lines row). */
 export interface PaidLine { user_id: string; hours: number | string; overtime_hours: number | string; break_hours: number | string; amount: number | string; piece_amount: number | string }
 

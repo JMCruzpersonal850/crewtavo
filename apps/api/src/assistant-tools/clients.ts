@@ -227,7 +227,7 @@ export const clientTools = {
       role: optional(80),
       is_primary: z.boolean().optional(),
       notify_email: z.boolean().optional().describe("Gets the client's emails (quotes, invoices, reminders)."),
-      notify_sms: z.boolean().optional(),
+      notify_sms: z.boolean().optional().describe("Gets the client's texts. Off for a new contact unless set: true only if they agreed to be texted."),
       ...companyArg,
     }),
     area: "clients",

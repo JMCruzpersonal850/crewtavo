@@ -1,4 +1,4 @@
-/** Message center: conversations by client (emails, texts, notes), with replies by email or text. */
+/** Message center: conversations by client (emails, texts, notes), with replies by email or text, and texts from unknown numbers to attach to a client. */
 import { textsOff, textsOffReason } from "@crewtavo/core/marketing";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -17,7 +17,10 @@ import { useListAnimation } from "@/lib/motion";
 import { hasRole, useSession } from "@/lib/session";
 import { ClientPicker, type PickedClient } from "../clients/ClientForm";
 import { MessageBody } from "../clients/MessageBody";
+import { messageFrom, messagePeople } from "../clients/messagePeople";
 import { ConnectEmailHint } from "../settings/ConnectEmailHint";
+import { UnknownRows, UnknownThread, useUnknownNumbers } from "./UnknownNumbers";
+import { matchingNumbers } from "./unknownTexts";
 
 const FILTERS = [
   { key: "all", label: "All", channels: ["sms", "email", "note", "call"] },
@@ -37,6 +40,9 @@ export function MessagesPage() {
   const [composing, setComposing] = useState(false);
   const term = useDeferredValue(searchTerm(search));
   const selected = params.get("client");
+  // A number that isn't a client's or a contact's, by its last 10 digits (UnknownNumbers.tsx).
+  const unknown = params.get("unknown");
+  const strangers = useUnknownNumbers();
   const f = FILTERS.find((x) => x.key === filter)!;
 
   const messages = useQuery({
@@ -68,16 +74,18 @@ export function MessagesPage() {
     return [...seen.values()].filter((c) => !term || c.client!.display_name.toLowerCase().includes(term.toLowerCase()) || c.body.toLowerCase().includes(term.toLowerCase()));
   }, [messages.data, term]);
   const open = (clientId: string | null) => setParams(clientId ? { client: clientId } : {}, { replace: true });
+  // Texts from unknown numbers are texts from outside: not under Email.
+  const unknownNumbers = filter === "email" ? [] : matchingNumbers(strangers.data ?? [], term);
   // Conversations move to the top as messages come in.
   const list = useListAnimation<HTMLDivElement>();
 
   return (
-    <div className="messages-page stack" data-open={selected ? "" : undefined} style={{ gap: "inherit" }}>
+    <div className="messages-page stack" data-open={selected || unknown ? "" : undefined} style={{ gap: "inherit" }}>
       <PageHeader title="Messages" actions={hasRole(session, "admin", "office", "estimator") && <Button icon="plus" onClick={() => setComposing(true)}>New message</Button>} />
       {!session.config.features.email && !session.config.features.sms && (
         <div className="callout callout-info"><Icon name="info" size={20} /><div className="grow">Email and texting aren't turned on yet. You can still add notes.<ConnectEmailHint /></div></div>
       )}
-      <div className="inbox" data-open={selected ? "" : undefined}>
+      <div className="inbox" data-open={selected || unknown ? "" : undefined}>
         <section className="inbox-list" aria-label="Conversations">
           <div className="input-group"><span className="addon"><Icon name="search" size={16} /></span><input className="input" type="search" placeholder="Search conversations" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search conversations" /></div>
           <div className="tabs" role="group" aria-label="Filter messages">
@@ -86,7 +94,8 @@ export function MessagesPage() {
           <div className={`card${messages.isPlaceholderData ? " is-stale" : ""}`} ref={list}>
             {messages.isPending && <Loading label="Loading conversations">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="card-row"><Skeleton width={36} height={36} circle /><span className="grow stack-sm"><Skeleton width="50%" /><Skeleton width="85%" height={10} /></span></div>)}</Loading>}
             {messages.error && <ErrorState compact error={messages.error} onRetry={() => messages.refetch()} />}
-            {messages.data && conversations.length === 0 && <EmptyState compact icon="messages" title={term ? "No conversations match" : "No messages yet"} />}
+            <UnknownRows numbers={unknownNumbers} selected={unknown} onOpen={(key) => setParams({ unknown: key }, { replace: true })} />
+            {messages.data && conversations.length === 0 && unknownNumbers.length === 0 && <EmptyState compact icon="messages" title={term ? "No conversations match" : "No messages yet"} />}
             {conversations.map((c) => (
               <button key={c.client!.id} type="button" className="card-row inbox-row" aria-current={selected === c.client!.id} onClick={() => open(c.client!.id)}>
                 <span className="avatar" style={{ background: c.direction === "in" ? "var(--green)" : undefined }}>{initials(c.client!.display_name)}</span>
@@ -102,7 +111,7 @@ export function MessagesPage() {
           </div>
         </section>
         <section className="inbox-thread" style={{ minHeight: 0 }}>
-          {selected ? <Thread key={selected} clientId={selected} onBack={() => open(null)} /> : (
+          {unknown ? <UnknownThread key={unknown} phoneKey={unknown} onBack={() => open(null)} onAttached={(clientId) => open(clientId)} /> : selected ? <Thread key={selected} clientId={selected} onBack={() => open(null)} /> : (
             <div className="card" style={{ height: "100%", display: "grid", placeItems: "center" }}>
               <EmptyState icon="messages" title="Pick a conversation" />
             </div>
@@ -133,7 +142,7 @@ function Thread({ clientId, onBack }: { clientId: string; onBack: () => void }) 
     queryFn: async () => {
       const [client, rows] = await Promise.all([
         supabase().from("clients").select("id, display_name, email, phone, sms_opt_out_at").eq("id", clientId).maybeSingle(),
-        supabase().from("messages").select("id, channel, direction, subject, body, status, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(300),
+        supabase().from("messages").select("id, channel, direction, subject, body, status, created_at, recipients, from_name").eq("client_id", clientId).order("created_at", { ascending: false }).limit(300),
       ]);
       return { client: unwrap(client), rows: unwrap(rows).reverse() };
     },
@@ -172,6 +181,9 @@ function Thread({ clientId, onBack }: { clientId: string; onBack: () => void }) 
           const day = dayLabel(m.created_at);
           const showDay = day !== lastDay;
           lastDay = day;
+          // One message however many people it went to: who they were, and anyone it didn't reach.
+          const sent = messagePeople(m);
+          const from = messageFrom(m);
           return (
             <Fragment key={m.id}>
               {showDay && <span className="thread-day">{day}</span>}
@@ -179,8 +191,11 @@ function Thread({ clientId, onBack }: { clientId: string; onBack: () => void }) 
                 <div className="msg-bubble">{m.subject && <span className="msg-subject">{m.subject}</span>}<MessageBody body={m.body} /></div>
                 <span className="msg-meta">
                   <Icon name={ICON[m.channel] ?? "messages"} size={12} />
-                  {note ? "Internal note" : m.channel === "email" ? "Email" : m.channel === "sms" ? "Text" : "Call"} · <span title={formatDateTime(m.created_at)}>{new Date(m.created_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
+                  {note ? "Internal note" : m.channel === "email" ? "Email" : m.channel === "sms" ? "Text" : "Call"}
+                  {from && <> from {from}</>}
+                  {sent.to && <span title={sent.toFull ?? undefined}> to {sent.to}</span>} · <span title={formatDateTime(m.created_at)}>{new Date(m.created_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
                   {m.status === "failed" && <span className="text-danger strong">· Not delivered</span>}
+                  {sent.missed && <span className="text-danger">· Didn't reach {sent.missed}</span>}
                 </span>
               </div>
             </Fragment>

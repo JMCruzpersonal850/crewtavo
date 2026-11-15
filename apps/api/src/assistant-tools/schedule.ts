@@ -3,7 +3,7 @@
  * route, open time, and on-demand visits for many jobs. All through services/schedule.ts, as the
  * schedule screen does, with times in the company's own time zone.
  */
-import { localDate, localTime, zonedTimeToUtc } from "@crewtavo/core";
+import { crewPeople, localDate, localTime, onVisit, zonedTimeToUtc } from "@crewtavo/core";
 import { z } from "zod";
 import { bulkVisits, createVisits, findTime, previewRoute, saveRoute, scheduleRange, shiftDay, updateVisit } from "../services/schedule";
 import { answerVisitChange, pendingVisitChanges } from "../services/visitChanges";
@@ -15,14 +15,15 @@ const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM.")
 export const scheduleTools = {
   get_schedule: tool({
     description:
-      "What's on the schedule from one date to another (default just today; at most two months), in the company's time zone: visits with client, address, crew, people and status, plus the unscheduled visits waiting for a date, the crews, and other calendars' events. Filter by crew, or by person (user_id from list_team) for the visits they're on.",
+      "What's on the schedule from one date to another (default just today; at most two months), in the company's time zone: visits with client, address, crew, people and status, plus the unscheduled visits waiting for a date, the crews with who's on them (crew_members), and other calendars' events. The people on a visit are its assignees, or with none its crew's members. Filter by crew, or by person (user_id from list_team) for the visits they're on.",
     input: z.object({ from: date.optional(), to: date.optional(), crew_id: z.uuid().optional(), user_id: z.uuid().optional().describe("Only the visits this person is on."), ...companyArg }),
     run: async (ctx, a) => {
       const from = a.from ?? localDate(new Date(), ctx.timezone);
       const result = await scheduleRange(scopeOf(ctx), from, a.to ?? from, a.crew_id);
       const local = (iso: string | null) => (iso ? localTime(new Date(iso), ctx.timezone) : null);
-      // Who's on a visit is its assignees, as on the schedule's People view, not its crew.
-      const theirs = (visits: Array<Record<string, any>>) => (a.user_id ? visits.filter((v) => v.assignees?.some((p: { user_id: string }) => p.user_id === a.user_id)) : visits);
+      // Who's on a visit is the people listed on it, or with nobody listed its crew's members, as on the schedule's People view.
+      const crews = crewPeople(result.crew_members);
+      const theirs = (visits: Array<Record<string, any>>) => (a.user_id ? visits.filter((v) => onVisit(v, a.user_id!, crews)) : visits);
       return {
         timezone: ctx.timezone,
         ...result,
@@ -33,7 +34,7 @@ export const scheduleTools = {
   }),
   create_visit: tool({
     description:
-      "Schedule a visit for a job (job_id), an estimate visit for a request (kind assessment, request_id), a task or an event. Give a date, and a start_time and duration for a set time (any number of minutes, like 20 or 50; otherwise it's an anytime visit that day). time_fixed keeps the start time when the crew's route is organized (the customer expects it). days > 1 makes multi-day work, one visit per work day. People (list_team) and equipment can go on it.",
+      "Schedule a visit for a job (job_id), an estimate visit for a request (kind assessment, request_id), a task or an event. Give a date, and a start_time and duration for a set time (any number of minutes, like 20 or 50; otherwise it's an anytime visit that day). time_fixed keeps the start time when the crew's route is organized (the customer expects it). days > 1 makes multi-day work, one visit per work day. People (list_team) and equipment can go on it. The client of a job visit or an assessment is told it's booked ten minutes later, if the business has that message on (Settings → Client notifications).",
     input: z.object({
       title: z.string().trim().min(1).max(200),
       kind: z.enum(["job", "assessment", "task", "event"]).default("job"),
@@ -68,7 +69,7 @@ export const scheduleTools = {
   }),
   update_visit: tool({
     description:
-      "Move or change a visit: its date, start time (or anytime: start_time null), length (any number of minutes), whether its time is fixed, crew, people (the whole list), equipment, status, title or notes. Moving a visit takes it out of its organized route. Moving one day of multi-day work moves the days after it too (shift_series, default true). A deleted recurring visit stays deleted; to skip one, use delete_visit. A visit you mark completed on a job charged automatically (autopay) waits for the office to approve its charge.",
+      "Move or change a visit: its date, start time (or anytime: start_time null), length (any number of minutes), whether its time is fixed, crew, people (the whole list), equipment, status, title or notes. Moving a visit takes it out of its organized route. Moving one day of multi-day work moves the days after it too (shift_series, default true). A deleted recurring visit stays deleted; to skip one, use delete_visit. A visit you mark completed on a job charged automatically (autopay) waits for the office to approve its charge. Moving a client's visit to another day or by an hour or more, cancelling it or taking it off the schedule tells the client ten minutes later, once, if the business has those messages on (Settings → Client notifications).",
     input: z.object({
       visit_id: z.uuid(),
       date: date.nullable().optional().describe("null puts it back on the waiting list."),
@@ -108,7 +109,7 @@ export const scheduleTools = {
     },
   }),
   delete_visit: tool({
-    description: "Delete a visit, task or event. A recurring job's visit deleted this way stays deleted (that date is skipped). To move it instead, use update_visit.",
+    description: "Delete a visit, task or event. A recurring job's visit deleted this way stays deleted (that date is skipped). To move it instead, use update_visit. The client of a visit still to come is told it's cancelled, if the business has that message on.",
     input: z.object({ visit_id: z.uuid(), ...companyArg }),
     area: "schedule",
     destructive: true,
@@ -118,7 +119,7 @@ export const scheduleTools = {
     },
   }),
   rain_day: tool({
-    description: "Move every open visit on one date to another, keeping their times, for the whole team or one crew. Weather holds are cleared.",
+    description: "Move every open visit on one date to another, keeping their times, for the whole team or one crew. Weather holds are cleared. Each client is told their visit moved, if the business has that message on.",
     input: z.object({ from_date: date, to_date: date, crew_id: z.uuid().optional(), ...companyArg }),
     area: "schedule",
     run: (ctx, a) => shiftDay(scopeOf(ctx), a),

@@ -6,6 +6,7 @@
  * agreement, sign), the contract filled in for the option picked, and the words the price range
  * page shows. No React here, so it's tested on its own.
  */
+import { lateFeeNotice, type LateFee } from "@crewtavo/core/billing";
 import { depositFor, type ContractInput, type LibrarySection } from "@crewtavo/core/contracts";
 import { documentColor, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import type { ClientChecklist } from "@crewtavo/core/forms";
@@ -53,6 +54,8 @@ export interface HubCompany {
   logo?: string | null;
   /** The letterhead's address lines: the street, then "City, ST 12345". */
   address?: string[];
+  /** The business's privacy policy link, when it set one (Settings → Company). */
+  privacy_url?: string | null;
 }
 /** A map drawing the office chose to show the client, with the sizes measured on it. */
 export interface HubDrawing {
@@ -84,6 +87,18 @@ export interface HubApproval {
   option?: ApprovalOption | null;
   contract?: ApprovalContract | null;
   initials?: { image: string; signed_at: string | null } | null;
+  /** Each payment of its schedule as it was signed, with its amount (left out without one, and by older servers). */
+  payment_schedule?: unknown;
+}
+/** The business's Google reviews on a quote (the server's quoteReviewsFor). */
+export interface HubReviews {
+  rating: number | null;
+  count: number | null;
+  /** Each as it is on Google: the reviewer's name and words unchanged (an older server sends them already shortened). */
+  reviews: Array<{ name: string; rating: number; date: string; text: string }>;
+  /** The business's profile on Google Maps, where a review can be read in full. Left out by older servers. */
+  link?: string | null;
+  pdf: boolean;
 }
 /** A roof estimate sent as a price range: the range, what's in it and what could move it. */
 export interface HubRange {
@@ -144,10 +159,17 @@ export interface QuoteView {
   deposit_online?: boolean;
   /** Signed: the deposit's invoice made as they approved, what's left on it, and its link to pay it. */
   deposit?: { amount: number; balance_due: number; link: string } | null;
+  /**
+   * Signed: that invoice while it's owed and the business takes no payments online, so there's
+   * nothing to pay from here (`deposit` is null then). Servers before it send neither.
+   */
+  deposit_due?: { amount: number; balance_due: number; link: string } | null;
   /** The estimate template (core documents.ts); read through templateSettings(). */
   template?: unknown;
   /** Null with a price range (it would say the price), and from servers before contracts. */
   contract?: HubContract | null;
+  /** The business's Google rating and up to three reviews, when it shows them on quotes (`pdf`: on its PDF too). Null otherwise, and left out by older servers. */
+  reviews?: HubReviews | null;
   quote: {
     id: string;
     number: number;
@@ -188,6 +210,8 @@ export interface QuoteView {
     /** The options it offers, in order; none without options. */
     options?: HubOption[];
     lines: HubLine[];
+    /** How it's paid (quotes.payment_schedule), null with a price range; left out without one, and by older servers. */
+    payment_schedule?: unknown;
   } & HubFields;
 }
 /**
@@ -222,6 +246,8 @@ export interface HubAutopay {
   terms_version: string;
   /** "at the end of the day of each visit" (core autopayTimingText). */
   timing: string;
+  /** What paying from a bank account means for notice, the last paragraph they agree to. A server from before it sends none. */
+  bank_terms?: string;
   /** When the next charge goes, if one is waiting. */
   next_charge: string | null;
   /** What each visit costs, when they have one recurring job on autopay. */
@@ -267,6 +293,8 @@ export interface InvoiceView {
   promo_line?: boolean;
   /** Whether a tip can be added (the business has tips on, and the invoice wasn't made in Stripe). Off, no tip choice is shown anywhere. */
   tips: boolean;
+  /** The late fee that could still go on this invoice, so it's said before one is added. Null, or left out by an older server: none is said. */
+  late_fee?: LateFee | null;
   /** Servers that don't send these have no autopay: none of it shows. */
   autopay?: HubInvoiceAutopay | null;
   /** Offer "Paid. Pay automatically next time?" once it's paid. */
@@ -433,6 +461,22 @@ export function promoShortfall(promo: HubPromoInfo, lines: ReadonlyArray<Pick<Hu
  */
 export const depositToBook = (deposit: Amount | null | undefined, total: Amount, percent?: Amount | null) => Math.max(0, Number(depositFor(deposit ?? 0, total, percent)));
 
+/**
+ * What a signed quote says under "Signed on …": thanks, and where its deposit stands. Paid online
+ * (`deposit`): still due, with the page's Pay button, or paid. Owed with no way to pay online
+ * (`deposit_due`): the amount, and that the business will be in touch about it. A deposit with no
+ * invoice yet (approved by the office, or before every approval made one): an invoice is coming.
+ */
+export function signedThanks(data: Pick<QuoteView, "deposit" | "deposit_due"> & { company: { name: string }; quote: { deposit_amount: Amount | null } }): string {
+  const business = data.company.name;
+  if (data.deposit_due && data.deposit_due.balance_due > 0) {
+    return `Thank you. Your ${formatMoneyCents(data.deposit_due.balance_due)} deposit is due, and ${business} will be in touch about paying it and scheduling the work.`;
+  }
+  const thanks = `Thank you. ${business} will be in touch to schedule the work.`;
+  if (data.deposit) return `${thanks} ${data.deposit.balance_due > 0 ? "Your deposit is still due: pay it to hold your place on the schedule." : "Your deposit is paid."}`;
+  return Number(data.quote.deposit_amount) > 0 ? `${thanks} You'll receive an invoice for the deposit.` : thanks;
+}
+
 /** The "Good", "Better" and "Best" chips on the add-on groups, but not when the quote offers options (their tiers are the options'). */
 export const groupTiers = (view: QuoteView) => ((view.quote.options?.length ?? 0) > 0 ? new Map<string, string>() : optionLabels(view.quote.lines));
 
@@ -503,6 +547,8 @@ export function quoteDocument(view: QuoteView, paper: HubPaper = {}): DocumentDa
     optionId,
     options: options.map((o) => ({ id: o.id, name: o.name, tier: o.tier, picture: o.picture, style: o.style, highlights: o.highlights, warranty: o.warranty, total: o.total })),
     choice: paper.signing || signed ? hubChoice(view, optionId) : null,
+    // Printed only when the business ticked "On the quote's PDF too".
+    reviews: view.reviews?.pdf ? view.reviews : null,
     ...(paper.contract !== undefined ? { contract: paper.contract ? { sections: paper.contract.sections } : null } : {}),
   });
 }
@@ -521,7 +567,7 @@ export function hubInvoiceContract(view: InvoiceView): QuoteContract | null {
 export function invoiceDocument(view: InvoiceView): DocumentData {
   const tz = view.company.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const invoice = view.invoice.status === "written_off" ? { ...view.invoice, balance_due: 0 } : view.invoice;
-  return buildInvoiceDocument(invoice, { timeZone: tz, contract: hubInvoiceContract(view) });
+  return buildInvoiceDocument(invoice, { timeZone: tz, contract: hubInvoiceContract(view), lateFeeNote: view.late_fee ? lateFeeNotice(view.late_fee, formatMoneyCents) : null });
 }
 
 // ---------------------------------------------------------------------------------------------

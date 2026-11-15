@@ -58,6 +58,7 @@ const screens = {
   payouts: () => import("@/features/invoices/PayoutsPage"),
   marketing: () => import("@/features/marketing/MarketingPage"),
   campaign: () => import("@/features/marketing/CampaignPage"),
+  postcard: () => import("@/features/marketing/PostcardPage"),
   automations: () => import("@/features/automations/AutomationsPage"),
   rule: () => import("@/features/automations/RulePage"),
   equipment: () => import("@/features/equipment/EquipmentPage"),
@@ -171,6 +172,7 @@ export const routes: RouteObject[] = [
           { path: "payouts", ...page(screens.payouts, "PayoutsPage") },
           { path: "marketing", ...page(screens.marketing, "MarketingPage") },
           { path: "marketing/campaigns/:id", ...page(screens.campaign, "CampaignPage") },
+          { path: "marketing/postcards/:id", ...page(screens.postcard, "PostcardPage") },
           { path: "automations", ...page(screens.automations, "AutomationsPage") },
           { path: "automations/:id", ...page(screens.rule, "RulePage") },
           { path: "equipment", ...page(screens.equipment, "EquipmentPage") },
@@ -218,6 +220,7 @@ export const routes: RouteObject[] = [
   { path: "book/:company/:form", errorElement: <RouteError fullPage />, ...page(() => import("@/features/booking/BookingFormPage"), "BookingFormPage") },
   { path: "u/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/UnsubscribePage"), "UnsubscribePage") },
   { path: "refer/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ReferralPage"), "ReferralPage") },
+  { path: "s/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ShowcasePage"), "ShowcasePage") },
   // A subcontractor's link to send in their W-9 and insurance.
   { path: "paperwork/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/PaperworkPage"), "PaperworkPage") },
   { path: "license", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/LicensePage"), "LicensePage") },

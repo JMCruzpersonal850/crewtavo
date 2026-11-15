@@ -6,7 +6,7 @@
  */
 import { STARTER_NOTE } from "@crewtavo/core/contracts";
 import { optionTotals } from "@crewtavo/core/money";
-import { getPreset, isExampleWarranty, PACKAGE_LIMITS } from "@crewtavo/core/presets";
+import { getPreset, isExampleWarranty, PACKAGE_LIMITS, presetCustomFields } from "@crewtavo/core/presets";
 import { describe, expect, it } from "vitest";
 import { addAction, addedMessage, depositNote, optionsOpen, optionsPlan, optionTabs, sharedAtFirst, showAsk, skippedText, sortOptions, viewedOption } from "../src/features/quotes/options";
 import {
@@ -25,7 +25,7 @@ import {
   toggleSection,
   typedOrSaved,
 } from "../src/features/roofing/data";
-import { setupMessage } from "../src/features/roofing/packages";
+import { missingRoofingFields, setupMessage } from "../src/features/roofing/packages";
 import { formatMoney, formatMoneyCents } from "../src/lib/format";
 
 const FORMAT = { whole: formatMoney, cents: formatMoneyCents };
@@ -172,6 +172,19 @@ describe("what's on a package's card", () => {
     // Only services added (the price list was missing some): nothing about warranties.
     expect(setupMessage({ packages_created: 0, services_added: ["Ridge vent"] })).toBe("Added 1 service");
     expect(setupMessage({ packages_created: 0, services_added: [] })).toBe("You already have them");
+    // The insurance claim fields, with or without the rest.
+    expect(setupMessage({ packages_created: 0, services_added: [], fields_added: ["Claim number"] })).toBe("Added 1 insurance claim field for quotes and jobs");
+    expect(setupMessage({ packages_created: 3, services_added: ["Ridge vent"], fields_added: ["Insurance company", "Claim number"] })).toBe(
+      "Added 3 packages, 1 service and 2 insurance claim fields for quotes and jobs. Their warranties are example wording, so have your attorney review them.",
+    );
+  });
+
+  it("knows which insurance claim fields a roofer's quotes and jobs don't have yet", () => {
+    expect(missingRoofingFields([])).toEqual(["Insurance company", "Claim number", "Adjuster name", "Adjuster phone", "Date of loss", "Deductible"]);
+    const all = presetCustomFields(getPreset("roofing_exteriors"));
+    expect(missingRoofingFields(all)).toEqual([]);
+    // One it has on quotes but not on jobs is still to add; a client field of the same key doesn't count.
+    expect(missingRoofingFields([...all.filter((f) => !(f.record_type === "job" && f.key === "deductible")), { record_type: "client", key: "deductible" }])).toEqual(["Deductible"]);
   });
 });
 

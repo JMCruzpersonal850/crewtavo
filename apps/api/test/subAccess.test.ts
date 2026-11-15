@@ -264,7 +264,7 @@ const NOT_SIGNED_IN_ROUTES = [
   "DELETE /api/hub/:token/promo", "POST /api/hub/:token/pay", "POST /api/hub/:token/message", "GET /api/hub/:token/drawings/:file", "GET /api/hub/:token/visits/:file",
   "GET /api/hub/:token/visits/:id/slots", "POST /api/hub/:token/visits/:id/change",
   "POST /api/hub/:token/request", "POST /api/hub/:token/autopay/setup", "POST /api/hub/:token/autopay/finish", "POST /api/hub/:token/autopay/confirm",
-  "POST /api/hub/:token/autopay/off", "POST /api/hub/:token/tip", "POST /api/public/forms/:company/:form/promo", "GET /api/public/forms/:company/:form", "POST /api/public/forms/:company/:form",
+  "POST /api/hub/:token/autopay/off", "POST /api/hub/:token/tip", "POST /api/public/forms/:company/:form/promo", "GET /api/public/forms/:company/:form", "GET /api/public/forms/:company/:form/openings", "POST /api/public/forms/:company/:form",
   "POST /api/public/forms/:company/:form/files", "GET /api/public/logo/:company/:file", "GET /api/public/letterhead/:company/:file", "POST /api/public/documents/:file",
   "GET /api/public/package/:company/:file", "GET /api/public/service/:company/:file", "GET /api/public/unsubscribe/:token", "POST /api/public/unsubscribe/:token",
   "GET /api/public/r/:token", "GET /api/public/refer/:token", "POST /api/public/refer/:token",
@@ -272,6 +272,10 @@ const NOT_SIGNED_IN_ROUTES = [
   "GET /api/public/o/:token", "GET /api/public/c/:token/:n", "GET /api/calendar/:file",
   // A social post's picture, fetched by Meta and Google (routes/public.ts): a random token each, for 7 days.
   "GET /api/public/social/:file", "HEAD /api/public/social/:file",
+  // A postcard campaign's front, fetched by Lob (routes/postcards.ts): a random token each, once it's sent.
+  "GET /api/public/postcards/:file", "HEAD /api/public/postcards/:file",
+  // A published job showcase and its photos (routes/showcases.ts): by the showcase's random token, only while published.
+  "GET /api/public/showcases/:token", "GET /api/public/showcases/:token/:file", "HEAD /api/public/showcases/:token/:file",
   // The instance's own documents, AI assistants (their own tokens) and website analytics.
   "GET /.well-known/crewtavo-instance", "GET /.well-known/oauth-protected-resource", "GET /.well-known/oauth-protected-resource/mcp",
   "GET /.well-known/oauth-authorization-server", "GET /.well-known/oauth-authorization-server/auth/v1", "GET /.well-known/openid-configuration/auth/v1",

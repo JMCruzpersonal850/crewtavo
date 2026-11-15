@@ -1,5 +1,6 @@
 /** Apps page: catalog with status, OAuth connect/callback/disconnect, API keys, and AI helpers. */
 import { ADMINS, weatherSourceOf, type Role } from "@crewtavo/core";
+import { phoneDisplay } from "@crewtavo/core/phone";
 import { marketingOn } from "@crewtavo/core/marketing";
 import { projectNumber } from "@crewtavo/core/reviews";
 import { websiteOf } from "@crewtavo/core/website";
@@ -13,15 +14,19 @@ import { randomId, signToken, verifyToken } from "../lib/crypto";
 import { renderEmail } from "../lib/email";
 import { endConnection, teamConnections } from "../lib/assistants";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
-import { emailReady, sendEmail } from "../lib/notify";
+import { emailReady, sendEmail, sendingWorks } from "../lib/notify";
+import { checkTwilio, companyTwilio, forgetTwilio, serverTwilio, setSmsWebhook, TwilioProblem, type TwilioSettings } from "../lib/twilio";
 import { adminClient, type Db } from "../lib/supabase";
-import { companyAnthropicKey, complete, countAiAsk } from "../services/ai";
+import { aiChoice, askerOf, complete, countAiAsk, teamPlans, type OpenAiSettings } from "../services/ai";
 import { analyticsSettings } from "../services/analytics";
 import { AbcProblem, chooseAbcAccount, connectAbc, settingsOf as abcSettingsOf } from "../integrations/abcSupply";
 import { describeAccount, retryAccounting } from "../integrations/accounting";
 import { deleteVisitsCalendar, describeGoogleAccount, pushUpcomingVisits } from "../integrations/calendars";
+import { loadPlan } from "../integrations/chatgptPlan";
 import { checkFalKey } from "../integrations/fal";
 import { checkOpenMeteoKey } from "../services/forecast";
+import { checkLobKey, LobProblem, type LobSettings } from "../integrations/lob";
+import { checkOpenAiKey, pickModel } from "../integrations/openai";
 import { describeGoogleBusiness, findLocation, GoogleBusinessError } from "../integrations/googleBusiness";
 import { badKeys, MetaError, metaAuthorizeUrl, type MetaKeys } from "../integrations/meta";
 import { CATALOG, catalogEntry, isCalendarApp, OAUTH, UntrustedServerError, zohoAccountsServer, type Provider } from "../integrations/registry";
@@ -58,7 +63,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   // are read below. The server's key does neither.
   const can = ownKey ? await stripeCapabilities(c.env, adminClient(c.env), c.var.companyId).catch(() => null) : null;
   const [rows, calendars, company] = await Promise.all([
-    c.var.db.from("integrations").select("provider, status, account_label, connected_at, last_sync_at, last_error, settings").eq("company_id", c.var.companyId),
+    c.var.db.from("integrations").select("provider, status, account_label, external_account_id, connected_at, last_sync_at, last_error, settings").eq("company_id", c.var.companyId),
     c.var.db.from("calendar_sources").select("app, last_error").eq("company_id", c.var.companyId),
     c.var.db.from("companies").select("settings").eq("id", c.var.companyId).maybeSingle(),
   ]);
@@ -71,7 +76,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const builtinOn: Record<string, boolean> = { team_chat: (company.data?.settings as { team_chat?: { enabled?: boolean } } | null)?.team_chat?.enabled === true };
   // The website's editor, by its address (integrations/website.ts).
   const website = websiteOf(company.data?.settings as Record<string, unknown> | null);
-  const byProvider = new Map(integrations.map(({ settings, ...r }) => [r.provider, r]));
+  const byProvider = new Map(integrations.map(({ settings, external_account_id, ...r }) => [r.provider, r]));
   // Website analytics, while it counts visits (routes/analytics.ts), website forms and careers
   // (routes/websiteForms.ts), Drive (routes/drive.ts) and Marketing (routes/marketing.ts).
   builtinOn.website_analytics = analyticsSettings(company.data?.settings).enabled === true;
@@ -106,10 +111,39 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         full_key: ownKey && stripeSettings.key_kind === "secret" && stripeSettings.livemode !== false,
       }
     : null;
+  // Twilio: the company's own account (its number, and where that number's incoming texts go), or
+  // the server's for companies that haven't connected theirs. A key saved before accounts could be
+  // connected here (no Account SID with it) never sent anything, so it doesn't count.
+  const twilioRow = integrations.find((r) => r.provider === "twilio" && r.status !== "disconnected" && r.external_account_id);
+  const serverTexts = !twilioRow && Boolean(serverTwilio(c.env));
+  if (!twilioRow) byProvider.delete("twilio");
+  if (serverTexts) byProvider.set("twilio", { provider: "twilio", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
+  const twilio = twilioState(appUrl(c), twilioRow ? (twilioRow.settings as unknown as TwilioSettings) : null, serverTexts);
+  // Lob: whether its key is a test key (cards made but never mailed) or a live one.
+  const lobRow = integrations.find((r) => r.provider === "lob" && r.status !== "disconnected");
+  const lob = lobRow ? { mode: (lobRow.settings as unknown as LobSettings | null)?.mode ?? null } : null;
   // Without the company's email or the server's, the owners hear about Stripe changes on the bell only.
   const ownersEmailed = await emailReady(c.env, c.var.companyId);
+  // Crewtavo's own AI (services/ai.ts): which keys the company added, the one it chose when it has
+  // both, and the service that answers now. The ChatGPT page also shows the model its key uses.
+  const hasKey = (provider: string) => integrations.some((r) => r.provider === provider && r.status !== "disconnected");
+  const aiKeys = { claude: hasKey("anthropic"), chatgpt: hasKey("chatgpt") };
+  const choice = aiChoice(company.data?.settings);
+  const ai = {
+    ...aiKeys,
+    choice,
+    server: Boolean(c.env.ANTHROPIC_API_KEY),
+    service: aiKeys.claude && aiKeys.chatgpt ? (choice ?? "claude") : aiKeys.chatgpt ? "chatgpt" : aiKeys.claude || c.env.ANTHROPIC_API_KEY ? "claude" : null,
+  };
+  const openaiSettings = (integrations.find((r) => r.provider === "chatgpt")?.settings ?? {}) as OpenAiSettings;
+  // Whether the person looking has their own ChatGPT plan connected (each person's own: routes/chatgpt.ts).
+  const myPlan = (await loadPlan(adminClient(c.env), { userId: c.var.userId, companyId: c.var.companyId }).catch(() => null))?.status === "connected";
+  const openai = aiKeys.chatgpt
+    ? { model: pickModel(c.env, openaiSettings.models ?? [], openaiSettings.model) ?? openaiSettings.model ?? null, models: openaiSettings.models ?? [], model_locked: Boolean(c.env.OPENAI_MODEL) }
+    : null;
   return c.json({
     mcp_url: `${appUrl(c)}/mcp`,
+    ai,
     apps: CATALOG.map(({ available, appKeys: takesKeys, ...entry }) => {
       const own = calendarRows.filter((s) => s.app === entry.id);
       const linked = isCalendarApp(entry.id) ? { calendars: own.length, calendar_errors: own.filter((s) => s.last_error).length } : {};
@@ -126,8 +160,11 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.auth === "site" ? { website } : {}),
         ...(entry.id === "stripe" ? { ...(stripe ? { stripe } : {}), owners_emailed: ownersEmailed } : {}),
         ...(entry.id === "abc_supply" && abc ? { supplier: abc } : {}),
+        ...(entry.id === "twilio" ? { twilio } : {}),
+        ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
+        ...(entry.id === "chatgpt" ? { ...(openai ? { openai } : {}), my_plan: myPlan, team_plans: teamPlans(company.data?.settings) } : {}),
         ...(takesKeys ? { takes_app_keys: true, app_keys: ownKeys } : {}),
       };
     }),
@@ -135,6 +172,28 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
 });
 
 type IntegrationRow = { status: string; settings: unknown } | undefined;
+
+/** Where Twilio sends a number's incoming texts for this Crewtavo. */
+const twilioWebhook = (base: string) => `${base}/api/webhooks/twilio`;
+
+/**
+ * Twilio on its app page: whether texts go from the company's own account (`own`, with its number)
+ * or the server's (`server`), the address to give Twilio for incoming texts, and whether the
+ * company's number already sends them there. Twilio only reaches a public https address.
+ */
+function twilioState(base: string, own: TwilioSettings | null, server: boolean) {
+  const webhook_url = twilioWebhook(base);
+  return {
+    own: Boolean(own),
+    server,
+    from_number: own?.from_number ?? null,
+    webhook_url,
+    webhook_set: Boolean(own?.sms_url) && own!.sms_url === webhook_url,
+    // Where the number's incoming texts go now, when that's somewhere else.
+    other_webhook: own?.sms_url && own.sms_url !== webhook_url ? own.sms_url : null,
+    reachable: base.startsWith("https://"),
+  };
+}
 
 /**
  * Google Business Profile on its app page: the location, the sync's state, the review link offer and
@@ -365,6 +424,8 @@ apps.post("/apps/:provider/disconnect", requireUser, requireCompany(ADMINS, "app
     if (settings.weather_source === "open_meteo_commercial") await admin.from("companies").update({ settings: asJson({ ...settings, weather_source: weatherSourceOf(null) }) }).eq("id", c.var.companyId);
   }
   if (who && was) runInBackground(c, noteStripeChange(c, who, { before: was.label, after: null, from: was.id, to: null, moved: null }));
+  // Texts go from the server's account again, if it has one, from the next one on.
+  if (provider === "twilio") forgetTwilio(c.var.companyId);
   return c.json({ provider, status: "disconnected", ...(provider === "google_business" ? { removed } : {}), ...(shared ? { revoked: false } : {}) });
 });
 
@@ -566,6 +627,75 @@ apps.put("/apps/abc_supply/account", requireUser, requireCompany(ADMINS, "apps")
   }
 });
 
+/**
+ * Twilio: the company's own account, so texting works without anyone setting up the server. The
+ * Account SID, Auth Token and sending number are checked with Twilio first (the account is read and
+ * the number looked up in it, which costs nothing), and refused with what to fix when they don't
+ * work. The token is kept encrypted and never returned.
+ */
+apps.put("/apps/twilio/account", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(
+    c,
+    z.object({
+      account_sid: z.string().trim().min(1, "Paste your Account SID.").max(60),
+      auth_token: z.string().trim().min(8, "That looks too short. Copy the whole Auth Token.").max(200).regex(/^\S+$/, "Paste it without spaces."),
+      from_number: z.string().trim().min(7, "Enter your Twilio number.").max(40),
+    }),
+  );
+  let checked;
+  try {
+    checked = await checkTwilio(body);
+  } catch (error) {
+    if (error instanceof TwilioProblem) throw new HttpError(400, error.message);
+    throw error;
+  }
+  const admin = adminClient(c.env);
+  const settings: TwilioSettings = { from_number: checked.from_number, phone_sid: checked.phone_sid, sms_url: checked.sms_url || null };
+  const { error } = await admin.from("integrations").upsert({
+    company_id: c.var.companyId,
+    provider: "twilio",
+    status: "connected",
+    account_label: `${checked.name} · ${phoneDisplay(checked.from_number)}`.slice(0, 200),
+    external_account_id: body.account_sid,
+    settings: asJson(settings),
+    connected_by: c.var.userId,
+    connected_at: new Date().toISOString(),
+    last_error: null,
+  });
+  if (error) throw dbError(error);
+  await saveSecret(c.env, admin, c.var.companyId, "twilio", { api_key: body.auth_token, extra: { account_sid: body.account_sid } });
+  forgetTwilio(c.var.companyId);
+  // A warning that texts weren't going out was about the account before this one.
+  await sendingWorks(c.env, c.var.companyId, "sms");
+  return c.json({ provider: "twilio", status: "connected", trial: checked.trial, twilio: twilioState(appUrl(c), settings, false) });
+});
+
+/**
+ * Twilio: point the company's number's incoming texts at this Crewtavo (the number's "A message
+ * comes in" webhook), so replies land in Messages without anyone pasting the address into Twilio.
+ * Only when asked: it replaces wherever the number sent them before.
+ */
+apps.post("/apps/twilio/webhook", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const base = appUrl(c);
+  if (!base.startsWith("https://")) throw new HttpError(400, "Twilio can only send texts to a public https address, and this Crewtavo doesn't have one yet.");
+  const admin = adminClient(c.env);
+  forgetTwilio(c.var.companyId);
+  const account = await companyTwilio(c.env, c.var.companyId);
+  const { data: row } = await admin.from("integrations").select("settings").match({ company_id: c.var.companyId, provider: "twilio" }).maybeSingle();
+  const settings = (row?.settings ?? null) as unknown as TwilioSettings | null;
+  if (!account || !settings?.phone_sid) throw new HttpError(409, "Connect your Twilio account first.");
+  try {
+    await setSmsWebhook(account, settings.phone_sid, twilioWebhook(base));
+  } catch (error) {
+    if (error instanceof TwilioProblem) throw new HttpError(502, error.message);
+    throw error;
+  }
+  const next: TwilioSettings = { ...settings, sms_url: twilioWebhook(base) };
+  const { error } = await admin.from("integrations").update({ settings: asJson(next) }).match({ company_id: c.var.companyId, provider: "twilio" });
+  if (error) throw dbError(error);
+  return c.json({ twilio: twilioState(base, next, false) });
+});
+
 const PASSWORD = z.object({ password: z.string().min(1).max(200) });
 
 /** The Stripe account the company's own key reaches now (its name as Crewtavo shows it, and its acct_ id), or null without one. */
@@ -649,12 +779,13 @@ export async function emailOwners(
   }
 }
 
-/** API-key apps (a company's own Anthropic key, for example). The key is encrypted and never returned. */
+/** API-key apps (a company's own Anthropic or OpenAI key, for example). The key is encrypted and never returned. */
 apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const provider = c.req.param("provider") as Provider;
   const entry = catalogEntry(provider);
   if (!entry || entry.auth !== "api_key") throw new HttpError(400, "That app doesn't use a key.");
   if (provider === "abc_supply") throw new HttpError(400, "ABC Supply takes your app's Client ID and secret.");
+  if (provider === "twilio") throw new HttpError(400, "Twilio takes your Account SID, Auth Token and number.");
   const body = await readJson(c, z.object({ api_key: z.string().trim().min(10).max(500) }));
   const admin = adminClient(c.env);
   if (provider === "stripe") {
@@ -676,17 +807,47 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
     const problem = await checkOpenMeteoKey(body.api_key);
     if (problem) throw new HttpError(400, problem);
   }
+  // OpenAI: checked by listing the models the key can use (free). The list is kept for the admin to
+  // pick from, with one picked to begin with: the one picked before, if it's still there.
+  let openai: OpenAiSettings | null = null;
+  if (provider === "chatgpt") {
+    const checked = await checkOpenAiKey(body.api_key);
+    if ("problem" in checked) throw new HttpError(400, checked.problem);
+    const { data: was } = await admin.from("integrations").select("settings").match({ company_id: c.var.companyId, provider }).maybeSingle();
+    openai = { model: pickModel(c.env, checked.models, (was?.settings as OpenAiSettings | null)?.model), models: checked.models };
+  }
+  // Lob: checked with Lob first (a free read), and kept with whether it's a test key or a live one.
+  let lob: LobSettings | null = null;
+  if (provider === "lob") {
+    try {
+      lob = await checkLobKey(body.api_key);
+    } catch (error) {
+      if (error instanceof LobProblem) throw new HttpError(400, error.message);
+      throw error;
+    }
+  }
+  // Lob's key is kept before the row says which kind it is: if keeping it fails, Apps goes on
+  // describing the key that's really there, never "Test key" while a live one is still on file.
+  // A first connection needs its row to hang the key on, so that starts as not connected.
+  // (Postcards read the kind from the key itself in any case: services/postcards.ts.)
+  if (lob) {
+    const { error: placed } = await admin.from("integrations").upsert({ company_id: c.var.companyId, provider, status: "disconnected" }, { onConflict: "company_id,provider", ignoreDuplicates: true });
+    if (placed) throw dbError(placed);
+    await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
+  }
   const { error } = await admin.from("integrations").upsert({
     company_id: c.var.companyId,
     provider,
     status: "connected",
-    account_label: `Key ending ${body.api_key.slice(-4)}`,
+    account_label: `${lob ? (lob.mode === "live" ? "Live key" : "Test key") : "Key"} ending ${body.api_key.slice(-4)}`,
     connected_by: c.var.userId,
     connected_at: new Date().toISOString(),
+    ...(lob ? { settings: asJson(lob), last_error: null } : {}),
+    ...(openai ? { settings: asJson(openai), last_error: null } : {}),
   });
   if (error) throw dbError(error);
-  await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
-  return c.json({ provider, status: "connected" });
+  if (!lob) await saveSecret(c.env, admin, c.var.companyId, provider, { api_key: body.api_key });
+  return c.json({ provider, status: "connected", ...(lob ? { lob } : {}), ...(openai ? { openai: { model: openai.model, models: openai.models, model_locked: Boolean(c.env.OPENAI_MODEL) } } : {}) });
 });
 
 /**
@@ -713,7 +874,7 @@ apps.delete("/apps/sveltia/site", requireUser, requireCompany(ADMINS, "apps"), a
 });
 
 // ---------------------------------------------------------------------------------------------
-// AI helpers (use the company's own Anthropic key when it has one)
+// AI helpers (services/ai.ts decides which service answers)
 // ---------------------------------------------------------------------------------------------
 
 apps.post("/ai/rewrite", requireUser, requireCompany(), async (c) => {
@@ -726,7 +887,7 @@ apps.post("/ai/rewrite", requireUser, requireCompany(), async (c) => {
   );
   await countAiAsk(c.env, c.var.companyId, c.var.userId);
   const text = await complete(c.env, {
-    apiKey: await companyAnthropicKey(c.env, adminClient(c.env), c.var.companyId),
+    asker: askerOf(c),
     system:
       "You edit short messages a home-services business sends to its customers. Return only the rewritten message, " +
       "with no preamble. Never add prices, dates or promises that aren't in the original.",
@@ -750,7 +911,7 @@ apps.post("/kb/ask", requireUser, requireCompany(), async (c) => {
 
   const excerpts = hits.map((h, i) => `[${i + 1}] ${h.title}\n${h.body_text.slice(0, 6000)}`).join("\n\n");
   const answer = await complete(c.env, {
-    apiKey: await companyAnthropicKey(c.env, adminClient(c.env), c.var.companyId),
+    asker: askerOf(c),
     system:
       "You answer questions for a field-service crew using only the SOP excerpts provided. Cite sources inline as [1], [2]. " +
       "If the excerpts don't answer the question, say so plainly. Keep answers short and practical; safety steps come first.",

@@ -29,8 +29,9 @@ vi.mock("../src/lib/api", async (importOriginal) => {
   return { ...real, supabase: () => ({ from, rpc }) };
 });
 
-const { addsWork, fieldInvoiceKind, takesMoney, takesWork } = await import("../src/features/field/fieldMoney");
-const { addJobLine, pendingJobLines, waitingScopeLine } = await import("../src/features/field/fieldActions");
+const { addsToVisit, addsWork, fieldInvoiceKind, takesMoney, takesWork } = await import("../src/features/field/fieldMoney");
+const { addJobLine, pendingJobLines, pendingVisitExtras, waitingScopeLine } = await import("../src/features/field/fieldActions");
+const { waitingExtra, withWaitingExtras } = await import("../src/features/field/FieldExtras");
 const { recordPayment } = await import("../src/features/invoices/recordPayment");
 
 /** A member as the session has them: their level's areas, or their custom role's within it. */
@@ -59,11 +60,17 @@ describe("who sees the money on site", () => {
     expect(ROLES.filter((role) => addsWork(member(role)))).toEqual([...STAFF]);
   });
 
-  it("work goes on a one-off job still open, not a repeating one (its lines bill every visit) or a closed one", () => {
+  it("work goes on a job still open, one-off or repeating, not a closed one", () => {
     expect(takesWork({ kind: "one_off", status: "active" })).toBe(true);
     expect(takesWork({ kind: "one_off", status: "requires_invoicing" })).toBe(true);
-    expect(takesWork({ kind: "recurring", status: "active" })).toBe(false);
+    expect(takesWork({ kind: "recurring", status: "active" })).toBe(true);
     expect(takesWork({ kind: "one_off", status: "completed" })).toBe(false);
+    expect(takesWork({ kind: "recurring", status: "archived" })).toBe(false);
+  });
+
+  it("on a repeating job it's extra work on that visit alone (its lines bill every visit); on a one-off job, a line on the job", () => {
+    expect(addsToVisit({ kind: "recurring" })).toBe(true);
+    expect(addsToVisit({ kind: "one_off" })).toBe(false);
   });
 
   it("Create invoice makes what the job page offers first: the final invoice, or the visits; none for a fixed price billed monthly", () => {
@@ -94,6 +101,44 @@ describe("adding work from the field", () => {
     expect(pendingJobLines(qc, "j1").map((l) => l.lineId)).toEqual(["line-1"]);
     expect(calls).toEqual([]);
     qc.unmount();
+  });
+});
+
+describe("adding extra work to a visit of a repeating job", () => {
+  const mulch = { ...sealing, visitId: "v9", jobId: "j9", lineId: "line-9", name: "Mulch", unit: "yd", quantity: 2, extra: true };
+
+  it("goes the same way, by item and quantity with no price: the database puts it on the visit, not the job", async () => {
+    await addJobLine(mulch);
+    expect(calls).toEqual([{ op: "rpc", on: "add_field_line", args: { p_visit: "v9", p_service: "s1", p_quantity: 2, p_id: "line-9" } }]);
+  });
+
+  it("waits on the phone with no signal, and shows with that visit's extra work, not in the job's list of work", async () => {
+    const qc = new QueryClient();
+    qc.mount();
+    onlineManager.setOnline(false);
+    const queue = (v: object) => void qc.getMutationCache().build(qc, { mutationKey: ["job-line-add"], networkMode: "online", mutationFn: async () => undefined }).execute(v);
+    queue(mulch);
+    queue({ ...mulch, visitId: "v10", lineId: "line-10" });
+    queue({ ...sealing, jobId: "j9", visitId: "v9" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(pendingVisitExtras(qc, "v9").map((l) => l.lineId)).toEqual(["line-9"]);
+    expect(pendingJobLines(qc, "j9").map((l) => l.lineId)).toEqual(["line-1"]);
+    expect(calls).toEqual([]);
+    qc.unmount();
+  });
+
+  it("is listed once: after what the server has, until the server has it too", () => {
+    const office = { id: "x1", name: "Aeration", description: null, quantity: 1, unit: "ea", added_in_field: false };
+    expect(waitingExtra(mulch)).toEqual({ id: "line-9", name: "Mulch", description: null, quantity: 2, unit: "yd", added_in_field: true, waiting: true });
+    expect(withWaitingExtras([office], [mulch]).map((l) => l.id)).toEqual(["x1", "line-9"]);
+    const sent = { ...waitingExtra(mulch), waiting: undefined };
+    expect(withWaitingExtras([office, sent], [mulch])).toEqual([office, sent]);
+  });
+
+  it("the visit's page offers it on a repeating job's visit until that visit is on an invoice", () => {
+    const page = readFileSync(fileURLToPath(new URL("../src/features/field/FieldVisitPage.tsx", import.meta.url)), "utf8");
+    expect(page).toContain("!(addsToVisit(v.job) && v.invoice_id) && <AddWork visitId={v.id} jobId={v.job.id} toVisit={addsToVisit(v.job)} />");
+    expect(page).toContain("{addsToVisit(v.job) && <VisitExtraScope visitId={v.id} />}");
   });
 });
 

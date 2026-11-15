@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "./Button";
 import { Icon } from "./Icon";
+import { t } from "@/lib/i18n";
 
 export type SaveState = "idle" | "edited" | "saving" | "saved" | "error";
 
@@ -76,23 +77,23 @@ export function SaveStatus({ status }: { status: SaveState }) {
   const shown = status === "idle" ? last : status;
   return (
     <span className="save-status" data-state={shown} data-hidden={status === "idle" || undefined} aria-live="polite">
-      {shown === "edited" && "Edited"}
+      {shown === "edited" && t("Edited")}
       {shown === "saving" && (
         <>
           <Spinner size={12} />
-          Saving…
+          {t("Saving…")}
         </>
       )}
       {shown === "saved" && (
         <>
           <Icon name="check" size={14} strokeWidth={2} />
-          Saved
+          {t("Saved")}
         </>
       )}
       {shown === "error" && (
         <>
           <Icon name="alert" size={14} />
-          Couldn't save. Try again.
+          {t("Couldn't save. Try again.")}
         </>
       )}
     </span>

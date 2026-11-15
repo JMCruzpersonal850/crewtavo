@@ -45,7 +45,20 @@ beforeEach(() => {
     { id: "next-week", company_id: COMPANY, user_id: "u0", category: "job", started_at: at(9, "00:00"), ended_at: at(9, "01:00"), approved_at: null },
     { id: "another-company", company_id: "c2", user_id: "u9", category: "job", started_at: at(3, "08:00"), ended_at: at(3, "09:00"), approved_at: null },
   ];
-  db = new FakeDb({ time_entries: [...weekOfTime(), ...outside] }, {
+  // What's on record as edited: one of this week's entries moved, one deleted from it, and others that aren't this week's to show.
+  const change = (id: string, over: Row): Row => ({
+    id, company_id: COMPANY, entry_id: "t-2-00-0", user_id: "u0", action: "changed", changed_by: "boss", source: "person", reason: null, edit: true,
+    old_started_at: at(2, "07:00"), new_started_at: at(2, "07:00"), old_ended_at: at(2, "07:30"), new_ended_at: at(2, "07:30"), entry_started_at: at(2, "07:00"), changed_at: at(8, "09:00"), ...over,
+  });
+  const changes = [
+    change("c-edit", { new_ended_at: at(2, "07:15"), reason: "Left early", changed_at: at(8, "10:00") }),
+    change("c-deleted", { entry_id: "gone", user_id: "u7", action: "deleted", new_started_at: null, new_ended_at: null, old_started_at: at(4, "13:00"), old_ended_at: at(4, "14:00"), entry_started_at: at(4, "13:00"), changed_at: at(8, "09:30") }),
+    // A tap: the clock stopped, nothing edited.
+    change("c-tap", { edit: false, old_ended_at: null }),
+    change("c-last-week", { entry_id: "last-week", entry_started_at: at(1, "23:30") }),
+    change("c-other-company", { company_id: "c2", entry_id: "another-company", entry_started_at: at(3, "08:00") }),
+  ];
+  db = new FakeDb({ time_entries: [...weekOfTime(), ...outside], time_entry_changes: changes }, {
     time_entry_places: ({ p_entries }: { p_entries: string[] }) => p_entries.map((id) => ({ id, in_place: { lat: 40.7, lng: -74 }, out_place: null, site: null })),
   });
   state.db = db;
@@ -68,7 +81,7 @@ describe("a week of time for thirty people", () => {
     // The week only, and this company only.
     expect(data.rows.some((r) => ["last-week", "next-week", "another-company"].includes(r.id))).toBe(false);
     expect(data.team).toHaveLength(PEOPLE);
-    expect(db.requests.map((r) => [r.order, r.from, r.to])).toEqual([["started_at.asc,id.asc", 0, 999], ["started_at.asc,id.asc", 1000, 1999]]);
+    expect(db.requests.filter((r) => r.table === "time_entries").map((r) => [r.order, r.from, r.to])).toEqual([["started_at.asc,id.asc", 0, 999], ["started_at.asc,id.asc", 1000, 1999]]);
     expect(db.calls).toEqual([]);
   });
 
@@ -90,7 +103,14 @@ describe("a week of time for thirty people", () => {
 
   it("asks for no places in an empty week", async () => {
     const data = await loadWeek({ companyId: COMPANY, week: "2026-11-16", timeZone: TZ, seesPlaces: true });
-    expect(data).toMatchObject({ rows: [], places: {} });
+    expect(data).toMatchObject({ rows: [], places: {}, changes: [] });
     expect(db.calls).toEqual([]);
+  });
+
+  it("has the edits on record for the week's time, oldest first: not the clock's own stops, another week's or another company's", async () => {
+    const data = await loadWeek({ companyId: COMPANY, week: WEEK, timeZone: TZ, seesPlaces: false });
+    expect(data.changes.map((c) => c.id)).toEqual(["c-deleted", "c-edit"]);
+    // Read a page at a time like the entries, in the order they were made.
+    expect(db.requests.filter((r) => r.table === "time_entry_changes").map((r) => [r.order, r.from, r.to])).toEqual([["changed_at.asc,id.asc", 0, 999]]);
   });
 });

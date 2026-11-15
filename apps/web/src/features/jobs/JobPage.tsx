@@ -1,8 +1,10 @@
 import { autopayAllowed, autopayDueText, autopaySettings, methodLabel, type AutopaySettings } from "@crewtavo/core/autopay";
-import { billingText, monthText } from "@crewtavo/core/jobBilling";
+import { billingText, billsByVisit, monthText } from "@crewtavo/core/jobBilling";
+import { costedExtras, extrasByVisit, takesExtras, visitTakesExtras } from "@crewtavo/core/visitExtras";
 import type { TablesUpdate } from "@crewtavo/core/database";
 import { askRefusal, marketingOn } from "@crewtavo/core/marketing";
 import { contractDiscountNote } from "@crewtavo/core/promos";
+import { belowProfitLine, profitAlertPercent } from "@crewtavo/core/reports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -29,9 +31,12 @@ import { VisitDialog, type VisitInput } from "../schedule/VisitDialog";
 import { useSchedulingRights } from "../schedule/myCrews";
 import { handlesSubPay, useJobPays } from "../subs/payData";
 import { ChangeOrders, useStartChangeOrder } from "./ChangeOrders";
+import { closeQuestion } from "./closing";
 import { ExpensesCard, useJobExpenses } from "./ExpensesCard";
+import { useReceiptDrafts } from "./ReceiptDrafts";
 import { MaterialsCard, useJobMaterials } from "./JobMaterials";
 import { PhotosCard } from "../files/PhotosCard";
+import { ShowcaseDialog } from "../marketing/ShowcaseDialog";
 import { JobChecklists } from "./FilledChecklists";
 import { PlansCard } from "../plans/PlansCard";
 import { WorksheetsCard } from "../paving/WorksheetsCard";
@@ -39,10 +44,12 @@ import { PropertyEquipment } from "../clients/PropertyEquipment";
 import { InvoiceJobDialog, JobDetailsDialog, PauseJobDialog, type JobRecord } from "./JobDialogs";
 import { JobDiscountNote } from "./JobDiscountNote";
 import { FieldAddedLines } from "./FieldAddedLines";
-import { jobCosts } from "./jobCosts";
+import { jobPageCosts } from "./jobCosts";
 import { JobPayCard, seesJobPay } from "./JobPayCard";
+import { JobPaymentSchedule } from "./JobPaymentSchedule";
 import { repeatText } from "./repeatText";
 import { ScopeOfWork } from "./ScopeOfWork";
+import { ExtraWorkDialog, ExtrasToReview, useEditsExtras, useJobExtras, VisitExtraLines } from "./VisitExtras";
 import { askToastKind, type AskResult } from "../marketing/askForm";
 import { CustomFieldList, useCustomFields } from "../customFields/CustomFields";
 import { memberName, useTeam } from "../requests/RequestsPage";
@@ -67,10 +74,13 @@ export function JobPage() {
   const [visit, setVisit] = useState<VisitInput | null>(null);
   // ?invoice=1 (from a paving project's Invoice step) opens Create invoice straight away.
   const [params] = useSearchParams();
-  const [dialog, setDialog] = useState<null | "details" | "invoice" | "pause">(() => (params.get("invoice") ? "invoice" : null));
+  const [dialog, setDialog] = useState<null | "details" | "invoice" | "pause" | "showcase">(() => (params.get("invoice") ? "invoice" : null));
   // The invoice just made, while its next step offers the job's logged hours and materials.
   const [madeInvoice, setMadeInvoice] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
+  // The visit whose extra work is being added to (a repeating job's).
+  const [extraVisit, setExtraVisit] = useState<{ id: string; title: string; scheduled_on: string | null } | null>(null);
+  const editsExtras = useEditsExtras();
   // The empty section an add button under the line items just opened, shown while its dialog is up.
   const [adding, setAdding] = useState<Extra | null>(null);
   // The add button pressed goes as its section shows, so when the dialog closes keyboard focus goes back
@@ -96,6 +106,8 @@ export function JobPage() {
   // The same queries the sections use, to know which ones this job has anything in.
   const materialRows = useJobMaterials(id);
   const expenseRows = useJobExpenses(id, seesCosts);
+  // Receipts dropped in to confirm keep the Expenses card in sight too.
+  const receiptDrafts = useReceiptDrafts(id);
   const payRows = useJobPays(session.company.id, id, seesPay);
   const team = useTeam(session.company.id);
 
@@ -105,7 +117,7 @@ export function JobPage() {
       unwrapOne(
         await supabase()
           .from("jobs")
-          .select("*, job_state, financials:job_financials(contract_total), client:clients(id, display_name, phone, email, status, review_opt_out, marketing_opt_out, sms_opt_out_at, reviewed_at), property:properties(id, line1, city, region, postal_code, lat, lng), quote:quotes!jobs_company_id_quote_id_fkey(id, number, deposit_amount), crew:crews(name), lines:job_line_items(id, name, description, quantity, unit, unit_price, unit_cost, unit_labor_cost, taxable, sort, service_id, source_quote_id, discount_billing, discount_key, added_in_field_by, added_in_field_at), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, hold_reason, invoice_id, completed_at, crew:crews(name, color), assignees:visit_assignees(user_id))")
+          .select("*, job_state, financials:job_financials(contract_total), client:clients(id, display_name, phone, email, status, review_opt_out, marketing_opt_out, sms_opt_out_at, reviewed_at), property:properties(id, line1, city, region, postal_code, lat, lng), quote:quotes!jobs_company_id_quote_id_fkey(id, number, deposit_amount), crew:crews(name), lines:job_line_items(id, name, description, quantity, unit, unit_price, unit_cost, unit_labor_cost, parts, taxable, sort, service_id, source_quote_id, discount_billing, discount_key, added_in_field_by, added_in_field_at), visits(id, title, kind, status, scheduled_on, starts_at, ends_at, crew_id, notes, hold_reason, invoice_id, completed_at, crew:crews(name, color), assignees:visit_assignees(user_id))")
           .eq("id", id)
           .order("sort", { referencedTable: "job_line_items" })
           .order("scheduled_on", { referencedTable: "visits" })
@@ -122,6 +134,8 @@ export function JobPage() {
   const j = job.data;
   useDocumentTitle(j ? `Job #${j.number}` : "Job");
   const clientId = j?.client?.id ?? null;
+  // Extra work on single visits of a repeating job: billed once with its visit, never part of the job's price.
+  const extras = useJobExtras(id, j?.kind === "recurring");
   // Whether the client can be charged now (an agreement in force, not paused, its card active: the
   // rule private.autopay_ready keeps), and the charge waiting for this job's finished work.
   const jobAutopay = useQuery({
@@ -178,7 +192,7 @@ export function JobPage() {
     queryFn: async () => {
       const [time, expenses, rates, crewPay] = await Promise.all([
         supabase().from("time_entries").select("id, started_at, ended_at").eq("job_id", id),
-        supabase().from("expenses").select("amount").eq("job_id", id),
+        supabase().from("expenses").select("amount, in_line_costs").eq("job_id", id),
         // Pay rates come from the server: nobody reads them on time entries directly.
         api.post<Record<string, number>>("/time/rates", { job_ids: [id] }),
         // Sub and crew pay that's agreed, done or paid (totals only).
@@ -186,8 +200,8 @@ export function JobPage() {
       ]);
       const entries = unwrap(time);
       const hours = entries.reduce((s, t) => s + (t.ended_at ? (Date.parse(t.ended_at) - Date.parse(t.started_at)) / 3_600_000 : 0), 0);
-      const labor = entries.reduce((s, t) => s + (t.ended_at ? ((Date.parse(t.ended_at) - Date.parse(t.started_at)) / 3_600_000) * Number(rates[t.id] ?? 0) : 0), 0);
-      return { hours, labor, crewPay: unwrap(crewPay), expenses: unwrap(expenses).reduce((s, e) => s + Number(e.amount), 0) };
+      // The rows as they are: jobPageCosts adds them up, as the hourly profit check does.
+      return { hours, time: entries, rates, pay: unwrap(crewPay), expenses: unwrap(expenses) };
     },
   });
 
@@ -197,7 +211,12 @@ export function JobPage() {
   };
   const update = useMutation({
     meta: { success: (_: unknown, p: TablesUpdate<"jobs">) => (p.status === "requires_invoicing" ? "Job marked complete" : p.status === "archived" ? "Job archived" : p.status === "active" ? "Job reopened" : p.status === "completed" ? "Job closed" : "Job saved"), tone: "job" },
-    mutationFn: async (patch: TablesUpdate<"jobs">) => unwrap(await supabase().from("jobs").update(patch).eq("id", id)),
+    mutationFn: async (patch: TablesUpdate<"jobs">) => {
+      unwrap(await supabase().from("jobs").update(patch).eq("id", id));
+      // A recurring job reopened gets back the visits closing it took off (the server's, as when it's
+      // resumed). If that can't be done now, the nightly run makes them.
+      if (patch.status === "active" && j?.kind === "recurring" && canDispatch) await api.post(`/jobs/${id}/generate-visits`).catch(() => undefined);
+    },
     onSuccess: refresh,
   });
   // The switch moves the moment it's flipped, and back if the database refuses it (no toast: the switch shows it).
@@ -251,12 +270,19 @@ export function JobPage() {
   if (job.error || !j) return <PageError error={job.error} onRetry={() => job.refetch()} back={<BackLink to="/jobs">Jobs</BackLink>} />;
 
   const contract = Number(j.financials?.contract_total ?? 0);
-  const cost = jobCosts({ contract, lines: j.lines, labor: costs.data?.labor ?? 0, expenses: costs.data?.expenses ?? 0, crewPay: costs.data?.crewPay ?? [] });
-  const { materials, labor, crew, expenses, profit, margin } = cost;
   const visits = j.visits;
+  const visitExtras = extrasByVisit(extras.data ?? []);
+  const cost = jobPageCosts({ price: contract, lines: j.lines, time: costs.data?.time ?? [], rates: costs.data?.rates ?? {}, expenses: costs.data?.expenses ?? [], logged: materialRows.data ?? [], pay: costs.data?.pay ?? [], extras: costedExtras(extras.data ?? [], visits) });
+  const { materials, labor, crew, expenses, profit, margin } = cost;
+  // The company's profit line (Settings → Company → Job costing), as the hourly check holds the job to it.
+  const profitLine = profitAlertPercent(session.company.settings);
+  const belowLine = j.status !== "archived" && belowProfitLine(j, { price: contract + cost.extras, margin, has_actual_costs: cost.hasActualCosts }, profitLine);
   const upcoming = visits.filter((v) => !["completed", "cancelled"].includes(v.status));
   const past = visits.filter((v) => ["completed", "cancelled"].includes(v.status));
-  const shownVisits = [...upcoming.slice(0, 12), ...(showPast ? past : [])];
+  // A finished visit whose extra work isn't on an invoice yet stays in sight with the upcoming ones.
+  const owed = showPast ? [] : past.filter((v) => v.status === "completed" && visitExtras.get(v.id)?.some((e) => !e.invoice_id));
+  const shownVisits = [...owed, ...upcoming.slice(0, 12), ...(showPast ? past : [])];
+  const addsExtras = editsExtras && takesExtras(j);
   const uninvoiced = visits.filter((v) => v.status === "completed" && !v.invoice_id && v.kind === "job").length;
   const billed = (invoices.data ?? []).filter((i) => ["deposit", "progress"].includes(i.kind) && i.status !== "void").reduce((s, i) => s + Number(i.subtotal), 0);
   const hasInvoices = Boolean(invoices.data?.length);
@@ -265,6 +291,8 @@ export function JobPage() {
     live.filter((i) => i.kind !== "retainage").reduce((s, i) => s + Number(i.retainage_amount), 0) -
     live.filter((i) => i.kind === "retainage").reduce((s, i) => s + Number(i.subtotal), 0);
   const finalInvoice = j.kind !== "recurring" ? live.find((i) => i.kind === "standard")?.number ?? null : null;
+  // Made by hand, or as the client approved the quote in the Client Hub: Create invoice says so rather than offer the quote's deposit again.
+  const depositInvoice = live.find((i) => i.kind === "deposit")?.number ?? null;
   // Work that repeats takes a once-per-job promo code off its first invoice only, which the job says.
   const repeats = j.kind === "recurring" || j.billing_mode === "per_visit";
   const contractNote = repeats ? contractDiscountNote(j.lines) : null;
@@ -291,13 +319,23 @@ export function JobPage() {
     }
     update.mutate({ status: "requires_invoicing" });
   };
+  /**
+   * Close or archive. The visits its schedule made that are still to come go with it
+   * (20261113000120_closed_jobs_leave_the_schedule.sql), so when there are any it's asked first, with how many.
+   */
+  const closeJob = async (status: "completed" | "archived") => {
+    const waiting = await supabase().rpc("job_visits_to_remove", { p_job: id });
+    const question = closeQuestion(status, j.number, waiting.data ?? 0);
+    if (question && !(await confirm(question))) return;
+    update.mutate({ status });
+  };
   const newVisit = (): VisitInput => ({ job_id: j.id, property_id: j.property?.id ?? null, title: j.title, crew_id: j.default_crew_id, kind: "job", context: { label: `Job #${j.number} · ${j.client?.display_name ?? ""}`, to: `/jobs/${j.id}` } });
 
   // Materials, expenses and sub pay take no room until they have something (or failed to load, to
   // say so). Until then they're small add buttons under the line items, each opening the same dialog
   // as the section's own button and showing the section while it's open.
   const used = (extra: Extra, rows: { data?: readonly unknown[]; error: unknown }) => Boolean(rows.data?.length) || Boolean(rows.error) || adding === extra;
-  const shows = { materials: used("materials", materialRows), expenses: seesCosts && used("expenses", expenseRows), pay: seesPay && used("pay", payRows) };
+  const shows = { materials: used("materials", materialRows), expenses: seesCosts && (used("expenses", expenseRows) || Boolean(receiptDrafts.data?.length)), pay: seesPay && used("pay", payRows) };
   const offers: Array<{ key: Extra; label: string; name: string }> = [];
   if (materialRows.data?.length === 0 && !shows.materials) offers.push({ key: "materials", label: "Materials", name: "Log materials" });
   if (seesCosts && expenseRows.data?.length === 0 && !shows.expenses) offers.push({ key: "expenses", label: "Expense", name: "Add an expense" });
@@ -332,13 +370,19 @@ export function JobPage() {
                     label: j.client?.reviewed_at ? "Already left a Google review" : reviewBy === "sms" ? "Ask for a review by text" : "Ask for a review", icon: "star",
                     hidden: !marketingOn(session.company.settings) || !j.client, disabled: !reviewBy, onSelect: () => review.mutate(reviewBy!),
                   },
+                  {
+                    // A finished job's before and after photos, on a page to share (Marketing → Showcases).
+                    label: "Make a showcase", icon: "image",
+                    hidden: !marketingOn(session.company.settings) || !isOffice || !can(session, "marketing") || !(["requires_invoicing", "completed"].includes(j.status) || visits.some((v) => v.status === "completed")),
+                    onSelect: () => setDialog("showcase"),
+                  },
                   { separator: true },
                   { label: "Pause job", icon: "pause", hidden: j.status !== "active" || j.kind !== "recurring" || Boolean(j.paused_at), onSelect: () => setDialog("pause") },
                   { label: "Resume job", icon: "play", hidden: !j.paused_at, onSelect: () => resume.mutate() },
                   { label: "Mark work complete", icon: "check", hidden: j.status !== "active" || j.kind === "one_off", onSelect: () => update.mutate({ status: "requires_invoicing" }) },
-                  { label: "Close job", icon: "check", hidden: !["requires_invoicing"].includes(j.status), onSelect: () => update.mutate({ status: "completed" }) },
+                  { label: "Close job", icon: "check", hidden: !["requires_invoicing"].includes(j.status), onSelect: () => closeJob("completed") },
                   { label: "Reopen job", icon: "undo", hidden: j.status === "active", onSelect: () => update.mutate({ status: "active" }) },
-                  { label: "Archive job", icon: "archive", hidden: j.status === "archived", onSelect: () => update.mutate({ status: "archived" }) },
+                  { label: "Archive job", icon: "archive", hidden: j.status === "archived", onSelect: () => closeJob("archived") },
                   {
                     label: "Delete job",
                     icon: "trash",
@@ -363,6 +407,14 @@ export function JobPage() {
         {autopay.card_required && jobAutopay.data && !jobAutopay.data.onFile && !["completed", "archived"].includes(j.status) && <span className="chip chip-amber"><Icon name="card" size={12} />Card not set up</span>}
       </div>
 
+      {/* The database made the change the Mark work complete button makes (20261113000100), so the page says how, and how to undo it. */}
+      {j.finished_by_visits_at && ["requires_invoicing", "completed"].includes(j.status) && (
+        <div className="muted small row wrap" style={{ gap: 6 }}>
+          <Icon name="check" size={14} />
+          <span>Marked complete when its last visit was finished{canSell ? ". Reopen it if another visit is needed." : "."}</span>
+          {canSell && <Button size="sm" variant="ghost" icon="undo" loading={update.isPending && update.variables?.status === "active"} onClick={() => update.mutate({ status: "active" })}>Reopen job</Button>}
+        </div>
+      )}
       {j.paused_at && j.status === "active" && (
         <div className="callout callout-info">
           <Icon name="pause" size={20} />
@@ -389,6 +441,7 @@ export function JobPage() {
       {charging && j.status !== "archived" && (
         <div className="muted small row" style={{ gap: 6 }}><Icon name="card" size={14} />Charged automatically {autopayDueText(charging.due_at, session.company.timezone)}.</div>
       )}
+      {extras.data && extras.data.length > 0 && <ExtrasToReview jobId={j.id} extras={extras.data} visits={visits} />}
 
       <div className="two-col">
         <div className="wide stack-lg">
@@ -401,7 +454,7 @@ export function JobPage() {
             <div className="card" ref={visitsRef}>
               {visits.length === 0 && (
                 <EmptyState inline title="No visits scheduled">
-                  {j.kind === "recurring" ? "Set how it repeats in Edit details, and visits are made for the next 60 days." : null}
+                  {j.kind === "recurring" ? "Set how it repeats in Edit details, and visits are made for the next year." : null}
                 </EmptyState>
               )}
               {shownVisits.map((v) => {
@@ -418,8 +471,12 @@ export function JobPage() {
                         {v.invoice_id ? " · invoiced" : ""}
                       </span>
                       {v.hold_reason && <span className="small" style={{ color: "var(--warning)", fontWeight: 600 }}>Weather: {v.hold_reason}</span>}
+                      <VisitExtraLines extras={visitExtras.get(v.id) ?? []} visit={v} />
                     </span>
                     <StatusPill label={statusText("visit", v.status)} tone={visitTone(v.status)} />
+                    {addsExtras && v.kind === "job" && visitTakesExtras(v) && (
+                      <Button size="sm" variant="ghost" icon="plus" aria-label={`Extra work on ${v.title}${v.scheduled_on ? `, ${formatDate(v.scheduled_on)}` : ""}`} title="Extra work on this visit" onClick={(e) => { e.stopPropagation(); setExtraVisit({ id: v.id, title: v.title, scheduled_on: v.scheduled_on }); }}>Extra work</Button>
+                    )}
                     {canDispatch && !["completed", "cancelled"].includes(v.status) && (
                       <Button size="sm" variant="ghost" icon="check" aria-label={`Complete ${v.title}`} title="Mark complete" loading={completeVisit.isPending && completeVisit.variables === v.id} onClick={(e) => { e.stopPropagation(); completeVisit.mutate(v.id); }} />
                     )}
@@ -460,7 +517,7 @@ export function JobPage() {
           <PlansCard scope={{ kind: "job", id: j.id, propertyId: j.property?.id ?? null }} />
 
           {/* Each wrapped (display: contents) so focus can find its add button as its dialog closes. */}
-          {shows.materials && <div data-extra="materials" style={{ display: "contents" }}><MaterialsCard jobId={j.id} showCosts={seesCosts} startAdding={adding === "materials"} onAddClosed={doneAdding} /></div>}
+          {shows.materials && <div data-extra="materials" style={{ display: "contents" }}><MaterialsCard jobId={j.id} showCosts={seesCosts} use={seesCosts ? cost.materialRows : undefined} startAdding={adding === "materials"} onAddClosed={doneAdding} /></div>}
 
           {shows.expenses && <div data-extra="expenses" style={{ display: "contents" }}><ExpensesCard jobId={j.id} onChanged={() => queryClient.invalidateQueries({ queryKey: ["job", id, "costs"] })} startAdding={adding === "expenses"} onAddClosed={doneAdding} /></div>}
 
@@ -493,13 +550,21 @@ export function JobPage() {
               <strong>Job costing</strong>
               {costs.isPending ? <Skeleton height={60} /> : (
                 <>
-                  <ProfitBar price={contract} labor={labor} crew={crew} expenses={expenses} materials={materials} />
+                  {belowLine && (
+                    <div className="callout callout-warning" role="status">
+                      <Icon name="alert" size={16} />
+                      <span className="grow small" style={{ fontWeight: 400 }}>At {margin}% profit, this job is below your {profitLine}%.</span>
+                    </div>
+                  )}
+                  <ProfitBar price={contract + cost.extras} labor={labor} crew={crew} expenses={expenses} materials={materials} />
                   {/* The figures roll to their new values as line items, time and costs change. */}
                   <div className="totals" style={{ marginTop: 6 }}>
                     <div className="line" style={{ alignItems: "flex-start" }}>
                       <span>Price{contractNote && <span className="muted small" style={{ display: "block" }}>{contractNote}</span>}</span>
                       <AnimatedNumber value={contract} format={MONEY_CENTS} />
                     </div>
+                    {/* Billed once each with its visit, on top of the price, which it doesn't change. */}
+                    {cost.extras !== 0 && <div className="line"><span>Extra work on visits</span><AnimatedNumber value={cost.extras} format={MONEY_CENTS} /></div>}
                     <div className="line"><span>{cost.actualLabor ? "Line item materials" : "Line item costs"}</span><AnimatedNumber value={materials} format={MONEY_CENTS} /></div>
                     <div className="line"><span>Labor ({(costs.data?.hours ?? 0).toFixed(1)} h)</span><AnimatedNumber value={labor} format={MONEY_CENTS} /></div>
                     <div className="line"><span>Sub and crew pay</span><AnimatedNumber value={crew} format={MONEY_CENTS} /></div>
@@ -510,6 +575,8 @@ export function JobPage() {
                     </div>
                   </div>
                   {cost.note && <span className="muted small">{cost.note}</span>}
+                  {cost.materialNote && <span className="muted small">{cost.materialNote}</span>}
+                  {cost.expenseNote && <span className="muted small">{cost.expenseNote}</span>}
                   {labor === 0 && (costs.data?.hours ?? 0) > 0 && <span className="muted small">Set labor rates in Settings → Team to cost tracked hours.</span>}
                 </>
               )}
@@ -558,6 +625,8 @@ export function JobPage() {
             </dl>
             {j.instructions && <p className="pre-wrap small" style={{ margin: 0, padding: 10, background: "var(--note)", borderRadius: "var(--radius-control)", border: "1px solid var(--note-border)" }}>{j.instructions}</p>}
           </div>
+          {/* The quote's payment schedule, for the people who look after money (nothing shows without one). */}
+          {seesInvoices && j.quote && <JobPaymentSchedule jobId={j.id} finalInvoice={live.find((i) => i.kind === "standard") ?? null} />}
           {j.client && (
             <div className="card card-pad stack-sm">
               <strong>Client</strong>
@@ -576,11 +645,13 @@ export function JobPage() {
       </div>
 
       {visit && <VisitDialog visit={visit} onClose={() => setVisit(null)} onSaved={refresh} />}
+      {extraVisit && <ExtraWorkDialog visit={extraVisit} jobId={j.id} onClose={() => setExtraVisit(null)} />}
       {dialog === "details" && <JobDetailsDialog job={j as unknown as JobRecord} onClose={() => setDialog(null)} onSaved={refresh} />}
+      {dialog === "showcase" && <ShowcaseDialog jobId={j.id} onClose={() => setDialog(null)} />}
       {dialog === "pause" && <PauseJobDialog jobId={j.id} canSchedule={canDispatch} onClose={() => setDialog(null)} onSaved={refresh} />}
       {dialog === "invoice" && (
         <InvoiceJobDialog
-          job={{ id: j.id, contract_total: contract, deposit: Number(j.quote?.deposit_amount ?? 0), billed, uninvoicedVisits: uninvoiced, kind: j.kind, fixed: j.kind === "recurring" && j.pricing === "fixed", retainageHeld, finalInvoice }}
+          job={{ id: j.id, contract_total: contract, deposit: Number(j.quote?.deposit_amount ?? 0), depositInvoice, billed, uninvoicedVisits: uninvoiced, kind: j.kind, fixed: j.kind === "recurring" && j.pricing === "fixed", byVisit: billsByVisit(j), retainageHeld, finalInvoice }}
           onClose={() => setDialog(null)}
           onCreated={(invoiceId) => {
             refresh();

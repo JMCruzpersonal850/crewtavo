@@ -15,11 +15,18 @@
  * at the end each notification is delivered, waits to be tried again (a provider that's down or
  * refusing the company's sign-in: after 2, 4, 8... minutes, 8 tries), or is failed with the reason
  * (an address or number that can't be sent to). A later try sends only by the channels still missing.
+ *
+ * Each person hears in their own language (profiles.locale): the notifications themselves are
+ * stored in English and read by their shape (packages/core/src/i18n/es/notices.ts), and the email's
+ * and text's own words are translated here.
  */
 import { byEmail, byText, DEFAULT_NOTIFICATION_PREFS, isPlaceholderEmail, notificationTopic, type NotificationChannel, type NotificationTopic } from "@crewtavo/core";
+import { translator } from "@crewtavo/core/i18n";
+import { installSpanish } from "@crewtavo/core/i18n/es";
+import { translateNotice } from "@crewtavo/core/i18n/patterns";
 import type { Env } from "../env";
 import { renderEmail } from "../lib/email";
-import { sendEmail, sendProblem, sendSms, smsConfigured } from "../lib/notify";
+import { sendEmail, sendProblem, sendSms, smsReady } from "../lib/notify";
 import { reportError } from "../lib/monitoring";
 import { adminClient } from "../lib/supabase";
 import { sendPush } from "../lib/webpush";
@@ -38,6 +45,8 @@ interface Row {
   read_at: string | null;
   delivery_token: string | null;
 }
+
+installSpanish();
 
 /** As many as one run claims: each can be an email, a text and a few pushes, and the next run is a minute away. */
 const BATCH = 200;
@@ -70,7 +79,7 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
   const companyIds = [...new Set(rows.map((r) => r.company_id))];
   const [prefs, profiles, companies, devices, subContacts] = await Promise.all([
     admin.from("notification_prefs").select("company_id, user_id, email, sms, push").in("user_id", userIds),
-    admin.from("profiles").select("user_id, email, phone, full_name").in("user_id", userIds),
+    admin.from("profiles").select("user_id, email, phone, full_name, locale").in("user_id", userIds),
     admin.from("companies").select("id, name, email").in("id", companyIds),
     admin.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth").in("user_id", userIds),
     // A sub's sign-in made by Crewtavo: the phone and email the office keeps for them, as they are now.
@@ -101,8 +110,9 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
 
   // A mailbox or text provider that just failed (refused the sign-in, or didn't answer) isn't asked
   // again for everyone else in this run: theirs wait for the next try, with the same reason.
+  // By company: each sends from its own mailbox and Twilio account, or the server's.
   const emailDown = new Map<string, string>();
-  let smsDown: string | null = null;
+  const smsDown = new Map<string, string>();
 
   for (const group of groups.values()) {
     const { company_id: companyId, user_id: userId } = group[0]!;
@@ -140,6 +150,9 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
       const emailTo = sub ? sub.email : person.email;
       const phoneTo = person.phone || sub?.phone || null;
       const chosen = prefsFor(companyId, userId);
+      // In their language: the notices as they read in the app, and the email's and text's own words.
+      const t = translator(person.locale);
+      const shown = (i: Row) => translateNotice(t.locale, i);
       // What they chose to get by this channel, less what has gone (or been turned down for good) by it.
       const pick = (channel: NotificationChannel) =>
         lowFirst(items.filter((i) => !state.get(i.id)?.[channel] && chosen[channel].includes(notificationTopic(i.kind) as NotificationTopic) && (channel !== "email" || byEmail(i.kind)) && (channel !== "sms" || byText(i.kind))));
@@ -153,13 +166,15 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
           add(later, ids, "email", down);
         } else {
           const text = [
-            forEmail.length === 1 ? "" : `${forEmail.length} updates from ${company.name}:`,
-            ...forEmail.map((i) => [oneLine(i.title), i.body && i.body !== i.title ? oneLine(i.body) : null, url(i.link)].filter(Boolean).join("\n")),
-            `You get these because of your notification settings. Change them in Crewtavo under Settings → Profile${base ? `: ${base}/settings?tab=profile` : "."}`,
+            forEmail.length === 1 ? "" : t("{count} updates from {company}:", { count: forEmail.length, company: company.name }),
+            ...forEmail.map(shown).map((i) => [oneLine(i.title), i.body && i.body !== i.title ? oneLine(i.body) : null, url(i.link)].filter(Boolean).join("\n")),
+            base
+              ? t("You get these because of your notification settings. Change them in Crewtavo under Settings → Profile: {link}", { link: `${base}/settings?tab=profile` })
+              : t("You get these because of your notification settings. Change them in Crewtavo under Settings → Profile."),
           ].filter(Boolean).join("\n\n");
           const result = await sendEmail(
             env,
-            { to: emailTo, subject: forEmail.length === 1 ? forEmail[0]!.title : `${forEmail.length} updates from ${company.name}`, ...renderEmail({ companyName: company.name, text }), replyTo: company.email ?? undefined, fromName: company.name },
+            { to: emailTo, subject: forEmail.length === 1 ? shown(forEmail[0]!).title : t("{count} updates from {company}", { count: forEmail.length, company: company.name }), ...renderEmail({ companyName: company.name, text }), replyTo: company.email ?? undefined, fromName: company.name },
             companyId,
           );
           const problem = result.sent ? null : sendProblem(result);
@@ -182,13 +197,14 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
       }
 
       const forSms = pick("sms");
-      if (forSms.length && phoneTo && smsConfigured(env)) {
+      if (forSms.length && phoneTo && (await smsReady(env, companyId))) {
         const ids = forSms.map((i) => i.id);
-        if (smsDown) {
-          add(later, ids, "sms", smsDown);
+        const down = smsDown.get(companyId);
+        if (down) {
+          add(later, ids, "sms", down);
         } else {
-          const first = forSms[0]!;
-          const more = forSms.length > 1 ? ` (+${forSms.length - 1} more)` : "";
+          const first = shown(forSms[0]!);
+          const more = forSms.length > 1 ? t(" (+{count} more)", { count: forSms.length - 1 }) : "";
           const link = url(forSms.length > 1 ? batchLink(forSms) : first.link);
           const result = await sendSms(env, { to: phoneTo, body: `${company.name}: ${first.title}${more}${link ? ` ${link}` : ""}` }, companyId);
           const reason = result.reason ?? "The text didn't go.";
@@ -201,7 +217,7 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
               await note(ids, "sms", "failed");
               add(never, ids, "sms", reason);
             } else {
-              smsDown = reason;
+              smsDown.set(companyId, reason);
               add(later, ids, "sms", reason);
             }
           }
@@ -214,8 +230,8 @@ export async function deliverNotifications(env: Env, options: { minAgeSeconds?: 
         const contact = base.startsWith("https://") ? base : `mailto:${company.email || "notifications@crewtavo.invalid"}`;
         // Up to three separately; more than that, one summary.
         const messages = forPush.length <= 3
-          ? forPush.map((i) => ({ ids: [i.id], message: { title: i.title, body: i.body && i.body !== i.title ? i.body : company.name, link: i.link ?? "/", tag: i.id } }))
-          : [{ ids: forPush.map((i) => i.id), message: { title: `${forPush.length} updates from ${company.name}`, body: forPush.map((i) => i.title).slice(0, 4).join("\n"), link: batchLink(forPush), tag: `batch-${companyId}` } }];
+          ? forPush.map(shown).map((i) => ({ ids: [i.id], message: { title: i.title, body: i.body && i.body !== i.title ? i.body : company.name, link: i.link ?? "/", tag: i.id } }))
+          : [{ ids: forPush.map((i) => i.id), message: { title: t("{count} updates from {company}", { count: forPush.length, company: company.name }), body: forPush.map(shown).map((i) => i.title).slice(0, 4).join("\n"), link: batchLink(forPush), tag: `batch-${companyId}` } }];
         // A push has gone once one of their devices took it. One that no device took is tried again
         // when a push service was down or busy, and is failed when every device turned it away.
         const went = new Set<number>();

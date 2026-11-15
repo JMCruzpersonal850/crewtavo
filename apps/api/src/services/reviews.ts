@@ -24,6 +24,7 @@ import {
   alreadyReviewed,
   askChannels,
   DEFAULT_REVIEW_MESSAGE,
+  EMAIL_NOT_CONNECTED,
   inQuietHours,
   marketingOn,
   nextReminder,
@@ -34,6 +35,7 @@ import {
   reminderPlan,
   rescheduledReminder,
   reviewSettings,
+  sentChannels,
   textsOff,
   textsOffReason,
   withStopLine,
@@ -44,10 +46,12 @@ import type { Env } from "../env";
 import { companyFooter, firstName } from "../lib/email";
 import { clientLink, reviewLink } from "../lib/links";
 import { reportError } from "../lib/monitoring";
-import { emailReady, sendSms, smsConfigured, type SendResult } from "../lib/notify";
+import { emailReady, sendSms, smsReady, type SendResult } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { emailClient } from "./marketingEmail";
-import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT } from "./textsOff";
+import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
+import { noteTold } from "./stopLine";
+import { isClientPhone, noteRefusedText, TWILIO_OPTED_OUT, withNumberStop } from "./textsOff";
 
 /** An action that can't happen yet: the automation run waits until then, with the message saying why. */
 export class WaitUntil extends Error {
@@ -172,7 +176,9 @@ async function deliver(
       result = await emailClient(env, { companyId: d.companyId, company: d.company, client: d.client, subject: d.subject, text: body, baseUrl: d.baseUrl, footer: companyFooter(d.company) });
     } else {
       result = await sendSms(env, { to: d.client.phone!, body }, d.companyId);
-      await noteRefusedText(admin, d.client, d.client.phone!, result);
+      await noteRefusedText(admin, d.client, d.client.phone!, result, d.companyId);
+      // They've been told how to stop, so their next text from the business doesn't say it again.
+      if (result.sent) await noteTold(admin, d.companyId, d.client.phone!);
     }
     if (!result.sent) {
       // Twilio refusing a number that texted STOP is said as the app says texts off, not in Twilio's words.
@@ -206,7 +212,8 @@ export function askOutcome(sent: SendChannel[], failures: Failure[]): { detail: 
 
 export async function sendReviewRequest(env: Env, admin: Db, args: ReviewArgs): Promise<ReviewResult> {
   const automatic = args.automatic === true;
-  const { client } = args;
+  // Their phone may be a stopped number though they aren't marked (services/textsOff.ts).
+  const client = await withNumberStop(admin, args.companyId, args.client);
   const name = client.display_name;
   const skipped = (detail: string): ReviewResult => ({ sent: false, link: "", detail, id: "", skipped: true });
   const { data: company } = await admin.from("companies").select("name, phone, email, address, timezone, settings").eq("id", args.companyId).maybeSingle();
@@ -240,15 +247,22 @@ export async function sendReviewRequest(env: Env, admin: Db, args: ReviewArgs): 
   let channels: SendChannel[] = [];
   if (args.channel !== "link") {
     if (!automatic && args.channel === "sms" && client.phone && textsOff(client)) throw new Error(`${textsOffReason(name)} Ask by email instead.`);
-    const reach = reachOf(client, { email: await emailReady(env, args.companyId), sms: smsConfigured(env) });
+    // An ask by email is a marketing email, which has to show the company's postal address
+    // (services/senderAddress.ts). Without one an automatic ask goes by text alone where it can,
+    // and the owners hear once; an ask by hand is refused, saying where to add it.
+    const canEmail = await emailReady(env, args.companyId);
+    const noAddress = canEmail ? senderAddressProblem(company) : null;
+    const reach = reachOf(client, { email: canEmail && !(automatic && noAddress), sms: await smsReady(env, args.companyId) });
     const plan = askChannels(args.channel, reach, quiet);
+    if (automatic && noAddress && reach.hasEmail && args.channel !== "sms") await tellAddressNeeded(admin, args.companyId);
     // Quiet hours text no one: with no email to go by instead, the ask waits for 9am.
-    if (plan.wait) throw new WaitUntil(quietHoursEnd(now, timeZone), `Quiet hours: waits until 9am to text, since ${reach.hasEmail ? "email isn't connected" : `${name} has no email`}`);
+    if (plan.wait) throw new WaitUntil(quietHoursEnd(now, timeZone), `Quiet hours: waits until 9am to text, since ${reach.hasEmail ? (noAddress ? "your company's address is missing" : "email isn't connected") : `${name} has no email`}`);
     if (!plan.send.length) {
-      // The client's reason skips an automatic ask; the business's (email or texting isn't set up) fails it, to be fixed.
+      // The client's reason skips an automatic ask; the business's (email or texting isn't set up, no address) fails it, to be fixed.
       if (automatic && !plan.setup) return skipped(plan.skip!.replace(/\.$/, ""));
-      throw new Error(plan.skip);
+      throw new Error(noAddress && plan.skip === EMAIL_NOT_CONNECTED ? noAddress : plan.skip);
     }
+    if (noAddress && plan.send.includes("email")) throw new Error(noAddress);
     channels = plan.send;
   }
 
@@ -333,6 +347,8 @@ export async function sendDueReminders(env: Env) {
   const companyById = new Map((companies.data ?? []).map((c) => [c.id, c]));
   const clientById = new Map((clients.data ?? []).map((c) => [c.id, c]));
   const ready = new Map<string, boolean>();
+  // And whether each can text: its own Twilio account, or the server's.
+  const texting = new Map<string, boolean>();
 
   const remind = async (row: (typeof claimed)[number]): Promise<"sent" | "failed" | "stopped" | "waiting" | "lost" | null> => {
     const finish = async (outcome: "sent" | "failed" | "stop" | "later", next: Date | null, note?: string) => {
@@ -342,17 +358,23 @@ export async function sendDueReminders(env: Env) {
       if (finishError) throw new Error(finishError.message);
     };
     const company = companyById.get(row.company_id);
-    const client = clientById.get(row.client_id) ?? null;
+    const onFile = clientById.get(row.client_id) ?? null;
     if (!company) return null;
+    const client = onFile ? await withNumberStop(admin, company.id, onFile) : null;
     const settings = (company.settings ?? {}) as Record<string, unknown> & { review_url?: string };
     const timeZone = company.timezone || "UTC";
     if (!ready.has(company.id)) ready.set(company.id, await emailReady(env, company.id));
+    if (!texting.has(company.id)) texting.set(company.id, await smsReady(env, company.id));
+    // A reminder by email has to show the company's postal address, as the ask does: without one
+    // it goes by text alone where the ask did, or stops, and the owners hear once why.
+    const noAddress = ready.get(company.id)! && sentChannels(row.channel).includes("email") ? senderAddressProblem(company) : null;
+    if (noAddress) await tellAddressNeeded(admin, company.id);
     const plan = reminderPlan({
-      request: row, client, marketingOn: marketingOn(settings), hasReviewUrl: Boolean(settings.review_url), emailReady: ready.get(company.id)!,
-      smsReady: smsConfigured(env), settings, now: new Date(), timeZone,
+      request: row, client, marketingOn: marketingOn(settings), hasReviewUrl: Boolean(settings.review_url), emailReady: ready.get(company.id)! && !noAddress,
+      smsReady: texting.get(company.id)!, settings, now: new Date(), timeZone,
     });
     if (plan.kind === "stop") {
-      await finish("stop", null, plan.why);
+      await finish("stop", null, noAddress && plan.why === "Email isn't connected" ? "Your company's address is missing" : plan.why);
       return "stopped";
     }
     if (plan.kind === "later") {

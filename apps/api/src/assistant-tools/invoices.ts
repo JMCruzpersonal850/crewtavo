@@ -1,13 +1,15 @@
 /**
  * Invoices and payments: made from jobs by the database (create_invoice_for_job, which handles
  * deposits, progress billing and completed visits), sent and reminded through services/sales.ts,
- * and payments recorded the way the invoice screen records them. An assistant never refunds or
+ * and payments recorded the way the invoice screen records them. A sent invoice's lines change
+ * through the database's edit_invoice, as the invoice screen's Edit invoice does, so the same rules
+ * hold (20261113000440_edit_sent_invoices.sql). An assistant never refunds or
  * deletes a payment (the database refuses it too) and doesn't touch Stripe: card payments come in
  * through Stripe itself. Invoices are money: "Full access, no money" doesn't change them.
  */
 import { entryHours, localDate, paymentProblem, workLines, zonedTimeToUtc } from "@crewtavo/core";
 import { z } from "zod";
-import { invoiceJobs, loggedWork as jobWork, remindInvoices, sendInvoice, sendSchema } from "../services/sales";
+import { BATCH_JOBS, invoiceJobs, loggedWork as jobWork, remindInvoices, sendInvoice, sendSchema, TOO_MANY_JOBS } from "../services/sales";
 import { customFieldsArg, customFieldsPatch } from "./customFields";
 import { changed, companyArg, friendly, one, rows, tool, type ToolContext } from "./tool";
 
@@ -40,13 +42,13 @@ export const invoiceTools = {
   }),
   get_invoice: tool({
     description:
-      "An invoice in full: client, job, lines, totals, discounts and referral credits, tax, what's been paid (each payment), what's still owed, and its custom_fields (by key, list_custom_fields). A line's kind: minimum (the Minimum charge line, kept right while it's a draft, for minimum_charge) or late_fee (added once, late_fee_at).",
+      "An invoice in full: client, job, lines, totals, discounts and referral credits, tax, what's been paid (each payment), what's still owed, and its custom_fields (by key, list_custom_fields). A line's kind: minimum (the Minimum charge line, kept right while it's a draft, for minimum_charge) or late_fee (added once, late_fee_at; never when no_late_fee is true; remove_late_fee takes it off). Each line has its id, for edit_invoice_lines.",
     input: z.object({ invoice_id: z.uuid(), ...companyArg }),
     run: (ctx, a) =>
       one(
         ctx.db
           .from("invoices")
-          .select("id, number, kind, status, subtotal, discount_amount, credit_amount, credits:referral_credits(amount, note), tax_amount, total, amount_paid, balance_due, issued_on, due_on, written_off_at, minimum_charge, late_fee_at, custom_fields, job:jobs(id, number, title), client:clients(id, display_name, email, tax_exempt), lines:invoice_line_items(name, description, quantity, unit, unit_price, taxable, kind), payments(id, amount, tip_amount, method, received_at, notes, processor)")
+          .select("id, number, kind, status, subtotal, discount_amount, credit_amount, credits:referral_credits(amount, note), tax_amount, total, amount_paid, balance_due, issued_on, due_on, written_off_at, minimum_charge, late_fee_at, no_late_fee, custom_fields, job:jobs(id, number, title), client:clients(id, display_name, email, tax_exempt), lines:invoice_line_items(id, name, description, quantity, unit, unit_price, taxable, kind, sort), payments(id, amount, tip_amount, method, received_at, notes, processor)")
           .eq("id", a.invoice_id)
           .eq("company_id", ctx.companyId)
           .maybeSingle(),
@@ -120,24 +122,71 @@ export const invoiceTools = {
     },
   }),
   update_invoice: tool({
-    description: "Change an invoice's custom fields (list_custom_fields), by key. Its lines, dates and amounts are changed in Crewtavo.",
-    input: z.object({ invoice_id: z.uuid(), custom_fields: customFieldsArg.custom_fields.unwrap(), ...companyArg }),
+    description:
+      "Change an invoice's custom fields (list_custom_fields), by key, or turn late fees off for it (no_late_fee true: the hourly run never adds one; false turns them back on for an invoice that hasn't had one). Its lines change with edit_invoice_lines; its dates, discount and tax rate in Crewtavo, while it's a draft.",
+    input: z.object({ invoice_id: z.uuid(), custom_fields: customFieldsArg.custom_fields, no_late_fee: z.boolean().optional(), ...companyArg }),
     area: "invoices",
     run: async (ctx, a) => {
+      if (!a.custom_fields && a.no_late_fee === undefined) throw new Error("Give the custom fields to change, or no_late_fee.");
       const fields = await customFieldsPatch(ctx, "invoice", { id: a.invoice_id }, a.custom_fields);
-      if (fields.custom_fields) await changed(ctx.db.from("invoices").update(fields).eq("id", a.invoice_id).eq("company_id", ctx.companyId).select("id"), "That invoice");
-      return { saved: true, custom_fields: fields.custom_fields ?? null };
+      const patch = { ...(fields.custom_fields && { custom_fields: fields.custom_fields }), ...(a.no_late_fee !== undefined && { no_late_fee: a.no_late_fee }) };
+      if (Object.keys(patch).length) await changed(ctx.db.from("invoices").update(patch).eq("id", a.invoice_id).eq("company_id", ctx.companyId).select("id"), "That invoice");
+      return { saved: true, custom_fields: fields.custom_fields ?? null, ...(a.no_late_fee !== undefined && { no_late_fee: a.no_late_fee }) };
+    },
+  }),
+  edit_invoice_lines: tool({
+    description:
+      "Change an invoice's lines after it's sent, payments and all (a draft's too). lines is every ordinary line as it should be, in order: give a line's id (get_invoice) to keep or change it, leave id out to add one; ordinary lines left out are removed. Late fee, minimum charge, promo discount and deposit or progress credit lines aren't given: they stay as they are. Payments are never touched, and the total can't go below what's been paid (refund the difference first). Not for a void, written-off or Stripe-made invoice, one with a payment on its way, or a deposit or progress invoice the job's final invoice has taken off. preview true changes nothing and says what it would come to.",
+    input: z.object({
+      invoice_id: z.uuid(),
+      lines: z
+        .array(
+          z.object({
+            id: z.uuid().optional(),
+            name: z.string().trim().min(1).max(300),
+            description: z.string().trim().max(2000).nullish(),
+            quantity: z.number().min(-1e7).max(1e7).default(1),
+            unit: z.string().trim().max(30).optional(),
+            unit_price: z.number().min(-1e7).max(1e7),
+            taxable: z.boolean().default(true),
+          }),
+        )
+        .max(200),
+      preview: z.boolean().default(false),
+      ...companyArg,
+    }),
+    area: "invoices",
+    run: async (ctx, a) => {
+      // The invoice is this company's (the database checks the person's role for it).
+      await one(ctx.db.from("invoices").select("id").eq("id", a.invoice_id).eq("company_id", ctx.companyId).maybeSingle(), "That invoice");
+      const lines = a.lines.map((l) => ({ ...(l.id && { id: l.id }), name: l.name, description: l.description || null, quantity: l.quantity, unit: l.unit || "ea", unit_price: Math.round(l.unit_price * 100) / 100, taxable: l.taxable }));
+      const { data, error } = await ctx.db.rpc("edit_invoice", { p_invoice: a.invoice_id, p_lines: lines, p_preview: a.preview });
+      if (error) throw new Error(friendly(error.message));
+      return { ...(a.preview ? { preview: true } : { saved: true }), invoice: data };
+    },
+  }),
+  remove_late_fee: tool({
+    description:
+      "Take the late fee off an invoice (partly paid ones too) and turn late fees off for it, so the hourly run doesn't add one again. Not while the client is being charged or a bank payment is on its way, on a void or written-off invoice, or when the fee has been paid (refund the difference first).",
+    input: z.object({ invoice_id: z.uuid(), ...companyArg }),
+    area: "invoices",
+    run: async (ctx, a) => {
+      // The invoice is this company's (the database checks the person's role for it).
+      await one(ctx.db.from("invoices").select("id").eq("id", a.invoice_id).eq("company_id", ctx.companyId).maybeSingle(), "That invoice");
+      const { data, error } = await ctx.db.rpc("remove_late_fee", { p_invoice: a.invoice_id });
+      if (error) throw new Error(friendly(error.message));
+      return { removed: Number(data ?? 0), invoice: await one(ctx.db.from("invoices").select("id, number, status, total, balance_due, no_late_fee").eq("id", a.invoice_id).maybeSingle(), "That invoice") };
     },
   }),
   invoice_jobs: tool({
     description:
-      "Invoice many finished jobs at once (up to 50): one invoice each (completed visits for recurring and per-visit jobs), and email each one if send is true. Each job succeeds or fails on its own. Jobs charged automatically (autopay) are skipped while their charge waits.",
-    input: z.object({ job_ids: z.array(z.uuid()).min(1).max(50), send: z.boolean().default(false), ...companyArg }),
+      "Invoice many finished jobs at once, at most 50 job_ids a call (for more, call it again with the next 50): one invoice each (completed visits for recurring and per-visit jobs), and email each one if send is true. Each job succeeds or fails on its own. Jobs charged automatically (autopay) are skipped while their charge waits.",
+    input: z.object({ job_ids: z.array(z.uuid()).min(1).max(BATCH_JOBS, TOO_MANY_JOBS), send: z.boolean().default(false), ...companyArg }),
     area: "invoices",
     run: (ctx, a) => invoiceJobs(salesScope(ctx), a.job_ids, a.send),
   }),
   send_invoice: tool({
-    description: "Send an invoice to the client by email (default) or text, with their link to view and pay it; or just make the link (channel link). A draft becomes sent.",
+    description: "Send an invoice to the client by email (default) or text, with their link to view and pay it; or just make the link (channel link). It goes to the client and their contacts ticked for emails or texts, unless recipients names the addresses or numbers to send it to instead (10 at most). A draft becomes sent.",
     input: z.object({ invoice_id: z.uuid(), ...sendSchema.shape, ...companyArg }),
     area: "invoices",
     run: async (ctx, { invoice_id, company_id: _, ...body }) => sendInvoice(salesScope(ctx), invoice_id, body),

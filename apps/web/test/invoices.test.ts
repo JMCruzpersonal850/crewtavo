@@ -314,6 +314,33 @@ describe("an invoice whose autopay bank payment is on its way", () => {
   });
 });
 
+// Edit invoice changes a sent invoice's lines in place (the database's edit_invoice), so it's there
+// whatever has been paid, and waits while the client is paying the amount as it stands.
+describe("Edit invoice on the invoice page", () => {
+  it("is offered on a sent invoice, in the menu and under its lines", () => {
+    const html = invoicePage(null);
+    expect(html.match(/<button[^>]*>(?:(?!<\/button>).)*Edit invoice<\/button>/g)).toHaveLength(2);
+    expect(control(html, "Edit invoice")).not.toMatch(/disabled=""/);
+  });
+
+  it("isn't on a draft, whose lines are edited on the page", () => {
+    expect(control(invoicePage(null, { draft: true }), "Edit invoice")).toBeNull();
+  });
+
+  it("waits while a bank payment is on its way, and says why", () => {
+    for (const html of [invoicePage("processing"), invoicePage(null, { bank: true })]) {
+      expect(control(html, "Edit invoice")).toMatch(/disabled=""/);
+      expect(html).toContain("A bank payment for this invoice is on its way. Edit it once that clears or bounces.");
+    }
+  });
+
+  it("waits while the card is being charged", () => {
+    const html = invoicePage("charging");
+    expect(control(html, "Edit invoice")).toMatch(/disabled=""/);
+    expect(html).toContain("The card is being charged right now. Try again in a few minutes.");
+  });
+});
+
 describe("a failed charge while the client's own bank payment is on its way", () => {
   it("says the bank payment is on its way, not that the card is tried again, and offers no reminder", () => {
     const html = invoicePage("failed", { bank: true });
@@ -359,6 +386,12 @@ describe("a charge waiting for the office's OK", () => {
     expect(asked(invoicePage("needs_approval", { draft: true, last_error: "Includes visits from before autopay started" }))).toBe(
       "It includes visits from before autopay started, so it waits for your OK.",
     );
+  });
+
+  it("says so for an invoice with extra work on one of its visits, which the database holds for a look whatever the amount", () => {
+    expect(asked(invoicePage("needs_approval", { draft: true, last_error: "Includes extra work added to a visit" }))).toBe("It includes extra work added to a visit, so it waits for your OK.");
+    const migration = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261113000900_visit_extras.sql", import.meta.url)), "utf8");
+    expect(migration).toContain("then 'Includes extra work added to a visit'");
   });
 
   it("and otherwise that it waits, the database giving no reason for the limit", () => {

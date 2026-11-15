@@ -1,6 +1,6 @@
 import { autopaySettings } from "@crewtavo/core/autopay";
 import { shownCustomFields } from "@crewtavo/core/customFields";
-import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, textsOff, type AskChannel } from "@crewtavo/core/marketing";
+import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, RESUBSCRIBE_HINT, textConsentLine, textsOff, type AskChannel } from "@crewtavo/core/marketing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -18,6 +18,7 @@ import { copyText } from "@/lib/clipboard";
 import { addressLine, formatDate, formatMoney } from "@/lib/format";
 import { useRememberRecent } from "@/lib/recent";
 import { can, hasRole, useSession } from "@/lib/session";
+import { ClientShowcaseChip, ClientShowcaseNote } from "../marketing/ClientShowcases";
 import { toast } from "@/lib/toast";
 import { undoable } from "@/lib/undo";
 import { PlansCard } from "../plans/PlansCard";
@@ -31,6 +32,7 @@ import { PropertyDialog, type AccessRow, type PropertyRow } from "./PropertyDial
 import { PropertyEquipment } from "./PropertyEquipment";
 import { RESET_LINKS_BODY, RESET_LINKS_LABEL, resetLinksPath } from "./resetLinks";
 import { MergeClientsDialog } from "./MergeClientsDialog";
+import { TextsSwitch, useTextStops } from "./TextsSwitch";
 import { Timeline } from "./Timeline";
 import { PhotosCard } from "../files/PhotosCard";
 import { socialKey } from "../marketing/socialData";
@@ -68,13 +70,15 @@ export function ClientPage() {
       unwrapOne(
         await supabase()
           .from("clients")
-          .select("id, display_name, company_name, email, phone, status, tags, lead_source, notes, created_at, billing_address, marketing_opt_out, review_opt_out, social_photos_opt_out, sms_opt_out_at, reviewed_at, referred_by, custom_fields, tax_exempt, tax_exempt_note, payment_terms_days, properties(id, label, line1, line2, city, region, postal_code, lat, lng, notes, tags, lot_size_sqft, custom_fields)")
+          .select("id, display_name, company_name, email, phone, status, tags, lead_source, notes, created_at, billing_address, marketing_opt_out, review_opt_out, social_photos_opt_out, sms_opt_out_at, reviewed_at, sms_consent_at, sms_consent_source, referred_by, custom_fields, tax_exempt, tax_exempt_note, payment_terms_days, properties(id, label, line1, line2, city, region, postal_code, lat, lng, notes, tags, lot_size_sqft, custom_fields)")
           .eq("id", id)
           .maybeSingle(),
         "This client",
       ),
   });
   const c = client.data;
+  // Whether their number is on the stop list, and why, for the office's Texts switch.
+  const stopFor = useTextStops([c?.phone], isOffice);
   useRememberRecent(session.company.id, c ? { kind: "client", id: c.id, title: c.display_name, subtitle: c.properties[0] ? addressLine(c.properties[0]) : c.email ?? undefined, path: `/clients/${c.id}` } : null);
 
   const referrer = useQuery({
@@ -125,6 +129,9 @@ export function ClientPage() {
       if (patch.social_photos_opt_out !== undefined) {
         queryClient.invalidateQueries({ queryKey: ["record-photos", session.company.id] });
         queryClient.invalidateQueries({ queryKey: socialKey(session.company.id) });
+        // Their showcases come down when photos are turned off (the database does it), so read them again.
+        queryClient.invalidateQueries({ queryKey: ["client-showcases", id] });
+        queryClient.invalidateQueries({ queryKey: ["showcases", session.company.id] });
       }
     },
   });
@@ -188,7 +195,7 @@ export function ClientPage() {
   if (client.error || !c) return <PageError error={client.error} onRetry={() => client.refetch()} back={<BackLink to="/clients">Clients</BackLink>} />;
 
   const unpaid = work.data?.invoices.filter((i) => ["sent", "partially_paid", "overdue"].includes(i.status)) ?? [];
-  const stopped = textsOff(c);
+  const stopped = textsOff(c) || Boolean(stopFor(c.phone));
   // The review asks offered are the ones that can go: not to a client who opted out or is archived,
   // nor by a way this Crewtavo can't send or the client can't get.
   const ready = { email: session.config.features.email, sms: session.config.features.sms };
@@ -297,6 +304,7 @@ export function ClientPage() {
         {c.marketing_opt_out && <span className="chip chip-amber">Unsubscribed from marketing</span>}
         {c.review_opt_out && <span className="chip chip-amber">No review asks</span>}
         {c.social_photos_opt_out && <span className="chip chip-amber">No social photos</span>}
+        <ClientShowcaseChip clientId={c.id} />
         {c.reviewed_at && <ReviewedChip clientId={c.id} />}
         {stopped && <span className="chip chip-amber">Texts off</span>}
       </div>
@@ -436,7 +444,18 @@ export function ClientPage() {
             <dl className="kv">
               <dt>Email</dt><dd>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : "—"}</dd>
               <dt>Phone</dt><dd>{c.phone ? <a href={`tel:${c.phone}`}>{c.phone}</a> : "—"}</dd>
-              {c.sms_opt_out_at && <><dt>Texts</dt><dd>Off since {formatDate(c.sms_opt_out_at)}. They texted STOP, and can text START to turn texts back on.</dd></>}
+              {isOffice && c.phone ? (
+                <>
+                  <dt>Texts</dt>
+                  <dd>
+                    <TextsSwitch clientId={c.id} name={c.display_name} phone={c.phone} stop={stopFor(c.phone)} since={c.sms_opt_out_at} />
+                    {/* Where their number came from: the record of their say-so to be texted. */}
+                    {!stopped && <span className="muted small" style={{ display: "block" }}>{textConsentLine(c.sms_consent_source, c.sms_consent_at ? formatDate(c.sms_consent_at) : null)}</span>}
+                  </dd>
+                </>
+              ) : c.sms_opt_out_at ? (
+                <><dt>Texts</dt><dd>Off since {formatDate(c.sms_opt_out_at)}. They asked not to be texted.</dd></>
+              ) : null}
               {owed > 0 && (
                 <>
                   <dt>Balance</dt>
@@ -474,6 +493,7 @@ export function ClientPage() {
                       <input type="checkbox" className="switch" checked={!c.marketing_opt_out} onChange={(e) => update.mutate({ marketing_opt_out: !e.target.checked })} />
                       Gets campaigns, review and referral asks
                     </label>
+                    {c.marketing_opt_out && <span className="muted small" style={{ display: "block" }}>{RESUBSCRIBE_HINT}</span>}
                   </dd>
                   <dt>Reviews</dt>
                   <dd>
@@ -494,6 +514,7 @@ export function ClientPage() {
                       Can be posted on social pages
                     </label>
                     {c.social_photos_opt_out && <span className="muted small" style={{ display: "block" }}>Photos of their property aren't offered for posts</span>}
+                    <ClientShowcaseNote clientId={c.id} optedOut={c.social_photos_opt_out} />
                   </dd>
                 </>
               )}
@@ -502,7 +523,7 @@ export function ClientPage() {
             {canSell && contacts.data?.length === 0 && <AddContact clientId={c.id} />}
           </div>
           {seesMoney && autopayOn && <AutopayCard client={c} />}
-          <ContactsCard clientId={c.id} canEdit={canSell} />
+          <ContactsCard clientId={c.id} canEdit={canSell} canSetTexts={isOffice} />
         </aside>
       </div>
 

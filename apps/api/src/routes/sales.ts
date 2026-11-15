@@ -4,6 +4,7 @@
  * the steps with rules, side effects or secrets.
  */
 import {
+  ADMINS,
   drawingSquares,
   evaluateFormula,
   FormulaError,
@@ -25,8 +26,9 @@ import { appUrl, asJson, dbError, HttpError, isoDate, must, param, readJson, req
 import { clientLink } from "../lib/links";
 import { roofSegments } from "../services/external";
 import { applyMeasurement } from "../services/measurements";
+import { draftQuote, setQuoteAi } from "../services/quoteDrafts";
 import { SITE_PRICE_SET, sitePriceSet } from "../services/roofPackages";
-import { convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, type SalesScope } from "../services/sales";
+import { BATCH_JOBS, convertQuote, invoiceJobs, quoteFromRequest, remindInvoices, sendChoicesOf, sendInvoice, sendQuote, sendSchema, TEMPLATE_NOT_SENT, TOO_MANY_JOBS, type SalesScope } from "../services/sales";
 
 export const sales = new Hono<AppEnv>();
 
@@ -43,15 +45,33 @@ sales.post("/requests/:id/quote", requireUser, requireCompany(SALES, "sales"), a
 });
 
 /**
+ * Draft a quote: the same draft, filled in from the request (services/quoteDrafts.ts), with Claude
+ * when the company has it on for this, else from the price list. Nothing is sent.
+ */
+sales.post("/requests/:id/draft-quote", requireUser, requireCompany(SALES, "sales"), async (c) => {
+  return c.json(await draftQuote(scope(c), param(c, "id"), c.var.userId), 201);
+});
+
+/** Draft quotes with Claude, on (once Claude answers with the company's key) or off: Settings → Company. */
+sales.put("/quotes/drafting", requireUser, requireCompany(ADMINS), async (c) => {
+  const body = await readJson(c, z.object({ ai: z.boolean() }));
+  return c.json(await setQuoteAi(c.env, c.var.companyId, c.var.userId, body.ai));
+});
+
+/**
  * Fill quote line quantities (or prices) from a measurement using each line's formula.
  * Variables: FORMULA_VARIABLES (area_sqft, length_ft, pitch_factor, the roof edges and so on).
  * `line_ids` fills only those lines (one just added or changed on a roof estimate); without it,
- * every line with a formula follows the measurement ("Update from the roof").
+ * every line with a formula follows the measurement ("Update from the roof"). A line whose formula
+ * reads a depth gets its own: `depths` by line id (what the office confirmed), else with
+ * `item_depths` its item's default before `depth_in`. `depth_in` alone is one depth for every line,
+ * as it always was.
  */
 sales.post("/quotes/:id/apply-measurement", requireUser, requireCompany(SALES, "sales"), async (c) => {
   const id = param(c, "id");
-  const body = await readJson(c, z.object({ measurement_id: uuid, depth_in: z.number().positive().max(48).optional(), line_ids: z.array(uuid).min(1).max(500).optional() }));
-  return c.json(await applyMeasurement(c.var.db, c.var.companyId, id, body.measurement_id, body.depth_in, body.line_ids));
+  const depth = z.number().positive().max(48);
+  const body = await readJson(c, z.object({ measurement_id: uuid, depth_in: depth.optional(), depths: z.record(uuid, depth).optional(), item_depths: z.boolean().optional(), line_ids: z.array(uuid).min(1).max(500).optional() }));
+  return c.json(await applyMeasurement(c.var.db, c.var.companyId, id, body.measurement_id, body.depth_in, body.line_ids, { depths: body.depths, itemDepths: body.item_depths }));
 });
 
 /**
@@ -79,6 +99,11 @@ sales.get("/:kind{quotes|invoices}/:id/link", requireUser, requireCompany(SALES)
   return c.json({ link: await clientLink(c.env, appUrl(c), { c: c.var.companyId, t: kind, id, pv: 1 }, 1) });
 });
 
+/** Who the Send dialog offers for a quote or invoice: the client and their contacts, by email and by text. */
+sales.get("/:kind{quotes|invoices}/:id/recipients", requireUser, requireCompany(SALES), async (c) => {
+  return c.json(await sendChoicesOf(scope(c), c.req.param("kind") === "quotes" ? "quote" : "invoice", param(c, "id")));
+});
+
 // ---------------------------------------------------------------------------------------------
 // Jobs and invoices
 // ---------------------------------------------------------------------------------------------
@@ -93,9 +118,10 @@ sales.post("/jobs/:id/invoice", requireUser, requireCompany(OFFICE, "invoices"),
 
 // Batch invoicing: one invoice per finished job (completed visits for per-visit jobs, and each month
 // a monthly job is due), optionally with each job's logged hours (at rate_id) and materials, and
-// optionally email each one. Each job succeeds or fails on its own.
+// optionally email each one. Each job succeeds or fails on its own. 50 jobs a call: the Invoices
+// page sends more a group at a time (apps/web/src/features/invoices/batch.ts).
 sales.post("/invoices/batch", requireUser, requireCompany(OFFICE, "invoices"), async (c) => {
-  const body = await readJson(c, z.object({ job_ids: z.array(uuid).min(1).max(50), send: z.boolean().default(false), logged_work: z.boolean().default(false), rate_id: uuid.optional() }));
+  const body = await readJson(c, z.object({ job_ids: z.array(uuid).min(1).max(BATCH_JOBS, TOO_MANY_JOBS), send: z.boolean().default(false), logged_work: z.boolean().default(false), rate_id: uuid.optional() }));
   return c.json(await invoiceJobs(scope(c), body.job_ids, body.send, body.logged_work ? { rateId: body.rate_id } : undefined));
 });
 

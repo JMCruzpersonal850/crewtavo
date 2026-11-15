@@ -1,7 +1,13 @@
-import { lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
-import { BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
+import { TIPS_LAW_NOTE } from "@crewtavo/core/autopay";
+import { LATE_FEE_LAW_NOTE, lateFeeSettings, minimumCharge, type LateFee } from "@crewtavo/core/billing";
+import { BREAK_PAY_HINTS, BREAK_PAY_LABELS, breakPay, type BreakPay } from "@crewtavo/core/breaks";
+import { CLOCK_MODE_HINTS, CLOCK_MODE_LABELS, clockMode, type ClockMode } from "@crewtavo/core/clock";
+import { FT_PER_M } from "@crewtavo/core/geo";
+import { GEOFENCE_MODE_HINTS, GEOFENCE_MODE_LABELS, GEOFENCE_NOTE, GEOFENCE_RADIUS, geofence, geofenceRadius, type GeofenceMode } from "@crewtavo/core/geofence";
+import { completesWhenVisitsDone } from "@crewtavo/core/jobBilling";
 import { taxPercent, taxRateFromPercent } from "@crewtavo/core/money";
 import { PRESETS } from "@crewtavo/core/presets";
+import { PRIVACY_URL_MAX, privacyUrlTyped } from "@crewtavo/core/privacyPolicy";
 import { workdays } from "@crewtavo/core/slots";
 import { arrivalWindowMin } from "@crewtavo/core/time";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,12 +21,13 @@ import { CURRENCIES, timeZoneChoices } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { CompanyLogo } from "./CompanyLogo";
+import { JobCostSettings } from "./JobCostSettings";
+import { NextNumbers } from "./NextNumbers";
+import { QuoteSettings } from "./QuoteSettings";
 
-const BREAK_HINTS: Record<BreakPay, string> = {
-  short_paid: "Breaks of 20 minutes or less count as paid time; longer ones, like lunch, don't. This follows federal rules.",
-  paid: "Every break counts as paid time, lunch included.",
-  unpaid: "No break counts as paid time. Federal rules say rest breaks of 20 minutes or less must be paid, so check before choosing this.",
-};
+// The clock at the property's choices of how close counts as there, in meters, said in feet too.
+const RADII = [100, 150, 200, 300, 400, 500];
+const radiusLabel = (m: number) => `${m} m (${(Math.round((m * FT_PER_M) / 10) * 10).toLocaleString("en-US")} ft)`;
 // Monday first, as the week reads; settings.working_hours.days keeps them as 0 (Sunday) to 6.
 const WEEK = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]] as const;
 const BRAND_COLORS = ["#0f2a35", "#3b7d23", "#1d4ed8", "#b45309", "#be123c", "#6d28d9", "#0f766e", "#1f2937"];
@@ -42,6 +49,7 @@ export function CompanySettings() {
     const fee = lateFeeSettings(s);
     setF({
       name: d.name, phone: d.phone ?? "", email: d.email ?? "", website: d.website ?? "", trade: d.trade_preset,
+      privacy_url: typeof s.privacy_url === "string" ? s.privacy_url : "",
       line1: a.line1 ?? "", city: a.city ?? "", region: a.region ?? "", postal_code: a.postal_code ?? "",
       timezone: d.timezone, currency: d.currency, payment_terms_days: String(s.payment_terms_days ?? 30), default_tax_rate: String(taxPercent(s.default_tax_rate ?? 0)),
       quote_valid_days: String(s.quote_valid_days ?? 30), hours_start: s.working_hours?.start ?? "07:00", hours_end: s.working_hours?.end ?? "18:00",
@@ -51,6 +59,10 @@ export function CompanySettings() {
       hub_tips: s.hub_tips ? "1" : "",
       record_location: s.clock?.record_location === false ? "" : "1",
       breaks: breakPay(s),
+      clock_mode: clockMode(s),
+      geofence_mode: geofence(s).mode,
+      geofence_radius: String(geofence(s).radius),
+      complete_jobs: completesWhenVisitsDone(s) ? "1" : "",
       minimum_charge: String(minimumCharge(s) ?? ""),
       late_fee: fee?.type ?? "off", late_fee_amount: fee ? String(fee.amount) : "", late_fee_days: String(fee?.grace_days ?? 7),
     });
@@ -67,6 +79,8 @@ export function CompanySettings() {
       if (v.hours_end <= v.hours_start) throw new Error("The workday has to end after it starts.");
       if (!v.workdays) throw new Error("Pick at least one workday.");
       if (v.website && !/^https?:\/\//.test(v.website)) v.website = `https://${v.website}`;
+      const privacy = privacyUrlTyped(v.privacy_url ?? "");
+      if (privacy === "invalid") throw new Error("Enter the link to your privacy policy as a web address, like https://example.com/privacy.");
       const minimum = Number(v.minimum_charge || 0);
       if (!(minimum >= 0 && minimum <= 1_000_000)) throw new Error("Enter a minimum charge of 0 or more, or leave it empty.");
       let lateFee: LateFee | null = null;
@@ -83,9 +97,10 @@ export function CompanySettings() {
       let depot = previous.depot ?? null;
       let located: boolean | null = null;
       if (address.line1 && (address.line1 !== oldAddress.line1 || address.city !== oldAddress.city || !depot)) {
-        const hit = await api.post<{ found: boolean; lat?: number; lng?: number }>("/geocode", { address: [address.line1, address.city, address.region, address.postal_code].filter(Boolean).join(", ") }).catch(() => ({ found: false }) as { found: boolean; lat?: number; lng?: number });
+        const hit = await api.post<{ found: boolean; lat?: number; lng?: number; source?: string }>("/geocode", { address: [address.line1, address.city, address.region, address.postal_code].filter(Boolean).join(", ") }).catch(() => ({ found: false }) as { found: boolean; lat?: number; lng?: number; source?: string });
         located = hit.found;
-        depot = hit.found ? { lat: hit.lat, lng: hit.lng } : null;
+        // With the geocoder that found it, as the server keeps for every spot on the map.
+        depot = hit.found ? { lat: hit.lat, lng: hit.lng, source: hit.source } : null;
       }
       // Only the settings on this screen, merged into the ones saved when it saves (merge_company_settings),
       // so a change made since it opened (a weather rule, an app turned on) isn't undone.
@@ -97,10 +112,16 @@ export function CompanySettings() {
         arrival_window_min: Number(v.arrival_window_min),
         branding: { color: v.color },
         hub_tips: v.hub_tips === "1",
-        clock: { record_location: v.record_location === "1", breaks: v.breaks },
+        // mode: read by the database too, when a visit is finished (private.clock_mode).
+        // geofence: the clock at the property, off unless chosen here (core/geofence.ts).
+        clock: { record_location: v.record_location === "1", breaks: v.breaks, mode: v.clock_mode, geofence: { mode: v.geofence_mode, radius: geofenceRadius(v.geofence_radius) } },
+        // Read by the database when a job's last visit is finished (private.completes_finished_jobs).
+        jobs: { complete_when_visits_done: v.complete_jobs === "1" },
         // Both off unless set (the database adds the lines: 20261104000100 and 000200).
         minimum_charge: minimum > 0 ? Math.round(minimum * 100) / 100 : null,
         late_fee: lateFee,
+        // Shown in the footer of the pages clients and the public use (core privacyPolicy.ts).
+        privacy_url: privacy,
         // Only when the shop was looked up again: routes start there.
         ...(located !== null && { depot }),
       };
@@ -124,7 +145,8 @@ export function CompanySettings() {
   const set = (key: string) => (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value });
 
   return (
-    <form className="stack" style={{ maxWidth: 860 }} onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
+    <div className="stack" style={{ maxWidth: 860 }}>
+    <form className="stack" onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
       <div className="card card-pad stack">
         <strong>Business</strong>
         <div className="form-grid">
@@ -132,6 +154,9 @@ export function CompanySettings() {
           <Field label="Phone"><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: formatPhoneTyping(e.target.value) })} maxLength={40} /></Field>
           <Field label="Email"><input className="input" type="email" value={f.email} onChange={set("email")} maxLength={200} /></Field>
           <Field label="Website" optional><input className="input" value={f.website} onChange={set("website")} maxLength={200} placeholder="https://" /></Field>
+          <Field label="Privacy policy link" optional hint="Shown at the bottom of your booking forms, Client Hub, referral, showcase and unsubscribe pages. Pages that collect personal details should link one.">
+            <input className="input" value={f.privacy_url} onChange={set("privacy_url")} maxLength={PRIVACY_URL_MAX} placeholder="https://" />
+          </Field>
           <Field label="Trade" hint="Picks your starter prices and terms. Paving and Roofing are apps: turn on either or both in Apps.">
             <select className="select" value={f.trade} onChange={set("trade")}>
               {Object.values(PRESETS).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -152,6 +177,7 @@ export function CompanySettings() {
       </div>
       <div className="card card-pad stack">
         <strong>Shop address</strong>
+        <span className="muted small">Your postal address. It's shown at the bottom of marketing emails, which can't go out without a street or PO box, city, state and ZIP.</span>
         <Field label="Street"><input className="input" value={f.line1} onChange={set("line1")} maxLength={200} /></Field>
         <div className="form-grid-3">
           <Field label="City"><input className="input" value={f.city} onChange={set("city")} maxLength={100} /></Field>
@@ -178,7 +204,7 @@ export function CompanySettings() {
           <Field label="Minimum charge" optional hint="An invoice under it gets a Minimum charge line that makes up the difference.">
             <input className="input" inputMode="decimal" value={f.minimum_charge} placeholder="Off" onChange={(e) => setF({ ...f, minimum_charge: e.target.value.replace(/[^0-9.]/g, "") })} />
           </Field>
-          <Field label="Late fee" hint={f.late_fee === "off" ? "Added once to an invoice still unpaid after its due date." : "Added once, if it's still unpaid that many days after it's due. Late fees aren't taxed."}>
+          <Field label="Late fee" hint={f.late_fee === "off" ? "Added once to an invoice still unpaid after its due date." : `Added once, if it's still unpaid that many days after it's due. Late fees aren't taxed. You can take one off an invoice, or turn them off for it, on the invoice. ${LATE_FEE_LAW_NOTE}`}>
             <select className="select" value={f.late_fee} onChange={set("late_fee")}>
               <option value="off">Off</option>
               <option value="flat">A flat amount</option>
@@ -223,12 +249,40 @@ export function CompanySettings() {
           Let clients add a tip when they pay online
         </label>
         {/* The one switch for tips (settings.hub_tips): the Client Hub, the receipt and the server all follow it. */}
-        <span className="muted small">Also offered on the receipt after an automatic charge. Off: no tip choice anywhere, and no tip is charged.</span>
+        <span className="muted small">Also offered on the receipt after an automatic charge. Off: no tip choice anywhere, and no tip is charged. {TIPS_LAW_NOTE}</span>
+      </div>
+      <div className="card card-pad stack">
+        <strong>Jobs</strong>
+        <label className="switch-row" style={{ fontWeight: 400 }}>
+          <input type="checkbox" className="switch" checked={f.complete_jobs === "1"} onChange={(e) => setF({ ...f, complete_jobs: e.target.checked ? "1" : "" })} />
+          When the last visit of a one-off job is finished, mark the work complete
+        </label>
+        <span className="muted small">
+          The job moves to Requires invoicing and the people who handle invoices are told. A job on autopay isn't marked, since that charges the card: they're told to mark it themselves. Off: jobs wait for Mark work complete, and they're still told.
+        </span>
       </div>
       <div className="card card-pad stack">
         <strong>Time clock</strong>
         <div className="form-grid">
-          <Field label="Breaks" hint={BREAK_HINTS[f.breaks as BreakPay]}>
+          <Field label="How the clock works" hint={CLOCK_MODE_HINTS[f.clock_mode as ClockMode]}>
+            <select className="select" value={f.clock_mode} onChange={set("clock_mode")}>
+              {(Object.keys(CLOCK_MODE_LABELS) as ClockMode[]).map((m) => <option key={m} value={m}>{CLOCK_MODE_LABELS[m]}</option>)}
+            </select>
+          </Field>
+          <Field label="At the property" hint={f.geofence_mode === "off" ? GEOFENCE_MODE_HINTS.off : `${GEOFENCE_MODE_HINTS[f.geofence_mode as GeofenceMode]} ${GEOFENCE_NOTE}`}>
+            <select className="select" value={f.geofence_mode} onChange={set("geofence_mode")}>
+              {(Object.keys(GEOFENCE_MODE_LABELS) as GeofenceMode[]).map((m) => <option key={m} value={m}>{GEOFENCE_MODE_LABELS[m]}</option>)}
+            </select>
+          </Field>
+          {f.geofence_mode !== "off" && (
+            <Field label="How close counts as there" hint="The phone compares where it is with the property's spot on the map itself. Where it was is saved only if the switch below is on.">
+              <select className="select" value={f.geofence_radius} onChange={set("geofence_radius")}>
+                {!RADII.includes(Number(f.geofence_radius)) && <option value={f.geofence_radius}>{radiusLabel(Number(f.geofence_radius))}</option>}
+                {RADII.map((m) => <option key={m} value={m}>{radiusLabel(m)}{m === GEOFENCE_RADIUS.default ? " (usual)" : ""}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label="Breaks" hint={BREAK_PAY_HINTS[f.breaks as BreakPay]}>
             <select className="select" value={f.breaks} onChange={set("breaks")}>
               {(Object.keys(BREAK_PAY_LABELS) as BreakPay[]).map((b) => <option key={b} value={b}>{BREAK_PAY_LABELS[b]}</option>)}
             </select>
@@ -242,5 +296,11 @@ export function CompanySettings() {
       <FormError error={save.error} />
       <div className="form-actions" style={{ justifyContent: "flex-start" }}><FormChecks /><Button type="submit" variant="primary" loading={save.isPending} done={saved}>Save company settings</Button></div>
     </form>
+    {/* Saved by itself: the hourly profit check goes by when its line changes. */}
+    <JobCostSettings settings={(details.data?.settings ?? {}) as Record<string, unknown>} />
+    {/* Saved by itself, through the database's own function: not one of the settings above. */}
+    <NextNumbers />
+    <QuoteSettings />
+    </div>
   );
 }

@@ -220,18 +220,19 @@ lists them all).
 
 | Name | Turns on |
 | --- | --- |
-| `APP_URL` | Your own domain (see above; **Settings → Web address** sets it on Railway). Defaults to the instance's address. |
+| `APP_URL` | Your own domain (see above; **Settings → Web address** sets it on Railway). Defaults to the instance's address. Postcard campaigns need it to be a public https address: Lob fetches each card's front picture from it while it makes the cards. Lob itself needs nothing here: each business connects its own Lob account under **Apps → Lob**. |
 | `ENCRYPTION_KEY` | A separate key for encrypting app tokens and signing client links: 32+ random bytes in base64, or any 32+ characters. Without it, one is derived from the instance's secret. **Keep it stable once set**: changing it disconnects every app and invalidates links already sent to clients. |
-| `ANTHROPIC_API_KEY` (optional `AI_MODEL`) | AI rewrite and SOP answers. Companies can also add their own key on the Apps page. |
-| `GOOGLE_MAPS_BROWSER_KEY` | Optional. Measure works without any key (free US and state imagery); this adds Google satellite as a choice for every company. Enable the Map Tiles API and restrict the key to it and your domain. Companies can instead add Esri or Google keys themselves in **Settings → Maps**. |
-| `GOOGLE_MAPS_SERVER_KEY` | Roof pitch suggestions (Solar API). Restrict it to the Solar API. |
+| `ANTHROPIC_API_KEY` (optional `AI_MODEL`) | AI rewrite and SOP answers, with Claude. Companies can also add their own Claude or OpenAI key on the Apps page. |
+| `OPENAI_MODEL` (optional) | The OpenAI model used with a company's own OpenAI key or a person's ChatGPT plan, instead of the one picked on Apps → ChatGPT. There is no server-wide OpenAI key. |
+| `GOOGLE_MAPS_BROWSER_KEY` | Optional. Measure works without any key (free US and state imagery); this adds Google satellite as a choice for every company. Enable the Map Tiles API and restrict the key to it and your domain. Companies can instead add Esri or Google keys themselves in **Settings → Maps**. **How you compare** on Marketing → Reviews (a business's Google rating and reviews next to its competitors') uses this key too, from the browser, when a company has no Google key of its own: add Places API (New) to the key if you want that. It's a browser key and is only ever used from the browser, so keep it restricted to your domain. An owner or admin turns How you compare on for their company, after Google answers their browser; it then makes one Place Details request per place each time someone presses Compare now, and one Text Search per search for a business to add. Crewtavo keeps each place's Google ID and nothing else Google says, as Google's terms require. |
+| `GOOGLE_MAPS_SERVER_KEY` | Roof pitch suggestions (Solar API). Restrict it to the Solar API. Addresses are found on the map with the free US Census and OpenStreetMap geocoders, never with this key. On a server that has this key, a background task (`pins`) looks up once more, a few every five minutes, each property's and shop's spot saved before Crewtavo kept which geocoder found it, and saves what the free geocoders say; a spot whose address they don't know stays where it is. There's nothing to do, and a server without the key has nothing to look up. |
 | `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENVIRONMENT` | Not needed for most businesses: each one makes its own Intuit app and pastes its keys under **Apps → QuickBooks Online**, which walks them through it (and wins over these when both are there). These set up one Intuit app on the server instead: create it at developer.intuit.com; the redirect URI is shown on the Apps page. |
 | `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_ACCOUNTS_URL` | Not needed for most businesses: each one makes its own Zoho app and pastes its keys under **Apps → Zoho Books** (which wins over these when both are there). These set up one Zoho app on the server instead: create a server-based client at api-console.zoho.com. |
 | `GOOGLE_PICKER_API_KEY` | Import from Google Drive in **Drive**, with `GOOGLE_CLIENT_ID` (no secret needed). A browser API key restricted to the Google Picker API, your domain and `https://docs.google.com/*`; see [Importing from Google Drive](#importing-from-google-drive). |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Calendar: show a company's Google calendars on the schedule and put visits on a Google calendar Crewtavo makes. In Google Cloud, turn on the Google Calendar API, set up the OAuth consent screen with the scopes `calendar.calendarlist.readonly`, `calendar.events.readonly` and `calendar.app.created`, and create a Web application client whose redirect URI is the one shown on the Google Calendar app page (`https://your-domain/api/apps/google_calendar/callback`). Then, under **Audience**, publish the app (or choose **Internal** on Google Workspace): while it's in **Testing**, Google ends sign-ins after 7 days and Google Calendar disconnects. Optional: without these, Google Calendar works by secret address both ways (the Apps page walks people through it), and calendar files can be uploaded under **Settings → Calendars**. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Not needed for most businesses: connect Stripe on the **Apps** page instead (see [Connecting Stripe](#connecting-stripe)). These share one Stripe account with every company on the server that hasn't connected its own (so **Bring in your Stripe history** works with it only on a one-company server). Point a webhook at `/api/webhooks/stripe` with API version `2024-06-20` and the events in `STRIPE_EVENTS` (`apps/api/src/integrations/stripe.ts`): `invoice.*` (finalized, paid, payment_failed, payment_action_required, voided, marked_uncollectible), `payment_intent.processing`, `charge.refunded`, `charge.dispute.created`, `charge.dispute.closed`, `payout.*` (created, updated, paid, failed, canceled), `checkout.session.*` (completed, async_payment_succeeded, async_payment_failed), `setup_intent.*` (succeeded, setup_failed), `payment_method.*` (detached, automatically_updated) and `mandate.updated`. The setup_intent, payment_method and mandate events are for autopay, which needs the company's own key, so the server's account never acts on them. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Optional default sender through [Resend](https://resend.com), used until the business connects its own email under **Settings → Email**. That screen recommends Resend (the business's own free account, which works on every Railway plan); a mailbox over SMTP only works on Railway Pro or when self-hosting, since Railway's trial and Hobby plans block outgoing mail servers. Subs on a new phone can also sign in with a 6-digit code emailed this way (the business's own mailbox first): it's how they get back in when texting isn't set up, and when it is, for a sub with no phone on file. |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Text messages. For two-way texting, set the number's **Messaging > A message comes in** webhook to `https://your-domain/api/webhooks/twilio` (HTTP POST). Replies appear in Messages and notify the office. `APP_URL` must match that address exactly, because Twilio signs the full URL. Subs on a new phone can also sign in with a 6-digit code texted from this number, so list one-time passcodes as a use in the number's A2P 10DLC registration. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Not needed for most businesses: each one connects its own Twilio account under **Apps → Twilio** (its Account SID, Auth Token and number, checked with Twilio before they're saved, the token stored encrypted), which wins over these when both are there and can set the number's webhook itself. These set up one Twilio number on the server instead, shared by every company that hasn't connected its own. Either way, for two-way texting the number's **Messaging > A message comes in** webhook is `https://your-domain/api/webhooks/twilio` (HTTP POST): replies appear in Messages and notify the office, a text from a number that isn't a client's or a contact's is kept under **Unknown numbers** there (on the shared number, only when the server has one company), and STOP is honoured for the number that sent it. `APP_URL` must match that address exactly, because Twilio signs the full URL, with the Auth Token of the account the number is in. Subs on a new phone can also sign in with a 6-digit code texted from their company's number, so list one-time passcodes as a use in the number's A2P 10DLC registration. |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Bot protection on public booking and referral forms. |
 | `CREWTAVO_SCHEDULER` | Set to `off` on extra replicas of `crewtavo`, so background tasks run in one place. |
 | `CREWTAVO_VISITOR_IP` | Only when something other than Railway's edge or one web server is in front of Crewtavo: where visitors' addresses come from (see [Visitors' addresses](#visitors-addresses)). |
@@ -700,6 +701,37 @@ Email**). Until then, the sign-in page says it can't send email, and there are t
 
 After any password reset, Crewtavo signs that account out everywhere else.
 
+## Crewtavo's own AI: Claude, OpenAI or a ChatGPT plan
+
+The drafts, rewrites, answers from guides and receipt reading inside Crewtavo ask one service, chosen
+for each ask in this order:
+
+1. **The asking person's own ChatGPT plan**, if they connected one (Apps > ChatGPT > Continue with
+   ChatGPT, or Settings > AI assistants once an owner or admin turns on "Let everyone on my team use
+   their own ChatGPT plan"). Only for what that person asks for themselves while signed in. Never
+   for anyone else's ask, and never for what Crewtavo does by itself (a quote drafted as a request
+   comes in, a receipt someone else left waiting).
+2. **The company's own key**: an Anthropic key (Apps > Claude) or an OpenAI key (Apps > ChatGPT,
+   checked with OpenAI before it's saved). With both, the company picks one on either page; until it
+   does, Claude is used, so a company that had a Claude key keeps what it had.
+3. **This server's `ANTHROPIC_API_KEY`**, for a company with no key. There is no server-wide OpenAI
+   key.
+
+When a plan can't take an ask (its usage limit, a sign-in that ended, something the plan route
+doesn't support), the ask goes on to 2 and 3, and the person's page says what stopped the plan.
+
+The OpenAI model is picked on the page from the models OpenAI lists for the key or the plan.
+`OPENAI_MODEL` overrides it for everyone on the server.
+
+Continue with ChatGPT uses OpenAI's Sign in with ChatGPT for open-source apps. OpenAI only sends the
+browser back to `http://127.0.0.1:1455/auth/callback`, an address on the person's own computer, so
+the page that opens there can't be reached: the person copies that address from the address bar
+and pastes it into Crewtavo, which checks it belongs to the sign-in they just started and finishes
+it on the server. Nothing needs opening on the server for this, and port 1455 is not a port of
+Crewtavo's. The sign-in's tokens are kept encrypted like the other apps' keys, one set per person,
+and never reach the browser. When someone leaves the team or is turned off, their connection ends
+at once and a background task (`chatgpt_plans`) signs their tokens out at OpenAI and deletes them.
+
 ## Connecting Claude and ChatGPT
 
 Instances come with this turned on. Open **Settings > AI assistants** in Crewtavo and copy the
@@ -707,6 +739,10 @@ connector address (`https://your-domain/mcp`):
 
 - **Claude**: Settings > Connectors > Add custom connector.
 - **ChatGPT**: Settings > Apps and connectors > Add (developer mode).
+
+Settings > AI assistants is the one place the connector is added and managed. The Claude and
+ChatGPT pages under Apps are about something else, what powers Crewtavo's own AI (below), and only
+point here.
 
 Each person signs in to Crewtavo and approves access on `/oauth/consent`. The assistant can then
 look up whatever that person can see, but can't add or change anything until they choose what it

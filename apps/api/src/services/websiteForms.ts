@@ -4,6 +4,7 @@
  * didn't, and what the address is for when someone opens it. The pages are plain HTML from the
  * server, so they work whatever the website is built with, without the web app.
  */
+import { PRIVACY_LINK_LABEL } from "@crewtavo/core/privacyPolicy";
 import { messageEmail, type PromoResult, type Submission } from "@crewtavo/core/websiteForms";
 import type { Env } from "../env";
 import { renderEmail } from "../lib/email";
@@ -49,8 +50,8 @@ export interface FormPage {
   title: string;
   heading: string;
   text: string;
-  /** The business, when the address is one of its forms: its logo, or its name. */
-  company?: { name: string; logo: { src: string; width: number; height: number } | null } | null;
+  /** The business, when the address is one of its forms: its logo, or its name, and its privacy policy link when it set one. */
+  company?: { name: string; logo: { src: string; width: number; height: number } | null; privacy_url?: string | null } | null;
   /** A button back to the page people came from (shown only when there is one). */
   back?: string;
   tone?: "good" | "problem";
@@ -80,6 +81,8 @@ img{max-width:100%;height:auto;margin:0 auto 18px;display:block}
 .mark{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;color:var(--${tone});background:var(--${tone}-bg)}
 h1{font-size:21px;line-height:1.3;margin:0 0 8px}
 p{margin:0;color:var(--muted)}
+.foot{margin-top:20px;font-size:13px}
+.foot a{color:inherit}
 button{margin-top:22px;font:inherit;font-weight:700;color:#fff;background:#3b7d23;border:0;border-radius:8px;padding:11px 20px;cursor:pointer}
 button:focus-visible{outline:3px solid #9fd389;outline-offset:2px}
 </style></head>
@@ -90,5 +93,6 @@ ${brand}
 <p>${escape(text)}</p>
 ${back ? `<button type="button" id="back" hidden>${escape(back)}</button>
 <script>if (history.length > 1) { var b = document.getElementById("back"); b.hidden = false; b.onclick = function () { history.back(); }; }</script>` : ""}
+${company?.privacy_url ? `<p class="foot"><a href="${escape(company.privacy_url)}" target="_blank" rel="noopener noreferrer">${PRIVACY_LINK_LABEL}</a></p>` : ""}
 </main></body></html>`;
 }

@@ -33,19 +33,21 @@ export const jobRates = (costs: boolean, ids: readonly string[]): Promise<Rates>
 export async function loadProfit({ companyId, range, costs }: { companyId: string; range: { start: string; end: string }; costs: boolean }) {
   const db = supabase();
   const [jobs, settings] = await Promise.all([
-    everyRow(() => db.from("jobs").select("id, number, title, status, financials:job_financials(contract_total), client:clients(display_name), lines:job_line_items(quantity, unit_cost, unit_labor_cost)").eq("company_id", companyId).in("status", ["requires_invoicing", "completed"]).gte("updated_at", range.start).lt("updated_at", range.end)),
+    everyRow(() => db.from("jobs").select("id, number, title, status, financials:job_financials(contract_total), client:clients(display_name), lines:job_line_items(quantity, unit_cost, unit_labor_cost, service_id, unit, parts)").eq("company_id", companyId).in("status", ["requires_invoicing", "completed"]).gte("updated_at", range.start).lt("updated_at", range.end)),
     db.from("companies").select("settings").eq("id", companyId).single(),
   ]);
   const ids = jobs.map((j) => j.id);
-  const [time, expenses, rates, crewPay] = await Promise.all([
+  const [time, expenses, materials, rates, crewPay] = await Promise.all([
     byJobs(ids, (lot) => everyRow(() => db.from("time_entries").select("id, job_id, started_at, ended_at").in("job_id", lot))),
-    byJobs(ids, (lot) => everyRow(() => db.from("expenses").select("job_id, amount").in("job_id", lot))),
+    byJobs(ids, (lot) => everyRow(() => db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", lot))),
+    // Materials logged on the jobs: one that's on a job's lines counts as logged, in place of the estimate.
+    byJobs(ids, (lot) => everyRow(() => db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", lot))),
     jobRates(costs, ids),
     // Sub and crew pay that's agreed, done or paid: for those with job costs, nothing for anyone else.
     costs ? byJobs(ids, (lot) => db.rpc("job_pay_costs", { p_jobs: lot }).then(unwrap)) : Promise.resolve([]),
   ]);
   const target = Number(((unwrap(settings).settings ?? {}) as Record<string, unknown>).margin_target ?? 0) || null;
   // Costed as AI assistants' job_profit costs it (packages/core/src/reports.ts).
-  const costed = jobProfit(jobs, time, expenses, (t) => Number(rates[t.id] ?? 0), target, crewPay).jobs.map((j) => ({ ...j, margin: j.margin_percent }));
+  const costed = jobProfit(jobs, time, expenses, (t) => Number(rates[t.id] ?? 0), target, crewPay, materials).jobs.map((j) => ({ ...j, margin: j.margin_percent }));
   return { jobs: costed, target };
 }

@@ -170,7 +170,7 @@ describe("an automatic first ask", () => {
   it("doesn't text a client who texted STOP: a text ask is skipped, and both goes by email", async () => {
     asking();
     const stopped = { ...ANA, sms_opt_out_at: "2026-10-01T12:00:00Z" } as never;
-    expect(await ask({ client: stopped, channel: "sms" })).toMatchObject({ skipped: true, detail: "Ana Smith texted STOP, so texts to them are off" });
+    expect(await ask({ client: stopped, channel: "sms" })).toMatchObject({ skipped: true, detail: "Ana Smith asked not to be texted, so texts to them are off" });
     expect(sendSms).not.toHaveBeenCalled();
     const calls = asking();
     expect(await ask({ client: stopped, channel: "both" })).toMatchObject({ sent: true, detail: "Asked for a review by email" });
@@ -251,7 +251,7 @@ describe("an ask by hand", () => {
   it.each([
     [{ review_opt_out: true }, "email", "Ana Smith asked not to get review requests. You can change that on their page."],
     [{ marketing_opt_out: true }, "email", "Ana Smith unsubscribed from marketing, so they aren't asked for reviews."],
-    [{ sms_opt_out_at: "2026-10-01T12:00:00Z" }, "sms", "Ana Smith texted STOP, so texts to them are off. Ask by email instead."],
+    [{ sms_opt_out_at: "2026-10-01T12:00:00Z" }, "sms", "Ana Smith asked not to be texted, so texts to them are off. Ask by email instead."],
     [{ status: "archived" }, "email", "Ana Smith is archived. Restore them to ask for a review."],
     [{ marketing_opt_out: true }, "link", "Ana Smith unsubscribed from marketing, so they aren't asked for reviews."],
     [{ reviewed_at: "2026-10-20T12:00:00Z" }, "email", "Ana Smith already left a Google review, so they aren't asked again. Not them? Undo the match in Marketing → Reviews."],
@@ -329,9 +329,9 @@ describe("an ask by text and email", () => {
   it("says a STOP refusal as the app says texts off, not in Twilio's words, and asks by email by hand", async () => {
     sendSms.mockImplementation(async () => ({ sent: false, reason: "The text provider refused it (400: Attempt to send to unsubscribed recipient).", code: 21610 }));
     asking();
-    await expect(ask({ automatic: false, channel: "sms" })).rejects.toThrow("Ana Smith texted STOP, so texts to them are off. Ask by email instead.");
+    await expect(ask({ automatic: false, channel: "sms" })).rejects.toThrow("Ana Smith asked not to be texted, so texts to them are off. Ask by email instead.");
     asking();
-    expect(await ask({ channel: "both" })).toMatchObject({ warning: true, detail: "Asked for a review by email. The text didn't go: Ana Smith texted STOP, so texts to them are off." });
+    expect(await ask({ channel: "both" })).toMatchObject({ warning: true, detail: "Asked for a review by email. The text didn't go: Ana Smith asked not to be texted, so texts to them are off." });
   });
 
   it("says straight away when the email of an ask by both didn't go", async () => {
@@ -470,7 +470,7 @@ describe("the automation engine", () => {
   it("doesn't text a client who texted STOP", async () => {
     const calls = engine({ rules: [rule({ trigger: "visit.en_route", actions: [{ type: "send_sms", body: "On our way" }] })], clients: [{ ...ANA, sms_opt_out_at: "2026-10-01T12:00:00Z" }] });
     expect(await executeRun(env, adminClient(env), run(), env.APP_URL!)).toBe("skipped");
-    expect(finished(calls)[0].p_result).toEqual([{ type: "send_sms", ok: true, skipped: true, detail: "Ana Smith texted STOP, so texts to them are off" }]);
+    expect(finished(calls)[0].p_result).toEqual([{ type: "send_sms", ok: true, skipped: true, detail: "Ana Smith asked not to be texted, so texts to them are off" }]);
     expect(sendSms).not.toHaveBeenCalled();
   });
 
@@ -852,7 +852,7 @@ describe("Marketing's routes", () => {
     serve({ tables: { memberships: [{ role: "office", role_id: null, subcontractor_id: null }], clients: [stopped], companies: [companyRow()] } });
     const res = await call("/messages/send", { method: "POST", body: { client_id: ANA_ID, channel: "sms", body: "Running late" } });
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "Ana Smith texted STOP, so texts to them are off. Send it by email instead." });
+    expect(await res.json()).toEqual({ error: "Ana Smith asked not to be texted, so texts to them are off. Send it by email instead." });
     expect(sendSms).not.toHaveBeenCalled();
 
     sendSms.mockImplementation(async () => ({ sent: false, reason: "The text provider refused it (400).", code: 21610 }));
@@ -870,7 +870,7 @@ describe("Marketing's routes", () => {
     expect(sendSms).not.toHaveBeenCalled();
     const spouse = await call("/messages/send", { method: "POST", body: { client_id: ANA_ID, channel: "sms", to: "(540) 555-0199", body: "Running late" } });
     expect(spouse.status).toBe(200);
-    expect(sendSms).toHaveBeenCalledWith(env, { to: "(540) 555-0199", body: "Running late" });
+    expect(sendSms).toHaveBeenCalledWith(env, { to: "(540) 555-0199", body: "Running late", company: CO });
 
     // A number that once texted STOP, typed in for a client who never did: Twilio refuses, and the client keeps texts on.
     sendSms.mockImplementation(async () => ({ sent: false, reason: "The text provider refused it (400).", code: 21610 }));
@@ -897,7 +897,7 @@ describe("Marketing's routes", () => {
       sales({ ...ANA, sms_opt_out_at: "2026-10-01T12:00:00Z" });
       const res = await call(path(kind), { method: "POST", body: { channel: "sms" } });
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: "Ana Smith texted STOP, so texts to them are off. Send it by email instead." });
+      expect(await res.json()).toEqual({ error: "Ana Smith asked not to be texted, so texts to them are off. Send it by email instead." });
       expect(sendSms).not.toHaveBeenCalled();
       const other = await call(path(kind), { method: "POST", body: { channel: "sms", to: "(540) 555-0199" } });
       expect(await other.json()).toMatchObject({ sent: true });
