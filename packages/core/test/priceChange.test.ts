@@ -100,9 +100,9 @@ describe("what the preview says about autopay", () => {
 
   it("and which charges would wait for the office's OK, by the company's limit", () => {
     expect(autopayNote({ autopay: 12, over_limit: 1 }, 500, money)).toBe(
-      "12 of these jobs are on autopay. Their clients aren't asked to agree again: the saved card is charged the new price from the next invoice. 1 would go over your $500 autopay limit, so that charge waits for your OK each time.",
+      "12 of these jobs are on autopay. Their clients aren't asked to agree again: the saved card is charged the new price from the next invoice. 1 would go over your $500 autopay limit, so that charge waits for your OK each time. A client who pays from a bank account is sent the invoice to pay instead.",
     );
-    expect(autopayNote({ autopay: 12, over_limit: 3 }, 500, money)).toContain("3 would go over your $500 autopay limit, so those charges wait for your OK each time.");
+    expect(autopayNote({ autopay: 12, over_limit: 3 }, 500, money)).toContain("3 would go over your $500 autopay limit, so those charges wait for your OK each time. A client who pays from a bank account is sent the invoice to pay instead.");
   });
 });
 

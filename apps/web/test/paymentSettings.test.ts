@@ -72,7 +72,7 @@ function render(element: ReactElement, seed: (client: QueryClient) => void) {
 const SETTINGS: AutopaySettings = {
   enabled: false,
   terms: starterAutopayTerms("lawn_exterior"),
-  terms_version: "starter-lawn_exterior-2",
+  terms_version: "starter-lawn_exterior-3",
   timing: "end_of_day",
   days: null,
   max_amount: 500,
@@ -196,10 +196,11 @@ describe("Settings → Payments", () => {
       SETTINGS.terms,
       'Clients read: "We charge at the end of the day of each visit."',
       "Most to charge without asking",
-      "Over this, the charge waits for your OK. Leave it blank for no limit.",
-      // What a bank account agrees to about notice, written from the limit, and why.
-      'After your terms and when you charge, clients also read: "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it\'s made.',
-      "federal rules (Regulation E) call for the amount and date of each charge 10 days ahead, unless they agreed to a range",
+      "Over this, a card's charge waits for your OK. Leave it blank for no limit.",
+      // What a bank account agrees to, written from the limit, and what the limit means for one.
+      'After your terms and when you charge, clients also read: "If you pay from a bank account: charges of $500.00 or less are taken automatically. An invoice for more than $500.00 is not taken from your bank account: we send it to you to pay."',
+      "A client's bank account is never charged more than this, even with your OK: an invoice over it is sent to them to pay, and you're told.",
+      "A client who agreed while the limit was lower keeps that lower limit for their bank account.",
       "Email a receipt after each charge",
       "Turn on autopay for new recurring jobs of clients on autopay",
       "Require a card on file",
@@ -211,12 +212,12 @@ describe("Settings → Payments", () => {
     expect(page).not.toContain("Overdue");
   });
 
-  it("tells a business with no limit that the bank account terms then name no range", () => {
+  it("tells a business with no limit that a bank account is then charged for every invoice, and to set one", () => {
     as("owner", []);
     const page = paymentsPage({ settings: { ...SETTINGS, max_amount: null } });
-    expect(page).toContain("By agreeing, you choose not to be told ahead: each charge is for the invoice it pays, whatever its amount.");
-    expect(page).toContain("Set a limit if you take bank payments.");
-    expect(page).not.toContain("The terms name this limit as that range");
+    expect(page).toContain("If you pay from a bank account: each charge is for the invoice it pays, and is taken automatically whatever its amount.");
+    expect(page).toContain("With no limit, a client's bank account is charged for every invoice, whatever its amount, and the terms say so. Set a limit if you take bank payments.");
+    expect(page).not.toContain("never charged more than this");
     // The words follow what's typed, as the database will write them once it's saved.
     expect(bankLimit("")).toBeNull();
     expect(bankLimit("0")).toBeNull();
@@ -224,10 +225,13 @@ describe("Settings → Payments", () => {
     expect(bankLimit("99.999")).toBe(100);
   });
 
-  it("reminds the office, where it OKs a charge over the limit from a bank account, of the notice the terms promise", () => {
+  it("promises no notice anywhere: not in the words clients read, not under the limit, not where the office OKs a charge", () => {
+    as("owner", []);
+    for (const max_amount of [500, null]) expect(paymentsPage({ settings: { ...SETTINGS, max_amount } })).not.toMatch(/10 days|Regulation E|notice ahead|told ahead/);
     const invoice = readFileSync(new URL("../src/features/invoices/InvoicePage.tsx", import.meta.url), "utf8");
-    expect(invoice).toContain('charge.method?.type === "us_bank_account"');
-    expect(invoice).toContain("your autopay terms promise them the amount and date at least 10 days before a charge over the limit: send them that before you OK it.");
+    expect(invoice).not.toMatch(/10 days|promise them/);
+    // The OK is never offered for a bank account over the limit (invoices.test.ts draws the page).
+    expect(invoice).toContain("{!noOk && <Button");
   });
 
   it("says where tips stand and links to the one switch, in Settings → Company", () => {
@@ -321,7 +325,7 @@ describe("cards brought in from Stripe", () => {
 
   it("asks to turn autopay on first", () => {
     as("owner", []);
-    const page = text(render(createElement(StripeCards, { enabled: false, termsVersion: "starter-lawn_exterior-2" }), (client) => client.setQueryData(["company", COMPANY, "payments", "stripe-cards"], cards)));
+    const page = text(render(createElement(StripeCards, { enabled: false, termsVersion: "starter-lawn_exterior-3" }), (client) => client.setQueryData(["company", COMPANY, "payments", "stripe-cards"], cards)));
     expect(page).toContain("Turn on autopay above and save first.");
   });
 

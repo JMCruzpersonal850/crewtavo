@@ -142,7 +142,8 @@ export const priceIsFor = (job: Pick<PriceChangeJob, "pricing" | "schedule">) =>
 /**
  * What a price change means for clients on autopay, by the rules autopay already has: nobody is
  * asked to agree again (they're asked only when the terms' words change), their card is charged the
- * new price from the next invoice, and a charge over the company's limit waits for the office's OK.
+ * new price from the next invoice, and a charge over the company's limit waits for the office's OK
+ * (a bank account is never charged over it: that invoice goes to the client to pay).
  * Null when none of the jobs is on autopay.
  */
 export function autopayNote(totals: { autopay: number; over_limit: number }, limit: number | null, money: (n: number) => string): string | null {
@@ -150,7 +151,7 @@ export function autopayNote(totals: { autopay: number; over_limit: number }, lim
   const jobs = `${totals.autopay} of these ${totals.autopay === 1 ? "jobs is" : "jobs are"} on autopay`;
   const charged = "Their clients aren't asked to agree again: the saved card is charged the new price from the next invoice.";
   if (!totals.over_limit || limit == null) return `${jobs}. ${charged}`;
-  return `${jobs}. ${charged} ${totals.over_limit} would go over your ${money(limit)} autopay limit, so ${totals.over_limit === 1 ? "that charge waits" : "those charges wait"} for your OK each time.`;
+  return `${jobs}. ${charged} ${totals.over_limit} would go over your ${money(limit)} autopay limit, so ${totals.over_limit === 1 ? "that charge waits" : "those charges wait"} for your OK each time. A client who pays from a bank account is sent the invoice to pay instead.`;
 }
 
 /** The preview as rows for a CSV: one for each line changed, with its job and the job's price before and after. */

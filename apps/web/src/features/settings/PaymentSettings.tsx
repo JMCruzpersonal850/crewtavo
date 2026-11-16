@@ -216,7 +216,7 @@ export function PaymentSettings() {
                 <input className="input" type="number" inputMode="numeric" min={1} max={14} step={1} required value={f.days} onChange={(e) => set("days", e.target.value)} />
               </Field>
             )}
-            <Field label="Most to charge without asking" optional hint={`Over this, the charge waits for your OK. Leave it blank for no limit. ${f.max.trim() ? AUTOPAY_BANK_NOTE : AUTOPAY_NO_LIMIT_NOTE}`}>
+            <Field label="Most to charge without asking" optional hint={`Over this, a card's charge waits for your OK. Leave it blank for no limit. ${f.max.trim() ? AUTOPAY_BANK_NOTE : AUTOPAY_NO_LIMIT_NOTE}`}>
               <span className="input-group">
                 <span className="addon">$</span>
                 <input className="input" style={{ paddingLeft: 22 }} inputMode="decimal" value={f.max} onChange={(e) => set("max", e.target.value.replace(/[^0-9.]/g, ""))} placeholder="No limit" />

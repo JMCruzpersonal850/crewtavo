@@ -23,7 +23,7 @@ import { EntityStatus, statusText } from "@/components/ui/StatusPill";
 import { api, supabase, unwrap, unwrapOne } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { ApiError, errorMessage, isAuthError, isNetworkError, isRestarting } from "@/lib/errors";
-import { addDaysIso, formatDate, formatMoney, formatMoneyCents, formatTaxRate, todayIn } from "@/lib/format";
+import { addDaysIso, formatDate, formatMoneyCents, formatTaxRate, todayIn } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { useRememberRecent } from "@/lib/recent";
 import { can, hasRole, useSession } from "@/lib/session";
@@ -44,7 +44,7 @@ import { SendDialog } from "../quotes/SendDialog";
 import { refundable, stripeCharge, stripeRefundable, stripeRefundToasts, type StripeRefundResult } from "./refunds";
 import { settle } from "./settle";
 import { autopayBankNote, bankPayment, bankPaymentNote, paidInStripe, paymentAmount, RECORD_IN_STRIPE } from "./stripeInvoices";
-import { chargeOutcomeText, type ChargeResult } from "./charges";
+import { approvalText, bankLimitText, chargeOutcomeText, noOkForBank, type ChargeResult } from "./charges";
 import { EditInvoiceDialog } from "./EditInvoiceDialog";
 import { editOffer } from "./editInvoice";
 import { lateFeeControls } from "./lateFees";
@@ -86,15 +86,17 @@ function InvoicePageScreen() {
           .maybeSingle(),
         supabase()
           .from("autopay_charges")
-          .select("id, source, status, due_at, attempts, failures, last_error, decline_code, charged_at, approved_at, method:client_payment_methods!autopay_charges_method_fkey(type, brand, last4, bank_name, wallet)")
+          .select("id, source, status, due_at, attempts, failures, last_error, decline_code, charged_at, approved_at, bank_limit, send_state, send_error, method:client_payment_methods!autopay_charges_method_fkey(type, brand, last4, bank_name, wallet)")
           .eq("invoice_id", id)
           .order("created_at", { ascending: false }),
         supabase().from("referral_credits").select("id, amount, note, referral_id, created_at").eq("invoice_id", id).order("created_at"),
       ]);
       return { ...unwrapOne(row, "This invoice"), autopay: unwrap(autopay), credits: unwrap(credits) };
     },
-    // While it's being charged (or was just approved), look again every few seconds until Stripe answers.
-    refetchInterval: (query) => (query.state.data?.autopay.some((a) => a.status === "charging" || (a.status === "waiting" && a.approved_at)) ? 10_000 : false),
+    // While it's being charged (or was just approved), look again every few seconds until Stripe
+    // answers; and while it's on its way to the client instead (over a bank account's limit), until it has gone.
+    refetchInterval: (query) =>
+      query.state.data?.autopay.some((a) => a.status === "charging" || (a.status === "waiting" && a.approved_at) || a.send_state === "waiting" || a.send_state === "sending") ? 10_000 : false,
   });
   const inv = invoice.data;
   // Whether the company's Stripe key can make refunds (Settings → Payments reads the same), asked
@@ -200,9 +202,10 @@ function InvoicePageScreen() {
     window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: ["invoice", id] }), 5000);
   };
   // Approve charge: a charge over the autopay limit goes ahead, and the server starts on it at once.
+  // Never on a bank account over its limit: the server says the invoice went to the client instead.
   const approveCharge = useMutation({
-    meta: { success: "Charging it now", tone: "invoice" },
-    mutationFn: (chargeId: string) => api.post(`/autopay/charges/${chargeId}/approve`, {}),
+    meta: { success: (r: { to_client?: boolean }) => (r.to_client ? "Not charged. It's going to the client to pay" : "Charging it now"), tone: "invoice" },
+    mutationFn: (chargeId: string) => api.post<{ to_client?: boolean }>(`/autopay/charges/${chargeId}/approve`, {}),
     onSuccess: refreshSoon,
   });
   // Charge card: queued for the autopay task, which the server starts on at once. Charge card goes
@@ -270,6 +273,13 @@ function InvoicePageScreen() {
   const clientName = inv.client?.display_name ?? "The client";
   // Over the limit, or with visits autopay didn't queue itself: the draft waits for the office.
   const asking = charge?.status === "needs_approval" && draft;
+  // A bank account is never charged more than the limit, so there's no OK to give for one: the
+  // database closes the charge at the task's next run, and the invoice goes to the client to pay.
+  const cap = autopaySettings(session.company.settings, session.company.trade_preset).max_amount;
+  const noOk = asking && noOkForBank(charge.method, balance, cap);
+  // Closed for that already (its newest charge), and still owed: what happened to it, and why.
+  const newest = inv.autopay[0];
+  const toClient = !charge && newest?.status === "called_off" && newest.bank_limit != null && balance > 0 && !isVoid && !writtenOff ? newest : null;
   // Declined, or the client has to do something: they were sent the Pay link, and a reminder is the next step.
   // Not while their bank payment is on its way (bankNote says so): nothing is tried again meanwhile.
   // One in a Stripe account Crewtavo left doesn't hold the retry back, so that one still says it.
@@ -449,11 +459,21 @@ function InvoicePageScreen() {
       {asking && charge && (
         <div className="callout callout-warning">
           <Icon name="card" size={20} />
-          <div className="grow">{approvalText(charge, balance, autopaySettings(session.company.settings, session.company.trade_preset).max_amount)}</div>
+          <div className="grow">{noOk ? bankLimitText(balance, cap!, card, clientName, "waiting", null) : approvalText(charge, balance, cap)}</div>
           <div className="row wrap" style={{ gap: 6 }}>
-            <Button size="sm" variant="primary" icon="check" loading={approveCharge.isPending} disabled={callOffCharge.isPending} onClick={() => approveCharge.mutate(charge.id)}>Approve charge</Button>
-            <Button size="sm" icon="send" loading={callOffCharge.isPending} disabled={approveCharge.isPending || !inv.lines.length} onClick={() => callOffCharge.mutate(charge.id)}>Send it the usual way</Button>
+            {!noOk && <Button size="sm" variant="primary" icon="check" loading={approveCharge.isPending} disabled={callOffCharge.isPending} onClick={() => approveCharge.mutate(charge.id)}>Approve charge</Button>}
+            <Button size="sm" icon="send" loading={callOffCharge.isPending} disabled={approveCharge.isPending || !inv.lines.length} onClick={() => callOffCharge.mutate(charge.id)}>{noOk ? "Send it now" : "Send it the usual way"}</Button>
           </div>
+        </div>
+      )}
+      {/* Over the limit for a bank account: not charged, by anyone. It's an unpaid invoice like any other from here. */}
+      {toClient && (
+        <div className="callout callout-info">
+          <Icon name="card" size={20} />
+          <div className="grow">{bankLimitText(balance, Number(toClient.bank_limit), toClient.method ? methodLabel(toClient.method) : "their bank account", clientName, toClient.send_state, toClient.send_error)}</div>
+          {toClient.send_state !== "waiting" && toClient.send_state !== "sending" && (
+            <Button size="sm" icon="send" disabled={!inv.lines.length} onClick={() => setDialog("send")}>{toClient.send_state === "sent" ? "Send again" : draft ? "Send invoice" : "Send a reminder"}</Button>
+          )}
         </div>
       )}
       {chargeFailed && charge && (
@@ -477,7 +497,7 @@ function InvoicePageScreen() {
           {!chargeFailed && <Button size="sm" icon="send" onClick={() => setDialog("send")}>Send a reminder</Button>}
         </div>
       )}
-      {draft && !charge && <div className="callout callout-info"><Icon name="info" size={20} /><div className="grow">This invoice hasn't been sent yet.</div></div>}
+      {draft && !charge && !toClient && <div className="callout callout-info"><Icon name="info" size={20} /><div className="grow">This invoice hasn't been sent yet.</div></div>}
       {!isVoid && balance < 0 && <div className="callout callout-info"><Icon name="info" size={20} /><div className="grow">The client paid {formatMoneyCents(-balance)} more than they owed. Record a refund, or keep it as a credit for their next invoice.</div></div>}
 
       <div className="two-col">
@@ -637,25 +657,6 @@ function InvoicePageScreen() {
 
 /** A message from Stripe or the database as part of a sentence: without its full stop. */
 const clause = (text: string) => text.trim().replace(/[.\s]+$/, "");
-
-/** Whole dollars when it's a round figure ("$500"), else with cents. */
-const limitText = (amount: number) => (Number.isInteger(amount) ? formatMoney(amount) : formatMoneyCents(amount));
-
-/**
- * Why a charge waits for the office's OK. The database asks first, whatever the amount, when the
- * invoice has visits autopay didn't queue itself or from before the client agreed, and says why
- * ("Includes visits from before autopay started"); and when it's over the company's limit, with no
- * reason given.
- */
-function approvalText(charge: { last_error: string | null; method?: { type: string } | null }, balance: number, cap: number | null): string {
-  if (charge.last_error) return `${clause(charge.last_error).replace(/^Includes /, "It includes ")}, so it waits for your OK.`;
-  if (cap != null && balance > cap) {
-    // A bank account agreed to the limit as the most charged without notice (core autopayBankText).
-    const bank = charge.method?.type === "us_bank_account" ? " They pay from a bank account, and your autopay terms promise them the amount and date at least 10 days before a charge over the limit: send them that before you OK it." : "";
-    return `${formatMoneyCents(balance)} is over your ${limitText(cap)} limit, so it waits for your OK.${bank}`;
-  }
-  return "It waits for your OK before it's charged.";
-}
 
 /** Stripe's answers that mean the client's bank wants them to confirm the payment themselves. */
 const CONFIRM_CODES = new Set(["authentication_required", "invoice_payment_intent_requires_action"]);

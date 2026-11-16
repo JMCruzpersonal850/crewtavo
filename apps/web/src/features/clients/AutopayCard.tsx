@@ -5,7 +5,7 @@
  * charges. From here the office sends the invite, pauses it, or takes the card off. Reads go
  * through the database (RLS keeps them to the same people); actions through the API.
  */
-import { AUTOPAY_STATUS_TEXT, autopayDueText, methodExpiry, methodLabel } from "@crewtavo/core/autopay";
+import { AUTOPAY_BANK_LIMIT_REASON, AUTOPAY_STATUS_TEXT, autopayDueText, methodExpiry, methodLabel } from "@crewtavo/core/autopay";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -250,7 +250,9 @@ export function AutopayCard({ client }: { client: { id: string; display_name: st
             const fromCredit = c.status === "paid" && c.charged_amount !== null && Number(c.charged_amount) === 0;
             const amount = (fromCredit ? null : c.charged_amount) ?? c.invoice?.total ?? null;
             const what = c.invoice?.number != null ? `Invoice #${c.invoice.number}` : "Next charge";
-            const status = c.status === "waiting" ? `Charges ${autopayDueText(c.due_at, session.company.timezone)}` : fromCredit ? "Paid from Stripe credit" : AUTOPAY_STATUS_TEXT[c.status] ?? c.status;
+            // Over the limit for their bank account: not charged, and the invoice is theirs to pay.
+            const overLimit = c.status === "called_off" && c.last_error === AUTOPAY_BANK_LIMIT_REASON;
+            const status = c.status === "waiting" ? `Charges ${autopayDueText(c.due_at, session.company.timezone)}` : fromCredit ? "Paid from Stripe credit" : overLimit ? "Theirs to pay" : AUTOPAY_STATUS_TEXT[c.status] ?? c.status;
             const row = (
               <>
                 <span className="grow ellipsis">{what}</span>

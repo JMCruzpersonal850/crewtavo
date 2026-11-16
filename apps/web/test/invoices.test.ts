@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chargeInChunks, chargeOutcomeText, chargeSummary, chargeTotal } from "../src/features/invoices/charges";
+import { approvalText, bankLimitText, chargeInChunks, chargeOutcomeText, chargeSummary, chargeTotal, noOkForBank } from "../src/features/invoices/charges";
 import { ChargeCardsDialog } from "../src/features/invoices/InvoiceTools";
 import { InvoicePage } from "../src/features/invoices/InvoicePage";
 import { refundable, stripeCharge, stripeRefundable, stripeRefundToasts } from "../src/features/invoices/refunds";
@@ -109,7 +109,7 @@ describe("refunds through Stripe", () => {
     expect(page).toMatch(/payments\([^)]*\bprocessor_ref\b/);
     expect(page).toMatch(/stripe:stripe_invoices\([^)]*\bcollection\b[^)]*\bpurpose\b/);
     // Its autopay charge (or Charge card's), and the card it's charged to (never its number: the brand and last four).
-    expect(page).toMatch(/from\("autopay_charges"\)\s*\.select\("id, source, status, due_at, attempts, failures, last_error, decline_code, charged_at, approved_at, method:client_payment_methods!autopay_charges_method_fkey\(type, brand, last4, bank_name, wallet\)"\)\s*\.eq\("invoice_id", id\)/);
+    expect(page).toMatch(/from\("autopay_charges"\)\s*\.select\("id, source, status, due_at, attempts, failures, last_error, decline_code, charged_at, approved_at, bank_limit, send_state, send_error, method:client_payment_methods!autopay_charges_method_fkey\(type, brand, last4, bank_name, wallet\)"\)\s*\.eq\("invoice_id", id\)/);
     expect(page).toContain("`/payments/${payment.id}/refund`, { amount: Math.round(value * 100) / 100, write_off: writeOff })");
     // The browser books only refunds recorded by hand: one insert of a negative payment, in RefundDialog.
     const stripeDialog = page.slice(page.indexOf("function StripeRefundDialog"));
@@ -245,15 +245,24 @@ describe("what the office reads while autopay's bank payment is on its way", () 
  * when there is one, and why it's in that status. `bank`: the client's own bank payment from the Pay
  * link is on its way. `manual`: the card Charge card charges, as the server says (none by default).
  * `source`: 'manual' for a charge from Charge card; `visa`: it's on a Visa card, not Chase's bank account.
+ * `amount`: what's owed on it, when not $45. `bank_limit`, `send_state` and `send_error`: a charge closed
+ * for being over its bank account's limit, and where its invoice is on the way to the client.
  */
-function invoicePage(status: string | null, options: { draft?: boolean; last_error?: string | null; left?: boolean; bank?: boolean; failures?: number; approved?: boolean; manual?: { card: string } | null; source?: string; visa?: boolean } = {}) {
+function invoicePage(
+  status: string | null,
+  options: {
+    draft?: boolean; last_error?: string | null; left?: boolean; bank?: boolean; failures?: number; approved?: boolean; manual?: { card: string } | null; source?: string; visa?: boolean;
+    amount?: number; bank_limit?: number; send_state?: string | null; send_error?: string | null;
+  } = {},
+) {
+  const amount = options.amount ?? 45;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(["invoice", "i1", "charge"], { manual: options.manual ?? null });
   client.setQueryData(["invoice", "i1"], {
     id: "i1", number: 2, status: options.draft ? "draft" : "sent", kind: "standard", subject: null, notes: null, issued_on: "2026-10-27", due_on: "2026-11-10", sent_at: options.draft ? null : "2026-10-27T23:00:00Z",
-    subtotal: 45, discount_amount: 0, credit_amount: 0, tax_rate: 0, tax_amount: 0, total: 45, retainage_amount: 0, retainage_pct: 0, amount_paid: 0, balance_due: 45, written_off_at: null,
+    subtotal: amount, discount_amount: 0, credit_amount: 0, tax_rate: 0, tax_amount: 0, total: amount, retainage_amount: 0, retainage_pct: 0, amount_paid: 0, balance_due: amount, written_off_at: null,
     credits: [], client_id: "cl1", promo: null, client: { id: "cl1", display_name: "Pat Lee", email: null, phone: null, billing_address: null }, job: null,
-    lines: [{ id: "l1", name: "Weekly mow", description: null, quantity: 1, unit: "visit", unit_price: 45, taxable: false, sort: 0, service_id: null }],
+    lines: [{ id: "l1", name: "Weekly mow", description: null, quantity: 1, unit: "visit", unit_price: amount, taxable: false, sort: 0, service_id: null }],
     payments: [],
     stripe: status === "processing"
       ? [{ stripe_id: "in_1", origin: "crewtavo", status: "processing", number: "A-2", hosted_url: null, livemode: false, amount_due: 45, created_at: "2026-10-27T23:00:00Z", detached_at: options.left ? new Date().toISOString() : null, processing_at: "2026-10-27T23:05:00Z", collection: "charge_automatically", purpose: "invoice" }]
@@ -261,7 +270,7 @@ function invoicePage(status: string | null, options: { draft?: boolean; last_err
         ? [{ stripe_id: "in_2", origin: "crewtavo", status: "processing", number: "A-3", hosted_url: null, livemode: false, amount_due: 45, created_at: "2026-10-29T15:00:00Z", detached_at: null, processing_at: "2026-10-29T15:05:00Z", collection: "send_invoice", purpose: "invoice" }]
         : [],
     autopay: status
-      ? [{ id: "a1", source: options.source ?? "autopay", status, due_at: "2026-10-27T23:00:00Z", attempts: 1, failures: options.failures ?? (status === "failed" ? 1 : 0), last_error: options.last_error ?? null, decline_code: null, charged_at: null, approved_at: options.approved ? "2026-10-28T15:00:00Z" : null, method: options.visa ? { type: "card", brand: "visa", last4: "4242", bank_name: null, wallet: null } : { type: "us_bank_account", brand: null, last4: "6789", bank_name: "Chase", wallet: null } }]
+      ? [{ id: "a1", source: options.source ?? "autopay", status, due_at: "2026-10-27T23:00:00Z", attempts: 1, failures: options.failures ?? (status === "failed" ? 1 : 0), last_error: options.last_error ?? null, decline_code: null, charged_at: null, approved_at: options.approved ? "2026-10-28T15:00:00Z" : null, bank_limit: options.bank_limit ?? null, send_state: options.send_state ?? null, send_error: options.send_error ?? null, method: options.visa ? { type: "card", brand: "visa", last4: "4242", bank_name: null, wallet: null } : { type: "us_bank_account", brand: null, last4: "6789", bank_name: "Chase", wallet: null } }]
       : [],
   });
   return renderToStaticMarkup(
@@ -403,6 +412,102 @@ describe("a charge waiting for the office's OK", () => {
     const migration = readFileSync(fileURLToPath(new URL("../../../supabase/migrations/20261101000100_autopay.sql", import.meta.url)), "utf8");
     expect(migration).toContain("then 'Includes visits from before autopay started'");
     expect(migration).toContain("then 'Includes visits autopay didn''t queue (finished while it was off, or from a voided invoice)'");
+  });
+});
+
+// A bank account is never charged more than the limit (20261116000100_bank_charges_over_the_limit_go_to_the_client.sql):
+// the database closes the charge and the invoice goes to the client to pay. The company here has
+// the starter $500 limit.
+describe("an invoice over the limit for the client's bank account", () => {
+  const WHY = "$600.00 is over the $500 limit, and a bank account is never charged more than its limit, so Chase ending 6789 wasn&#x27;t charged.";
+  const closed = (options: Parameters<typeof invoicePage>[1] = {}) =>
+    invoicePage("called_off", { amount: 600, bank_limit: 500, last_error: "Over the limit for a bank account. The client pays this one themselves", ...options });
+  const said = (html: string) => html.match(/callout-info">.*?<div class="grow">(.*?)<\/div>/)?.[1] ?? null;
+
+  it("says it wasn't charged and why, and that the client was sent it to pay, with no OK to give", () => {
+    const html = closed({ send_state: "sent" });
+    expect(said(html)).toBe(`${WHY} Pat Lee was sent this invoice to pay themselves.`);
+    expect(control(html, "Approve charge")).toBeNull();
+    expect(html).not.toMatch(/waits for your OK|10 days/);
+    // From here it's an unpaid invoice like any other: send it again, record a payment.
+    expect(control(html, "Send again")).not.toBeNull();
+    expect(control(html, "Record payment")).not.toMatch(/disabled=""/);
+    expect(control(html, "Void invoice")).not.toBeNull();
+  });
+
+  it("says it's on its way while the server is sending it, and doesn't ask the office to send it too", () => {
+    for (const send_state of ["waiting", "sending"]) {
+      const html = closed({ draft: true, send_state });
+      expect(said(html)).toBe(`${WHY} Pat Lee is being sent this invoice to pay themselves.`);
+      // The callout has no button of its own until the server has answered.
+      expect(html).toMatch(/Pat Lee is being sent this invoice to pay themselves\.<\/div><\/div>/);
+      expect(control(html, "Send again")).toBeNull();
+      expect(html).not.toContain("This invoice hasn&#x27;t been sent yet.");
+    }
+  });
+
+  it("is the office's to send when it couldn't be sent, and says what stopped it", () => {
+    const html = closed({ draft: true, send_state: "failed", send_error: "Add a valid email address for this client first" });
+    expect(said(html)).toBe(`${WHY} It couldn&#x27;t be sent to them (Add a valid email address for this client first), so it&#x27;s yours to send.`);
+    expect(control(html, "Send invoice")).not.toBeNull();
+    expect(control(html, "Approve charge")).toBeNull();
+  });
+
+  it("says it's theirs to pay when the office sent it first", () => {
+    const html = closed({ send_state: null });
+    expect(said(html)).toBe(`${WHY} It&#x27;s theirs to pay themselves.`);
+    expect(control(html, "Send a reminder")).not.toBeNull();
+  });
+
+  it("has no Approve charge while one still waits to be closed: there's no OK to give for a bank account over the limit", () => {
+    const html = invoicePage("needs_approval", { draft: true, amount: 600 });
+    expect(html).toContain(`${WHY} Pat Lee is being sent this invoice to pay themselves.`);
+    expect(control(html, "Approve charge")).toBeNull();
+    expect(control(html, "Send it now")).not.toBeNull();
+    expect(noOkForBank({ type: "us_bank_account" }, 600, 500)).toBe(true);
+    expect(noOkForBank({ type: "sepa_debit" }, 500.01, 500)).toBe(true);
+    // Within the limit, with no limit, or on a card: the OK is the office's to give, as before.
+    expect(noOkForBank({ type: "us_bank_account" }, 500, 500)).toBe(false);
+    expect(noOkForBank({ type: "us_bank_account" }, 600, null)).toBe(false);
+    expect(noOkForBank({ type: "card" }, 600, 500)).toBe(false);
+    expect(noOkForBank(null, 600, 500)).toBe(false);
+  });
+
+  it("leaves a card's charge over the limit exactly as it was: it waits for the OK, with Approve charge", () => {
+    const html = invoicePage("needs_approval", { draft: true, amount: 600, visa: true });
+    expect(html).toContain("$600.00 is over your $500 limit, so it waits for your OK.");
+    expect(control(html, "Approve charge")).not.toBeNull();
+    expect(control(html, "Send it the usual way")).not.toBeNull();
+    expect(html).not.toContain("never charged more than");
+  });
+
+  it("and a bank account's charge within the limit that waits for another reason keeps its OK", () => {
+    const html = invoicePage("needs_approval", { draft: true, last_error: "Includes extra work added to a visit" });
+    expect(html).toContain("It includes extra work added to a visit, so it waits for your OK.");
+    expect(control(html, "Approve charge")).not.toBeNull();
+  });
+
+  it("no longer reminds the office of 10 days' notice anywhere on the page", () => {
+    const page = readFileSync(fileURLToPath(new URL("../src/features/invoices/InvoicePage.tsx", import.meta.url)), "utf8");
+    const words = readFileSync(fileURLToPath(new URL("../src/features/invoices/charges.ts", import.meta.url)), "utf8");
+    for (const source of [page, words]) expect(source).not.toMatch(/10 days|Regulation E|promise them/);
+  });
+
+  it("says what a bank account's charge that was never made is, whatever sent state the database gives", () => {
+    expect(bankLimitText(1250.5, 800, "their bank account", "Pat Lee", "sent", null)).toBe(
+      "$1,250.50 is over the $800 limit, and a bank account is never charged more than its limit, so their bank account wasn't charged. Pat Lee was sent this invoice to pay themselves.",
+    );
+    expect(bankLimitText(600, 499.5, "Chase ending 6789", "Pat Lee", "failed", null)).toContain("over the $499.50 limit");
+    expect(bankLimitText(600, 500, "Chase ending 6789", "Pat Lee", "failed", null)).toContain("It couldn't be sent to them, so it's yours to send.");
+    expect(approvalText({ last_error: null }, 600, 500)).toBe("$600.00 is over your $500 limit, so it waits for your OK.");
+  });
+
+  it("is refused by Charge card in words that say what to do instead", () => {
+    expect(chargeOutcomeText({ outcome: "bank_limit", reason: "It's over the $500.00 limit for their bank account, so it isn't taken from it. Send it to them to pay" })).toBe(
+      "It's over the $500.00 limit for their bank account, so it isn't taken from it. Send it to them to pay",
+    );
+    expect(chargeOutcomeText({ outcome: "bank_limit", reason: null })).toBe("Over the limit for their bank account. Send it to them to pay");
+    expect(chargeSummary([{ outcome: "bank_limit" }, { outcome: "queued" }])).toBe("1 charging. 1 not charged. Each invoice shows when it's paid.");
   });
 });
 

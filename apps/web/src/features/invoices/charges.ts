@@ -2,7 +2,51 @@
  * Charging a client's saved card from the office: the invoice page's Charge card button and the
  * Invoices page's Charge cards list. The server queues each one as a charge the autopay task
  * makes (POST /invoices/charge), so receipts, the paid-twice guards and failures work as autopay's.
+ * And what the invoice page says about a charge that waits for the office's OK, or that was never
+ * made because it's over the limit for the client's bank account.
  */
+import { isBankAccount } from "@crewtavo/core/autopay";
+import { formatMoney, formatMoneyCents } from "@/lib/format";
+
+/** A message from Stripe or the database as part of a sentence: without its full stop. */
+const clause = (text: string) => text.trim().replace(/[.\s]+$/, "");
+
+/** Whole dollars when it's a round figure ("$500"), else with cents. */
+export const limitText = (amount: number) => (Number.isInteger(amount) ? formatMoney(amount) : formatMoneyCents(amount));
+
+/**
+ * Why a charge waits for the office's OK. The database asks first, whatever the amount, when the
+ * invoice has visits autopay didn't queue itself or from before the client agreed, and says why
+ * ("Includes visits from before autopay started"); and when it's over the company's limit, with no
+ * reason given.
+ */
+export function approvalText(charge: { last_error: string | null }, balance: number, cap: number | null): string {
+  if (charge.last_error) return `${clause(charge.last_error).replace(/^Includes /, "It includes ")}, so it waits for your OK.`;
+  if (cap != null && balance > cap) return `${formatMoneyCents(balance)} is over your ${limitText(cap)} limit, so it waits for your OK.`;
+  return "It waits for your OK before it's charged.";
+}
+
+/**
+ * Whether there's no OK to give for a charge that waits for one: a bank account would pay it and
+ * it's over the company's limit. A bank account is never charged more than its limit, by anyone
+ * (the database refuses the OK too, and closes the charge at the task's next run).
+ */
+export const noOkForBank = (method: { type: string } | null | undefined, balance: number, cap: number | null) => isBankAccount(method?.type) && cap != null && balance > cap;
+
+/**
+ * An invoice over the limit for the client's bank account: it wasn't taken from it, by autopay or by
+ * anyone's OK (the terms say so: core autopayBankText), and where the invoice is on its way to the
+ * client to pay instead. `send` is the charge's send_state: waiting or sending (the server sends it
+ * within a few minutes), sent, failed (with why, so the office sends it), or none (the office sent
+ * it first).
+ */
+export function bankLimitText(balance: number, limit: number, account: string, clientName: string, send: string | null, error: string | null): string {
+  const why = `${formatMoneyCents(balance)} is over the ${limitText(limit)} limit, and a bank account is never charged more than its limit, so ${account} wasn't charged.`;
+  if (send === "waiting" || send === "sending") return `${why} ${clientName} is being sent this invoice to pay themselves.`;
+  if (send === "sent") return `${why} ${clientName} was sent this invoice to pay themselves.`;
+  if (send === "failed") return `${why} It couldn't be sent to them${error ? ` (${clause(error)})` : ""}, so it's yours to send.`;
+  return `${why} It's theirs to pay themselves.`;
+}
 
 /** What the server did with each invoice (public.request_manual_charges). */
 export interface ChargeResult {
@@ -35,6 +79,7 @@ const OUTCOMES: Record<string, string> = {
   no_card: "No card on file",
   not_owed: "Nothing owed",
   in_progress: "Already on its way",
+  bank_limit: "Over the limit for their bank account. Send it to them to pay",
   changed: "The amount changed. Check it and try again",
   not_sent: "Not sent. Try again.",
   autopay_off: "Charging saved cards is off in Settings → Payments",
