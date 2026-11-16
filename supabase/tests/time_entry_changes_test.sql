@@ -238,7 +238,8 @@ select ttc.check((select (c).edit and (c).entry_started_at = :'t0'::timestamptz 
 -- An AI assistant connected to the office's account.
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', :'pat', 'role', 'authenticated', 'client_id', 'assistant-1')::text, true);
-update public.time_entries set ended_at = ended_at - interval '1 hour', auto_stopped_at = null where id = :'left_on';
+-- Later, not earlier: stopped at 18:00, it may have run for less than an hour.
+update public.time_entries set ended_at = ended_at + interval '1 hour', auto_stopped_at = null where id = :'left_on';
 reset role;
 select ttc.check(ttc.record(:'left_on') = 'changed/auto_stop/nobody, changed/assistant/pat', 'an assistant''s change is recorded as the assistant''s, under whose account it is');
 select ttc.check(ttc.told(:'sam') like 'Pat Owner changed your time on %', 'and the worker is told');
