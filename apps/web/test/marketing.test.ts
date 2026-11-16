@@ -594,7 +594,7 @@ describe("Google Business Profile in Apps", () => {
     expect(info.access).toEqual(expect.arrayContaining([
       "Post, change and delete the replies you write here, publicly on Google",
       "It can't change or remove your reviews",
-      "Needs Crewtavo - Marketing",
+      "Needs Marketing - Crewtavo",
       "Uninstalling stops bringing reviews in and keeps the ones already here",
     ]));
     expect(info.website).toBe("https://crewtavo.com/docs/connections/google-business-profile/");
@@ -604,7 +604,7 @@ describe("Google Business Profile in Apps", () => {
 
   it("waits for Marketing, and never signs in straight from Install: Google's access request comes first", () => {
     const page = source("../src/features/apps/AppDetailPage.tsx");
-    expect(page).toContain("Install Crewtavo - Marketing first: your Google reviews show in Marketing → Reviews.");
+    expect(page).toContain("Install Marketing - Crewtavo first: your Google reviews show in Marketing → Reviews.");
     expect(page).toContain('app.id !== "google_calendar" && app.id !== "google_business" && !keysFirst(app)');
     expect(page).toContain('{ label: "Waiting on Google", tone: "warning" }');
     expect(page).toContain('{ label: "Paused", tone: "warning" }');
@@ -1127,7 +1127,7 @@ describe("Facebook & Instagram in Apps", () => {
     expect(info.access).toEqual(expect.arrayContaining([
       "Post photos and reviews to the Page and Instagram account you pick, when someone posts or schedules one (or automatic posts are on)",
       "It can't read your messages, comments or ads",
-      "Needs Crewtavo - Marketing",
+      "Needs Marketing - Crewtavo",
     ]));
     expect(APP_INFO.google_business!.access).toContain("Post to your Business Profile when you post from Marketing → Social");
     expect(source("../src/features/apps/AppIcon.tsx")).toContain("meta: metaLogo");
@@ -1136,7 +1136,7 @@ describe("Facebook & Instagram in Apps", () => {
 
   it("waits for Marketing, is Paused without it, and is only Live once someone says so", () => {
     const page = source("../src/features/apps/AppDetailPage.tsx");
-    expect(page).toContain("Install Crewtavo - Marketing first: your posts are made in Marketing → Social.");
+    expect(page).toContain("Install Marketing - Crewtavo first: your posts are made in Marketing → Social.");
     expect(page).toContain('const metaOpens = !(app.id === "meta" && app.meta?.marketing_on === false);');
     expect(page).toContain('{ label: "Not Live yet", tone: "warning" }');
     expect(page).toContain("Use Post again once you've connected again.");

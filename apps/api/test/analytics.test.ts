@@ -301,7 +301,7 @@ describe("installing it", () => {
       fakeDb({ tables: { companies: () => ({ settings: { website_analytics: { enabled } } }), integrations: () => [], calendar_sources: () => [], integration_secrets: () => null } });
       const res = await app.request("/api/apps", { headers }, env);
       const listed = ((await res.json()) as { apps: Array<Record<string, unknown>> }).apps.find((a) => a.id === "website_analytics");
-      expect(listed).toMatchObject({ name: "Crewtavo - Website Analytics", category: "Team", auth: "builtin", available: true, status: enabled ? "connected" : "disconnected" });
+      expect(listed).toMatchObject({ name: "Website Analytics - Crewtavo", category: "Team", auth: "builtin", available: true, status: enabled ? "connected" : "disconnected" });
     }
   });
 

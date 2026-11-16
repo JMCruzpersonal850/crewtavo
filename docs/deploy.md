@@ -110,7 +110,7 @@ data** to keep a copy outside Railway. Photos and files aren't in it. Railway's 
 and Railway doesn't back up storage buckets at all, so once files are in a bucket, the volume's
 backups stop covering anything added since (see
 [Moving files to a bucket](#moving-files-to-a-bucket)). Whatever someone deletes in Crewtavo waits
-30 days in the Trash first (see [Crewtavo - Drive](#crewtavo---drive)).
+30 days in the Trash first (see [Drive - Crewtavo](#drive---crewtavo)).
 
 **Secrets to keep:** save `JWT_SECRET` (and `ENCRYPTION_KEY`, if you set one) and
 `POSTGRES_PASSWORD` somewhere outside Railway, such as a password manager. They exist only in the
@@ -406,9 +406,9 @@ Stripe only sends webhooks to a public `https` address, so on a local copy the k
 without one. Run `stripe listen --forward-to localhost:8787/api/webhooks/stripe` and use the
 deployment settings above to try webhooks there.
 
-## Crewtavo - Drive
+## Drive - Crewtavo
 
-**Apps → Crewtavo - Drive → Install** (owners, and admins who connect apps) puts **Drive** in the
+**Apps → Drive - Crewtavo → Install** (owners, and admins who connect apps) puts **Drive** in the
 menu for owners, admins, office staff and estimators: every file in Crewtavo in one place. **Company
 files** is a folder tree for documents that belong to no client (forms, price sheets, insurance
 papers); **Clients** shows every file on clients' properties, requests, quotes and jobs, grouped by

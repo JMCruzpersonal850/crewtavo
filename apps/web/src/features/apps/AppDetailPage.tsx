@@ -400,7 +400,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
       {needsMarketing && !unavailable && (
         <div className="callout" role="note">
           <Icon name="info" size={20} />
-          <div className="grow">{app.id === "meta" ? "Install Crewtavo - Marketing first: your posts are made in Marketing → Social." : "Install Crewtavo - Marketing first: your Google reviews show in Marketing → Reviews."} <Link to="/apps/marketing">Crewtavo - Marketing</Link></div>
+          <div className="grow">{app.id === "meta" ? "Install Marketing - Crewtavo first: your posts are made in Marketing → Social." : "Install Marketing - Crewtavo first: your Google reviews show in Marketing → Reviews."} <Link to="/apps/marketing">Marketing - Crewtavo</Link></div>
         </div>
       )}
       {!installed && (setup || keysSaved) && !unavailable && (

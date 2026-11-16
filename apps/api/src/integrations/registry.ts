@@ -54,7 +54,7 @@ export interface CatalogEntry {
 export const CATALOG: CatalogEntry[] = [
   {
     id: "team_chat",
-    name: "Crewtavo - Team Chat",
+    name: "Team Chat - Crewtavo",
     category: "Team",
     description: "Channels for the whole team, each crew and the office, with photos, @mentions and who's online.",
     auth: "builtin",
@@ -63,7 +63,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "website_analytics",
-    name: "Crewtavo - Website Analytics",
+    name: "Website Analytics - Crewtavo",
     category: "Team",
     description: "See who visits your website, where they came from and which pages bring in booking requests, without cookies.",
     auth: "builtin",
@@ -72,7 +72,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "website_forms",
-    name: "Crewtavo - Website Forms",
+    name: "Website Forms - Crewtavo",
     category: "Team",
     description: "Keep your website's own form and point it at Crewtavo: each message lands in Requests and your inbox, like Formspree.",
     auth: "builtin",
@@ -81,7 +81,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "careers",
-    name: "Crewtavo - Careers",
+    name: "Careers - Crewtavo",
     category: "Team",
     description: "Point the Apply form on your website at Crewtavo: each application, résumé and all, lands in Applicants for the office to work through.",
     auth: "builtin",
@@ -90,7 +90,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "drive",
-    name: "Crewtavo - Drive",
+    name: "Drive - Crewtavo",
     category: "Team",
     description: "Every file in one place: company folders, files on each client and job, Word and PDF editing, versions, a 30-day Trash and import from Google Drive.",
     auth: "builtin",
@@ -99,7 +99,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "marketing",
-    name: "Crewtavo - Marketing",
+    name: "Marketing - Crewtavo",
     category: "Team",
     description: "Ask happy clients for Google reviews with reminders, and for referrals with a credit on their next invoice, and send email campaigns, automated ones too, with opens, clicks and the work they bring in.",
     auth: "builtin",
@@ -108,7 +108,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "paving",
-    name: "Crewtavo - Paving",
+    name: "Paving - Crewtavo",
     category: "Team",
     description: "A Paving section for parking lots and driveways: the takeoff, estimate, proposal, schedule and invoice in one place.",
     auth: "builtin",
@@ -117,7 +117,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "roofing",
-    name: "Crewtavo - Roofing",
+    name: "Roofing - Crewtavo",
     category: "Team",
     description: "A Roofing section for roof estimates: roof tools on the measuring map, Good, Better and Best packages priced by the square, and a price range to send first.",
     auth: "builtin",
@@ -126,7 +126,7 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: "snow",
-    name: "Crewtavo - Snow",
+    name: "Snow - Crewtavo",
     category: "Team",
     description: "Snow customers with the inches that call for each, and their crews told the day before when the forecast reaches it.",
     auth: "builtin",

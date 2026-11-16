@@ -834,7 +834,7 @@ describe("Marketing's routes", () => {
   it("lists Marketing in Apps as installed while it's on", async () => {
     office([]);
     const apps = (await (await call("/apps")).json()) as { apps: Array<{ id: string; status: string; name: string; auth: string; category: string }> };
-    expect(apps.apps.find((a) => a.id === "marketing")).toMatchObject({ name: "Crewtavo - Marketing", auth: "builtin", category: "Team", status: "connected" });
+    expect(apps.apps.find((a) => a.id === "marketing")).toMatchObject({ name: "Marketing - Crewtavo", auth: "builtin", category: "Team", status: "connected" });
     serve({ tables: { memberships: [{ role: "owner", role_id: null, subcontractor_id: null }], companies: [companyRow({ marketing: { enabled: false } })] } });
     const off = (await (await call("/apps")).json()) as { apps: Array<{ id: string; status: string }> };
     expect(off.apps.find((a) => a.id === "marketing")?.status).toBe("disconnected");

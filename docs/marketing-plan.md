@@ -31,8 +31,8 @@ the Marketing tab. It replaces an earlier, NiceJob-shaped draft of this plan.
 
 ## The short version
 
-- **Marketing becomes an app, not a second tab.** **Crewtavo - Marketing** is listed in Apps under
-  Built into Crewtavo, like Drive, Team Chat and Careers. Installed, **Marketing** is in the
+- **Marketing becomes an app, not a second tab.** **Marketing - Crewtavo** is listed in Apps under
+  Built by Crewtavo, like Drive, Team Chat and Careers. Installed, **Marketing** is in the
   sidebar with its tabs. Uninstalled, the tab goes away and every automatic message it sends to
   clients stops; nothing is deleted. Every business keeps it installed when this ships.
 - **Review asks work like Jobber's.**
@@ -959,7 +959,7 @@ What was decided building it:
 
 | Phase | Ships | Needs |
 | --- | --- | --- |
-| A. The app and review reminders | **Crewtavo - Marketing** in Apps, the sidebar switch, the Reviews form, reminders, quiet hours, 6-month limit, invoice-paid and visit-completed asks, the recurring visit count, per-client opt-out, STOP | The recurring-work fix, committed |
+| A. The app and review reminders | **Marketing - Crewtavo** in Apps, the sidebar switch, the Reviews form, reminders, quiet hours, 6-month limit, invoice-paid and visit-completed asks, the recurring visit count, per-client opt-out, STOP | The recurring-work fix, committed |
 | B. Referral credits | Credits earned and applied, the automatic referral ask, lost, the Referrals numbers | A |
 | C. Automated campaigns | The three automated campaigns, the daily inactive-client trigger, new audiences, opens, clicks and revenue | A |
 | D. Google reviews (built) | The Google Business Profile app, reviews in Crewtavo, suggested replies, alerts, stopping asks once reviewed | A, and Google's approval |
@@ -972,7 +972,7 @@ What was decided building it:
 
 ## Release notes for phase A
 
-- **Marketing is an app now.** It's listed in Apps as **Crewtavo - Marketing** and installed for every
+- **Marketing is an app now.** It's listed in Apps as **Marketing - Crewtavo** and installed for every
   business. Uninstalling it hides Marketing and stops review asks, their reminders and campaigns:
   scheduled campaigns go back to drafts.
 - **Reminders now follow review asks, automatic and by hand:** two of them, 3 and 5 days later at
@@ -1039,7 +1039,7 @@ What was decided building it:
 ## Release notes for phase D
 
 - **Google reviews in Crewtavo,** with the new **Google Business Profile** app in Apps (it needs
-  Crewtavo - Marketing). Google approves each Crewtavo server's access to reviews first: your
+  Marketing - Crewtavo). Google approves each Crewtavo server's access to reviews first: your
   Business Profile has to have been verified for 60 days or more, and Google takes about 2 weeks.
   Sign in any time: the app waits on Google, says so, and starts once Google approves. Review asks
   keep working meanwhile. Apply early for crm.brrhi.com's Google Cloud project.
@@ -1072,7 +1072,7 @@ What was decided building it:
   or client's new **Photos** card (**Mark all OK to share** does a whole job), so the office can post
   them. It works without signal on a job, and a client's page has **Can be posted on social pages** for
   anyone who'd rather not. HEIC and WebP photos can't be posted yet: JPEG and PNG can.
-- **Facebook & Instagram** in Apps (it needs Crewtavo - Marketing). Make your own Meta app in about ten
+- **Facebook & Instagram** in Apps (it needs Marketing - Crewtavo). Make your own Meta app in about ten
   minutes with the guide on its page, sign in, pick your Page and its Instagram account, then **switch
   your Meta app to Live**: until it's Live, nobody but you sees the posts. You'll need a privacy page
   on your website that says how to ask for data to be deleted.

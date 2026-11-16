@@ -228,7 +228,7 @@ export function useApps() {
 }
 
 export const CATEGORY_LABELS: Record<AppRow["category"], string> = {
-  Team: "Built into Crewtavo",
+  Team: "Built by Crewtavo",
   Marketing: "Marketing",
   Calendar: "Calendars",
   AI: "AI",
@@ -496,7 +496,7 @@ export const APP_INFO: Record<string, AppInfo> = {
       "Post, change and delete the replies you write here, publicly on Google",
       "Post to your Business Profile when you post from Marketing → Social",
       "It can't change or remove your reviews",
-      "Needs Crewtavo - Marketing",
+      "Needs Marketing - Crewtavo",
       "Uninstalling stops bringing reviews in and keeps the ones already here",
     ],
     connectsWith: "Google sign-in",
@@ -517,7 +517,7 @@ export const APP_INFO: Record<string, AppInfo> = {
       "Post photos and reviews to the Page and Instagram account you pick, when someone posts or schedules one (or automatic posts are on)",
       "See the Pages you manage and the Instagram accounts linked to them",
       "It can't read your messages, comments or ads",
-      "Needs Crewtavo - Marketing",
+      "Needs Marketing - Crewtavo",
       "Uninstalling signs your Meta app out of your Page and keeps the posts already made",
     ],
     connectsWith: "Your own Meta app",
