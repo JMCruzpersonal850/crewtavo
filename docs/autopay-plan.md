@@ -95,7 +95,11 @@ Saved cards belong to one Stripe account and one mode (test or live) and can't f
      us." Every trade's starter says the card is also charged for other invoices, which is what
      lets the office use [Charge card](#9-charge-card).
    - **When to charge:** right away, at the end of the day (default), or a set number of days after.
-   - **Most to charge without asking.** Over this, the office approves first. Blank means no limit.
+   - **Most to charge without asking.** Over this, a card's charge waits for the office to approve
+     it. A saved bank account is never charged more than this, with or without the office's OK:
+     that invoice is sent to the client to pay themselves (see
+     [a bank account over the limit](#a-bank-account-over-the-limit)). Blank means no limit, and
+     then a bank account is charged for every invoice, whatever its amount.
    - **Whether to email receipts.**
 
    What clients may save isn't a Crewtavo setting. Checkout offers whatever payment methods are
@@ -158,7 +162,10 @@ business charges a saved card without the client there. It's also what wins a di
 2. A new `autopay` task (every 5 minutes, alongside the outbox) claims the rows that are due:
    - It calls `create_invoice_for_job` (`visits` or `standard`). Nothing left to bill (the visit
      was reopened, or the office already invoiced it) means the row is called off.
-   - Over the cap: the invoice waits as a draft for the office ("Approve charge"). It waits the
+   - Over the cap on a saved bank account: it's never charged. The charge is closed and the
+     invoice goes to the client to pay ([below](#a-bank-account-over-the-limit)). This comes
+     before every reason to ask the office, because their OK couldn't charge it either.
+   - Over the cap on a card: the invoice waits as a draft for the office ("Approve charge"). It waits the
      same way, whatever the amount, when it bills visits autopay didn't queue itself: ones freed by
      voiding or deleting an invoice, finished while autopay was paused or off, or from before the
      client agreed. Autopay only charges without asking for visits finished while it was in force
@@ -186,6 +193,38 @@ second copy of that code.
 
 **What the crew sees:** an "Autopay" tag on the visit, no amount. The charge happens on the server
 whatever the phone does, so a visit completed with no signal is charged once it syncs.
+
+#### A bank account over the limit
+
+A saved bank account is never charged more than "Most to charge without asking": not by the
+5-minute task, not by the office's OK, not by Charge card, not by a retry
+(`supabase/migrations/20261116000100_bank_charges_over_the_limit_go_to_the_client.sql`). A card is
+charged exactly as before.
+
+- **Which methods.** Stripe's type for the saved method: `us_bank_account`, or another country's
+  bank debit (`sepa_debit` and the like). Cards and Link aren't bank accounts.
+- **Which limit.** The business's limit as it is now, or the one named in the words the client
+  agreed to when that is lower. Raising the limit later never takes more from a bank account than
+  its owner agreed to. It's compared with what's owed on the invoice.
+- **Where it's refused.** In the database, so every server and every copy of the web app gets the
+  same answer: `autopay_bill` (the one step every charge passes before Stripe is asked),
+  `autopay_mark_sent`, `approve_autopay_charge`, `request_manual_charges` and
+  `chargeable_invoices`, and each run of `claim_autopay_charges` closes any such charge still
+  waiting for an OK.
+- **What happens instead.** The charge is closed as not made ("Over the limit for a bank account.
+  The client pays this one themselves"), and the server sends the invoice the usual way: the
+  invoice email with its Pay link (or a text, for a client with a phone and no email), with one
+  sentence, "This invoice is above the amount you agreed to have taken automatically, so it's
+  yours to pay." The Client Hub says the same on the invoice. From then on it's an unpaid invoice
+  like any other: reminders, past due, late fees.
+- **The office is told once**, in the bell: "Invoice #12 went to Pat Lee to pay", or, when it
+  couldn't be sent (no email set up, no address for the client), "Send invoice #12 to Pat Lee",
+  and the invoice waits as a draft. Nothing ever falls back to charging.
+- **The terms** say so in their last paragraph: "If you pay from a bank account: charges of $500.00
+  or less are taken automatically. An invoice for more than $500.00 is not taken from your bank
+  account: we send it to you to pay." With no limit: "If you pay from a bank account: each charge is
+  for the invoice it pays, and is taken automatically whatever its amount." Nobody who already
+  agreed is asked again: the change only ever takes less.
 
 ### 4. When a charge fails
 
@@ -284,6 +323,8 @@ autopay's own charge after each visit:
   something collecting it already is shown with what that is (being charged now, waiting on the
   client, autopay will try it again, waiting for your OK, a bank payment on its way), and can't be
   picked.
+- An invoice over the limit of the bank account that would pay it isn't offered, there or on the
+  invoice: [it's the client's to pay](#a-bank-account-over-the-limit).
 
 Who can press them: owners, admins and office staff with the invoices area, while autopay is on and
 the Stripe key can charge cards. Crews, estimators and subs can't, and never see the list. Each

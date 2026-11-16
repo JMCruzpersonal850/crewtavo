@@ -387,9 +387,11 @@ Then:
   agreed.
 - **Autopay** (Settings → Payments, with your own key): a client saves a card or bank account on
   Stripe's page, agrees to the terms, and each finished visit is charged to it as a Stripe invoice
-  that Stripe charges at once. Turn off Stripe's own emails about failed payments and receipts, so
-  clients don't get two. **Refund** on an invoice's Stripe payment refunds it in Stripe and records
-  it at once.
+  that Stripe charges at once. Over "Most to charge without asking", a card's charge waits for your
+  OK; a bank account is never charged more than that, and the invoice is emailed to the client to
+  pay instead, so set a limit if you take bank payments. Turn off Stripe's own emails about failed
+  payments and receipts, so clients don't get two. **Refund** on an invoice's Stripe payment refunds
+  it in Stripe and records it at once.
 
 **Replacing the key** (**Replace key** on Stripe's page in **Apps**) only takes over once Crewtavo has added
 the webhook with the new key; if it can't, Stripe stays connected as it was. When the new key is
