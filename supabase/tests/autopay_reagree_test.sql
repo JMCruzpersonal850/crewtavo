@@ -73,7 +73,7 @@ end $$;
 insert into auth.users (id, email, raw_user_meta_data) values (:'ada', 'ada@alder-pools.test', '{"full_name": "Ada Alder"}');
 
 -- Ada owns Alder Pools, which turned autopay on without saving terms of its own: its clients agree
--- to the pool starter words, at version starter-pool_service-2.
+-- to the pool starter words, at version starter-pool_service-3.
 begin;
 set local role authenticated;
 select tara.as_user(:'ada');
@@ -84,7 +84,7 @@ insert into public.integrations (company_id, provider, status, settings) values 
 select set_config('crewtavo.autopay', 'on', true);
 update public.companies set settings = jsonb_set(coalesce(settings, '{}'), '{autopay}', '{"enabled": true, "max_amount": 500}') where id = :'co';
 commit;
-select tara.check(private.autopay_terms_version(:'co') = 'starter-pool_service-2' and private.autopay_covers_monthly(private.autopay_terms_shown(:'co')),
+select tara.check(private.autopay_terms_version(:'co') = 'starter-pool_service-3' and private.autopay_covers_monthly(private.autopay_terms_shown(:'co')),
   'Alder''s clients agree to the starter words, which mention a monthly plan');
 
 -- Olga agreed to the starter words from before (the same version, no monthly plan); Pia to today's;
@@ -113,7 +113,7 @@ select resumed_at as old_resumed from public.autopay_authorizations where id = :
 select tara.agree(:'co', :'c_old') as a_new \gset
 select tara.check(:'a_new'::uuid <> :'a_old'::uuid
   and (select revoked_via = 'replaced' from public.autopay_authorizations where id = :'a_old')
-  and (select terms = private.autopay_terms_shown(:'co') and terms_version = 'starter-pool_service-2' and resumed_at = :'old_resumed'::timestamptz and ip = '203.0.113.9'
+  and (select terms = private.autopay_terms_shown(:'co') and terms_version = 'starter-pool_service-3' and resumed_at = :'old_resumed'::timestamptz and ip = '203.0.113.9'
        from public.autopay_authorizations where id = :'a_new'),
   'the same card at the same version, with other words: a new agreement with today''s words, keeping when autopay was last resumed');
 select tara.check(tara.state(tara.charge_of(:'c_old')) = 'waiting' and (select due_at <= now() from public.autopay_charges where id = tara.charge_of(:'c_old')),

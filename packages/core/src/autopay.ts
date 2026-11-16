@@ -16,12 +16,12 @@ export interface AutopaySettings {
   enabled: boolean;
   /** The words clients agree to. The timing sentence and the bank account paragraph are shown (and stored with the agreement) after them. */
   terms: string;
-  /** Changes when the terms, timing, days or limit change: the client agrees to when they're charged, and to the most charged without notice, as well as the words. */
+  /** Changes when the terms, timing, days or limit change: the client agrees to when they're charged, and to the most taken from a bank account, as well as the words. */
   terms_version: string;
   timing: AutopayTiming;
   /** 1 to 14 with timing "days", else null. */
   days: number | null;
-  /** Dollars; a charge over it waits for the office's OK. Null is no limit. */
+  /** Dollars; a card's charge over it waits for the office's OK, and a bank account's is never made (its invoice goes to the client to pay). Null is no limit. */
   max_amount: number | null;
   /** Email a receipt after each automatic charge. */
   receipts: boolean;
@@ -122,8 +122,8 @@ export function autopaySettings(settings: unknown, trade?: string | null): Autop
   return {
     enabled: a.enabled === true,
     terms,
-    // -2: the starter words say "card or bank account", and the bank account paragraph follows them.
-    terms_version: typeof a.terms_version === "string" && a.terms_version ? a.terms_version : `starter-${trade || "general"}-2`,
+    // -3: the bank account paragraph says an invoice over the limit is sent to the client to pay.
+    terms_version: typeof a.terms_version === "string" && a.terms_version ? a.terms_version : `starter-${trade || "general"}-3`,
     timing,
     days: timing === "days" ? daysOf(a.days) : null,
     // Null is "no limit" only when it was saved that way; a missing or broken cap is the starter one.
@@ -207,31 +207,66 @@ export function autopayTimingText(s: Pick<AutopaySettings, "timing" | "days">): 
 /** An amount as private.money writes it: "$500.00", "$1,250.50". */
 const dollars = (amount: number) => `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/** How the bank account paragraph starts, in every version of it. */
+const BANK_PARAGRAPH = "If you pay from a bank account:";
+
 /**
- * What a client paying from a bank account agrees to about notice, shown and kept as the last
- * paragraph of the terms (the same words as private.autopay_bank_text, tested on both sides). Each
- * charge is for the work done, so its amount varies, and Regulation E (12 CFR 1005.10(d)) has the
- * client told of "the right to receive notice of all varying transfers" (the amount and date, at
- * least 10 days ahead) and lets them choose "notice only when a transfer falls outside a specified
- * range of amounts". The range is the business's own limit (Most to charge without asking): a
- * charge over it already waits for the office's OK. With no limit there is no range to name.
+ * What a client paying from a bank account agrees to, shown and kept as the last paragraph of the
+ * terms (the same words as private.autopay_bank_text, tested on both sides). The business's limit
+ * (Most to charge without asking) is the most ever taken from a bank account: an invoice for more
+ * isn't taken, by the automatic run or by the office's OK, and goes to the client to pay
+ * (20261116000100_bank_charges_over_the_limit_go_to_the_client.sql). With no limit every charge is
+ * taken, and the words say so.
  */
 export function autopayBankText(s: Pick<AutopaySettings, "max_amount">): string {
-  const right = "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made.";
-  if (s.max_amount == null) return `${right} By agreeing, you choose not to be told ahead: each charge is for the invoice it pays, whatever its amount.`;
+  if (s.max_amount == null) return `${BANK_PARAGRAPH} each charge is for the invoice it pays, and is taken automatically whatever its amount.`;
   const cap = dollars(s.max_amount);
-  return `${right} By agreeing, you choose to be told ahead only when a charge is more than ${cap}, and we'll send you its amount and date at least 10 days before we make it. Charges of ${cap} or less are made without notice ahead of time.`;
+  return `${BANK_PARAGRAPH} charges of ${cap} or less are taken automatically. An invoice for more than ${cap} is not taken from your bank account: we send it to you to pay.`;
 }
+
+/**
+ * Whether a saved method is a bank account, by Stripe's type for it (private.autopay_is_bank): a US
+ * bank account, or another country's bank debit (sepa_debit, acss_debit...). Cards and Link aren't.
+ */
+export const isBankAccount = (type: string | null | undefined) => type === "us_bank_account" || Boolean(type?.endsWith("_debit"));
+
+/**
+ * The limit named in the words a client agreed to (private.autopay_agreed_cap): the amount in the
+ * bank account paragraph, as it's written now and as it was before ("more than $500.00"). Null when
+ * the words name none: agreed with no limit set, or before the terms had the paragraph.
+ */
+export function autopayAgreedCap(terms: string | null | undefined): number | null {
+  const at = (terms ?? "").lastIndexOf(BANK_PARAGRAPH);
+  const found = at < 0 ? null : /more than \$([0-9][0-9,]*(?:\.[0-9]+)?)/.exec((terms ?? "").slice(at));
+  const amount = found ? Number(found[1]!.replace(/,/g, "")) : NaN;
+  return Number.isFinite(amount) ? amount : null;
+}
+
+/**
+ * The most a bank account is charged (private.autopay_bank_limit): the business's limit now, or the
+ * one in the words the client agreed to when that's lower. Null when neither names one.
+ */
+export function autopayBankLimit(cap: number | null, agreedTerms: string | null | undefined): number | null {
+  const agreed = autopayAgreedCap(agreedTerms);
+  if (cap == null) return agreed;
+  return agreed == null ? cap : Math.min(cap, agreed);
+}
+
+/** Why a charge over a bank account's limit was closed, as the database writes it (private.autopay_bank_limit_reason). */
+export const AUTOPAY_BANK_LIMIT_REASON = "Over the limit for a bank account. The client pays this one themselves";
+
+/** Said to the client with such an invoice, in its email and on their page: why it's theirs to pay. */
+export const AUTOPAY_YOURS_TO_PAY = "This invoice is above the amount you agreed to have taken automatically, so it's yours to pay.";
 
 /** Everything a client agrees to, as the agreement keeps it (private.autopay_terms_shown): the terms, when charges go, and the bank account paragraph. */
 export const autopayTermsShown = (s: Pick<AutopaySettings, "terms" | "timing" | "days" | "max_amount">): string =>
   `${s.terms.trim()}\n\nWe charge ${autopayTimingText(s)}.\n\n${autopayBankText(s)}`;
 
-/** Said under the limit in Settings → Payments, and where the office OKs a charge over it. */
+/** Said under the limit in Settings → Payments: what it means for a client paying from a bank account. */
 export const AUTOPAY_BANK_NOTE =
-  "For a client paying from a bank account, federal rules (Regulation E) call for the amount and date of each charge 10 days ahead, unless they agreed to a range. The terms name this limit as that range, and promise 10 days' notice of any charge over it.";
+  "A client's bank account is never charged more than this, even with your OK: an invoice over it is sent to them to pay, and you're told. A client who agreed while the limit was lower keeps that lower limit for their bank account.";
 export const AUTOPAY_NO_LIMIT_NOTE =
-  "With no limit, the terms can't name a range for clients paying from a bank account, so they say charges of any amount go without notice ahead. Set a limit if you take bank payments.";
+  "With no limit, a client's bank account is charged for every invoice, whatever its amount, and the terms say so. Set a limit if you take bank payments.";
 
 const MONTH_DAY = new Map<string, Intl.DateTimeFormat>();
 /** "Nov 3" in a time zone. */

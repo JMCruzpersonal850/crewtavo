@@ -1684,7 +1684,7 @@ describe("autopay on the client's home page", () => {
   it("sends the autopay card as services/autopay.ts has it, for the link it was opened from", async () => {
     const card = {
       status: "active" as const, method: { id: CARD, type: "card", label: "Visa ending 4242", exp: "08/28" }, imported: false, since: "2026-10-31T14:05:09Z",
-      terms: "We charge the card on file after each visit is done.", terms_version: "2026-10-31T14:05:09", timing: "at the end of the day of each visit", bank_terms: "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made.",
+      terms: "We charge the card on file after each visit is done.", terms_version: "2026-10-31T14:05:09", timing: "at the end of the day of each visit", bank_terms: "If you pay from a bank account: charges of $500.00 or less are taken automatically.",
       next_charge: "2026-11-01T05:00:00Z", per_visit: 45, per_visit_taxed: false, reagree: false, available: true, card_required: false,
     };
     vi.mocked(autopay.hubAutopay).mockResolvedValueOnce(card);

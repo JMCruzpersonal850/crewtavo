@@ -40,6 +40,6 @@ select public.create_company('Sky Clean', 'cleaning') as co \gset
 commit;
 select apt.check(private.autopay_terms_shown(:'co') = private.autopay_starter_terms('cleaning') || E'\n\nWe charge at the end of the day of each visit.' || E'\n\n' || private.autopay_bank_text((select private.autopay_of(c.settings) from public.companies c where c.id = :'co')),
   'a cleaning company''s clients agree to its own starter words');
-select apt.check(private.autopay_terms_version(:'co') = 'starter-cleaning-2', 'under its own starter version');
+select apt.check(private.autopay_terms_version(:'co') = 'starter-cleaning-3', 'under its own starter version');
 
 \echo 'All autopay plan trade tests passed.'

@@ -337,8 +337,8 @@ describe("the autopay page", () => {
     expect(html).toContain("call us at 555-0142");
   });
 
-  it("shows what a bank account agrees to about notice as the last paragraph of the terms, above the box they tick", () => {
-    const bank = "If you pay from a bank account: you have the right to be told the amount and date of each charge at least 10 days before it's made. By agreeing, you choose to be told ahead only when a charge is more than $500.00, and we'll send you its amount and date at least 10 days before we make it. Charges of $500.00 or less are made without notice ahead of time.";
+  it("shows what a bank account agrees to as the last paragraph of the terms, above the box they tick", () => {
+    const bank = "If you pay from a bank account: charges of $500.00 or less are taken automatically. An invoice for more than $500.00 is not taken from your bank account: we send it to you to pay.";
     const html = text(view({ ...active, status: "off", method: null, since: null, bank_terms: bank }));
     expect(html).toContain(bank);
     // After the business's words and when charges go, as the agreement keeps them.
