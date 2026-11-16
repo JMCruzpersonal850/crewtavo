@@ -30,7 +30,7 @@ export type OverLimitSends = { claimed: number; sent: number; failed: number; ca
 export async function sendOverLimitInvoices(env: Env, admin: Db = adminClient(env), options: { companyId?: string } = {}): Promise<OverLimitSends> {
   const { data, error } = await admin.rpc("claim_autopay_sends", { p_limit: BATCH, p_company: options.companyId });
   if (error) throw new Error(`claim_autopay_sends failed: ${error.message}`);
-  const claimed = (data ?? []) as Array<{ id: string; company_id: string; invoice_id: string }>;
+  const claimed = (data ?? []) as Array<{ id: string; company_id: string; invoice_id: string; send_draft: boolean | null }>;
   const counts: OverLimitSends = { claimed: claimed.length, sent: 0, failed: 0, called_off: 0 };
   const baseUrl = (env.APP_URL ?? "").replace(/\/$/, "");
   for (const row of claimed) {
@@ -39,8 +39,10 @@ export async function sendOverLimitInvoices(env: Env, admin: Db = adminClient(en
     try {
       if (!baseUrl) throw new HttpError(501, "This server has no web address set (APP_URL), so it can't send links to clients");
       const { data: invoice } = await admin.from("invoices").select("status, balance_due, client:clients(email, phone)").eq("company_id", row.company_id).eq("id", row.invoice_id).maybeSingle();
-      // Paid, voided or deleted since it was claimed: there's nothing to ask the client for.
-      if (!invoice || !TO_PAY.includes(invoice.status) || Number(invoice.balance_due) <= 0) {
+      // Paid, voided or deleted since it was claimed: there's nothing to ask the client for. And a
+      // draft when its charge was closed that isn't one now was sent by the office in the moment
+      // since: it isn't sent a second time.
+      if (!invoice || !TO_PAY.includes(invoice.status) || Number(invoice.balance_due) <= 0 || (row.send_draft && invoice.status !== "draft")) {
         const { error: offError } = await admin.rpc("autopay_send_called_off", { p_charge: row.id });
         if (offError) reportError(new Error(offError.message), { task: "autopay", step: "autopay_send_called_off" });
         counts.called_off++;
@@ -67,16 +69,25 @@ export async function sendOverLimitInvoices(env: Env, admin: Db = adminClient(en
 /**
  * The 5-minute autopay task, and what follows the office's OK or its Charge card: charge what's due
  * (services/autopay.ts), then send the invoices the database closed instead of charging, so one
- * closed in this run goes out in it. A problem sending never undoes a charge.
+ * closed in this run goes out in it. A problem sending never undoes a charge, and a run that
+ * couldn't charge (the claim failed) still sends what was waiting before it fails as it would have.
  */
 export async function runAutopay(env: Env, admin: Db = adminClient(env), options: { limit?: number; companyId?: string } = {}): Promise<AutopayTaskResult & { to_client: OverLimitSends }> {
-  const charged = await chargeDueAutopay(env, admin, options);
-  let toClient: OverLimitSends = { claimed: 0, sent: 0, failed: 0, called_off: 0 };
+  const send = async (): Promise<OverLimitSends> => {
+    try {
+      return await sendOverLimitInvoices(env, admin, { companyId: options.companyId });
+    } catch (thrown) {
+      console.error("Couldn't send the invoices over a bank account's limit", thrown);
+      reportError(thrown, { task: "autopay", step: "send_over_limit" });
+      return { claimed: 0, sent: 0, failed: 0, called_off: 0 };
+    }
+  };
+  let charged: AutopayTaskResult;
   try {
-    toClient = await sendOverLimitInvoices(env, admin, { companyId: options.companyId });
+    charged = await chargeDueAutopay(env, admin, options);
   } catch (thrown) {
-    console.error("Couldn't send the invoices over a bank account's limit", thrown);
-    reportError(thrown, { task: "autopay", step: "send_over_limit" });
+    await send();
+    throw thrown;
   }
-  return { ...charged, to_client: toClient };
+  return { ...charged, to_client: await send() };
 }

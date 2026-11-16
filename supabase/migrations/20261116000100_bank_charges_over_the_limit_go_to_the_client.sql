@@ -23,36 +23,19 @@
 --                    it's an unpaid invoice like any other.
 --   Other reasons    A charge that waits for the office's OK for another reason (extra work, an AI
 --                    assistant's Complete, visits from before autopay) still does while it's within
---                    the limit. Over it on a bank account, this rule comes first.
+--                    the limit. Over it on a bank account, this rule comes first: it's closed, no
+--                    OK can charge it, and because the office was to look at that invoice first, it
+--                    isn't sent by itself. The office is told to look it over and send it.
 --   Already waiting  A bank account's charge over the limit that waits for the OK as this arrives
 --                    is closed the same way, here and at the start of every claim after
 --                    (autopay_bank_limit_sweep), a row at a time, and never twice.
+--   On its way       A charge whose bank payment is already on its way is left to finish: nothing
+--                    new is asked of the bank, and the client isn't told to pay meanwhile.
 --   The terms        The bank account paragraph says so (autopay_bank_text; core autopayBankText has
 --                    the same words) and no longer promises notice. The words changed, so the
 --                    version did. Nobody who agreed is asked again: this only ever takes less.
 --
 -- supabase/tests/autopay_bank_limit_test.sql covers it.
-
--- ---------------------------------------------------------------------------------------------
--- Columns
--- ---------------------------------------------------------------------------------------------
-
--- Set together, only on a charge closed because it was over the limit for a bank account.
-alter table public.autopay_charges add column bank_limit numeric(12, 2);
-alter table public.autopay_charges add column bank_limit_at timestamptz;
--- Its invoice on the way to the client: waiting for the server, sending (claimed by one run), sent,
--- or failed (it couldn't be sent, so it's the office's to send). Null: nothing to send (it was
--- paid, voided or sent by the office first).
-alter table public.autopay_charges add column send_state text check (send_state in ('waiting', 'sending', 'sent', 'failed'));
-alter table public.autopay_charges add column send_claimed_at timestamptz;
-alter table public.autopay_charges add column send_error text check (length(send_error) <= 500);
-comment on column public.autopay_charges.bank_limit is 'The most the client''s bank account is charged without them paying it themselves, when this charge was closed for being over it. Nothing was charged; the invoice goes to the client to pay.';
-comment on column public.autopay_charges.send_state is 'For a charge closed over its bank limit: where its invoice is on the way to the client (waiting, sending, sent, failed).';
-
--- The few charges the task looks at on every run: ones waiting for the office's OK, and invoices
--- waiting to go to the client.
-create index autopay_charges_approval_idx on public.autopay_charges (company_id) where status = 'needs_approval';
-create index autopay_charges_send_idx on public.autopay_charges (bank_limit_at) where send_state in ('waiting', 'sending');
 
 -- ---------------------------------------------------------------------------------------------
 -- The terms
@@ -92,6 +75,30 @@ begin
     and c.settings -> 'autopay' ->> 'terms_version' not like '%+bank2';
   perform set_config('crewtavo.autopay', 'off', true);
 end $$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Columns
+-- ---------------------------------------------------------------------------------------------
+
+-- Set together, only on a charge closed because it was over the limit for a bank account.
+alter table public.autopay_charges add column bank_limit numeric(12, 2);
+alter table public.autopay_charges add column bank_limit_at timestamptz;
+-- Its invoice on the way to the client: waiting for the server, sending (claimed by one run), sent,
+-- failed (it couldn't be sent, so it's the office's to send), or held (the office was to look at it
+-- first for another reason, so it's theirs to look over and send). Null: nothing to send (it was
+-- paid, voided or sent by the office first). send_error: why it failed or is held. send_draft:
+-- whether the invoice was still a draft then, and so never sent by anyone.
+alter table public.autopay_charges add column send_state text check (send_state in ('waiting', 'sending', 'sent', 'failed', 'held'));
+alter table public.autopay_charges add column send_draft boolean;
+alter table public.autopay_charges add column send_claimed_at timestamptz;
+alter table public.autopay_charges add column send_error text check (length(send_error) <= 500);
+comment on column public.autopay_charges.bank_limit is 'The most the client''s bank account is charged without them paying it themselves, when this charge was closed for being over it. Nothing was charged; the invoice goes to the client to pay.';
+comment on column public.autopay_charges.send_state is 'For a charge closed over its bank limit: where its invoice is on the way to the client (waiting, sending, sent, failed, held for the office to look over).';
+
+-- The few charges the task looks at on every run: ones waiting for the office's OK, and invoices
+-- waiting to go to the client.
+create index autopay_charges_approval_idx on public.autopay_charges (company_id) where status = 'needs_approval';
+create index autopay_charges_send_idx on public.autopay_charges (bank_limit_at) where send_state in ('waiting', 'sending');
 
 -- ---------------------------------------------------------------------------------------------
 -- The limit for a bank account
@@ -137,26 +144,40 @@ language sql immutable set search_path = '' as $$
 $$;
 
 -- A charge over its bank account's limit: closed as not made, whatever it waited on, and its
--- invoice (a draft, or one still owed) handed to the server to send to the client. The answer is
--- the one autopay_bill gives for any charge it calls off.
-create function private.autopay_to_client(p_charge uuid, p_limit numeric) returns jsonb
+-- invoice (a draft, or one still owed) handed to the server to send to the client. With p_look, a
+-- reason the office was to look at it first whatever the amount (an AI assistant's Complete, visits
+-- from before autopay, extra work): nothing goes to the client by itself, and the office is told
+-- here, once, to look it over and send it. The answer is the one autopay_bill gives for any charge
+-- it calls off.
+create function private.autopay_to_client(p_charge uuid, p_limit numeric, p_look text default null) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
-  v_invoice uuid;
+  r public.autopay_charges;
+  i public.invoices;
 begin
+  select * into r from public.autopay_charges where id = p_charge;
+  select * into i from public.invoices where id = r.invoice_id and balance_due > 0 and status in ('draft', 'sent', 'partially_paid', 'overdue');
   update public.autopay_charges a
   set status = 'called_off', last_error = private.autopay_bank_limit_reason(), bank_limit = p_limit, bank_limit_at = now(),
-      send_state = case when exists (select 1 from public.invoices i where i.id = a.invoice_id and i.balance_due > 0
-                                       and i.status in ('draft', 'sent', 'partially_paid', 'overdue')) then 'waiting' end,
-      send_claimed_at = null, send_error = null, claim_token = null, locked_until = null, busy_since = null
-  where a.id = p_charge
-  returning a.invoice_id into v_invoice;
-  return jsonb_build_object('outcome', 'called_off', 'reason', private.autopay_bank_limit_reason(), 'invoice_id', v_invoice, 'to_client', true);
+      send_state = case when i.id is null then null when p_look is not null then 'held' else 'waiting' end,
+      send_draft = i.status = 'draft', send_error = left(rtrim(btrim(p_look), '.'), 500),
+      send_claimed_at = null, claim_token = null, locked_until = null, busy_since = null
+  where a.id = p_charge;
+  if i.id is not null and p_look is not null then
+    perform private.autopay_notify(r.company_id, format('Send invoice #%s to %s', i.number, private.client_name(r.client_id)),
+      format('%s is over the %s limit for their bank account, so it wasn''t taken from it. Look it over before you send it: %s.',
+             private.money(i.balance_due), private.money(p_limit), rtrim(btrim(p_look), '.')),
+      '/invoices/' || i.id);
+  end if;
+  return jsonb_build_object('outcome', 'called_off', 'reason', private.autopay_bank_limit_reason(), 'invoice_id', r.invoice_id, 'to_client', true);
 end $$;
 
 -- Charges waiting for the office's OK that a bank account would pay and that are over its limit:
 -- closed, each once (the ones waiting as this file is applied, and any left that way since: the
--- client changed to a bank account, the limit came down, or the draft went up). Returns how many.
+-- client changed to a bank account, the limit came down, or the draft went up). One that waited for
+-- another reason too (last_error says which) is the office's to look over and send. Only for a
+-- client autopay would charge now: with autopay off in Settings or for the client, the charge is
+-- called off the way it always was. Returns how many.
 create function private.autopay_bank_limit_sweep(p_company uuid default null) returns integer
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -164,18 +185,18 @@ declare
   v_count integer := 0;
 begin
   for r in
-    select a.id, l.lim
+    select a.id, a.last_error, l.lim
     from public.autopay_charges a
     join public.invoices i on i.id = a.invoice_id
     cross join lateral (
-      select private.autopay_bank_limit(a.company_id, a.client_id, coalesce(private.autopay_ready(a.company_id, a.client_id), a.payment_method_id)) as lim
+      select private.autopay_bank_limit(a.company_id, a.client_id, private.autopay_ready(a.company_id, a.client_id)) as lim
     ) l
     where a.status = 'needs_approval' and (p_company is null or a.company_id = p_company)
       and i.balance_due > l.lim
     order by a.id
     for update of a skip locked
   loop
-    perform private.autopay_to_client(r.id, r.lim);
+    perform private.autopay_to_client(r.id, r.lim, r.last_error);
     v_count := v_count + 1;
   end loop;
   return v_count;
@@ -187,9 +208,10 @@ end $$;
 /**
  * As in 20261113000900_visit_extras.sql, plus: once the invoice is there, a bank account is never
  * asked for more than its limit (autopay_bank_limit). Whatever made the charge (a finished visit, a
- * month, the office's OK or its Charge card, a retry on a method agreed to since) and whatever else
- * it would have waited on, it's closed as not made and its invoice goes to the client to pay
- * (autopay_to_client). The answer is 'called_off', as for any charge this calls off, with to_client.
+ * month, the office's OK or its Charge card, a retry on a method agreed to since), it's closed as
+ * not made and its invoice goes to the client to pay (autopay_to_client), or to the office to look
+ * over and send when it would have waited for their look for another reason. The answer is
+ * 'called_off', as for any charge this calls off, with to_client.
  */
 create or replace function public.autopay_bill(p_charge uuid, p_token uuid) returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -207,6 +229,7 @@ declare
   v_reason text;
   v_max numeric;
   v_bank_limit numeric;
+  v_over boolean;
 begin
   select * into r from public.autopay_charges where id = p_charge for update;
   if not found or p_token is null or r.status <> 'charging' or r.claim_token is distinct from p_token then
@@ -299,10 +322,18 @@ begin
   end if;
   select * into i from public.invoices where id = r.invoice_id for update;
 
-  -- 3b. A bank account, and more than its limit: never charged, by anyone's say. Before every
-  -- reason to ask the office first, because their OK couldn't charge it either.
+  -- 3b. A bank account, and more than its limit: never charged, by anyone's say. It comes before
+  -- every reason to ask the office first, because their OK couldn't charge it either; a draft the
+  -- office was to look at for one of those reasons is theirs to look over and send (step 4), and
+  -- anything else goes to the client. Not while a bank payment for the invoice is already on its
+  -- way (this charge's own, its answer lost, or the client's from Stripe's page): the server
+  -- follows that one and asks the bank for nothing new (chargeInvoiceAutomatically), and telling
+  -- the client to pay meanwhile could have them pay twice.
   v_bank_limit := private.autopay_bank_limit(r.company_id, r.client_id, v_pm);
-  if i.balance_due > v_bank_limit then
+  v_over := coalesce(i.balance_due > v_bank_limit, false)
+    and not exists (select 1 from public.stripe_invoices s where s.invoice_id = i.id and s.status = 'processing'
+                      and (s.detached_at is null or s.detached_at > now() - interval '30 days'));
+  if v_over and not (i.status = 'draft' and r.source = 'autopay') then
     return private.autopay_to_client(r.id, v_bank_limit);
   end if;
 
@@ -320,6 +351,9 @@ begin
   if i.status = 'draft' and r.source = 'autopay' then
     -- Work an AI assistant marked done (autopay_queue): the office looks first, whatever the amount.
     if r.held is not null and r.approved_at is null then
+      if v_over then
+        return private.autopay_to_client(r.id, v_bank_limit, r.held);
+      end if;
       update public.autopay_charges
       set status = 'needs_approval', last_error = r.held, claim_token = null, locked_until = null, busy_since = null
       where id = r.id;
@@ -359,11 +393,17 @@ begin
           then 'Includes extra work added to a visit'
       end;
       if v_reason is not null then
+        if v_over then
+          return private.autopay_to_client(r.id, v_bank_limit, v_reason);
+        end if;
         update public.autopay_charges
         set status = 'needs_approval', last_error = v_reason, claim_token = null, locked_until = null, busy_since = null
         where id = r.id;
         return jsonb_build_object('outcome', 'needs_approval', 'reason', v_reason, 'invoice_id', i.id);
       end if;
+    end if;
+    if v_over then
+      return private.autopay_to_client(r.id, v_bank_limit);
     end if;
     v_max := case when jsonb_typeof(v_autopay -> 'max_amount') = 'number' then (v_autopay -> 'max_amount')::numeric end;
     if v_max is not null and i.balance_due > v_max and (r.approved_at is null or i.balance_due > r.approved_amount) then
@@ -485,8 +525,10 @@ begin
   if r.status <> 'needs_approval' then
     raise exception 'This charge isn''t waiting for your OK' using errcode = '22023';
   end if;
-  -- The method autopay would charge now, else the one last chosen for it.
-  v_bank_limit := private.autopay_bank_limit(r.company_id, r.client_id, coalesce(private.autopay_ready(r.company_id, r.client_id), r.payment_method_id));
+  -- The method autopay would charge now. With none (autopay off in Settings or for the client), the
+  -- OK goes on as before and autopay_bill calls the charge off, saying why. The office has looked
+  -- by pressing OK, so the invoice goes to the client.
+  v_bank_limit := private.autopay_bank_limit(r.company_id, r.client_id, private.autopay_ready(r.company_id, r.client_id));
   if (select i.balance_due from public.invoices i where i.id = r.invoice_id) > v_bank_limit then
     perform private.autopay_to_client(r.id, v_bank_limit);
     return;
@@ -739,24 +781,23 @@ end $$;
 
 /**
  * The invoices of charges closed over a bank account's limit that are waiting to go to the client,
- * claimed for this run (apps/api/src/services/autopay.ts sends each the usual way, once). One that
- * is paid, voided, written off or deleted by now, or that the office has sent since, has nothing
- * left to send. One a run claimed and never answered for (its server stopped) may or may not have
- * gone: it's never sent a second time, and the office is asked to look.
+ * claimed for this run (apps/api/src/services/bankLimit.ts sends each the usual way, once). One that
+ * is paid, voided, written off or deleted by now, or that was a draft and isn't any more (the office
+ * sent it), has nothing left to send. One with a bank payment on its way waits: once that clears
+ * the invoice is paid, and if it bounces it's sent then. One a run claimed and never answered for
+ * (its server stopped) may or may not have gone: it's never sent a second time, and the office is
+ * asked to look. send_draft comes back so the server can check once more just before it sends.
  */
 create function public.claim_autopay_sends(p_limit integer default 20, p_company uuid default null)
-returns table (id uuid, company_id uuid, invoice_id uuid, bank_limit numeric)
+returns table (id uuid, company_id uuid, invoice_id uuid, bank_limit numeric, send_draft boolean)
 language plpgsql security definer set search_path = '' as $$
 declare
   v_stale uuid;
 begin
   update public.autopay_charges a set send_state = null, send_claimed_at = null
   where a.send_state = 'waiting' and (p_company is null or a.company_id = p_company)
-    and (not exists (select 1 from public.invoices i where i.id = a.invoice_id and i.balance_due > 0
-                       and i.status in ('draft', 'sent', 'partially_paid', 'overdue'))
-         or exists (select 1 from public.messages m
-                    where m.company_id = a.company_id and m.related_type = 'invoice' and m.related_id = a.invoice_id
-                      and m.direction = 'out' and m.channel in ('email', 'sms') and m.created_at >= a.bank_limit_at));
+    and not exists (select 1 from public.invoices i where i.id = a.invoice_id and i.balance_due > 0
+                      and (i.status = 'draft' or (i.status in ('sent', 'partially_paid', 'overdue') and a.send_draft is not true)));
   for v_stale in
     select a.id from public.autopay_charges a
     where a.send_state = 'sending' and a.send_claimed_at < now() - interval '30 minutes' and (p_company is null or a.company_id = p_company)
@@ -768,8 +809,10 @@ begin
   update public.autopay_charges a set send_state = 'sending', send_claimed_at = now()
   where a.id in (select x.id from public.autopay_charges x
                  where x.send_state = 'waiting' and x.invoice_id is not null and (p_company is null or x.company_id = p_company)
+                   and not exists (select 1 from public.stripe_invoices s where s.invoice_id = x.invoice_id and s.status = 'processing'
+                                     and (s.detached_at is null or s.detached_at > now() - interval '30 days'))
                  order by x.bank_limit_at limit least(greatest(coalesce(p_limit, 20), 1), 100) for update skip locked)
-  returning a.id, a.company_id, a.invoice_id, a.bank_limit;
+  returning a.id, a.company_id, a.invoice_id, a.bank_limit, a.send_draft;
 end $$;
 
 /**
@@ -817,7 +860,7 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 
 revoke all on function private.autopay_is_bank(text), private.autopay_agreed_cap(text), private.autopay_bank_limit(uuid, uuid, uuid),
-  private.autopay_bank_limit_reason(), private.autopay_to_client(uuid, numeric), private.autopay_bank_limit_sweep(uuid) from public;
+  private.autopay_bank_limit_reason(), private.autopay_to_client(uuid, numeric, text), private.autopay_bank_limit_sweep(uuid) from public;
 revoke execute on function public.claim_autopay_sends(integer, uuid), public.autopay_sent(uuid, boolean, text), public.autopay_send_called_off(uuid)
   from public, anon, authenticated;
 grant execute on function public.claim_autopay_sends(integer, uuid), public.autopay_sent(uuid, boolean, text), public.autopay_send_called_off(uuid)

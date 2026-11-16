@@ -37,14 +37,16 @@ export const noOkForBank = (method: { type: string } | null | undefined, balance
  * An invoice over the limit for the client's bank account: it wasn't taken from it, by autopay or by
  * anyone's OK (the terms say so: core autopayBankText), and where the invoice is on its way to the
  * client to pay instead. `send` is the charge's send_state: waiting or sending (the server sends it
- * within a few minutes), sent, failed (with why, so the office sends it), or none (the office sent
- * it first).
+ * within a few minutes), sent, failed (with why, so the office sends it), held (the office was to
+ * look at it first for another reason, `error`, so nothing went by itself), or none (the office
+ * sent it first).
  */
 export function bankLimitText(balance: number, limit: number, account: string, clientName: string, send: string | null, error: string | null): string {
   const why = `${formatMoneyCents(balance)} is over the ${limitText(limit)} limit, and a bank account is never charged more than its limit, so ${account} wasn't charged.`;
   if (send === "waiting" || send === "sending") return `${why} ${clientName} is being sent this invoice to pay themselves.`;
   if (send === "sent") return `${why} ${clientName} was sent this invoice to pay themselves.`;
   if (send === "failed") return `${why} It couldn't be sent to them${error ? ` (${clause(error)})` : ""}, so it's yours to send.`;
+  if (send === "held") return `${why} Look it over before you send it to them to pay${error ? `: ${clause(error).replace(/^Includes /, "it includes ")}` : ""}.`;
   return `${why} It's theirs to pay themselves.`;
 }
 

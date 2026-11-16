@@ -276,7 +276,7 @@ function InvoicePageScreen() {
   // A bank account is never charged more than the limit, so there's no OK to give for one: the
   // database closes the charge at the task's next run, and the invoice goes to the client to pay.
   const cap = autopaySettings(session.company.settings, session.company.trade_preset).max_amount;
-  const noOk = asking && noOkForBank(charge.method, balance, cap);
+  const noOk = asking && autopaySettings(session.company.settings, session.company.trade_preset).enabled && noOkForBank(charge.method, balance, cap);
   // Closed for that already (its newest charge), and still owed: what happened to it, and why.
   const newest = inv.autopay[0];
   const toClient = !charge && newest?.status === "called_off" && newest.bank_limit != null && balance > 0 && !isVoid && !writtenOff ? newest : null;
@@ -459,7 +459,7 @@ function InvoicePageScreen() {
       {asking && charge && (
         <div className="callout callout-warning">
           <Icon name="card" size={20} />
-          <div className="grow">{noOk ? bankLimitText(balance, cap!, card, clientName, "waiting", null) : approvalText(charge, balance, cap)}</div>
+          <div className="grow">{noOk ? bankLimitText(balance, cap!, card, clientName, charge.last_error ? "held" : "waiting", charge.last_error) : approvalText(charge, balance, cap)}</div>
           <div className="row wrap" style={{ gap: 6 }}>
             {!noOk && <Button size="sm" variant="primary" icon="check" loading={approveCharge.isPending} disabled={callOffCharge.isPending} onClick={() => approveCharge.mutate(charge.id)}>Approve charge</Button>}
             <Button size="sm" icon="send" loading={callOffCharge.isPending} disabled={approveCharge.isPending || !inv.lines.length} onClick={() => callOffCharge.mutate(charge.id)}>{noOk ? "Send it now" : "Send it the usual way"}</Button>

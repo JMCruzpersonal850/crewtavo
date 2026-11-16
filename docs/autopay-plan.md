@@ -220,6 +220,14 @@ charged exactly as before.
 - **The office is told once**, in the bell: "Invoice #12 went to Pat Lee to pay", or, when it
   couldn't be sent (no email set up, no address for the client), "Send invoice #12 to Pat Lee",
   and the invoice waits as a draft. Nothing ever falls back to charging.
+- **When the office was to look first.** An invoice that would have waited for the office's OK for
+  another reason too (an AI assistant marked the work done, extra work on a visit, visits from
+  before autopay started) is closed the same way, but isn't sent by itself: the office is told to
+  look it over and send it. Within the limit those charges wait for the OK as they always did.
+- **A bank payment already on its way** for the invoice is left to finish: nothing new is asked of
+  the bank, and the invoice isn't sent to the client while it clears.
+- **With autopay off** in Settings, or for the client, nothing is closed or sent by this rule: a
+  waiting charge is called off the way it always was.
 - **The terms** say so in their last paragraph: "If you pay from a bank account: charges of $500.00
   or less are taken automatically. An invoice for more than $500.00 is not taken from your bank
   account: we send it to you to pay." With no limit: "If you pay from a bank account: each charge is

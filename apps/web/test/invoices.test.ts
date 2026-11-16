@@ -13,13 +13,16 @@ import { settle } from "../src/features/invoices/settle";
 import { creditRoom, creditsChangeable, takesCredit } from "../src/features/invoices/creditRules";
 import { autopayBankNote, bankPayment, bankPaymentNote, paidInStripe, paymentAmount, RECORD_IN_STRIPE } from "../src/features/invoices/stripeInvoices";
 
+// The company's settings, for the tests that need autopay on (it's off, with the starter $500 limit, otherwise).
+const company = vi.hoisted(() => ({ settings: {} as Record<string, unknown> }));
+
 // The invoice page draws as an office user with the invoices area sees it, from data already loaded.
 vi.mock("../src/lib/session", () => ({
   useSession: () => ({
     role: "owner",
     permissions: ["invoices"],
     userId: "u-me",
-    company: { id: "c1", name: "Radford Lawn Care", trade_preset: "lawn_exterior", timezone: "America/Chicago", settings: {} },
+    company: { id: "c1", name: "Radford Lawn Care", trade_preset: "lawn_exterior", timezone: "America/Chicago", settings: company.settings },
     config: { singleCompany: true, platform: "railway", features: { email: true, sms: true } },
     refresh: async () => undefined,
   }),
@@ -417,8 +420,15 @@ describe("a charge waiting for the office's OK", () => {
 
 // A bank account is never charged more than the limit (20261116000100_bank_charges_over_the_limit_go_to_the_client.sql):
 // the database closes the charge and the invoice goes to the client to pay. The company here has
-// the starter $500 limit.
+// autopay on, with the starter $500 limit.
 describe("an invoice over the limit for the client's bank account", () => {
+  beforeEach(() => {
+    company.settings = { autopay: { enabled: true, max_amount: 500 } };
+  });
+  afterEach(() => {
+    company.settings = {};
+  });
+
   const WHY = "$600.00 is over the $500 limit, and a bank account is never charged more than its limit, so Chase ending 6789 wasn&#x27;t charged.";
   const closed = (options: Parameters<typeof invoicePage>[1] = {}) =>
     invoicePage("called_off", { amount: 600, bank_limit: 500, last_error: "Over the limit for a bank account. The client pays this one themselves", ...options });
@@ -453,6 +463,16 @@ describe("an invoice over the limit for the client's bank account", () => {
     expect(control(html, "Approve charge")).toBeNull();
   });
 
+  it("is the office's to look over and send when it would have waited for their look for another reason", () => {
+    const html = closed({ draft: true, send_state: "held", send_error: "Includes extra work added to a visit" });
+    expect(said(html)).toBe(`${WHY} Look it over before you send it to them to pay: it includes extra work added to a visit.`);
+    expect(control(html, "Send invoice")).not.toBeNull();
+    expect(control(html, "Approve charge")).toBeNull();
+    expect(bankLimitText(600, 500, "Chase ending 6789", "Pat Lee", "held", "An AI assistant marked the work done")).toContain(
+      "Look it over before you send it to them to pay: An AI assistant marked the work done.",
+    );
+  });
+
   it("says it's theirs to pay when the office sent it first", () => {
     const html = closed({ send_state: null });
     expect(said(html)).toBe(`${WHY} It&#x27;s theirs to pay themselves.`);
@@ -464,6 +484,15 @@ describe("an invoice over the limit for the client's bank account", () => {
     expect(html).toContain(`${WHY} Pat Lee is being sent this invoice to pay themselves.`);
     expect(control(html, "Approve charge")).toBeNull();
     expect(control(html, "Send it now")).not.toBeNull();
+    // One that waited for another reason too: still no OK, and it's the office's to look over.
+    const extra = invoicePage("needs_approval", { draft: true, amount: 600, last_error: "Includes extra work added to a visit" });
+    expect(extra).toContain(`${WHY} Look it over before you send it to them to pay: it includes extra work added to a visit.`);
+    expect(control(extra, "Approve charge")).toBeNull();
+    // With autopay off in Settings the database leaves the charge as it was, so the page does too.
+    company.settings = { autopay: { enabled: false, max_amount: 500 } };
+    const off = invoicePage("needs_approval", { draft: true, amount: 600 });
+    expect(off).toContain("$600.00 is over your $500 limit, so it waits for your OK.");
+    expect(control(off, "Approve charge")).not.toBeNull();
     expect(noOkForBank({ type: "us_bank_account" }, 600, 500)).toBe(true);
     expect(noOkForBank({ type: "sepa_debit" }, 500.01, 500)).toBe(true);
     // Within the limit, with no limit, or on a card: the OK is the office's to give, as before.

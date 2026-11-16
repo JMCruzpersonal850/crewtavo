@@ -1652,7 +1652,7 @@ describe("an invoice over the limit for a bank account", () => {
         stripe_invoices: [],
       },
     });
-    db.handlers.claim_autopay_sends = () => ({ data: [{ id: CLOSED, company_id: CO, invoice_id: OVER, bank_limit: 500 }] });
+    db.handlers.claim_autopay_sends = () => ({ data: [{ id: CLOSED, company_id: CO, invoice_id: OVER, bank_limit: 500, send_draft: true }] });
     return db;
   }
 
@@ -1734,6 +1734,27 @@ describe("an invoice over the limit for a bank account", () => {
       expect(db.called("autopay_sent")).toEqual([]);
     }
     expect(emails()).toEqual([]);
+  });
+
+  it("isn't sent a second time when the office sent the draft in the moment since it was claimed", async () => {
+    const db = closed();
+    db.tables.invoices![0]!.status = "sent";
+    expect(await sendOverLimitInvoices(env, db.db)).toEqual({ claimed: 1, sent: 0, failed: 0, called_off: 1 });
+    expect(db.called("autopay_send_called_off")).toEqual([{ p_charge: CLOSED }]);
+    expect(emails()).toEqual([]);
+    // One that had gone out before its charge was closed (a retry on a bank account agreed to since) is
+    // sent: the client hasn't been told it's theirs to pay.
+    db.handlers.claim_autopay_sends = () => ({ data: [{ id: CLOSED, company_id: CO, invoice_id: OVER, bank_limit: 500, send_draft: false }] });
+    expect(await sendOverLimitInvoices(env, db.db)).toMatchObject({ sent: 1, called_off: 0 });
+    expect(emails()).toHaveLength(1);
+    expect(emails()[0]!.text).toContain(SENTENCE);
+  });
+
+  it("still sends what was waiting when the run couldn't charge, and fails as it would have", async () => {
+    const db = closed();
+    db.handlers.claim_autopay_charges = () => ({ error: { message: "the database is restarting" } });
+    await expect(runAutopay(env, db.db)).rejects.toThrow("claim_autopay_charges failed: the database is restarting");
+    expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: true }]);
   });
 
   it("is sent in the same run that closed it, and a problem sending never undoes the charges made", async () => {

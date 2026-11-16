@@ -4,8 +4,10 @@
 -- the automatic run closing such a charge and handing its invoice over to be sent; the office's OK,
 -- Charge card, a retry on a bank account agreed to since, and a charge already in a server's hands
 -- all refused; a card over the limit and a bank account within it charged as before; other reasons
--- to ask the office still asked within the limit; charges waiting as the update arrives; the
--- invoice claimed once to send and the office told once, sent or not; nobody asked to agree again.
+-- to ask the office still asked within the limit, and over it the invoice left for the office to
+-- look over; charges waiting as the update arrives; a bank payment already on its way left to
+-- finish; the invoice claimed once to send and the office told once, sent or not; nobody asked to
+-- agree again.
 -- Run with scripts/test-db.sh (plain Postgres + prelude.sql). Any failed check stops with an error.
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -186,12 +188,14 @@ select tbl.check((select count(*) = 1 from public.outbox where topic = 'stripe.i
 
 select tbl.finished_visit(:'co', :'bea', 450) as bea450 \gset
 select tbl.bill(:'co', :'bea450') as bill \gset
+select tbl.finish(:'bea450', :'bill', 'processing') as done \gset
 select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and (:'bill'::jsonb) -> 'method' ->> 'type' = 'us_bank_account'
-    and tbl.finish(:'bea450', :'bill', 'processing') and tbl.state(:'bea450') = 'processing',
+    and :'done' and tbl.state(:'bea450') = 'processing',
   'a $450 visit on the same bank account is charged as before');
 select tbl.finished_visit(:'co', :'bea', 500) as bea500 \gset
 select tbl.bill(:'co', :'bea500') as bill \gset
-select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and tbl.finish(:'bea500', :'bill', 'processing'), 'and so is one for exactly the limit');
+select tbl.finish(:'bea500', :'bill', 'processing') as done \gset
+select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and :'done', 'and so is one for exactly the limit');
 
 select tbl.finished_visit(:'co', :'cal', 600) as cal600 \gset
 select tbl.bill(:'co', :'cal600') as bill \gset
@@ -204,7 +208,8 @@ select public.approve_autopay_charge(:'cal600');
 reset role;
 select tbl.as_user(null);
 select tbl.bill(:'co', :'cal600') as bill \gset
-select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and (:'bill'::jsonb) -> 'method' ->> 'type' = 'card' and tbl.finish(:'cal600', :'bill', 'paid')
+select tbl.finish(:'cal600', :'bill', 'paid') as done \gset
+select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and (:'bill'::jsonb) -> 'method' ->> 'type' = 'card' and :'done'
     and tbl.state(:'cal600') = 'paid' and (select bank_limit is null and send_state is null from public.autopay_charges where id = :'cal600'),
   'and the OK charges the card');
 
@@ -224,9 +229,13 @@ select tbl.bill(:'co', :'held450') as bill \gset
 select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and tbl.finish(:'held450', :'bill', 'processing'), 'and the OK charges the bank account, as before');
 select tbl.finished_visit(:'co', :'bea', 600, 'An AI assistant marked the work done') as held600 \gset
 select tbl.bill(:'co', :'held600') as bill \gset
-select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'called_off' and tbl.to_client(:'held600', 500) and tbl.told(:'ora', 'Approve%Bea%') like '%$450.00%'
+select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'called_off' and tbl.to_client(:'held600', 500, 'held') and tbl.told(:'ora', 'Approve%Bea%') like '%$450.00%'
     and tbl.told(:'ora', 'Approve%Bea%') not like '%$600.00%',
-  'over the limit as well, it''s never asked about: the invoice goes to the client');
+  'over the limit as well, no OK is asked for, since none could charge it: the charge is closed');
+select tbl.check((select send_error = 'An AI assistant marked the work done' and send_draft from public.autopay_charges where id = :'held600')
+    and (select i.status = 'draft' from public.invoices i join public.autopay_charges a on a.invoice_id = i.id where a.id = :'held600')
+    and tbl.told(:'ora', 'Send invoice%Bea%') like 'Send invoice #% to Bea Bank | $600.00 is over the $500.00 limit for their bank account, so it wasn''t taken from it. Look it over before you send it: An AI assistant marked the work done.',
+  'and because the office was to look at it first, it isn''t sent by itself: they''re told once to look it over and send it');
 
 \o
 \echo 'The office''s OK, and charges already waiting'
@@ -240,7 +249,8 @@ select tbl.finished_visit(:'co', :'eli', 700) as eli700 \gset
 select tbl.finished_visit(:'co', :'fay', 800) as fay800 \gset
 update public.autopay_charges set due_at = now() + interval '1 day' where id in (:'dee600', :'eli700', :'fay800');
 select public.create_invoice_for_job(job_id, 'visits') from public.autopay_charges where id in (:'dee600', :'eli700', :'fay800');
-update public.autopay_charges a set status = 'needs_approval', invoice_id = (select i.id from public.invoices i where i.job_id = a.job_id)
+update public.autopay_charges a set status = 'needs_approval', invoice_id = (select i.id from public.invoices i where i.job_id = a.job_id),
+  last_error = case when a.id = :'fay800' then 'Includes extra work added to a visit' end
 where a.id in (:'dee600', :'eli700', :'fay800');
 select tbl.check((select count(*) = 3 from public.autopay_charges where id in (:'dee600', :'eli700', :'fay800') and status = 'needs_approval' and invoice_id is not null)
     and tbl.told(:'ora', 'Approve%Dee%') like 'Approve a $600.00 charge for Dee Before | %',
@@ -251,11 +261,13 @@ select tbl.as_user(:'ora');
 select public.approve_autopay_charge(:'dee600');
 reset role;
 select tbl.as_user(null);
+select count(*) as claimed_dee from public.claim_autopay_charges(100, :'co') c where c.id = :'dee600' \gset
 select tbl.check(tbl.to_client(:'dee600', 500) and (select approved_at is null and approved_by is null from public.autopay_charges where id = :'dee600')
-    and (select count(*) = 0 from public.claim_autopay_charges(100, :'co') c where c.id = :'dee600'),
+    and :claimed_dee = 0,
   'the office''s OK doesn''t charge one: it''s closed, its invoice goes to the client, and nothing is left to claim');
-select tbl.check(tbl.to_client(:'eli700', 500) and tbl.to_client(:'fay800', 500),
-  'every claim closes the ones still waiting, without anyone pressing anything');
+select tbl.check(tbl.to_client(:'eli700', 500), 'every claim closes the ones still waiting, without anyone pressing anything');
+select tbl.check(tbl.to_client(:'fay800', 500, 'held') and tbl.told(:'ora', 'Send invoice%Fay%') like '%Look it over before you send it: Includes extra work added to a visit.',
+  'one that waited for another reason too is closed and left for the office to look over and send');
 select tbl.check(private.autopay_bank_limit_sweep() = 0, 'and a second pass finds nothing: each is closed once');
 
 -- A card's waiting charge, and a bank account's within the limit, are left for the office.
@@ -272,13 +284,61 @@ select public.call_off_autopay_charge(:'held300');
 reset role;
 select tbl.as_user(null);
 
+-- With autopay off in Settings nothing is closed or sent by this rule: the OK ends as it always did.
+select tbl.ready_client(:'co', 'Lou Off') as lou \gset
+select tbl.finished_visit(:'co', :'lou', 600) as lou600 \gset
+update public.autopay_charges set due_at = now() + interval '1 day' where id = :'lou600';
+select public.create_invoice_for_job(job_id, 'visits') from public.autopay_charges where id = :'lou600';
+update public.autopay_charges a set status = 'needs_approval', invoice_id = (select i.id from public.invoices i where i.job_id = a.job_id) where a.id = :'lou600';
+set local role authenticated;
+select tbl.as_user(:'ora');
+select public.autopay_set_settings(:'co', tbl.settings() || '{"enabled": false}') as nothing \gset
+reset role;
+select tbl.as_user(null);
+select tbl.check(private.autopay_bank_limit_sweep() = 0 and tbl.state(:'lou600') = 'needs_approval', 'with autopay off in Settings, a waiting charge isn''t closed by this rule or sent to anyone');
+set local role authenticated;
+select tbl.as_user(:'ora');
+select public.approve_autopay_charge(:'lou600');
+reset role;
+select tbl.as_user(null);
+select tbl.bill(:'co', :'lou600') as bill \gset
+select tbl.check(tbl.state(:'lou600') = 'called_off: Autopay is turned off in Settings' and (select bank_limit is null and send_state is null from public.autopay_charges where id = :'lou600')
+    and tbl.told(:'ora', 'Send invoice%Lou%') like 'Send invoice #% to Lou Off the usual way | Autopay is turned off in Settings',
+  'the OK then ends as it always did: called off, and the office told to send it the usual way');
+set local role authenticated;
+select tbl.as_user(:'ora');
+select public.autopay_set_settings(:'co', tbl.settings()) as nothing \gset
+reset role;
+select tbl.as_user(null);
+
+-- A bank payment already on its way for the invoice (the charge's own, its answer lost): left to finish.
+select tbl.ready_client(:'co', 'Moe Clearing') as moe \gset
+select tbl.finished_visit(:'co', :'moe', 600) as moe600 \gset
+select tbl.bill(:'co', :'moe600') as nothing \gset
+select invoice_id as moe_inv from public.autopay_charges where id = :'moe600' \gset
+update public.invoices set status = 'sent' where id = :'moe_inv';
+update public.autopay_charges set status = 'charging', claim_token = '00000000-0000-0000-0000-00000000bbbb', locked_until = now() + interval '5 minutes',
+  last_error = null, bank_limit = null, bank_limit_at = null, send_state = null, send_draft = null where id = :'moe600';
+insert into public.stripe_invoices (company_id, invoice_id, stripe_id, origin, status, amount_due, collection, purpose)
+values (:'co', :'moe_inv', 'in_moe_clearing', 'crewtavo', 'processing', 600, 'charge_automatically', 'invoice');
+select public.autopay_bill(:'moe600', '00000000-0000-0000-0000-00000000bbbb') as bill \gset
+select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'charge' and tbl.state(:'moe600') = 'charging',
+  'a charge whose bank payment is already on its way isn''t closed: the server follows that payment, and the client isn''t told to pay meanwhile');
+select tbl.check(not public.autopay_mark_sent(:'moe600', '00000000-0000-0000-0000-00000000bbbb', 60000), 'and nothing new could be asked of the bank for it');
+-- It bounced.
+delete from public.stripe_invoices where stripe_id = 'in_moe_clearing';
+select public.autopay_bill(:'moe600', '00000000-0000-0000-0000-00000000bbbb') as bill \gset
+select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'called_off' and tbl.to_client(:'moe600', 500)
+    and (select not send_draft from public.autopay_charges where id = :'moe600'),
+  'once nothing is on its way, it''s closed and the invoice goes to the client');
+
 -- One a server from before this had in hand as the update arrived: billed, about to be charged.
 select tbl.ready_client(:'co', 'Gus Inflight') as gus \gset
 select tbl.finished_visit(:'co', :'gus', 600) as gus600 \gset
 select tbl.bill(:'co', :'gus600') as nothing \gset
 -- Put back as the earlier server left it: claimed, billed, its Stripe invoice made.
 update public.autopay_charges set status = 'charging', claim_token = '00000000-0000-0000-0000-00000000aaaa', locked_until = now() + interval '5 minutes',
-  last_error = null, bank_limit = null, bank_limit_at = null, send_state = null where id = :'gus600';
+  last_error = null, bank_limit = null, bank_limit_at = null, send_state = null, send_draft = null where id = :'gus600';
 select tbl.check(not public.autopay_mark_sent(:'gus600', '00000000-0000-0000-0000-00000000aaaa', 60000)
     and (select i.status = 'draft' from public.invoices i join public.autopay_charges a on a.invoice_id = i.id where a.id = :'gus600'),
   'a charge already in a server''s hands stops at the last step before Stripe is told to charge');
@@ -330,7 +390,8 @@ select tbl.check((select count(*) = 0 from public.autopay_charges where invoice_
 insert into public.autopay_charges (company_id, client_id, source, invoice_id, payment_method_id, due_at, status, approved_by, approved_at, approved_amount, requested_by)
 values (:'co', :'bea', 'manual', :'bea650', :'bea_pm', now(), 'waiting', :'ora', now(), 650, :'ora') returning id as bea650_c \gset
 select (array_agg(claim_token))[1] as token from public.claim_autopay_charges(100, :'co') \gset
-select tbl.check(public.autopay_bill(:'bea650_c', :'token') ->> 'outcome' = 'called_off' and tbl.to_client(:'bea650_c', 500),
+select public.autopay_bill(:'bea650_c', :'token') as bill \gset
+select tbl.check((:'bill'::jsonb) ->> 'outcome' = 'called_off' and tbl.to_client(:'bea650_c', 500),
   'a Charge card queued before the update isn''t made either');
 select public.release_autopay_charges(:'token', array(select id from public.autopay_charges where claim_token = :'token'));
 update public.autopay_charges set status = 'called_off', last_error = 'Called off by the office' where invoice_id in (:'bea120', :'cal650') and status = 'waiting';
@@ -403,24 +464,34 @@ select tbl.check((select revoked_at is null and terms like '%at least 10 days be
 \o
 \echo 'The invoice goes to the client, and the office is told once'
 \o /dev/null
--- Waiting to go: Bea's two visits and her Charge card, the assistant's one, Dee, Eli, Fay, Gus, Hal, Jan.
-select tbl.check((select count(*) = 10 from public.autopay_charges where company_id = :'co' and send_state = 'waiting' and bank_limit is not null),
-  'every charge closed over the limit has its invoice waiting to go');
--- Deleted, voided, or sent by the office since: nothing is left to send.
-delete from public.invoices where id = (select invoice_id from public.autopay_charges where id = :'fay800');
+-- Waiting to go: Bea's two visits and her Charge card, Dee, Eli, Gus, Hal, Jan and Moe. The two
+-- held for the office's look (the assistant's, Fay's) are not.
+select tbl.check((select count(*) = 9 from public.autopay_charges where company_id = :'co' and send_state = 'waiting' and bank_limit is not null)
+    and (select count(*) = 2 from public.autopay_charges where company_id = :'co' and send_state = 'held'),
+  'every charge closed over the limit has its invoice waiting to go, but for the ones the office looks over first');
+-- Deleted, voided, or a draft the office sent since: nothing is left to send.
+delete from public.invoices where id = (select invoice_id from public.autopay_charges where id = :'bea600b');
 update public.invoices set status = 'void' where id = (select invoice_id from public.autopay_charges where id = :'eli700');
-insert into public.messages (company_id, client_id, channel, direction, status, subject, body, related_type, related_id)
-select :'co', client_id, 'email', 'out', 'sent', 'Invoice', 'Here''s your invoice.', 'invoice', invoice_id from public.autopay_charges where id = :'held600';
-update public.invoices set status = 'sent' where id = (select invoice_id from public.autopay_charges where id = :'held600');
-create temporary table claimed on commit drop as select * from public.claim_autopay_sends(5, :'co');
-select tbl.check((select count(*) = 5 and bool_and(bank_limit = 500 and invoice_id is not null) from claimed)
-    and (select count(*) = 5 from public.autopay_charges where company_id = :'co' and send_state = 'sending' and send_claimed_at is not null),
+update public.invoices set status = 'sent' where id = (select invoice_id from public.autopay_charges where id = :'jan600');
+-- A bank payment for Hal's is on its way (they paid on Stripe's page): it waits for that.
+insert into public.stripe_invoices (company_id, invoice_id, stripe_id, origin, status, amount_due, collection, purpose)
+values (:'co', :'hal_inv', 'in_hal_clearing', 'crewtavo', 'processing', 520, 'send_invoice', 'invoice');
+create temporary table claimed on commit drop as select * from public.claim_autopay_sends(3, :'co');
+select tbl.check((select count(*) = 3 and bool_and(bank_limit = 500 and invoice_id is not null and send_draft is not null) from claimed)
+    and (select count(*) = 3 from public.autopay_charges where company_id = :'co' and send_state = 'sending' and send_claimed_at is not null),
   'the server claims as many as it asked for, each with its invoice and the limit it was over');
-select tbl.check((select bool_and(send_state is null) from public.autopay_charges where id in (:'fay800', :'eli700', :'held600'))
-    and not exists (select 1 from claimed where id in (:'fay800', :'eli700', :'held600')),
-  'one deleted, one voided and one the office sent meanwhile are not sent');
-select tbl.check((select count(*) = 2 from public.claim_autopay_sends(20, :'co')) and (select count(*) = 0 from public.claim_autopay_sends(20, :'co')),
-  'the next run takes the rest, and nothing is claimed twice');
+select tbl.check((select bool_and(send_state is null) from public.autopay_charges where id in (:'bea600b', :'eli700', :'jan600'))
+    and not exists (select 1 from claimed where id in (:'bea600b', :'eli700', :'jan600')),
+  'one deleted, one voided and a draft the office sent meanwhile are not sent');
+select count(*) as second from public.claim_autopay_sends(20, :'co') \gset
+select count(*) as third from public.claim_autopay_sends(20, :'co') \gset
+select tbl.check(:second = 2 and :third = 0 and tbl.to_client(:'hal520', 500),
+  'the next run takes the rest, nothing is claimed twice, and one with a bank payment on its way waits');
+-- An invoice that had gone out before its charge was closed (Moe's, Hal's) is sent all the same: the client hasn't been told it's theirs.
+select tbl.check(:'moe600' in (select id from public.autopay_charges where send_state = 'sending'), 'one already sent before its charge was closed is still handed over, to say it''s theirs to pay');
+delete from public.stripe_invoices where stripe_id = 'in_hal_clearing';
+select tbl.check((select array_agg(id) = array[:'hal520']::uuid[] from public.claim_autopay_sends(20, :'co')), 'and once that payment has bounced, it goes');
+select tbl.check(tbl.to_client(:'held600', 500, 'held') and tbl.to_client(:'fay800', 500, 'held'), 'the ones held for the office''s look are never handed to the server to send');
 
 select tbl.check(:'bea600' in (select id from public.autopay_charges where send_state = 'sending'), 'Bea''s first invoice is among them');
 select number as bea_no from public.invoices where id = :'bea600_inv' \gset
@@ -443,7 +514,8 @@ select tbl.check((select send_state is null from public.autopay_charges where id
   'one the server finds already sent just before sending is let go, and nobody is told');
 -- A run that claimed one and never answered.
 update public.autopay_charges set send_claimed_at = now() - interval '31 minutes' where id = :'hal520';
-select tbl.check((select count(*) = 0 from public.claim_autopay_sends(20, :'co')) and tbl.to_client(:'hal520', 500, 'failed')
+select count(*) as fourth from public.claim_autopay_sends(20, :'co') \gset
+select tbl.check(:fourth = 0 and tbl.to_client(:'hal520', 500, 'failed')
     and tbl.told(:'ora', 'Send invoice%Hal%') like '%It couldn''t be sent to them (The server stopped while it was sending it, so check whether it went), so send it from the invoice.',
   'a send its server never answered for isn''t sent a second time: the office is asked to look');
 
