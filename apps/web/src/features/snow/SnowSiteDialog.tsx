@@ -160,7 +160,7 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
             ))}
           </div>
         </Field>
-        <Field label="Instructions for the crew" optional hint="Where the snow goes, what to keep clear, who to call. They read these on the visit, and they're the job's own.">
+        <Field label="Instructions for the crew" optional hint="Where the snow goes, what to keep clear, who to call. They read these on the visit, and they're the job's own. Start a line with - for a list or # for a heading, and put **two stars** around words to bold them.">
           <textarea className="textarea" value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={5000} />
         </Field>
         <Field label="What a storm bills" hint="By how much fell: the storm's first visit bills this, and more pushes that day are included. With no prices here, each push bills the job's own lines.">

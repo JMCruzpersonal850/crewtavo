@@ -5,6 +5,9 @@
  * dividers, code, bold, italics, links and YouTube or Vimeo videos (a link alone on its line).
  * Everything else is escaped, so no markup in the text gets through as markup. Pages sanitise
  * again when they show it (apps/web/src/lib/html.ts).
+ *
+ * A note someone typed (a job's instructions for the crew) is shown through it too, as a `note`:
+ * its line breaks stay where they were typed, and a video's link stays a link.
  */
 import { videoEmbed, videoIframe } from "./video";
 
@@ -36,8 +39,8 @@ function inline(source: string): { html: string; text: string } {
   return { html, text };
 }
 
-/** A guide's body_html and body_text from Markdown. */
-export function markdownToGuide(markdown: string): { html: string; text: string } {
+/** A guide's body_html and body_text from Markdown. `note`: a typed note's, each line break kept and no video shown. */
+export function markdownToGuide(markdown: string, { note = false }: { note?: boolean } = {}): { html: string; text: string } {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const html: string[] = [];
   const text: string[] = [];
@@ -48,15 +51,15 @@ export function markdownToGuide(markdown: string): { html: string; text: string 
   const flushParagraph = () => {
     if (!paragraph.length) return;
     // A YouTube or Vimeo link alone on its line is the video, as when it's pasted in the editor.
-    const video = paragraph.length === 1 && /^https?:\/\/\S+$/i.test(paragraph[0]) ? videoEmbed(paragraph[0]) : null;
+    const video = !note && paragraph.length === 1 && /^https?:\/\/\S+$/i.test(paragraph[0]) ? videoEmbed(paragraph[0]) : null;
     if (video) {
       html.push(`<p>${videoIframe(video)}</p>`);
       paragraph = [];
       return;
     }
-    const p = inline(paragraph.join(" "));
-    html.push(`<p>${p.html}</p>`);
-    text.push(p.text);
+    const p = note ? paragraph.map(inline) : [inline(paragraph.join(" "))];
+    html.push(`<p>${p.map((line) => line.html).join("<br>")}</p>`);
+    text.push(p.map((line) => line.text).join("\n"));
     paragraph = [];
   };
   const flushList = () => {

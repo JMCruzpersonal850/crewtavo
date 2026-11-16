@@ -15,6 +15,16 @@ export type Site = Awaited<ReturnType<typeof loadSites>>[number];
 
 export const sitesKey = (companyId: string) => ["snow", companyId, "sites"] as const;
 
+/** Which of these jobs are snow customers, for pausing a job to say what that means: Snow doesn't check a paused one. */
+export async function snowJobs(jobIds: readonly string[]): Promise<Set<string>> {
+  const found = new Set<string>();
+  // As lib/bulk's BULK_CHUNK: ids a request's address has room for.
+  for (let i = 0; i < jobIds.length; i += 100) {
+    for (const s of unwrap(await supabase().from("snow_sites").select("job_id").in("job_id", jobIds.slice(i, i + 100)))) found.add(s.job_id);
+  }
+  return found;
+}
+
 export const customer = (s: Pick<Site, "job">) => s.job.client?.display_name ?? s.job.title;
 /** Its property is on the map, so its forecast can be checked. */
 export const located = (s: Site) => s.job.property?.lat != null && s.job.property.lng != null;
@@ -34,6 +44,10 @@ export const tiersOf = (s: Pick<Site, "tiers">): SnowTier[] =>
 export const bandsKey = (companyId: string) => ["snow", companyId, "standard-prices"] as const;
 export const loadBands = async (companyId: string) =>
   snowBands(unwrap(await supabase().from("companies").select("bands:settings->snow_storm_prices").eq("id", companyId).single()).bands);
+/** Whether storms schedule themselves (settings.snow_auto_schedule, set_snow_auto_schedule): off until someone turns it on. */
+export const autoKey = (companyId: string) => ["snow", companyId, "auto-schedule"] as const;
+export const loadAuto = async (companyId: string) =>
+  unwrap(await supabase().from("companies").select("auto:settings->snow_auto_schedule").eq("id", companyId).single()).auto === true;
 /** What one push bills a job: its own lines, as a visit of it costs (core visitPrice). */
 export const loadPushPrice = async (jobId: string) => {
   const job = unwrap(await supabase().from("jobs").select("financials:job_financials(contract_total), lines:job_line_items(quantity, unit_price, discount_billing)").eq("id", jobId).single());

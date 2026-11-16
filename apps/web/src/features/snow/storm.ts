@@ -18,9 +18,10 @@ export const workText = (plan: SnowPlan) => (plan.kind === "salt" ? "Salt run" :
 
 /**
  * A customer for the storm coming: `snow` is its forecast (null for none), `visits` how many of the
- * storm's visits it has, `told` whether its people have been told about this storm.
+ * storm's visits it has, `told` whether its people have been told about this storm, `auto` whether
+ * storms schedule themselves here as people are told.
  */
-export function standingOf(site: { paused: boolean; located: boolean; rules: SnowRules; told: boolean }, snow: number | null, visits: number): Standing {
+export function standingOf(site: { paused: boolean; located: boolean; rules: SnowRules; told: boolean }, snow: number | null, visits: number, auto = false): Standing {
   if (site.paused) return { group: "off", label: "Paused", tone: null, note: "Not checked while the job is paused", plan: null };
   if (!site.located) return { group: "check", label: "No map location", tone: "danger", note: "Not checked until its address is found", plan: null };
   if (snow == null) return { group: "off", label: "No forecast", tone: null, plan: null };
@@ -31,7 +32,7 @@ export function standingOf(site: { paused: boolean; located: boolean; rules: Sno
   }
   if (visits >= plan.pushes) return { group: "scheduled", label: "Scheduled", tone: "good", note: visits > 1 ? `${visits} visits` : undefined, plan };
   if (visits > 0) return { group: "schedule", label: `${visits} of ${plan.pushes} scheduled`, tone: "warning", note: "The forecast grew", plan };
-  return { group: "schedule", label: "To schedule", tone: "warning", note: site.told ? "Crew told" : "Crew hears within the hour, 10am to 10pm", plan };
+  return { group: "schedule", label: "To schedule", tone: "warning", note: site.told ? "Crew told" : auto ? "Crew hears and it's scheduled within the hour, 10am to 10pm" : "Crew hears within the hour, 10am to 10pm", plan };
 }
 
 /**

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { MapsLink } from "@/components/ui/MapsLink";
+import { Note } from "@/components/ui/Note";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { EntityStatus, visitKindText } from "@/components/ui/StatusPill";
@@ -156,7 +157,7 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
                   <Icon name="note" size={16} />
                   <div className="stack-sm">
                     {v.notes && <span className="pre-wrap">{v.notes}</span>}
-                    {v.job?.instructions && <span className="pre-wrap muted">{v.job.instructions}</span>}
+                    {v.job?.instructions && <Note className="muted" text={v.job.instructions} />}
                     {!v.job && v.request?.details && <span className="pre-wrap muted">{v.request.details}</span>}
                   </div>
                 </>

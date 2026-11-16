@@ -1,17 +1,20 @@
 /**
  * Snow → Storm: the storm, and what's left to do about it. On top, the snow coming from 6pm today
  * through tomorrow on a sky the color of the weather (as the weather popup is, SnowWeather.tsx): how
- * much, when it falls hour by hour, and the official winter alerts in force. Under it, a storm
+ * much at the customers, when it falls hour by hour at the shop (or at a customer picked there), and
+ * the official winter alerts in force. Under it, a storm
  * that's here today: how far along each customer's visits are, and any customer it now calls for
  * that nobody scheduled, to schedule for today. Then the storm coming, counted
  * and piled by what the office still has to do: to schedule, to check, scheduled, and not this storm
- * (storm.ts). A subcontractor's answer to "can you go out?" sits beside their name on the customers
- * they work. A customer's row opens to its address, notes, photos and files (SnowSiteDetails.tsx).
+ * (storm.ts), which the business can have Snow do by itself: the switch at the foot schedules each
+ * storm as its people are told (set_snow_auto_schedule). A subcontractor's answer to "can you go out?" sits beside their name on the customers
+ * they work. A customer's row opens it in a popup: its address, notes, photos and files
+ * (SnowSiteDetails.tsx).
  */
 import { clockText, snowPlan, type SnowPlan } from "@crewtavo/core/snow";
 import { WEATHER_SOURCE_LABELS, type WeatherSource } from "@crewtavo/core/weather";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useDeferredValue, useState, type CSSProperties, type ReactNode } from "react";
+import { useDeferredValue, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/Button";
@@ -24,9 +27,8 @@ import { EntityStatus, StatusPill, statusText } from "@/components/ui/StatusPill
 import { api, supabase, unwrap } from "@/lib/api";
 import { addDaysIso, addressLine, formatDateTime, formatDay, todayIn } from "@/lib/format";
 import { can, useSession } from "@/lib/session";
-import { customer, inches, located, nameOf, rulesOf, type Member, type Site } from "./snowData";
-import { SiteName, SnowSiteDetails } from "./SnowSiteDetails";
-import { BACKDROPS, SKY, SOURCE_LINKS, SkyArt, hourLabel, snowStory, when, type Weather } from "./SnowWeather";
+import { autoKey, customer, inches, loadAuto, located, nameOf, rulesOf, type Member, type Site } from "./snowData";
+import { BACKDROPS, SHOP, SKY, SOURCE_LINKS, SkyArt, hasShop, hourLabel, snowStory, weatherQuery, when } from "./SnowWeather";
 import { progressOf, standingOf, STORM_GROUPS, workText, type StormGroup } from "./storm";
 import styles from "./StormBoard.module.css";
 
@@ -48,14 +50,12 @@ const inOrder = (a: Site, b: Site) => a.priority - b.priority || (a.clear_by ?? 
 
 const TODAY_FIELDS = "job_id, kind, pushes, job:jobs!inner(title, client:clients(display_name), property:properties(line1, city)), visits:snow_visits(visit:visits(id, status))";
 
-export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Site[]; team: Member[]; onEdit: (jobId: string) => void; onWeather: (jobId: string) => void }) {
+export function StormBoard({ sites: all, team, onOpen, onWeather }: { sites: Site[]; team: Member[]; onOpen: (jobId: string) => void; onWeather: (place: string) => void }) {
   const session = useSession();
   const { company } = session;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const term = useDeferredValue(search.trim().toLowerCase());
-  // The customer opened up under its row (SnowSiteDetails), one at a time.
-  const [open, setOpen] = useState<string | null>(null);
   const members = new Map(team.map((m) => [m.user_id, m]));
   const forecast = useQuery({ queryKey: ["snow", company.id, "forecast"], staleTime: 30 * 60_000, queryFn: () => api.get<Forecast>("/snow/forecast") });
   const date = forecast.data?.date;
@@ -75,11 +75,18 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
     queryFn: async () => unwrap(await supabase().from("snow_availability").select("user_id, can").eq("company_id", company.id).eq("snow_date", date!)),
   });
   const answers = new Map((asked.data ?? []).map((a) => [a.user_id, a.can]));
+  // Whether storms schedule themselves as people are told, and the switch for it.
+  const auto = useQuery({ queryKey: autoKey(company.id), queryFn: () => loadAuto(company.id) });
+  const setAuto = useMutation({
+    meta: { success: (on: boolean) => (on ? "Storms schedule themselves from now on" : "Storms wait for you to schedule them") },
+    mutationFn: async (on: boolean) => unwrap(await supabase().rpc("set_snow_auto_schedule", { p_company: company.id, p_on: on })),
+    onSuccess: (on) => queryClient.setQueryData(autoKey(company.id), on),
+  });
 
   const rows = all.map((site) => {
     const snow = forecast.data?.inches[site.job_id] ?? null;
     const visits = booked.data?.[site.job_id] ?? 0;
-    return { site, snow, visits, standing: standingOf({ paused: Boolean(site.job.paused_at), located: located(site), rules: rulesOf(site), told: site.alerted_on === date }, snow, visits) };
+    return { site, snow, visits, standing: standingOf({ paused: Boolean(site.job.paused_at), located: located(site), rules: rulesOf(site), told: site.alerted_on === date }, snow, visits, auto.data) };
   });
   type Row = (typeof rows)[number];
   const pile = (group: StormGroup) => rows.filter((r) => r.standing.group === group);
@@ -139,16 +146,14 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
     return <>{s.job.crew.name}{people.length > 0 && <div className="muted small">{names}</div>}</>;
   };
 
-  const toggle = (jobId: string) => setOpen(open === jobId ? null : jobId);
   const row = ({ site: s, snow, standing }: Row) => {
     const rules = rulesOf(s);
     // Room past the plow's trigger, so a bar that reaches it visibly passes the line.
     const full = Math.max(rules.trigger_in * 1.25, (snow ?? 0) * 1.1, 0.5);
     return (
-      <Fragment key={s.job_id}>
-      <tr className="row-link" onClick={() => toggle(s.job_id)}>
+      <tr key={s.job_id} className="row-link" onClick={() => onOpen(s.job_id)}>
         <td className={styles.who}>
-          <SiteName site={s} open={open === s.job_id} onToggle={() => toggle(s.job_id)} />
+          <Link className="cell-link" to={`/snow?open=${s.job_id}`} replace onClick={(e) => e.stopPropagation()}>{customer(s)}</Link>
           <div className="muted small">{addressLine(s.job.property) || s.job.title}</div>
         </td>
         <td>
@@ -179,8 +184,6 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
           {standing.note && <div className="muted small">{standing.note}</div>}
         </td>
       </tr>
-      {open === s.job_id && <SnowSiteDetails site={s} colSpan={6} onEdit={() => onEdit(s.job_id)} onWeather={() => onWeather(s.job_id)} />}
-      </Fragment>
     );
   };
 
@@ -230,7 +233,7 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
           )}
         </div>
       )}
-      <Today sites={all} crewCell={crewCell} snow={forecast.data?.today} onEdit={onEdit} onWeather={onWeather} />
+      <Today sites={all} crewCell={crewCell} snow={forecast.data?.today} onOpen={onOpen} />
       <div className="toolbar">
         <div className="input-group">
           <span className="addon"><Icon name="search" size={16} /></span>
@@ -277,25 +280,39 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
           <div className="list-foot"><span>{shown.length} snow {shown.length === 1 ? "customer" : "customers"}</span></div>
         </div>
       )}
+      <div className="card card-pad">
+        <label className="switch-row">
+          <input type="checkbox" className="switch" checked={auto.data ?? false} disabled={auto.isPending || setAuto.isPending} onChange={(e) => setAuto.mutate(e.target.checked)} />
+          <span>
+            Schedule storms automatically
+            <span className="muted small" style={{ display: "block", fontWeight: 400 }}>
+              When the forecast calls for a customer, its visits go on the schedule as its crew is told: from 10am to 10pm the day before, and on the day for a storm that came up overnight. A customer set to be told hears it's coming. A visit you cancel isn't made again unless the storm grows. Off: you schedule each storm here.
+            </span>
+          </span>
+        </label>
+      </div>
       <p className="muted small">A storm is the snow from 6pm today through tomorrow, so one that comes in overnight counts whole.</p>
     </>
   );
 }
 
-/** The snow coming, on its sky: how much, hour by hour where it's deepest, and the alerts in force. */
-function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; rows: Array<{ site: Site; snow: number | null }>; canChange: boolean; onWeather: (jobId: string) => void }) {
+/**
+ * The snow coming, on its sky: how much at the customers, hour by hour at the shop (or at a customer
+ * picked here; with no shop on the map, where it's deepest), and the alerts in force.
+ */
+function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; rows: Array<{ site: Site; snow: number | null }>; canChange: boolean; onWeather: (place: string) => void }) {
   const { company } = useSession();
   const checked = rows.filter((r) => r.snow != null && !r.site.job.paused_at);
   const amounts = checked.map((r) => r.snow!);
   const most = Math.max(0, ...amounts);
-  // Hour by hour where it's deepest, so the bars and the sentence are the headline's own.
-  const featured = [...checked].sort((a, b) => b.snow! - a.snow!)[0]?.site ?? rows.find((r) => located(r.site))?.site;
-  const weather = useQuery({
-    enabled: Boolean(featured),
-    queryKey: ["snow", company.id, "weather", featured?.job_id],
-    staleTime: 15 * 60_000,
-    queryFn: () => api.get<Weather>(`/snow/weather?job=${featured!.job_id}`),
-  });
+  // Whose hours the sentence and the bars are: the shop's until a customer is picked.
+  const shop = hasShop(company);
+  const places = rows.map((r) => r.site).filter(located).sort((a, b) => customer(a).localeCompare(customer(b)));
+  const [picked, setPicked] = useState("");
+  const site = places.find((s) => s.job_id === picked) ?? (shop ? undefined : [...checked].sort((a, b) => b.snow! - a.snow!)[0]?.site ?? places[0]);
+  const at = site ? site.job_id : shop ? SHOP : null;
+  const name = site ? customer(site) : "your shop";
+  const weather = useQuery(weatherQuery(company.id, at));
   const w = weather.data;
   const snowing = most >= 0.05;
   const sky = snowing ? "snow" : w?.now.sky ?? "cloudy";
@@ -303,22 +320,33 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
   // The storm's own hours: from 6pm today (or from now, once that's passed) to the end of tomorrow.
   const hours = (w?.hours ?? []).filter((h) => h.time >= `${addDaysIso(forecast.date, -1)}T18:00` && h.time < `${addDaysIso(forecast.date, 1)}T00:00`);
   const data = hours.map((h) => ({ time: h.time, at: when(h), snow: h.snow_in }));
-  // Today's own storm there: what has fallen since 6pm last night and what's still coming by 6pm tonight.
-  const today = (featured && forecast.today?.inches[featured.job_id]) || 0;
+  // Today's own storm there: what has fallen since 6pm last night and what's still coming by 6pm tonight
+  // (at the shop, the forecast's own count of today, as the weather popup has it).
+  const today = (site ? forecast.today?.inches[site.job_id] : w?.snow_by_day[addDaysIso(forecast.date, -1)]) || 0;
+  // Whose it is, to pick, under the button that opens the weather there. Nothing to pick with one place.
+  const picker = at && places.length + (shop ? 1 : 0) > 1 && (
+    <select className={styles.place} value={at} onChange={(e) => setPicked(e.target.value)} aria-label="Whose weather, hour by hour">
+      {shop && <option value={SHOP}>At your shop</option>}
+      {places.map((s) => <option key={s.job_id} value={s.job_id}>At {customer(s)}</option>)}
+    </select>
+  );
   return (
     <section className={styles.sky} style={{ "--sky-top": backdrop[0], "--sky-bottom": backdrop[1], "--sky-glow": backdrop[2] } as CSSProperties} aria-label="The snow coming">
       <div className={styles.coming}>
         <div className={styles.lead}>
           <SkyArt sky={sky} night={w?.now.night} size={84} moving />
           <div>
-            <div className={styles.kicker}>6pm today through {formatDay(`${forecast.date}T12:00:00`)}</div>
+            <div className={styles.kicker}>At your customers, 6pm today through {formatDay(`${forecast.date}T12:00:00`)}</div>
             <div className={styles.amount}>{!amounts.length ? "No forecast" : !snowing ? "No snow" : Math.min(...amounts) > most - 0.05 ? inches(most) : `Up to ${inches(most)}`}</div>
-            <div className={styles.story}>{w ? `${today >= 0.05 ? `Today's snow: ${inches(today)}. ` : ""}${snowStory(w.hours)}` : weather.isPending && featured ? <Skeleton width={220} /> : ""}</div>
+            <div className={styles.story}>
+              {at && !picker && <strong>At {name}: </strong>}
+              {w ? `${today >= 0.05 ? `Today's snow: ${inches(today)}. ` : ""}${snowStory(w.hours)}` : weather.isPending && at ? <Skeleton width={220} /> : ""}
+            </div>
           </div>
         </div>
-        {featured && data.some((d) => d.snow > 0) && (
+        {at && data.some((d) => d.snow > 0) && (
           <div className={styles.hourly}>
-            <ChartContainer config={{ snow: { label: "Snow that hour", color: "#fff" } }} label={`Snow each hour at ${customer(featured)}, from 6pm today through tomorrow`} height={92}>
+            <ChartContainer config={{ snow: { label: "Snow that hour", color: "#fff" } }} label={`Snow each hour at ${name}, from 6pm today through tomorrow`} height={92}>
               <BarChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 4 }} barCategoryGap={2}>
                 <XAxis dataKey="time" tickLine={false} axisLine={{ stroke: "rgba(255, 255, 255, 0.3)" }} tickMargin={6} ticks={data.filter((d) => Number(d.time.slice(11, 13)) % 6 === 0).map((d) => d.time)} tickFormatter={hourLabel} />
                 <YAxis hide domain={[0, (max: number) => Math.max(0.1, max)]} />
@@ -326,7 +354,10 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
                 <Bar dataKey="snow" fill="var(--color-snow)" fillOpacity={0.9} radius={[3, 3, 0, 0]} maxBarSize={14} {...CHART_MOTION} />
               </BarChart>
             </ChartContainer>
-            <button type="button" className={styles.more} onClick={() => onWeather(featured.job_id)}>Each hour at {customer(featured)}<Icon name="chevronRight" size={14} /></button>
+            <div className={styles.where}>
+              <button type="button" className={styles.more} onClick={() => onWeather(at)}>Each hour at {name}<Icon name="chevronRight" size={14} /></button>
+              {picker}
+            </div>
           </div>
         )}
       </div>
@@ -340,7 +371,12 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
       ))}
       <div className={styles.credit}>
         <span>Forecast by <a href={SOURCE_LINKS[forecast.source]} target="_blank" rel="noreferrer">{WEATHER_SOURCE_LABELS[forecast.source]}</a>{canChange && <> · <Link to="/settings?tab=weather">Change</Link></>}</span>
-        {featured && !data.some((d) => d.snow > 0) && <button type="button" className={styles.more} onClick={() => onWeather(featured.job_id)}>See the weather<Icon name="chevronRight" size={14} /></button>}
+        {at && !data.some((d) => d.snow > 0) && (
+          <div className={styles.where}>
+            <button type="button" className={styles.more} onClick={() => onWeather(at)}>See the weather<Icon name="chevronRight" size={14} /></button>
+            {picker}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -351,10 +387,9 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
  * customer today's snow calls for that has fewer visits than that (it came up overnight, or grew),
  * to schedule for today in one click. Nothing with no storm today.
  */
-function Today({ sites, crewCell, snow, onEdit, onWeather }: { sites: Site[]; crewCell: (s: Site) => ReactNode; snow: Forecast["today"]; onEdit: (jobId: string) => void; onWeather: (jobId: string) => void }) {
+function Today({ sites, crewCell, snow, onOpen }: { sites: Site[]; crewCell: (s: Site) => ReactNode; snow: Forecast["today"]; onOpen: (jobId: string) => void }) {
   const { company } = useSession();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState<string | null>(null);
   const today = todayIn(company.timezone);
   const storm = useQuery({
     queryKey: ["snow", company.id, "today", today],
@@ -415,11 +450,10 @@ function Today({ sites, crewCell, snow, onEdit, onWeather }: { sites: Site[]; cr
         <thead><tr><th style={{ width: "28%" }}>Customer</th><th style={{ width: "18%" }}>Work</th><th style={{ width: "11%" }}>Clear by</th><th style={{ width: "19%" }}>Crew and people</th><th style={{ width: "24%" }}>Status</th></tr></thead>
         <tbody>
           {ordered.map(({ jobId, site, visits, more, fell, work, name, address, progress }) => (
-            <Fragment key={jobId}>
-            {/* One that's still a snow customer opens up; one that isn't any more goes to its job. */}
-            <tr className={site ? "row-link" : undefined} onClick={() => site && setOpen(open === jobId ? null : jobId)}>
+            // One that's still a snow customer opens in its popup; one that isn't any more goes to its job.
+            <tr key={jobId} className={site ? "row-link" : undefined} onClick={() => site && onOpen(jobId)}>
               <td className={styles.who}>
-                {site ? <SiteName site={site} open={open === jobId} onToggle={() => setOpen(open === jobId ? null : jobId)} /> : <Link className="cell-link" to={`/jobs/${jobId}`}>{name}</Link>}
+                <Link className="cell-link" to={site ? `/snow?open=${jobId}` : `/jobs/${jobId}`} replace={Boolean(site)} onClick={(e) => e.stopPropagation()}>{name}</Link>
                 <div className="muted small">{address}</div>
               </td>
               <td>
@@ -437,8 +471,6 @@ function Today({ sites, crewCell, snow, onEdit, onWeather }: { sites: Site[]; cr
                 {visits.map((v, i) => v.status === "completed" && <div key={v.id} className="small"><Link to={`/snow/report/${v.id}`} onClick={(e) => e.stopPropagation()}>{visits.length > 1 ? `Report ${i + 1}` : "Service report"}</Link></div>)}
               </td>
             </tr>
-            {site && open === jobId && <SnowSiteDetails site={site} colSpan={5} onEdit={() => onEdit(jobId)} onWeather={() => onWeather(jobId)} />}
-            </Fragment>
           ))}
         </tbody>
       </table>

@@ -687,6 +687,8 @@ select t1070.check(array(
   -- Reviews on quotes: owners, admins and the office with the marketing area only (it checks), never a sub.
   'set_quote_reviews(uuid, boolean, boolean, uuid[])',
   -- The standard storm prices: the owner and the office, as for a snow customer's own prices, never a sub.
+  -- Storms that schedule themselves: whoever schedules the whole team (it checks), never a sub.
+  'set_snow_auto_schedule(uuid, boolean)',
   'set_snow_storm_prices(uuid, jsonb)',
   'set_sub_reminders(uuid, boolean)', 'set_sub_sign_in_countries(uuid, text[])',
   -- Turning on what clients are told about their visits: the office with the Automations area only, never a sub.

@@ -1,7 +1,7 @@
 /**
  * Snow (Apps → Crewtavo - Snow): Install and Uninstall; what the forecast calls for at each snow
- * customer, with the official winter alerts where they are; one customer's weather in detail; and
- * scheduling a storm. The snow customers themselves, the season's storms and which subs can go out are read and
+ * customer, with the official winter alerts where they are; one customer's weather in detail, or the
+ * shop's; and scheduling a storm. The snow customers themselves, the season's storms and which subs can go out are read and
  * saved from the page itself (snow_sites, snow_events, snow_availability); the snow task tells the
  * crews the day before (snowWatch in tasks.ts). Forecasts come from the business's own source
  * (services/forecast.ts).
@@ -26,11 +26,13 @@ snow.post("/snow/enabled", requireUser, requireCompany(ADMINS, "apps"), async (c
   return c.json({ enabled: body.enabled });
 });
 
-/** The business's today and tomorrow and its forecast source: what every snow forecast here goes by. */
+/** The business's today and tomorrow and its forecast source: what every snow forecast here goes by. And where its shop is on the map (Settings → Company), or null. */
 async function snowDay(c: Context<AppEnv>) {
-  const company = must(await c.var.db.from("companies").select("timezone, weather_source:settings->weather_source").eq("id", c.var.companyId).maybeSingle());
+  const company = must(await c.var.db.from("companies").select("timezone, weather_source:settings->weather_source, depot:settings->depot").eq("id", c.var.companyId).maybeSingle());
   const today = localDate(new Date(), company.timezone);
-  return { today, tomorrow: addDays(today, 1), forecaster: await forecasterFor(c.env, adminClient(c.env), c.var.companyId, company) };
+  const depot = company.depot as { lat?: unknown; lng?: unknown } | null;
+  const shop = typeof depot?.lat === "number" && typeof depot.lng === "number" ? { lat: depot.lat, lng: depot.lng } : null;
+  return { today, tomorrow: addDays(today, 1), shop, forecaster: await forecasterFor(c.env, adminClient(c.env), c.var.companyId, company) };
 }
 
 /** The business's snow customers (active jobs) with where they are, as the caller may see them. */
@@ -68,18 +70,21 @@ snow.get("/snow/forecast", requireUser, requireCompany(DISPATCH, "schedule"), as
 });
 
 /**
- * The weather in detail at one job's property, for the Snow page's weather view: now, hour by hour
- * and day by day (PlaceWeather), with the snow coming by tomorrow as the alerts count it. Asked by
- * job, not by coordinates, so it's only ever a place the person may see.
+ * The weather in detail at one job's property, or with no job at the business's own shop, for the
+ * Snow page's weather view: now, hour by hour and day by day (PlaceWeather), with the snow coming by
+ * tomorrow as the alerts count it. Asked by job or for the shop, not by coordinates, so it's only
+ * ever a place the person may see.
  */
 snow.get("/snow/weather", requireUser, requireCompany(DISPATCH, "schedule"), async (c) => {
-  const jobId = uuid.safeParse(c.req.query("job"));
-  if (!jobId.success) throw new HttpError(400, "Pick a job to see its weather.");
-  const [{ tomorrow, forecaster }, job] = await Promise.all([
+  const asked = c.req.query("job");
+  const jobId = uuid.safeParse(asked);
+  if (asked && !jobId.success) throw new HttpError(400, "Pick a job to see its weather.");
+  const [{ tomorrow, forecaster, shop }, job] = await Promise.all([
     snowDay(c),
-    c.var.db.from("jobs").select("id, property:properties(lat, lng)").eq("company_id", c.var.companyId).eq("id", jobId.data).maybeSingle(),
+    jobId.success ? c.var.db.from("jobs").select("id, property:properties(lat, lng)").eq("company_id", c.var.companyId).eq("id", jobId.data).maybeSingle() : null,
   ]);
-  const place = must(job, "That job wasn't found.").property;
+  const place = job ? must(job, "That job wasn't found.").property : shop;
+  if (!job && !place) throw new HttpError(400, "Your shop has no map location yet, so there's no forecast for it. Add its address in Settings → Company.");
   if (place?.lat == null || place.lng == null) throw new HttpError(400, "This job's property has no map location yet, so there's no forecast for it. Fix the address on the property.");
   const weather = await placeWeather(place.lat, place.lng, forecaster).catch(() => null);
   // 424, not 502: the app reads a 502 as Crewtavo itself restarting, and says so on every screen.

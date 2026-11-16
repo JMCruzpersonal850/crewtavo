@@ -14,6 +14,7 @@ import { ClientPicker, PropertySelect, type PickedClient } from "../clients/Clie
 import { CustomFieldInputs, customFieldsToSave, useCustomFields } from "../customFields/CustomFields";
 import { firstInvoiceKind, invoiceChoices, startingAmount, type InvoiceJob, type InvoiceKind } from "./invoiceChoices";
 import { billsOutsideSchedule, dropPaymentsQuestion, INSTALLMENT_COLUMNS, type InstallmentRow } from "./JobPaymentSchedule";
+import { snowJobs } from "../snow/snowData";
 import { RecurrenceEditor, type Recurrence } from "./RecurrenceEditor";
 
 export function useCrews() {
@@ -381,7 +382,7 @@ export function JobDetailsDialog({ job, onClose, onSaved }: { job: JobRecord; on
           </Field>
         </div>
         <BillingQuestions kind={f.kind} value={billing} kept={job.kind === f.kind ? kept : undefined} onChange={setBilling} />
-        <Field label="Instructions for the crew" optional><textarea className="textarea" value={f.instructions} onChange={set("instructions")} maxLength={5000} /></Field>
+        <Field label="Instructions for the crew" optional hint="Start a line with - for a list or # for a heading, and put **two stars** around words to bold them."><textarea className="textarea" value={f.instructions} onChange={set("instructions")} maxLength={5000} /></Field>
         <details className="more-options" open={Boolean(f.po_number || f.permit_number || Number(f.retainage_pct) > 0 || f.warranty_until) || undefined}>
           <summary>PO, permit, retainage and warranty</summary>
           <div className="form-grid">
@@ -403,15 +404,21 @@ export function JobDetailsDialog({ job, onClose, onSaved }: { job: JobRecord; on
   );
 }
 
+/** What pausing a snow customer's job means, said before it's paused. */
+const SNOW_PAUSED = "This job is a snow customer. Snow doesn't check a paused job, so nobody is told about its storms until it resumes.";
+
 /**
  * Pause a recurring job (a vacation, the off season): its upcoming visits come off and no new ones,
  * monthly invoices or plan charges are made until it resumes, by hand or on the day given. The
- * server takes the visits off (generate-visits), as it does when a schedule changes.
+ * server takes the visits off (generate-visits), as it does when a schedule changes. A snow customer's
+ * job says what pausing it means: Snow doesn't check a paused job. Many at once: PauseJobsDialog,
+ * on the Jobs page.
  */
 export function PauseJobDialog({ jobId, canSchedule, onClose, onSaved }: { jobId: string; canSchedule: boolean; onClose: () => void; onSaved: () => void }) {
   const session = useSession();
   const tomorrow = addDaysIso(todayIn(session.company.timezone), 1);
   const [resumeOn, setResumeOn] = useState("");
+  const snow = useQuery({ queryKey: ["snow", session.company.id, "jobs", jobId], queryFn: () => snowJobs([jobId]) });
   const pause = useMutation({
     meta: { inline: true, success: "Job paused", tone: "job" },
     mutationFn: async () => {
@@ -430,6 +437,7 @@ export function PauseJobDialog({ jobId, canSchedule, onClose, onSaved }: { jobId
         <Field label="Resume on" optional hint="Leave it empty to resume it yourself.">
           <input className="input" type="date" value={resumeOn} min={tomorrow} onChange={(e) => setResumeOn(e.target.value)} />
         </Field>
+        {snow.data?.has(jobId) && <div className="callout callout-warning" role="status">{SNOW_PAUSED}</div>}
         <FormError error={pause.error} />
         <div className="form-actions">
           <Button onClick={onClose}>Cancel</Button>

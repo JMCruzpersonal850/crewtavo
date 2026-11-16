@@ -6,7 +6,8 @@
 -- snow_schedule makes a storm's visits once, as many as its pushes, with those people on them, logs
 -- the storm and prices it by its depth; a priced visit bills its price in place of the job's lines;
 -- a customer who's told gets its two events; people answer for themselves whether they can go out;
--- and the forecast source is the office's to set, the paid one only with a key on file.
+-- the forecast source is the office's to set, the paid one only with a key on file; and storms
+-- schedule themselves through the server alone, only for a business whose office turned that on.
 -- Run with scripts/test-db.sh (plain Postgres + prelude.sql). Any failed check stops with an error.
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -263,6 +264,41 @@ select tsn.expect_error(format($q$select public.set_snow_storm_prices(%L, '[{"ti
 select public.set_snow_storm_prices(:'co', '[{"up_to_in": 3, "times": 1}, {"up_to_in": 6, "times": 1.5}, {"up_to_in": null, "times": 2}]');
 select tsn.check((select jsonb_array_length(settings -> 'snow_storm_prices') = 3 and settings #>> '{snow_storm_prices,1,times}' = '1.5' and settings ->> 'weather_source' is not null
   from public.companies where id = :'co'), 'the office sets them, and the other settings stay');
+commit;
+
+-- ===== Storms that schedule themselves ===========================================================
+-- The storm grows by two pushes past the visits it has, on the day it's already scheduled for.
+select count(*) + 2 as more from public.snow_visits sv join public.visits v on v.id = sv.visit_id where sv.job_id = :'job' and sv.snow_date = :'tomorrow' and v.status <> 'cancelled' \gset
+select jsonb_build_array(jsonb_build_object('job_id', :'job', 'inches', 14, 'pushes', :more, 'kind', 'plow')) as grown \gset
+begin;
+set local role authenticated;
+select tsn.as_user(:'cole');
+select tsn.expect_error(format('select public.set_snow_auto_schedule(%L, true)', :'co'), 'the crew can''t have storms schedule themselves');
+select tsn.as_user(:'otto');
+select tsn.expect_error(format('select public.snow_schedule_auto(%L, %L, %L)', :'co', :'tomorrow', :'grown'), 'scheduling as the server is the server''s alone');
+commit;
+begin;
+set local role service_role;
+select tsn.check(public.snow_schedule_auto(:'co', :'tomorrow', :'grown'::jsonb) = 0, 'with the switch off the server schedules nothing');
+commit;
+select coalesce(settings -> 'snow_app', '{}'::jsonb) as before from public.companies where id = :'co' \gset
+begin;
+set local role authenticated;
+select tsn.as_user(:'otto');
+select tsn.check(public.set_snow_auto_schedule(:'co', true), 'the office turns it on');
+commit;
+select tsn.check((select settings -> 'snow_auto_schedule' = 'true' and coalesce(settings -> 'snow_app', '{}'::jsonb) = :'before'::jsonb from public.companies where id = :'co'), 'which is its own setting: whether Snow is installed stays the Apps area''s');
+begin;
+set local role service_role;
+select tsn.check(public.snow_schedule_auto(:'co', :'tomorrow', :'grown'::jsonb) = 2, 'with it on the server schedules the storm it''s telling people about: the two visits it grew by');
+select tsn.check(public.snow_schedule_auto(:'co', :'tomorrow', :'grown'::jsonb) = 0, 'and never doubles them');
+commit;
+select tsn.check((select count(*) = :more from public.snow_visits sv join public.visits v on v.id = sv.visit_id where sv.job_id = :'job' and sv.snow_date = :'tomorrow' and v.status <> 'cancelled'),
+  'they''re the storm''s own visits, as the office''s are');
+begin;
+set local role authenticated;
+select tsn.as_user(:'otto');
+select tsn.check(not public.set_snow_auto_schedule(:'co', false), 'and the office turns it off again');
 commit;
 
 -- ===== Leaving =================================================================================

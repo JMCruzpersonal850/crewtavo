@@ -242,6 +242,28 @@ describe("snow by tomorrow", () => {
     expect(calls.find((c) => c.path === "snow_availability")!.body).toEqual([{ company_id: "co", snow_date: tomorrow, user_id: "sam" }]);
   });
 
+  it("schedules them as it tells them, for a business that turned that on, and tells the schedulers so", async () => {
+    at("2026-01-15T17:00:00Z");
+    const auto = (call: Call) => (call.path === "companies" ? [{ id: "co", timezone: "America/New_York", weather_source: "open_meteo", auto: true }] : call.path === "rpc/snow_schedule_auto" ? 3 : undefined);
+    let calls = snowDay(auto);
+    expect(await runTask("snow", env)).toMatchObject({ alerted: 2 });
+    // Exactly the customers being told about, as the office's own Schedule button would send them.
+    expect(calls.filter((c) => c.path === "rpc/snow_schedule_auto").map((c) => c.body)).toEqual([{
+      p_company: "co", p_date: tomorrow,
+      p_plan: [{ job_id: "plaza", inches: 4.2, pushes: 2, kind: "plow" }, { job_id: "bank", inches: 1, pushes: 1, kind: "salt" }],
+    }]);
+    expect(told(calls).find((n) => n.user_id === "otto")!.body.split("\n").at(-1)).toBe("3 visits are on tomorrow's schedule already.");
+    expect(told(calls).find((n) => n.user_id === "lena")!.body).not.toContain("schedule already");
+    // One that can't be scheduled is still told about, with nothing said of the schedule.
+    calls = snowDay((call) => (call.path === "rpc/snow_schedule_auto" ? new Response(JSON.stringify({ message: "busy" }), { status: 500 }) : auto(call)));
+    expect(await runTask("snow", env)).toMatchObject({ alerted: 2 });
+    expect(told(calls).find((n) => n.user_id === "otto")!.body).not.toContain("schedule already");
+    // And a business that didn't turn it on has nothing scheduled for it.
+    calls = snowDay();
+    await runTask("snow", env);
+    expect(calls.some((c) => c.path === "rpc/snow_schedule_auto")).toBe(false);
+  });
+
   it("tells them again when the forecast grows into more pushes, and not when it doesn't, or when another server marked it first", async () => {
     at("2026-01-15T17:00:00Z");
     const toldAbout = (pushes: number) => [{ ...sites[0]!, alerted_on: tomorrow, alerted_pushes: pushes }];

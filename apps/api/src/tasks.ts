@@ -611,12 +611,15 @@ const SNOW_SITE_FIELDS =
  *   - At any hour, write what fell yesterday into the log, as the forecast's own estimate, where the
  *     office hasn't written its own.
  *
- * A paused job isn't checked. Nothing is scheduled: the office does that from the Snow page.
+ * A paused job isn't checked. Nothing is scheduled, which the office does from the Snow page, unless
+ * the business turned on scheduling storms by themselves there (settings.snow_auto_schedule):
+ * then a customer's visits are made as its people are told, the ones the office's button would make
+ * (public.snow_schedule_auto).
  */
 async function snowWatch(env: Env) {
   const admin = adminClient(env);
   const now = new Date();
-  const { data: companies, error } = await admin.from("companies").select("id, timezone, weather_source:settings->weather_source").eq("settings->snow_app->>enabled", "true");
+  const { data: companies, error } = await admin.from("companies").select("id, timezone, weather_source:settings->weather_source, auto:settings->snow_auto_schedule").eq("settings->snow_app->>enabled", "true");
   if (error) throw new Error(error.message);
   const tally = { companies: 0, alerted: 0, today: 0, iced: 0, logged: 0, unknown: 0 };
   for (const company of companies) {
@@ -641,8 +644,21 @@ async function snowWatch(env: Env) {
      * Tells these customers' people and the schedulers about a storm, and asks the subcontractors
      * among them whether they can go out: they work for themselves, and the business's own people
      * are told. A lookup of who's a sub that fails asks nobody, and still tells everyone.
+     *
+     * With the business's switch on they're scheduled first, and the schedulers are told so. It's
+     * only ever what's being told about, so a visit the office cancelled isn't made again next hour.
+     * A storm that can't be scheduled is still told about, and stays To schedule on the Snow page.
      */
     const tell = async (mine: Called[], date: string, day: SnowDay) => {
+      let made = 0;
+      if (company.auto === true) {
+        const scheduled = await admin.rpc("snow_schedule_auto", {
+          p_company: company.id, p_date: date, p_plan: mine.map(({ site, snow, pushes, kind }) => ({ job_id: site.job_id, inches: snow, pushes: Math.max(1, pushes), kind })),
+        });
+        if (scheduled.error) reportError(new Error(scheduled.error.message), { task: "snow", company: company.id });
+        else made = scheduled.data ?? 0;
+      }
+      const onSchedule = made ? `\n${made === 1 ? "Its visit is" : `${made} visits are`} on ${day === "today" ? "today's" : "tomorrow's"} schedule already.` : "";
       const recipients = await admin.rpc("snow_recipients", { p_jobs: mine.map((x) => x.site.job_id) });
       if (recipients.error) throw new Error(recipients.error.message);
       const people = (jobId: string) => recipients.data.filter((r) => r.job_id === jobId && !r.office).map((r) => r.user_id);
@@ -654,7 +670,7 @@ async function snowWatch(env: Env) {
       const subs = going.length ? await admin.from("memberships").select("user_id").eq("company_id", company.id).eq("role", "subcontractor").in("user_id", going) : null;
       const asking = (subs?.data ?? []).map((m) => m.user_id);
       const sent = await admin.from("notifications").insert(
-        snowNotices(sites, office, asking, day).map((n) => ({ company_id: company.id, user_id: n.user_id, kind: "snow", title: n.title, body: n.body, link: n.office ? "/snow" : "/field" })),
+        snowNotices(sites, office, asking, day).map((n) => ({ company_id: company.id, user_id: n.user_id, kind: "snow", title: n.title, body: n.office ? n.body + onSchedule : n.body, link: n.office ? "/snow" : "/field" })),
       );
       if (sent.error) throw new Error(sent.error.message);
       // The question isn't worth untelling everyone for: the Snow page asks nobody twice.

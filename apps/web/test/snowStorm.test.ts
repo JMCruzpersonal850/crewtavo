@@ -11,6 +11,8 @@ const stand = (snow: number | null, visits = 0, over: Partial<typeof site> = {})
 describe("Snow → Storm: where a customer stands for the storm coming", () => {
   it("is to schedule until it has every visit the forecast calls for, and says whether its people know", () => {
     expect(stand(4.5)).toEqual(["schedule", "To schedule", "warning", "Crew hears within the hour, 10am to 10pm"]);
+    // With storms scheduling themselves, it says that's coming too.
+    expect(standingOf(site, 4.5, 0, true).note).toBe("Crew hears and it's scheduled within the hour, 10am to 10pm");
     expect(stand(4.5, 0, { told: true })).toEqual(["schedule", "To schedule", "warning", "Crew told"]);
     // Two pushes called for and one visit: the forecast grew after it was scheduled.
     expect(stand(4.5, 1, { told: true })).toEqual(["schedule", "1 of 2 scheduled", "warning", "The forecast grew"]);

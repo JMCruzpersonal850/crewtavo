@@ -5340,6 +5340,9 @@ isOneToOne: false
 "set_review_location":
 { Args: { "p_account": string,"p_company": string,"p_location_id": string }; Returns: Json
                            },
+"set_snow_auto_schedule":
+{ Args: { "p_company": string,"p_on": boolean }; Returns: boolean
+                           },
 "set_snow_storm_prices":
 { Args: { "p_bands": Json,"p_company": string }; Returns: Json
                            },
@@ -5396,6 +5399,9 @@ isOneToOne: false
             }[]
                            },
 "snow_schedule":
+{ Args: { "p_company": string,"p_date": string,"p_plan": Json }; Returns: number
+                           },
+"snow_schedule_auto":
 { Args: { "p_company": string,"p_date": string,"p_plan": Json }; Returns: number
                            },
 "social_photo_facts":

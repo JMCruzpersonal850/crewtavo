@@ -15,6 +15,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Icon } from "@/components/ui/Icon";
 import { MapsLink } from "@/components/ui/MapsLink";
 import { Menu } from "@/components/ui/Menu";
+import { Note } from "@/components/ui/Note";
 import { BackLink, PageHeader, useDocumentTitle } from "@/components/ui/PageHeader";
 import { DetailSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, PageError } from "@/components/ui/States";
@@ -623,7 +624,7 @@ export function JobPage() {
               {j.salesperson_id && team.data && <><dt>Sold by</dt><dd>{memberName(team.data.find((m) => m.user_id === j.salesperson_id)) ?? "Former team member"}</dd></>}
               <CustomFieldList fields={jobFields} values={j.custom_fields} />
             </dl>
-            {j.instructions && <p className="pre-wrap small" style={{ margin: 0, padding: 10, background: "var(--note)", borderRadius: "var(--radius-control)", border: "1px solid var(--note-border)" }}>{j.instructions}</p>}
+            {j.instructions && <Note className="small" style={{ padding: 10, background: "var(--note)", borderRadius: "var(--radius-control)", border: "1px solid var(--note-border)" }} text={j.instructions} />}
           </div>
           {/* The quote's payment schedule, for the people who look after money (nothing shows without one). */}
           {seesInvoices && j.quote && <JobPaymentSchedule jobId={j.id} finalInvoice={live.find((i) => i.kind === "standard") ?? null} />}

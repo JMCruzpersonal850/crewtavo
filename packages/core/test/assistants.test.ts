@@ -161,6 +161,12 @@ describe("guides from Markdown", () => {
     expect(text).toBe("Fueling\nUse non-ethanol gas, see the log.\nMower\nTrimmer\nShut off\nFill\nNever fuel a hot engine.\nfuel = 2 gal");
   });
 
+  it("shows a typed note with its line breaks kept, and a video's link as a link", () => {
+    const note = markdownToGuide("Gate code 4411\nPile snow **west** of the lot\n- Keep the fire lane clear\n\nhttps://youtu.be/dQw4w9WgXcQ", { note: true });
+    expect(note.html).toBe("<p>Gate code 4411<br>Pile snow <strong>west</strong> of the lot</p><ul><li><p>Keep the fire lane clear</p></li></ul><p>https://youtu.be/dQw4w9WgXcQ</p>");
+    expect(note.text).toBe("Gate code 4411\nPile snow west of the lot\nKeep the fire lane clear\nhttps://youtu.be/dQw4w9WgXcQ");
+  });
+
   it("makes checklists and callouts like the editor's", () => {
     const { html, text } = markdownToGuide("- [ ] Cones out\n- [x] Blower fueled\n\n> [!WARNING]\n> Sealer is slippery when wet.\n\n> [!TIP] Start at the far end.");
     expect(html).toBe(

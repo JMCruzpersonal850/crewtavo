@@ -419,6 +419,13 @@ a.field-card:active { transform: scale(0.99); }
 .rte-body .tableWrapper table { margin: 0; }
 .rte-body .selectedCell { background: var(--green-tint); }
 .prose > :first-child { margin-top: 0; }
+/* A typed note shown with its formatting (components/ui/Note.tsx): the guide's prose at the size of the text around it. */
+.prose.note-text { line-height: 1.5; }
+.prose.note-text h2, .prose.note-text h3, .prose.note-text h4 { margin: 0.7em 0 0.2em; font-size: inherit; letter-spacing: 0; }
+.prose.note-text > :first-child { margin-top: 0; }
+.prose.note-text p, .prose.note-text ul, .prose.note-text ol { margin-bottom: 0.5em; }
+.prose.note-text ol:not(li ol) > li { margin-bottom: 0.35em; }
+.prose.note-text > :last-child, .prose.note-text ol:not(li ol) > li:last-child { margin-bottom: 0; }
 /* Three steps of heading over 16px reading text, all on the type scale. */
 .prose h2 { font-size: var(--fs-24); font-weight: 700; letter-spacing: var(--tracking-display); margin: 1.3em 0 0.4em; }
 .prose h3 { font-size: var(--fs-20); font-weight: 700; letter-spacing: var(--tracking-tight); margin: 1.2em 0 0.3em; }

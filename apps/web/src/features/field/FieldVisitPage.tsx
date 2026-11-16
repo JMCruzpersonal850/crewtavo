@@ -22,6 +22,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { MapsLink } from "@/components/ui/MapsLink";
+import { Note } from "@/components/ui/Note";
 import { BackLink, useDocumentTitle } from "@/components/ui/PageHeader";
 import { SaveStatus, useSaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { DetailSkeleton, Skeleton } from "@/components/ui/Skeleton";
@@ -286,7 +287,7 @@ export function FieldVisitPage() {
       {(v.job?.instructions || v.request?.details) && (
         <section className="card card-pad stack-sm" style={{ background: "var(--note)", borderColor: "var(--note-border)" }}>
           <strong>{t("Instructions")}</strong>
-          {v.job?.instructions && <p className="pre-wrap" style={{ margin: 0 }}>{v.job.instructions}</p>}
+          {v.job?.instructions && <Note text={v.job.instructions} />}
           {v.request?.details && <p className="pre-wrap" style={{ margin: 0 }}>{v.request.details}</p>}
         </section>
       )}

@@ -3,18 +3,19 @@
  * 6pm today through tomorrow (an overnight storm counts whole), a storm that's here today, and
  * what's left to do about each (StormBoard.tsx). Customers: the snow customers themselves, each a
  * job with the snow that sends the plow or the salt out, how it's served, who works it and what a
- * storm bills. A customer's row, on either, opens to its address, notes, photos and files
+ * storm bills. A customer's row, on either, opens it in a popup: its address, notes, photos and files
  * (SnowSiteDetails.tsx), with Edit for how it's served. Season: every storm, what fell, its visits and what it bills (StormLog.tsx).
  *
  * The day before, the snow task tells each customer's people what's coming, and on the day about a
  * storm they weren't told of (snowWatch in apps/api/src/tasks.ts); sending them out is the office's
- * call, from the Storm tab (POST /api/snow/schedule puts them on tomorrow's visits, or today's). Someone told whose forecast has since dropped
+ * call, from the Storm tab (POST /api/snow/schedule puts them on tomorrow's visits, or today's),
+ * unless it turned on the switch there that schedules each storm as its people are told. Someone told whose forecast has since dropped
  * says so there, and nobody is sent an all-clear: calling it off is the office's call too.
  */
 import { clockText } from "@crewtavo/core/snow";
 import { useQuery } from "@tanstack/react-query";
-import { Fragment, useDeferredValue, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useDeferredValue, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -26,9 +27,9 @@ import { addressLine } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { bandsKey, customer, inches, loadBands, loadSites, located, nameOf, sitesKey, tiersOf, type Member, type Site } from "./snowData";
 import { StandardPricesDialog } from "./SnowPrices";
-import { SiteName, SnowSiteDetails } from "./SnowSiteDetails";
+import { SnowSiteDetails } from "./SnowSiteDetails";
 import { SnowSiteDialog } from "./SnowSiteDialog";
-import { WeatherDialog } from "./SnowWeather";
+import { SHOP, WeatherDialog, hasShop } from "./SnowWeather";
 import { StormBoard } from "./StormBoard";
 import { StormLog } from "./StormLog";
 
@@ -44,6 +45,7 @@ export function SnowPage() {
   const show = (open: Record<string, string> = {}) => setParams({ ...at(tab), ...open }, { replace: true });
   const editing = params.get("edit") ?? (params.get("new") === "1" ? "new" : null);
   const weatherAt = params.get("weather");
+  const opened = params.get("open");
   const sites = useQuery({ queryKey: sitesKey(company.id), queryFn: () => loadSites(company.id) });
   const team = useQuery({ queryKey: ["team", company.id, "with-subs"], staleTime: 5 * 60_000, queryFn: () => api.get<Member[]>("/team?with_subs=1") });
   const bands = useQuery({ queryKey: bandsKey(company.id), queryFn: () => loadBands(company.id) });
@@ -51,13 +53,15 @@ export function SnowPage() {
   if (sites.isPending) return <ListPageSkeleton columns={4} tabs={3} />;
   const all = sites.data ?? [];
   const site = editing && editing !== "new" ? all.find((s) => s.job_id === editing) : null;
+  const openSite = opened ? all.find((s) => s.job_id === opened) : null;
   return (
     <>
       <PageHeader
         title="Snow"
         actions={
           <>
-            {all.some(located) && <Button icon="cloudSnow" onClick={() => show({ weather: all.find(located)!.job_id })}>Weather</Button>}
+            {/* The shop's weather, with a customer's a pick away; with no shop on the map, a customer's. */}
+            {(hasShop(company) || all.some(located)) && <Button icon="cloudSnow" onClick={() => show({ weather: hasShop(company) ? SHOP : all.find(located)!.job_id })}>Weather</Button>}
             {tab === "customers" && <Button icon="dollar" disabled={!bands.data} onClick={() => show({ prices: "1" })}>Standard storm prices</Button>}
             {/* The page's one green button, except on Storm with a storm to schedule: there that's the thing to do. */}
             <Button variant={tab === "storm" && all.length > 0 ? "secondary" : "primary"} icon="plus" onClick={() => show({ new: "1" })}>Add snow customer</Button>
@@ -72,23 +76,26 @@ export function SnowPage() {
       ) : tab === "log" ? (
         <StormLog />
       ) : tab === "customers" ? (
-        <Customers sites={all} team={team.data ?? []} onEdit={(jobId) => show({ edit: jobId })} onWeather={(jobId) => show({ weather: jobId })} />
+        <Customers sites={all} team={team.data ?? []} onOpen={(jobId) => show({ open: jobId })} />
       ) : (
-        <StormBoard sites={all} team={team.data ?? []} onEdit={(jobId) => show({ edit: jobId })} onWeather={(jobId) => show({ weather: jobId })} />
+        <StormBoard sites={all} team={team.data ?? []} onOpen={(jobId) => show({ open: jobId })} onWeather={(place) => show({ weather: place })} />
+      )}
+      {/* Edit, from a customer's popup, goes back to it. */}
+      {openSite && !editing && !weatherAt && (
+        <SnowSiteDetails key={openSite.job_id} site={openSite} team={team.data ?? []} onEdit={() => show({ open: openSite.job_id, edit: openSite.job_id })} onWeather={() => show({ weather: openSite.job_id })} onClose={() => show()} />
       )}
       {editing && (editing === "new" || site) && (
-        <SnowSiteDialog key={editing} site={site ?? null} team={(team.data ?? []).filter((m) => m.active || site?.people.some((p) => p.user_id === m.user_id))} onClose={() => show()} />
+        <SnowSiteDialog key={editing} site={site ?? null} team={(team.data ?? []).filter((m) => m.active || site?.people.some((p) => p.user_id === m.user_id))} onClose={() => show(openSite ? { open: openSite.job_id } : {})} />
       )}
       {params.get("prices") === "1" && bands.data && <StandardPricesDialog saved={bands.data} onClose={() => show()} />}
-      {weatherAt && <WeatherDialog sites={all} jobId={weatherAt} onPick={(jobId) => show({ weather: jobId })} onClose={() => show()} />}
+      {weatherAt && <WeatherDialog sites={all} place={weatherAt} onPick={(place) => show({ weather: place })} onClose={() => show()} />}
     </>
   );
 }
 
 /** The snow customers as they're set up: what sends the plow and the salt, how each is served, who works it and what a storm bills. */
-function Customers({ sites: all, team, onEdit, onWeather }: { sites: Site[]; team: Member[]; onEdit: (jobId: string) => void; onWeather: (jobId: string) => void }) {
+function Customers({ sites: all, team, onOpen }: { sites: Site[]; team: Member[]; onOpen: (jobId: string) => void }) {
   const [search, setSearch] = useState("");
-  const [open, setOpen] = useState<string | null>(null);
   const term = useDeferredValue(search.trim().toLowerCase());
   const members = new Map(team.map((m) => [m.user_id, m]));
   const unlocated = all.filter((s) => !s.job.paused_at && !located(s));
@@ -132,10 +139,9 @@ function Customers({ sites: all, team, onEdit, onWeather }: { sites: Site[]; tea
                 const people = s.people.map((p) => nameOf(members.get(p.user_id)));
                 const prices = tiersOf(s).length;
                 return (
-                  <Fragment key={s.job_id}>
-                  <tr className="row-link" onClick={() => setOpen(open === s.job_id ? null : s.job_id)}>
+                  <tr key={s.job_id} className="row-link" onClick={() => onOpen(s.job_id)}>
                     <td>
-                      <SiteName site={s} open={open === s.job_id} onToggle={() => setOpen(open === s.job_id ? null : s.job_id)} />
+                      <Link className="cell-link" to={`/snow?tab=customers&open=${s.job_id}`} replace onClick={(e) => e.stopPropagation()}>{customer(s)}</Link>
                       <div className="muted small">{addressLine(s.job.property) || s.job.title}</div>
                       {s.job.paused_at ? <div style={{ marginTop: 4 }}><StatusPill label="Paused" tone="muted" /></div> : !located(s) && <div style={{ marginTop: 4 }}><StatusPill label="No map location" tone="danger" /></div>}
                     </td>
@@ -157,8 +163,6 @@ function Customers({ sites: all, team, onEdit, onWeather }: { sites: Site[]; tea
                       {prices ? `By depth, ${prices} ${prices === 1 ? "price" : "prices"}` : "The job's price, each push"}
                     </td>
                   </tr>
-                  {open === s.job_id && <SnowSiteDetails site={s} colSpan={5} onEdit={() => onEdit(s.job_id)} onWeather={() => onWeather(s.job_id)} />}
-                  </Fragment>
                 );
               })}
             </tbody>

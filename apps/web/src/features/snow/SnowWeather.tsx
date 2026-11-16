@@ -1,9 +1,10 @@
 /**
- * Snow → Weather: one snow customer's weather in detail, in a popup over the Snow page, laid out the
+ * Snow → Weather: the weather in detail at the business's own shop, or at a snow customer picked
+ * there, in a popup over the Snow page, laid out the
  * way phone weather apps are: a sky the color of the weather with the temperature large on it, then
  * cards for the hours, the snow piling up, the days ahead, and the wind and cold, each arriving a
  * beat after the last. What a plow run is planned by comes first: the snow from 6pm today through
- * tomorrow, which the alerts go by, against the customer's trigger. On a phone it's a sheet from the
+ * tomorrow, which the alerts go by, against the customer's trigger (the shop has none). On a phone it's a sheet from the
  * bottom of the screen, a column of the same cards.
  *
  * The forecast comes through the API (GET /api/snow/weather, PlaceWeather), from whichever source
@@ -22,6 +23,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
 import { addDaysIso, addressLine, formatDay } from "@/lib/format";
+import { shopPlace } from "@/lib/maps";
 import { useSession } from "@/lib/session";
 import { customer, inches, located, type Site } from "./snowData";
 import styles from "./SnowWeather.module.css";
@@ -98,29 +100,42 @@ function Card({ icon, title, children, className }: { icon: IconName; title: str
 /** Where the forecasts come from, by source, for the credit under the sky. */
 export const SOURCE_LINKS = { open_meteo: "https://open-meteo.com/", open_meteo_commercial: "https://open-meteo.com/", nws: "https://www.weather.gov/" } as const;
 
-/** The weather at one of the snow customers (`jobId`), with the others a pick away. */
-export function WeatherDialog({ sites, jobId, onPick, onClose }: { sites: Site[]; jobId: string; onPick: (jobId: string) => void; onClose: () => void }) {
+/** In place of a job: the business's own shop (Settings → Company). */
+export const SHOP = "shop";
+/** Whether the shop is on the map, so its weather can be had. */
+export const hasShop = (company: Parameters<typeof shopPlace>[0]) => shopPlace(company)?.lat != null;
+/** The weather at `place`, a job's or the shop's (GET /api/snow/weather), kept under one key wherever it's shown. */
+export const weatherQuery = (companyId: string, place: string | null) => ({
+  enabled: Boolean(place),
+  queryKey: ["snow", companyId, "weather", place],
+  staleTime: 15 * 60_000,
+  queryFn: () => api.get<Weather>(place === SHOP ? "/snow/weather" : `/snow/weather?job=${place}`),
+});
+
+/**
+ * The weather at the shop, or at one of the snow customers (`place`: its job, or SHOP), with the
+ * others a pick away. With no shop on the map it's a customer's.
+ */
+export function WeatherDialog({ sites, place, onPick, onClose }: { sites: Site[]; place: string; onPick: (place: string) => void; onClose: () => void }) {
   const { company } = useSession();
+  const shop = hasShop(company) ? shopPlace(company) : null;
   const places = sites.filter(located).sort((a, b) => customer(a).localeCompare(customer(b)));
-  const site = places.find((s) => s.job_id === jobId) ?? places[0];
-  const weather = useQuery({
-    enabled: Boolean(site),
-    queryKey: ["snow", company.id, "weather", site?.job_id],
-    staleTime: 15 * 60_000,
-    queryFn: () => api.get<Weather>(`/snow/weather?job=${site!.job_id}`),
-  });
+  const site = places.find((s) => s.job_id === place) ?? (shop ? undefined : places[0]);
+  const at = site ? site.job_id : shop ? SHOP : null;
+  const weather = useQuery(weatherQuery(company.id, at));
   const w = weather.data;
   const backdrop = w ? BACKDROPS[SKY[w.now.sky].backdrop][w.now.night ? "night" : "day"] : null;
   return (
     <Dialog open onClose={onClose} title="Weather" size="xl" focusField={false} className={styles.dialog}>
       <div className={styles.body}>
-        {places.length > 1 && (
-          <select className="select" value={site?.job_id} onChange={(e) => onPick(e.target.value)} aria-label="Snow customer">
+        {places.length + (shop ? 1 : 0) > 1 && (
+          <select className="select" value={at ?? ""} onChange={(e) => onPick(e.target.value)} aria-label="Whose weather">
+            {shop && <option value={SHOP}>Your shop</option>}
             {places.map((s) => <option key={s.job_id} value={s.job_id}>{customer(s)}{s.job.property?.city ? ` · ${s.job.property.city}` : ""}</option>)}
           </select>
         )}
-        {!site ? (
-          <p className="muted">The weather is shown at a snow customer's property, once its address is on the map.</p>
+        {!at ? (
+          <p className="muted">The weather is shown at your shop, once its address is in Settings → Company, and at a snow customer's property, once its address is on the map.</p>
         ) : weather.error && !w ? (
           <ErrorState error={weather.error} onRetry={() => weather.refetch()} />
         ) : !w || !backdrop ? (
@@ -128,13 +143,13 @@ export function WeatherDialog({ sites, jobId, onPick, onClose }: { sites: Site[]
         ) : (
           <>
             {/* Keyed by the place, so picking another plays the arrival again. */}
-            <div key={site.job_id} className={styles.sky} style={{ "--sky-top": backdrop[0], "--sky-bottom": backdrop[1], "--sky-glow": backdrop[2] } as CSSProperties}>
-              <Now w={w} name={customer(site)} address={addressLine(site.job.property)} />
-              <SnowComing w={w} trigger={Number(site.trigger_in)} jobId={site.job_id} />
+            <div key={at} className={styles.sky} style={{ "--sky-top": backdrop[0], "--sky-bottom": backdrop[1], "--sky-glow": backdrop[2] } as CSSProperties}>
+              <Now w={w} name={site ? customer(site) : "Your shop"} address={addressLine(site ? site.job.property : { line1: shop?.line1, city: shop?.city })} />
+              <SnowComing w={w} trigger={site ? Number(site.trigger_in) : null} jobId={site?.job_id} />
               <div className={styles.columns}>
                 <div className={styles.stack}>
                   <Hours w={w} />
-                  <PilingUp w={w} trigger={Number(site.trigger_in)} />
+                  <PilingUp w={w} trigger={site ? Number(site.trigger_in) : null} />
                 </div>
                 <Days w={w} />
               </div>
@@ -167,15 +182,15 @@ function Now({ w, name, address }: { w: Weather; name: string; address: string }
   );
 }
 
-/** The number the alerts go by, as a bar that reaches the customer's trigger or doesn't. */
-function SnowComing({ w, trigger, jobId }: { w: Weather; trigger: number; jobId: string }) {
+/** The number the alerts go by, as a bar that reaches the customer's trigger or doesn't. The shop has no trigger (null), so no bar. */
+function SnowComing({ w, trigger, jobId }: { w: Weather; trigger: number | null; jobId?: string }) {
   const coming = w.snow_by_tomorrow_in;
   // Today's snow, counted the same way (from 6pm last night): a storm that's here now was
   // yesterday's "by tomorrow night". Today is the business's, as tomorrow is.
   const today = w.snow_by_day[addDaysIso(w.tomorrow, -1)] ?? 0;
-  const reached = coming != null && coming >= trigger;
+  const reached = trigger != null && coming != null && coming >= trigger;
   // Room past the trigger, so a bar that reaches it visibly passes the line.
-  const full = Math.max(trigger * 1.6, (coming ?? 0) * 1.15, 0.5);
+  const full = Math.max((trigger ?? 0) * 1.6, (coming ?? 0) * 1.15, 0.5);
   return (
     <section className={`${styles.glass} ${styles.snow}`}>
       <div>
@@ -186,6 +201,7 @@ function SnowComing({ w, trigger, jobId }: { w: Weather; trigger: number; jobId:
           <div className={styles.note}>{[today >= 0.05 && `Today's snow: ${inches(today)}`, w.now.snow_depth_in ? `about ${inches(w.now.snow_depth_in)} on the ground now` : null].filter(Boolean).join(" · ")}</div>
         )}
       </div>
+      {trigger != null && (
       <div>
         <div className={styles.gauge} role="img" aria-label={coming == null ? "No forecast" : `${inches(coming)} forecast against a trigger of ${inches(trigger)}`}>
           {coming != null && coming > 0 && <span className={styles.gaugeFill} data-reached={reached || undefined} style={{ width: `${Math.min(100, (coming / full) * 100)}%` }} />}
@@ -196,6 +212,7 @@ function SnowComing({ w, trigger, jobId }: { w: Weather; trigger: number; jobId:
           <span>Trigger {inches(trigger)} · <Link to={`/snow?edit=${jobId}`} replace>Change</Link></span>
         </div>
       </div>
+      )}
     </section>
   );
 }
@@ -230,29 +247,29 @@ function Hours({ w }: { w: Weather }) {
   );
 }
 
-/** The snow adding up from now, hour by hour, with the trigger as a line it crosses or stays under. */
-function PilingUp({ w, trigger }: { w: Weather; trigger: number }) {
+/** The snow adding up from now, hour by hour, with the trigger (a customer's) as a line it crosses or stays under. */
+function PilingUp({ w, trigger }: { w: Weather; trigger: number | null }) {
   let total = 0;
   const data = w.hours.map((h, i) => {
     total += h.snow_in;
     return { at: i === 0 ? "Now" : when(h), total: Math.round(total * 100) / 100 };
   });
-  const crossed = data.find((d) => d.total >= trigger);
-  const top = Math.ceil(Math.max(total, trigger) * 1.2 * 2) / 2;
+  const crossed = trigger == null ? undefined : data.find((d) => d.total >= trigger);
+  const top = Math.ceil(Math.max(total, trigger ?? 0) * 1.2 * 2) / 2;
   if (total <= 0) return null;
   return (
     <Card icon="snow" title="Snow piling up">
       <p className={styles.summary}>
-        {crossed ? `From now, it passes the ${inches(trigger)} trigger ${crossed.at === "Now" ? "right away" : `around ${crossed.at}`} and reaches ${inches(total)} in 48 hours.` : `From now, ${inches(total)} in 48 hours: under the ${inches(trigger)} trigger.`}
+        {trigger == null ? `From now, ${inches(total)} in 48 hours.` : crossed ? `From now, it passes the ${inches(trigger)} trigger ${crossed.at === "Now" ? "right away" : `around ${crossed.at}`} and reaches ${inches(total)} in 48 hours.` : `From now, ${inches(total)} in 48 hours: under the ${inches(trigger)} trigger.`}
       </p>
       <div className={styles.chart}>
-        <ChartContainer config={{ total: { label: "Snow since now", color: "#fff" } }} label="Snow adding up over the next 48 hours, against the trigger" height={190}>
+        <ChartContainer config={{ total: { label: "Snow since now", color: "#fff" } }} label={`Snow adding up over the next 48 hours${trigger == null ? "" : ", against the trigger"}`} height={190}>
           <AreaChart data={data} margin={{ top: 14, right: 0, bottom: 0, left: 4 }}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="at" tickLine={false} axisLine={false} tickMargin={8} interval="preserveStartEnd" minTickGap={28} />
             <YAxis orientation="right" width={48} tickLine={false} axisLine={false} tickMargin={8} tickCount={4} domain={[0, top]} tickFormatter={(n: number) => `${n} in`} />
             <ChartTooltip cursor={{ stroke: "rgba(255, 255, 255, 0.5)" }} isAnimationActive={false} content={<ChartTooltipContent labelKey="at" format={inches} indicator="line" />} />
-            <ReferenceLine y={trigger} stroke="#ffcf70" strokeWidth={2} strokeDasharray="5 5" label={{ value: `Trigger ${inches(trigger)}`, position: "insideBottomLeft", fill: "rgba(255, 255, 255, 0.9)", fontSize: 11, fontWeight: 700 }} />
+            {trigger != null && <ReferenceLine y={trigger} stroke="#ffcf70" strokeWidth={2} strokeDasharray="5 5" label={{ value: `Trigger ${inches(trigger)}`, position: "insideBottomLeft", fill: "rgba(255, 255, 255, 0.9)", fontSize: 11, fontWeight: 700 }} />}
             <Area type="monotone" dataKey="total" stroke="var(--color-total)" strokeWidth={2} fill="var(--color-total)" fillOpacity={0.14} dot={false} activeDot={{ r: 4, stroke: "rgba(8, 15, 30, 0.6)", strokeWidth: 2 }} {...CHART_MOTION} />
           </AreaChart>
         </ChartContainer>

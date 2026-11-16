@@ -150,7 +150,7 @@ async function scheduleJob(ctx: ToolContext, jobId: string, upcoming = false): P
 
 const jobFields = {
   title: z.string().trim().min(1).max(200),
-  instructions: z.string().trim().max(5000).nullable().optional().describe("Notes for the crew on every visit."),
+  instructions: z.string().trim().max(5000).nullable().optional().describe("Notes for the crew on every visit. Plain text shown with light formatting: start a line with \"- \" for a list item or \"# \" for a heading, and **bold** what matters. Short lines, not one long paragraph."),
   repeat: repeatInput.optional().describe("Makes it a recurring job: how often it repeats."),
   first_date: date.optional().describe("A recurring job's first visit date (default today)."),
   ends_on: date.nullable().optional().describe("Last date it repeats; leave out to keep going."),

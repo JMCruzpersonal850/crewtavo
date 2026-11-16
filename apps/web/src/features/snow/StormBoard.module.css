@@ -26,8 +26,15 @@
 .kicker { color: rgba(255, 255, 255, 0.78); font-size: var(--fs-12); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .amount { font-size: clamp(34px, 4.4vw, 46px); font-weight: 600; line-height: 1.1; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
 .story { min-height: 1.4em; margin-top: 4px; color: rgba(255, 255, 255, 0.9); font-size: var(--fs-14); text-wrap: pretty; }
+/* The way into the weather, and under it whose hours the sentence and the bars are, the shop's or a customer's: a pill on the sky, with the house select's arrow in white. */
+.where { display: grid; justify-items: end; justify-self: end; gap: 4px; min-width: 0; }
+.place { max-width: 100%; padding: 3px 28px 3px 10px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 999px; background: rgba(8, 15, 30, 0.3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; color: #fff; font: inherit; font-weight: 600; text-overflow: ellipsis; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.place:hover { border-color: rgba(255, 255, 255, 0.55); }
+.place:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* The list it opens is the browser's own, on its own colors. */
+.place option { background: Canvas; color: CanvasText; }
 
-/* Hour by hour, where the storm is deepest. Its ticks read on the sky. */
+/* Hour by hour at the place picked. Its ticks read on the sky. */
 .hourly { display: grid; gap: 2px; min-width: 0; }
 .hourly :global(.recharts-cartesian-axis-tick-value) { fill: rgba(255, 255, 255, 0.78); }
 .more { justify-self: end; display: inline-flex; align-items: center; gap: 2px; padding: 4px 0 4px 8px; border: 0; background: none; color: #fff; font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
@@ -45,7 +52,7 @@
 .alert p { margin: 0; padding: 0 14px 10px; color: rgba(255, 255, 255, 0.9); }
 .fine { font-size: var(--fs-12); }
 
-.credit { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; color: rgba(255, 255, 255, 0.78); font-size: var(--fs-12); }
+.credit { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 4px 16px; color: rgba(255, 255, 255, 0.78); font-size: var(--fs-12); }
 
 @media (max-width: 760px) {
   .coming { grid-template-columns: 1fr; }

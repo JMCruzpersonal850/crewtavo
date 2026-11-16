@@ -16,11 +16,13 @@ import { EntityStatus } from "@/components/ui/StatusPill";
 import { api, searchTerm, supabase, unwrap } from "@/lib/api";
 import { BULK_CHUNK, bulkOutcome, inChunks, reportBulk, type BulkResult } from "@/lib/bulk";
 import { errorMessage } from "@/lib/errors";
-import { formatDate, formatMoney, todayIn } from "@/lib/format";
+import { addDaysIso, formatDate, formatMoney, todayIn } from "@/lib/format";
 import { titleOrClientFilter, useStatusCounts } from "@/lib/listing";
 import { firstRows } from "@/lib/paging";
 import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
+import { useSchedulingRights } from "../schedule/myCrews";
+import { snowJobs } from "../snow/snowData";
 import { ChangePricesDialog } from "./ChangePricesDialog";
 import { NewJobDialog, useCrews } from "./JobDialogs";
 
@@ -92,6 +94,8 @@ export function JobsPage() {
   const today = todayIn(company.timezone);
   const queryClient = useQueryClient();
   const [assigning, setAssigning] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const canDispatch = useSchedulingRights().canDispatch;
   // Change prices across repeating jobs: the office with Quotes and sales (the database checks the same).
   const canChangePrices = hasRole(session, "admin", "office") && can(session, "sales");
   const [pricing, setPricing] = useState(false);
@@ -124,13 +128,27 @@ export function JobsPage() {
     queryFn: () => loadJobs({ companyId: company.id, states, kind, term, below: showBelow }, limit),
   });
 
-  // Picking several: archiving them and setting their crew, as a job's menu and details do.
+  // Picking several: archiving them, pausing and resuming them, and setting their crew, as a job's menu and details do.
   const selection = useSelection(canSell ? (jobs.data?.rows ?? []).map((j) => j.id) : [], `${showBelow ? "below" : filter}|${kind}|${term}`);
 
   if (jobs.isPending) return <ListPageSkeleton columns={5} tabs={FILTERS.length} />;
   const rows = jobs.data?.rows ?? [];
   const total = jobs.data?.total ?? 0;
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["jobs", company.id] });
+  // Of the picked: the repeating jobs that are active, which can pause, and the ones paused, which can resume.
+  const picked = rows.filter((j) => selection.has(j.id));
+  const canPause = picked.filter((j) => j.kind === "recurring" && (FILTERS[0].states as readonly string[]).includes(j.job_state ?? ""));
+  const paused = picked.filter((j) => j.job_state === "paused");
+  /** The picked jobs that are paused start again, as Resume job on each one's page. */
+  const resume = async () => {
+    const numbers = new Map(paused.map((j) => [j.id, j.number]));
+    if (!(await confirm({ title: `Resume ${plural(paused.length, "job")}?`, body: "Their visits go back on the schedule from today.", confirmLabel: "Resume" }))) return;
+    selection.clear();
+    const result = await inChunks([...numbers.keys()], async (chunk) => unwrap(await supabase().from("jobs").update({ paused_at: null }).in("id", chunk).not("paused_at", "is", null).select("id")).map((j) => j.id));
+    if (canDispatch) await remakeVisits(result.done);
+    reportBulk(result, { verb: "resumed", one: "job", many: "jobs", name: (id) => `#${numbers.get(id) ?? "?"}` }, { tone: "job" });
+    void refresh();
+  };
   const archive = async () => {
     const ids = selection.ids;
     const numbers = new Map(rows.map((j) => [j.id, j.number]));
@@ -206,6 +224,8 @@ export function JobsPage() {
           {canSell && (
             <SelectionBar selection={selection} noun="jobs">
               <Button size="sm" icon="users" onClick={() => setAssigning(true)}>Assign crew</Button>
+              {canPause.length > 0 && <Button size="sm" icon="pause" onClick={() => setPausing(true)}>Pause</Button>}
+              {paused.length > 0 && <Button size="sm" icon="play" onClick={() => void resume()}>Resume</Button>}
               {filter !== "archived" && <Button size="sm" icon="archive" onClick={() => void archive()}>Archive</Button>}
             </SelectionBar>
           )}
@@ -254,6 +274,19 @@ export function JobsPage() {
       )}
       <NewJobDialog open={params.get("new") === "1"} onClose={() => setParams({}, { replace: true })} onCreated={(id) => navigate(`/jobs/${id}`)} />
       {pricing && <ChangePricesDialog picked={selection.ids} onClose={() => setPricing(false)} onChanged={() => void refresh()} />}
+      {pausing && (
+        <PauseJobsDialog
+          jobs={canPause}
+          left={picked.length - canPause.length}
+          canSchedule={canDispatch}
+          onClose={() => setPausing(false)}
+          onDone={() => {
+            setPausing(false);
+            selection.clear();
+            void refresh();
+          }}
+        />
+      )}
       {assigning && (
         <AssignCrewDialog
           jobs={rows.filter((j) => selection.has(j.id))}
@@ -271,6 +304,64 @@ export function JobsPage() {
 
 /** Upcoming visits refreshed at once: each is one call that works out the job's whole schedule. */
 const VISIT_CALLS = 4;
+
+/** These jobs' visits brought in line with their schedules now (generate-visits). One that fails is left to the nightly run, which does the same. */
+async function remakeVisits(jobIds: readonly string[]) {
+  for (let i = 0; i < jobIds.length; i += VISIT_CALLS) await Promise.allSettled(jobIds.slice(i, i + VISIT_CALLS).map((id) => api.post(`/jobs/${id}/generate-visits`)));
+}
+
+/**
+ * Pause the picked jobs at once (the mowing season is over), as Pause job on each one's page:
+ * upcoming visits come off and nothing is made or billed until they resume, by hand or on the day
+ * given. `jobs` are the picked ones that can pause, repeating and active; `left` how many picked
+ * can't. Snow customers among them are left out: Snow doesn't check a paused job, which is rarely
+ * what ending a season means, so one of those is paused from its own page, where it says so.
+ */
+function PauseJobsDialog({ jobs, left, canSchedule, onClose, onDone }: { jobs: Array<{ id: string; number: number | null }>; left: number; canSchedule: boolean; onClose: () => void; onDone: () => void }) {
+  const { company } = useSession();
+  const tomorrow = addDaysIso(todayIn(company.timezone), 1);
+  const [resumeOn, setResumeOn] = useState("");
+  const name = (id: string) => `#${jobs.find((j) => j.id === id)?.number ?? "?"}`;
+  const snow = useQuery({ queryKey: ["snow", company.id, "jobs", jobs.map((j) => j.id)], queryFn: () => snowJobs(jobs.map((j) => j.id)) });
+  const kept = jobs.filter((j) => snow.data?.has(j.id));
+  const going = jobs.filter((j) => !snow.data?.has(j.id));
+  const pause = useMutation({
+    meta: { inline: true },
+    mutationFn: async () => {
+      const result = await inChunks(going.map((j) => j.id), async (chunk) =>
+        unwrap(await supabase().from("jobs").update({ paused_at: new Date().toISOString(), resume_on: resumeOn || null }).in("id", chunk).eq("kind", "recurring").eq("status", "active").is("paused_at", null).select("id")).map((j) => j.id));
+      // Without the right to schedule the team, the nightly run takes the visits off.
+      if (canSchedule) await remakeVisits(result.done);
+      return result;
+    },
+    onSuccess: (result) => {
+      reportBulk(result, { verb: "paused", one: "job", many: "jobs", name }, { tone: "job" });
+      onDone();
+    },
+  });
+  return (
+    <Dialog open onClose={onClose} title="Pause jobs" description="Upcoming visits come off the schedule, and no visits, monthly invoices or plan charges are made while they're paused. Visits with work logged stay.">
+      <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (snow.data && going.length) pause.mutate(); }}>
+        <Field label="Resume on" optional hint="The day they start again by themselves, like the first day of next season. Leave it empty to resume them yourself.">
+          <input className="input" type="date" value={resumeOn} min={tomorrow} onChange={(e) => setResumeOn(e.target.value)} />
+        </Field>
+        {kept.length > 0 && (
+          <div className="callout callout-warning" role="status">
+            {kept.length === 1 ? `Job ${name(kept[0]!.id)} is a snow customer and is left out.` : `${kept.length} snow customers are left out (${kept.slice(0, 5).map((j) => name(j.id)).join(", ")}${kept.length > 5 ? ` and ${kept.length - 5} more` : ""}).`} Snow doesn't check a paused job. To pause one anyway, use Pause job on its own page.
+          </div>
+        )}
+        {left > 0 && <span className="muted small" role="status">{plural(left, "job")} picked {left === 1 ? "isn't" : "aren't"} paused: only repeating jobs that are active can be.</span>}
+        <FormError error={pause.error ?? snow.error} />
+        <div className="form-actions">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" icon="pause" loading={pause.isPending} disabled={!snow.data || !going.length}>
+            {snow.data && !going.length ? "Nothing to pause" : `Pause ${plural(snow.data ? going.length : jobs.length, "job")}`}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
 
 /**
  * One crew for the picked jobs (default_crew_id), as a job's details set it. A recurring job's
