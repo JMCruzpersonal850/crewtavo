@@ -6,7 +6,7 @@ import { supabase, unwrap } from "@/lib/api";
 export { inchesText as inches } from "@crewtavo/core/snow";
 
 const FIELDS =
-  "job_id, trigger_in, salt_trigger_in, repeat_in, clear_by, priority, tiers, tell_client, alerted_on, alerted_pushes, job:jobs!inner(id, number, title, status, paused_at, default_crew_id, client:clients(display_name), property:properties(line1, city, lat, lng), crew:crews(name, lead_user_id, members:crew_members(user_id))), people:snow_site_people(user_id)";
+  "job_id, trigger_in, salt_trigger_in, repeat_in, clear_by, priority, tiers, tell_client, alerted_on, alerted_pushes, job:jobs!inner(id, number, title, status, paused_at, default_crew_id, instructions, client:clients(display_name), property:properties(line1, city, lat, lng), crew:crews(name, lead_user_id, members:crew_members(user_id))), people:snow_site_people(user_id)";
 
 /** The business's snow customers: its active jobs the Snow page keeps triggers for. */
 export const loadSites = async (companyId: string) =>

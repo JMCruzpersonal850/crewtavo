@@ -6,12 +6,12 @@
  * that nobody scheduled, to schedule for today. Then the storm coming, counted
  * and piled by what the office still has to do: to schedule, to check, scheduled, and not this storm
  * (storm.ts). A subcontractor's answer to "can you go out?" sits beside their name on the customers
- * they work.
+ * they work. A customer's row opens to its address, notes, photos and files (SnowSiteDetails.tsx).
  */
 import { clockText, snowPlan, type SnowPlan } from "@crewtavo/core/snow";
 import { WEATHER_SOURCE_LABELS, type WeatherSource } from "@crewtavo/core/weather";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDeferredValue, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useDeferredValue, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/Button";
@@ -25,6 +25,7 @@ import { api, supabase, unwrap } from "@/lib/api";
 import { addDaysIso, addressLine, formatDateTime, formatDay, todayIn } from "@/lib/format";
 import { can, useSession } from "@/lib/session";
 import { customer, inches, located, nameOf, rulesOf, type Member, type Site } from "./snowData";
+import { SiteName, SnowSiteDetails } from "./SnowSiteDetails";
 import { BACKDROPS, SKY, SOURCE_LINKS, SkyArt, hourLabel, snowStory, when, type Weather } from "./SnowWeather";
 import { progressOf, standingOf, STORM_GROUPS, workText, type StormGroup } from "./storm";
 import styles from "./StormBoard.module.css";
@@ -53,6 +54,8 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const term = useDeferredValue(search.trim().toLowerCase());
+  // The customer opened up under its row (SnowSiteDetails), one at a time.
+  const [open, setOpen] = useState<string | null>(null);
   const members = new Map(team.map((m) => [m.user_id, m]));
   const forecast = useQuery({ queryKey: ["snow", company.id, "forecast"], staleTime: 30 * 60_000, queryFn: () => api.get<Forecast>("/snow/forecast") });
   const date = forecast.data?.date;
@@ -136,14 +139,16 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
     return <>{s.job.crew.name}{people.length > 0 && <div className="muted small">{names}</div>}</>;
   };
 
+  const toggle = (jobId: string) => setOpen(open === jobId ? null : jobId);
   const row = ({ site: s, snow, standing }: Row) => {
     const rules = rulesOf(s);
     // Room past the plow's trigger, so a bar that reaches it visibly passes the line.
     const full = Math.max(rules.trigger_in * 1.25, (snow ?? 0) * 1.1, 0.5);
     return (
-      <tr key={s.job_id} className="row-link" onClick={() => onEdit(s.job_id)}>
+      <Fragment key={s.job_id}>
+      <tr className="row-link" onClick={() => toggle(s.job_id)}>
         <td className={styles.who}>
-          <Link className="cell-link" to={`/snow?edit=${s.job_id}`} replace onClick={(e) => e.stopPropagation()}>{customer(s)}</Link>
+          <SiteName site={s} open={open === s.job_id} onToggle={() => toggle(s.job_id)} />
           <div className="muted small">{addressLine(s.job.property) || s.job.title}</div>
         </td>
         <td>
@@ -174,6 +179,8 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
           {standing.note && <div className="muted small">{standing.note}</div>}
         </td>
       </tr>
+      {open === s.job_id && <SnowSiteDetails site={s} colSpan={6} onEdit={() => onEdit(s.job_id)} onWeather={() => onWeather(s.job_id)} />}
+      </Fragment>
     );
   };
 
@@ -223,7 +230,7 @@ export function StormBoard({ sites: all, team, onEdit, onWeather }: { sites: Sit
           )}
         </div>
       )}
-      <Today sites={all} crewCell={crewCell} snow={forecast.data?.today} />
+      <Today sites={all} crewCell={crewCell} snow={forecast.data?.today} onEdit={onEdit} onWeather={onWeather} />
       <div className="toolbar">
         <div className="input-group">
           <span className="addon"><Icon name="search" size={16} /></span>
@@ -344,9 +351,10 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
  * customer today's snow calls for that has fewer visits than that (it came up overnight, or grew),
  * to schedule for today in one click. Nothing with no storm today.
  */
-function Today({ sites, crewCell, snow }: { sites: Site[]; crewCell: (s: Site) => ReactNode; snow: Forecast["today"] }) {
+function Today({ sites, crewCell, snow, onEdit, onWeather }: { sites: Site[]; crewCell: (s: Site) => ReactNode; snow: Forecast["today"]; onEdit: (jobId: string) => void; onWeather: (jobId: string) => void }) {
   const { company } = useSession();
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState<string | null>(null);
   const today = todayIn(company.timezone);
   const storm = useQuery({
     queryKey: ["snow", company.id, "today", today],
@@ -407,9 +415,11 @@ function Today({ sites, crewCell, snow }: { sites: Site[]; crewCell: (s: Site) =
         <thead><tr><th style={{ width: "28%" }}>Customer</th><th style={{ width: "18%" }}>Work</th><th style={{ width: "11%" }}>Clear by</th><th style={{ width: "19%" }}>Crew and people</th><th style={{ width: "24%" }}>Status</th></tr></thead>
         <tbody>
           {ordered.map(({ jobId, site, visits, more, fell, work, name, address, progress }) => (
-            <tr key={jobId}>
+            <Fragment key={jobId}>
+            {/* One that's still a snow customer opens up; one that isn't any more goes to its job. */}
+            <tr className={site ? "row-link" : undefined} onClick={() => site && setOpen(open === jobId ? null : jobId)}>
               <td className={styles.who}>
-                <Link className="cell-link" to={`/jobs/${jobId}`}>{name}</Link>
+                {site ? <SiteName site={site} open={open === jobId} onToggle={() => setOpen(open === jobId ? null : jobId)} /> : <Link className="cell-link" to={`/jobs/${jobId}`}>{name}</Link>}
                 <div className="muted small">{address}</div>
               </td>
               <td>
@@ -424,9 +434,11 @@ function Today({ sites, crewCell, snow }: { sites: Site[]; crewCell: (s: Site) =
                 {!visits.length ? fell != null && <div className="muted small">{inches(fell)} today, and nobody's scheduled</div>
                   : (progress.late || progress.note) && <div className="muted small">{[progress.late && (progress.status === "scheduled" ? "Not started" : statusText("visit", progress.status)), progress.note].filter(Boolean).join(" · ")}</div>}
                 {visits.length > 0 && more > 0 && <div className="small" style={{ color: "var(--warning)" }}>The storm grew: {more} more to schedule</div>}
-                {visits.map((v, i) => v.status === "completed" && <div key={v.id} className="small"><Link to={`/snow/report/${v.id}`}>{visits.length > 1 ? `Report ${i + 1}` : "Service report"}</Link></div>)}
+                {visits.map((v, i) => v.status === "completed" && <div key={v.id} className="small"><Link to={`/snow/report/${v.id}`} onClick={(e) => e.stopPropagation()}>{visits.length > 1 ? `Report ${i + 1}` : "Service report"}</Link></div>)}
               </td>
             </tr>
+            {site && open === jobId && <SnowSiteDetails site={site} colSpan={5} onEdit={() => onEdit(jobId)} onWeather={() => onWeather(jobId)} />}
+            </Fragment>
           ))}
         </tbody>
       </table>

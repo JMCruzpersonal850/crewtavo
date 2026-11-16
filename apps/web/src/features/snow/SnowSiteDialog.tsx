@@ -1,7 +1,8 @@
 /**
  * Make a job a snow customer, or change one (Snow page): when the plow and the salt go out, how it's
  * served (how soon, how often in a long storm), who works it, what a storm bills, and whether the
- * client hears about it. Saved to snow_sites and snow_site_people; the crew is the job's own.
+ * client hears about it. Saved to snow_sites and snow_site_people; the crew and the instructions
+ * are the job's own.
  */
 import { standardTiers } from "@crewtavo/core/snow";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +34,8 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
   const [priority, setPriority] = useState(site?.priority ?? 2);
   const [crewId, setCrewId] = useState(site?.job.default_crew_id ?? "");
   const [tellClient, setTellClient] = useState(site?.tell_client ?? false);
+  // The job's own instructions: a job picked here brings what it has, so saving never clears them.
+  const [instructions, setInstructions] = useState(site?.job.instructions ?? "");
   // A storm's price by depth, as typed: the last row, with no "up to", covers anything deeper.
   const [tiers, setTiers] = useState(() => (site ? tiersOf(site) : []).map((t) => depthRow(t.up_to_in, t.price)));
   // The business's standard, and what one push bills this job, to fill them from.
@@ -45,7 +48,7 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
     queryKey: ["jobs", company.id, "snow-picker"],
     queryFn: async () => {
       const [all, taken] = await Promise.all([
-        supabase().from("jobs").select("id, number, title, default_crew_id, client:clients(display_name)").eq("company_id", company.id).eq("status", "active").order("title").limit(500),
+        supabase().from("jobs").select("id, number, title, default_crew_id, instructions, client:clients(display_name)").eq("company_id", company.id).eq("status", "active").order("title").limit(500),
         supabase().from("snow_sites").select("job_id").eq("company_id", company.id).limit(1000),
       ]);
       const snow = new Set(unwrap(taken).map((s) => s.job_id));
@@ -71,7 +74,7 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
       const priced = readDepths(tiers, "storm price").map((t) => ({ up_to_in: t.up_to_in, price: t.value }));
       const row = { trigger_in: plow, salt_trigger_in: saltAt, repeat_in: again, clear_by: clearBy || null, priority, tell_client: tellClient, tiers: priced };
       unwrap(site ? await supabase().from("snow_sites").update(row).eq("job_id", jobId) : await supabase().from("snow_sites").insert({ ...row, company_id: company.id, job_id: jobId }));
-      unwrap(await supabase().from("jobs").update({ default_crew_id: crewId || null }).eq("id", jobId));
+      unwrap(await supabase().from("jobs").update({ default_crew_id: crewId || null, instructions: instructions.trim() || null }).eq("id", jobId));
       const added = people.filter((u) => !before.includes(u));
       const removed = before.filter((u) => !people.includes(u));
       if (added.length) unwrap(await supabase().from("snow_site_people").insert(added.map((user_id) => ({ company_id: company.id, job_id: jobId, user_id }))));
@@ -103,7 +106,7 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
               {jobs.isPending && <div className="card-row"><Skeleton width="60%" /></div>}
               {shown.map((j) => (
                 <label key={j.id} className="card-row" style={{ cursor: "pointer" }}>
-                  <input type="radio" name="snow-job" checked={jobId === j.id} onChange={() => { setJobId(j.id); setCrewId(j.default_crew_id ?? ""); }} />
+                  <input type="radio" name="snow-job" checked={jobId === j.id} onChange={() => { setJobId(j.id); setCrewId(j.default_crew_id ?? ""); setInstructions(j.instructions ?? ""); }} />
                   <span className="grow"><strong>{j.client?.display_name ?? j.title}</strong><span className="muted small" style={{ display: "block" }}>Job #{j.number} · {j.title}</span></span>
                 </label>
               ))}
@@ -156,6 +159,9 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
               </label>
             ))}
           </div>
+        </Field>
+        <Field label="Instructions for the crew" optional hint="Where the snow goes, what to keep clear, who to call. They read these on the visit, and they're the job's own.">
+          <textarea className="textarea" value={instructions} onChange={(e) => setInstructions(e.target.value)} maxLength={5000} />
         </Field>
         <Field label="What a storm bills" hint="By how much fell: the storm's first visit bills this, and more pushes that day are included. With no prices here, each push bills the job's own lines.">
           <DepthRows rows={tiers} onChange={setTiers} money what="Storm price" addLabel="Price storms by depth" />
