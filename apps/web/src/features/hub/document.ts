@@ -6,6 +6,7 @@
  * agreement, sign), the contract filled in for the option picked, and the words the price range
  * page shows. No React here, so it's tested on its own.
  */
+import { AUTOPAY_YOURS_TO_PAY } from "@crewtavo/core/autopay";
 import { lateFeeNotice, type LateFee } from "@crewtavo/core/billing";
 import { depositFor, type ContractInput, type LibrarySection } from "@crewtavo/core/contracts";
 import { documentColor, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
@@ -297,6 +298,8 @@ export interface InvoiceView {
   late_fee?: LateFee | null;
   /** Servers that don't send these have no autopay: none of it shows. */
   autopay?: HubInvoiceAutopay | null;
+  /** Over the limit for their bank account, so it wasn't taken from it: the page says why it's theirs to pay. Older servers leave it out. */
+  yours_to_pay?: boolean;
   /** Offer "Paid. Pay automatically next time?" once it's paid. */
   save_card?: boolean;
   /** Offer a tip on the card the automatic charge was made to (only ever with `tips`). */
@@ -615,11 +618,20 @@ export function autopayPayNote(autopay: HubInvoiceAutopay | null | undefined): s
   return null;
 }
 
+/**
+ * Why an invoice on autopay is the client's to pay themselves: it's over the amount they agreed to
+ * have taken from their bank account (the server's `yours_to_pay`), in the words its email used.
+ * Null otherwise, and once nothing is owed.
+ */
+export const yoursToPayNote = (yours: boolean | null | undefined, balanceDue: number): string | null => (yours && Number(balanceDue) > 0 ? AUTOPAY_YOURS_TO_PAY : null);
+
 /** An invoice on the client's home: what's owed, and what autopay is doing on it. Servers before autopay send no `autopay`. */
 export interface OwedInvoice {
   status: string;
   balance_due: number;
   autopay?: HubInvoiceAutopay["status"] | null;
+  /** Over the limit for their bank account, so it's theirs to pay. Older servers leave it out. */
+  yours_to_pay?: boolean;
 }
 
 /**

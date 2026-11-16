@@ -18,7 +18,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { dateIn, formatDate, formatMoney, formatMoneyCents, formatTime } from "@/lib/format";
 import { toast } from "@/lib/toast";
-import { needsNewCard, waitingInvoices, type HubAutopay, type HubInvoiceAutopay } from "./document";
+import { needsNewCard, waitingInvoices, yoursToPayNote, type HubAutopay, type HubInvoiceAutopay } from "./document";
 import { AutopayView, CARD_REQUIRED, ON_HOLD_TEXT } from "./HubAutopay";
 
 export interface PortalVisit {
@@ -61,8 +61,8 @@ export interface ClientView {
     options?: { count: number; from: number } | null;
     valid_until: string | null; approved_at: string | null; link: string;
   }>;
-  /** `autopay`: what the automatic charge is doing on it. Servers that don't send it have none. */
-  invoices: Array<{ id: string; number: number; subject: string | null; status: string; total: number; balance_due: number; due_on: string | null; issued_on: string; link: string; autopay?: HubInvoiceAutopay["status"] | null }>;
+  /** `autopay`: what the automatic charge is doing on it. `yours_to_pay`: over the limit for their bank account, so it wasn't taken from it. Servers that don't send them have none. */
+  invoices: Array<{ id: string; number: number; subject: string | null; status: string; total: number; balance_due: number; due_on: string | null; issued_on: string; link: string; autopay?: HubInvoiceAutopay["status"] | null; yours_to_pay?: boolean }>;
   visits: PortalVisit[];
   past_visits: PortalVisit[];
   /** `auto`: charged automatically, to `card` ("Visa ending 4242"). Servers that don't send them have none. */
@@ -267,6 +267,7 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
               <strong className="hub-amount">{formatMoneyCents(i.balance_due)}</strong>
             </div>
             {needsNewCard(i) && <span className="hub-meta">We couldn't charge your card for this one.</span>}
+            {yoursToPayNote(i.yours_to_pay, i.balance_due) && <span className="hub-meta">{yoursToPayNote(i.yours_to_pay, i.balance_due)}</span>}
             <a className="hub-btn hub-btn-dark" href={i.link}><Icon name="lock" size={16} />Pay {formatMoneyCents(i.balance_due)}</a>
             {needsNewCard(i) && data.autopay && data.autopay.available !== false && <button type="button" className="hub-link" onClick={() => go("autopay")}>Update your card</button>}
           </article>

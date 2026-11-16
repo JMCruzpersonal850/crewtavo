@@ -17,6 +17,7 @@ import {
   listedLines,
   maybePrice,
   needsNewCard,
+  yoursToPayNote,
   optionLinesOf,
   pickedOption,
   promoShortfall,
@@ -422,6 +423,12 @@ describe("autopay on the Client Hub's invoices", () => {
     expect(autopayPayNote(visa("needs_client"))).toBe("We couldn't charge your Visa ending 4242 automatically. Pay below, or update your card.");
     for (const status of ["charging", "processing", "paid"] as const) expect(autopayPayNote(visa(status))).toBeNull();
     expect(autopayPayNote(null)).toBeNull();
+    // Over the amount they agreed to have taken from their bank account: theirs to pay, in the email's words, while it's owed.
+    expect(yoursToPayNote(true, 600)).toBe("This invoice is above the amount you agreed to have taken automatically, so it's yours to pay.");
+    expect(yoursToPayNote(true, 0)).toBeNull();
+    expect(yoursToPayNote(false, 600)).toBeNull();
+    // An older server says nothing about it.
+    expect(yoursToPayNote(undefined, 600)).toBeNull();
   });
 
   it("leaves what autopay is charging out of what's waiting on the client", () => {

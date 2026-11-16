@@ -88,6 +88,7 @@ import {
   TIP_MINIMUM,
   TIP_PERCENTS,
   trustBadges,
+  yoursToPayNote,
   unpickedGroup,
   websiteHref,
   type HubCompany,
@@ -1473,6 +1474,8 @@ function InvoiceHub({ token, data, onChanged, printing }: { token: string; data:
   const autopayLine = invoiceAutopayLine(autopay, tz, Number(inv.balance_due));
   // Not while a bank payment is on its way: it settles the invoice or bounces, and nothing is tried again meanwhile.
   const payNote = balance > 0 && !data.processing ? autopayPayNote(autopay) : null;
+  // Over the amount they agreed to have taken from their bank account: it wasn't, and Pay is how it's paid.
+  const yoursNote = data.processing ? null : yoursToPayNote(data.yours_to_pay, balance);
   // The invoice as it prints, with its contract (filled in by the server).
   const contract = hubInvoiceContract(data);
   const doc = { template: contractTemplate(hubTemplate(data), contract), company: hubLetterhead(data.company), data: invoiceDocument(data) };
@@ -1483,6 +1486,7 @@ function InvoiceHub({ token, data, onChanged, printing }: { token: string; data:
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)" }}>{balance > 0 ? `${formatMoneyCents(balance)} due` : writtenOff ? "Nothing due" : "Paid in full"}</h1>
         <span className={late ? "text-danger strong" : "muted"}>Issued {formatDate(inv.issued_on)}{inv.due_on ? ` · due ${formatDate(inv.due_on)}` : " · due on receipt"}</span>
         {autopayLine && <span className="muted" role={autopay?.status === "paid" ? undefined : "status"}>{autopayLine}</span>}
+        {yoursNote && <span className="muted">{yoursNote}</span>}
         <HubFieldList fields={inv.portal_fields} />
       </section>
       {offerSave && (
