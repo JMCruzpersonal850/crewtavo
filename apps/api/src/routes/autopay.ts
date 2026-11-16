@@ -18,7 +18,8 @@ import { runInBackground } from "../lib/background";
 import { appUrl, asJson, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
 import { adminClient } from "../lib/supabase";
-import { autopayStatus, chargeDueAutopay, INVITE_LIMIT_DETAIL, sendAutopayInvite } from "../services/autopay";
+import { autopayStatus, INVITE_LIMIT_DETAIL, sendAutopayInvite } from "../services/autopay";
+import { runAutopay } from "../services/bankLimit";
 import { cents } from "../services/stripe";
 
 export const autopay = new Hono<AppEnv>();
@@ -199,14 +200,19 @@ async function ownCharge(c: Context<AppEnv>, chargeId: string) {
   return must(await c.var.db.from("autopay_charges").select("id").eq("company_id", c.var.companyId).eq("id", chargeId).maybeSingle(), "Charge not found.");
 }
 
-/** Approve charge: one over the limit goes ahead now, and the task is run for the company straight away. */
+/**
+ * Approve charge: one over the limit goes ahead now, and the task is run for the company straight
+ * away. Never for a bank account over its limit: the database closes that charge instead and its
+ * invoice goes to the client to pay (`to_client`, so the page can say which happened).
+ */
 autopay.post("/autopay/charges/:id/approve", requireUser, requireCompany(OFFICE, "invoices"), async (c) => {
   const id = param(c, "id");
   await ownCharge(c, id);
   const { error } = await c.var.db.rpc("approve_autopay_charge", { p_charge: id });
   if (error) throw dbError(error);
-  runInBackground(c, chargeDueAutopay(c.env, adminClient(c.env), { companyId: c.var.companyId }));
-  return c.json({ ok: true });
+  const { data: after } = await c.var.db.from("autopay_charges").select("status, bank_limit").eq("company_id", c.var.companyId).eq("id", id).maybeSingle();
+  runInBackground(c, runAutopay(c.env, adminClient(c.env), { companyId: c.var.companyId }));
+  return c.json({ ok: true, to_client: after?.status === "called_off" && after.bank_limit != null });
 });
 
 /** Call it off: the invoice is left for the office to send the usual way (or as it is). */
@@ -229,7 +235,8 @@ const CHARGES_PER_HOUR = 300;
  * Charge card: charge unpaid invoices to each client's saved card now, from the invoice or the
  * Invoices list. Each comes with the amount the office confirmed (dollars, as the screen showed it).
  * request_manual_charges queues each for that amount and says what it did with it ({ invoice_id,
- * outcome, reason }; 'changed' when what's owed isn't that amount now); the task then runs for the
+ * outcome, reason }; 'changed' when what's owed isn't that amount now, 'bank_limit' when it's more
+ * than the limit of the bank account that would pay it, which is never charged); the task then runs for the
  * company straight away, as Approve charge does, and charges them the way it charges autopay's own.
  */
 autopay.post("/invoices/charge", requireUser, requireCompany(OFFICE, "invoices"), async (c) => {
@@ -240,7 +247,7 @@ autopay.post("/invoices/charge", requireUser, requireCompany(OFFICE, "invoices")
   const { data, error } = await c.var.db.rpc("request_manual_charges", { p_company: companyId, p_invoices: body.invoices.map((i) => i.id), p_amounts: body.invoices.map((i) => i.amount) });
   if (error) throw dbError(error);
   const results = data ?? [];
-  if (results.some((r) => r.outcome === "queued")) runInBackground(c, chargeDueAutopay(c.env, adminClient(c.env), { companyId }));
+  if (results.some((r) => r.outcome === "queued")) runInBackground(c, runAutopay(c.env, adminClient(c.env), { companyId }));
   return c.json({ results });
 });
 

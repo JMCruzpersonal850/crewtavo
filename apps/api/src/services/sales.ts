@@ -60,6 +60,8 @@ export const TEMPLATE_NOT_SENT = "A quote template can't be sent. Make a quote f
 export interface DeliverDefaults {
   intro?: string;
   subject?: string;
+  /** A sentence for an invoice's usual words, said after the amount and before the link (why it's the client's to pay, say). */
+  note?: string;
 }
 
 /**
@@ -67,7 +69,7 @@ export interface DeliverDefaults {
  * (core rangeIntroText, the same words the office's send dialog shows). With two or three options
  * (`optionCount`) the range runs across them.
  */
-export function rangeMessage(company: { name: string; currency: string | null }, low: number, high: number, optionCount = 0): Required<DeliverDefaults> {
+export function rangeMessage(company: { name: string; currency: string | null }, low: number, high: number, optionCount = 0): Required<Pick<DeliverDefaults, "intro" | "subject">> {
   const money = new Intl.NumberFormat("en-US", { style: "currency", currency: company.currency || "USD", maximumFractionDigits: 0 });
   return {
     intro: rangeIntroText(money.format(low), money.format(high), optionCount),
@@ -196,7 +198,7 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
   const intro =
     body.message?.trim() ||
     defaults.intro ||
-    (kind === "quote" ? `Thanks for the opportunity. Here's your quote (${amount}). You can review the details, choose any options and approve it online:` : `Here's your invoice for ${amount}. ${await invoiceLinkLine(s)}`);
+    (kind === "quote" ? `Thanks for the opportunity. Here's your quote (${amount}). You can review the details, choose any options and approve it online:` : `Here's your invoice for ${amount}. ${defaults.note ? `${defaults.note} ` : ""}${await invoiceLinkLine(s)}`);
   const message = (link: string) => `${greeting}\n\n${intro}\n\n${link}\n\nThanks,\n${company.name}`;
   // The client's own link only to their own email or phone on file; any other address gets the office's copy.
   const linkFor = (channel: "email" | "sms", to: string) => (sentToClient(channel, to, record.client) ? links.own : links.office);
@@ -412,15 +414,18 @@ export async function convertQuote(s: Pick<SalesScope, "db" | "companyId" | "env
   return data;
 }
 
-/** Send an invoice (or take its link): a draft becomes sent, and goes to Stripe so the Pay button is ready. */
-export async function sendInvoice(s: SalesScope, id: string, body: SendBody) {
+/**
+ * Send an invoice (or take its link): a draft becomes sent, and goes to Stripe so the Pay button is
+ * ready. `defaults` are for a send nobody wrote a message for (DeliverDefaults).
+ */
+export async function sendInvoice(s: SalesScope, id: string, body: SendBody, defaults: DeliverDefaults = {}) {
   const invoice = must(
     await s.db.from("invoices").select("id, number, status, total, balance_due, client_id, client:clients(display_name, email, phone), lines:invoice_line_items(id)").eq("id", id).eq("company_id", s.companyId).maybeSingle(),
     "Invoice not found.",
   );
   if (invoice.status === "void") throw new HttpError(400, "This invoice is void.");
   if (!invoice.lines.length) throw new HttpError(400, "Add at least one line item before sending.");
-  const result = await deliver(s, "invoice", invoice, body);
+  const result = await deliver(s, "invoice", invoice, body, defaults);
   if (invoice.status === "draft" && (result.sent || body.channel === "link")) {
     await s.db.from("invoices").update({ status: "sent" }).eq("id", id);
     // Put it in Stripe now rather than at the next outbox run, so the client's Pay button is ready.

@@ -92,7 +92,7 @@ export interface HubAutopay {
   card_required: boolean;
 }
 
-/** An invoice page's autopay facts (GET /hub/:token, kind invoice). */
+/** An invoice page's autopay facts (GET /hub/:token, kind invoice). `yours_to_pay` goes beside them: see overLimit. */
 export interface HubInvoiceAutopay {
   status: "charging" | "processing" | "paid" | "failed" | "needs_client";
   /** "Visa ending 4242". */
@@ -978,8 +978,9 @@ export const onNewCard = (charge: { status: string; failures: number }) => charg
 
 /**
  * An invoice page's autopay facts (GET /hub/:token, kind invoice): how it was (or is being)
- * charged, whether to offer saving the card after paying by hand, and whether a tip can go on the
- * card that paid it (the same checks POST /tip makes, so the button never leads to a refusal).
+ * charged, whether to offer saving the card after paying by hand, whether a tip can go on the
+ * card that paid it (the same checks POST /tip makes, so the button never leads to a refusal), and
+ * whether it's theirs to pay for being over their bank account's limit.
  */
 export async function hubInvoiceAutopay(
   env: Env,
@@ -987,10 +988,10 @@ export async function hubInvoiceAutopay(
   companyId: string,
   invoice: { id: string; client_id: string; balance_due: number; status: string },
   options: { tips: boolean; preview: boolean; imported: boolean; trust: Trust },
-): Promise<{ autopay: HubInvoiceAutopay | null; save_card: boolean; tip_after: boolean; tip_method: string | null }> {
+): Promise<{ autopay: HubInvoiceAutopay | null; save_card: boolean; tip_after: boolean; tip_method: string | null; yours_to_pay?: boolean }> {
   const [available, charges, company] = await Promise.all([
     autopayAvailable(env, admin, companyId),
-    admin.from("autopay_charges").select("id, status, failures, payment_method_id, charged_at, charged_amount, created_at").eq("company_id", companyId).eq("invoice_id", invoice.id),
+    admin.from("autopay_charges").select("id, status, failures, payment_method_id, charged_at, charged_amount, created_at, bank_limit").eq("company_id", companyId).eq("invoice_id", invoice.id),
     admin.from("companies").select("settings->autopay").eq("id", companyId).maybeSingle(),
   ]);
   const all = charges.data ?? [];
@@ -1023,8 +1024,18 @@ export async function hubInvoiceAutopay(
     const ready = await readyMethod(admin, companyId, invoice.client_id, settings);
     tipAfter = Boolean(ready && ready.id === chargeMethod.id && TIPPABLE.includes(ready.type)) && !(await tipTaken(admin, companyId, invoice.id));
   }
-  return { autopay, save_card: saveCard, tip_after: tipAfter, tip_method: tipAfter && chargeMethod ? methodLabel(chargeMethod) : null };
+  return { autopay, save_card: saveCard, tip_after: tipAfter, tip_method: tipAfter && chargeMethod ? methodLabel(chargeMethod) : null, yours_to_pay: overLimit(all, invoice.balance_due) };
 }
+
+/**
+ * Whether an invoice is the client's to pay because it's over the limit for their bank account: its
+ * newest charge was closed for that (bank_limit) and something is still owed. Their page says why
+ * (core AUTOPAY_YOURS_TO_PAY), as the invoice's email did.
+ */
+export const overLimit = (charges: Array<{ status: string; bank_limit?: number | string | null; created_at: string }>, balanceDue: number | string) => {
+  const last = newest(charges, "created_at")[0];
+  return Boolean(last && last.status === "called_off" && last.bank_limit != null && Number(balanceDue) > 0);
+};
 
 /** For a quote's page: offer "Approve and set up autopay". */
 export async function autopayOffered(env: Env, admin: Db, companyId: string, clientId: string): Promise<boolean> {

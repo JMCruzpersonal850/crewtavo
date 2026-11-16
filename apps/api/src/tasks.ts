@@ -13,7 +13,7 @@ import { adminClient, type Db } from "./lib/supabase";
 import { runAddressTask } from "./services/address";
 import { rollUpVisits } from "./services/analytics";
 import { runBackups } from "./services/backups";
-import { chargeDueAutopay, runAutopayJob } from "./services/autopay";
+import { runAutopayJob } from "./services/autopay";
 import { checkHosting } from "./services/hosting";
 import { purgeTrash, tidyApplicantFiles, tidyPlanFiles, tidySubFiles, tidyUnrecordedFiles } from "./services/planFiles";
 import { keepRailwayAlive } from "./services/railway";
@@ -33,6 +33,7 @@ import { placeKey } from "./services/external";
 import { dailyOutlook, forecasterFor, placeWeathers, snowFallen, snowToday, type Forecaster } from "./services/forecast";
 import { autoRoutes } from "./services/routes";
 import { relocatePins } from "./services/properties";
+import { runAutopay } from "./services/bankLimit";
 import { sendScheduledPayments } from "./services/installments";
 import { tidyPlans } from "./integrations/chatgptPlan";
 
@@ -51,7 +52,8 @@ export const CRON_TASKS: Record<string, TaskName[]> = {
   "* * * * *": ["automations", "campaigns", "notify", "social", "postcards"],
   "*/2 * * * *": ["address"],
   // Review reminders go at 1:30pm in each company's time zone (services/reviews.ts). Autopay charges
-  // what's due (services/autopay.ts); its receipts and notices go out through the outbox.
+  // what's due (services/autopay.ts) and sends the invoices over a bank account's limit to their
+  // clients to pay (services/bankLimit.ts); its receipts and notices go out through the outbox.
   // A quote's scheduled payments the database made, sent when the company sends them by themselves (services/installments.ts).
   "*/5 * * * *": ["outbox", "reviews", "autopay", "installments"],
   "*/15 * * * *": ["calendars"],
@@ -102,7 +104,7 @@ export async function runTask(name: TaskName, env: Env): Promise<Record<string, 
     case "outbox":
       return drainOutbox(env);
     case "autopay":
-      return chargeDueAutopay(env);
+      return runAutopay(env);
     case "calendars":
       return syncDueCalendars(env, adminClient(env));
     case "recurrence":

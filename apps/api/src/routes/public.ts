@@ -52,6 +52,7 @@ import {
   finishAutopaySetup,
   hubAutopay,
   hubInvoiceAutopay,
+  overLimit,
   onNewCard,
   startAutopaySetup,
   tipOnSavedCard,
@@ -664,6 +665,8 @@ publicRoutes.get("/hub/:token", async (c) => {
     late_fee: lateFee,
     // "Paid automatically with Visa ending 4242", "Paid. Pay automatically next time?", and the tip after an automatic charge.
     autopay: auto.autopay,
+    // Over the limit for their bank account, so it wasn't taken from it: the page says why it's theirs to pay.
+    yours_to_pay: auto.yours_to_pay === true,
     save_card: !l.pv && auto.save_card,
     tip_after: tipAfter,
     tip_method: tipAfter ? auto.tip_method : null,
@@ -1358,6 +1361,27 @@ async function invoiceCharges(admin: ReturnType<typeof adminClient>, companyId: 
 }
 
 /**
+ * Which of these invoices are the client's to pay because they're over the limit for their bank
+ * account: the newest charge of each was closed for that (services/autopay.ts overLimit), and
+ * nothing is charging it since.
+ */
+async function overLimitInvoices(admin: ReturnType<typeof adminClient>, companyId: string, clientId: string, invoices: Array<{ id: string; balance_due: number }>, shown: Map<string, unknown>) {
+  const owed = invoices.filter((i) => Number(i.balance_due) > 0 && !shown.has(i.id));
+  const yours = new Set<string>();
+  if (!owed.length) return yours;
+  const { data, error } = await admin
+    .from("autopay_charges")
+    .select("invoice_id, status, bank_limit, created_at")
+    .eq("company_id", companyId)
+    .eq("client_id", clientId)
+    .in("invoice_id", owed.map((i) => i.id))
+    .eq("status", "called_off");
+  if (error) throw dbError(error);
+  for (const invoice of owed) if (overLimit((data ?? []).filter((row) => row.invoice_id === invoice.id), invoice.balance_due)) yours.add(invoice.id);
+  return yours;
+}
+
+/**
  * The finished checklists on these visits that the business shows clients (Show to client, in
  * Settings → Checklists), as clientAnswers words them. The others' answers are never read.
  */
@@ -1421,6 +1445,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   const charges = await invoiceCharges(admin, companyId, clientId, [
     ...new Set([...(invoices.data ?? []).map((i) => i.id), ...(payments.data ?? []).flatMap((p) => (p.invoice_id ? [p.invoice_id] : []))]),
   ]);
+  const yours = await overLimitInvoices(admin, companyId, clientId, invoices.data ?? [], charges);
   // The options and lines of the quotes still waiting for an answer that show a price: one that offers
   // options says how many and the lowest (services/sales.ts optionsFrom), not the option shown.
   const waiting = (quotes.data ?? []).filter((q) => !["approved", "converted"].includes(q.status) && !hidesExactPrice(q)).map((q) => q.id);
@@ -1529,7 +1554,8 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     ),
     // An invoice being charged automatically waits on the card, not on the client; a failed one
     // still has Pay, with a way to update the card.
-    invoices: await Promise.all((invoices.data ?? []).map(async (i) => ({ ...i, autopay: charges.get(i.id)?.status ?? null, link: await sign("invoice", i.id) }))),
+    // One over the limit for their bank account wasn't taken from it: it's theirs to pay, and says why.
+    invoices: await Promise.all((invoices.data ?? []).map(async (i) => ({ ...i, autopay: charges.get(i.id)?.status ?? null, yours_to_pay: yours.has(i.id), link: await sign("invoice", i.id) }))),
     visits: (upcoming.data ?? []).map(visit),
     past_visits: (done.data ?? []).map((v) => ({ ...visit(v), checklists: checklists.get(v.id) ?? [] })),
     // "Charged automatically to Visa ending 4242": a Stripe payment on an invoice its autopay charge paid.

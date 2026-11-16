@@ -64,6 +64,7 @@ vi.mock("../src/lib/notify", async (original) => ({
 vi.mock("../src/lib/monitoring", async (original) => ({ ...(await original<typeof import("../src/lib/monitoring")>()), reportError: m.reportError }));
 
 const { app } = await import("../src/app");
+const { runAutopay, sendOverLimitInvoices } = await import("../src/services/bankLimit");
 const {
   autopayAvailable,
   autopayInviteText,
@@ -1099,6 +1100,7 @@ describe("the Client Hub's autopay", () => {
       save_card: false,
       tip_after: true,
       tip_method: "Visa ending 4242",
+      yours_to_pay: false,
     });
     // Tips off (core tipsAllowed, worked out by the Hub route), a preview, a link that counts as the office's.
     for (const other of [{ tips: false }, { preview: true }, { trust: "office" as const }]) {
@@ -1119,7 +1121,7 @@ describe("the Client Hub's autopay", () => {
     db.tables.autopay_charges![0]!.charged_amount = 0;
     const options = { tips: true, preview: false, imported: false, trust: "client" as const };
     expect(await hubInvoiceAutopay(env, db.db, CO, { id: INVOICE, client_id: PAT, balance_due: 0, status: "paid" }, options)).toEqual({
-      autopay: { status: "paid", method: null, charged_at: "2026-11-01T04:02:00Z" }, save_card: false, tip_after: false, tip_method: null,
+      autopay: { status: "paid", method: null, charged_at: "2026-11-01T04:02:00Z" }, save_card: false, tip_after: false, tip_method: null, yours_to_pay: false,
     });
   });
 
@@ -1138,7 +1140,7 @@ describe("the Client Hub's autopay", () => {
     const options = { tips: true, preview: false, imported: false, trust: "client" as const };
     for (const status of ["sent", "written_off"]) {
       const db = world();
-      expect(await hubInvoiceAutopay(env, db.db, CO, { id: INVOICE, client_id: PAT, balance_due: 45, status }, options)).toEqual({ autopay: null, save_card: false, tip_after: false, tip_method: null });
+      expect(await hubInvoiceAutopay(env, db.db, CO, { id: INVOICE, client_id: PAT, balance_due: 45, status }, options)).toEqual({ autopay: null, save_card: false, tip_after: false, tip_method: null, yours_to_pay: false });
     }
   });
 
@@ -1146,7 +1148,7 @@ describe("the Client Hub's autopay", () => {
     const db = world({ tables: { client_payment_methods: [], autopay_authorizations: [], autopay_charges: [] } });
     const invoice = { id: INVOICE, client_id: ROBIN, balance_due: 0, status: "paid" };
     const options = { tips: true, preview: false, imported: false, trust: "client" as const };
-    expect(await hubInvoiceAutopay(env, db.db, CO, invoice, options)).toEqual({ autopay: null, save_card: true, tip_after: false, tip_method: null });
+    expect(await hubInvoiceAutopay(env, db.db, CO, invoice, options)).toEqual({ autopay: null, save_card: true, tip_after: false, tip_method: null, yours_to_pay: false });
     expect((await hubInvoiceAutopay(env, db.db, CO, invoice, { ...options, imported: true })).save_card).toBe(false);
     expect((await hubInvoiceAutopay(env, db.db, CO, invoice, { ...options, preview: true })).save_card).toBe(false);
     expect((await hubInvoiceAutopay(env, world().db, CO, { ...invoice, client_id: PAT }, options)).save_card).toBe(false);
@@ -1615,5 +1617,176 @@ describe("the office's autopay routes", () => {
     const res = await request("estimator-1", "GET", `/clients/${PAT}/hub-link`);
     const { link } = await res.json();
     expect(await readClientLink(env, link.split("/hub/")[1])).toMatchObject({ c: CO, t: "client", id: PAT, via: "office" });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// A bank account is never charged more than the limit: the invoice goes to the client
+// ---------------------------------------------------------------------------------------------
+// What closes the charge is the database's (supabase/tests/autopay_bank_limit_test.sql). Here: the
+// server never asks Stripe for one, sends its invoice once, and says what happened.
+
+describe("an invoice over the limit for a bank account", () => {
+  const OVER = id(52);
+  const CLOSED = id(41);
+  const SENTENCE = "This invoice is above the amount you agreed to have taken automatically, so it's yours to pay.";
+  const request = (user: string, method: string, path: string, body?: unknown) =>
+    app.request(
+      `/api${path}`,
+      { method, headers: { Authorization: `Bearer ${user}`, "X-Company-Id": CO, "Content-Type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) },
+      env,
+    );
+
+  /** A client pays from a bank account; a $600 visit was closed over the $500 limit and its draft waits to go to them. */
+  function closed(client: Row = { display_name: "Pat Lee", email: "pat@example.com", phone: "+15405550101" }, clientId = PAT) {
+    const db = world({
+      tables: {
+        client_payment_methods: [card(BANK, clientId, { type: "us_bank_account", brand: null, bank_name: "Chase", last4: "6789", exp_month: null, exp_year: null })],
+        invoices: [{ id: OVER, company_id: CO, client_id: clientId, job_id: JOB, number: 7, total: 600, balance_due: 600, status: "draft", client, lines: [{ id: "line-1" }] }],
+        autopay_charges: [
+          {
+            id: CLOSED, company_id: CO, client_id: clientId, job_id: JOB, invoice_id: OVER, payment_method_id: BANK, status: "called_off", failures: 0, due_at: "2026-11-01T04:00:00Z",
+            last_error: "Over the limit for a bank account. The client pays this one themselves", bank_limit: 500, send_state: "waiting", created_at: "2026-10-31T20:00:00Z",
+          },
+        ],
+        stripe_invoices: [],
+      },
+    });
+    db.handlers.claim_autopay_sends = () => ({ data: [{ id: CLOSED, company_id: CO, invoice_id: OVER, bank_limit: 500 }] });
+    return db;
+  }
+
+  it("isn't charged by the automatic run: the database's answer is counted, and Stripe is never asked", async () => {
+    const db = closed();
+    db.handlers.claim_autopay_charges = () => ({ data: [{ id: CLOSED, company_id: CO, invoice_id: null, attempts: 1, failures: 0, claim_token: id(99), status: "charging" }] });
+    db.handlers.autopay_bill = () => ({ data: { outcome: "called_off", reason: "Over the limit for a bank account. The client pays this one themselves", invoice_id: OVER, to_client: true } });
+    db.handlers.claim_autopay_sends = () => ({ data: [] });
+    expect(await runAutopay(env, db.db)).toMatchObject({ claimed: 1, called_off: 1, charged: 0, processing: 0, to_client: { claimed: 0, sent: 0, failed: 0, called_off: 0 } });
+    expect(m.chargeInvoiceAutomatically).not.toHaveBeenCalled();
+    expect(db.called("autopay_mark_sent")).toEqual([]);
+    expect(db.called("finish_autopay_charge")).toEqual([]);
+  });
+
+  it("goes to the client as the invoice's own email, with the Pay link and one sentence saying why it's theirs to pay", async () => {
+    const db = closed();
+    expect(await sendOverLimitInvoices(env, db.db)).toEqual({ claimed: 1, sent: 1, failed: 0, called_off: 0 });
+    expect(db.called("claim_autopay_sends")).toEqual([{ p_limit: 20, p_company: undefined }]);
+    const [email, ...more] = emails();
+    expect(more).toEqual([]);
+    expect(email).toMatchObject({ to: "pat@example.com", subject: "Invoice #7 from Radford Lawn Care" });
+    expect(email!.text).toContain(`Hi Pat,\n\nHere's your invoice for $600.00. ${SENTENCE} You can view and pay it online:`);
+    // The client's own link to the invoice, as any invoice email carries.
+    expect(await payloadOf(hubLinks(email!.text)[0]!)).toMatchObject({ c: CO, t: "invoice", id: OVER });
+    // No autopay notice of a charge to come or one that failed, and no text as well.
+    expect(email!.text).not.toMatch(/charge|autopay|card/i);
+    expect(texts()).toEqual([]);
+    // Sent like any invoice: the draft is sent now, and it's on the client's timeline as an invoice message.
+    expect(db.tables.invoices![0]!.status).toBe("sent");
+    expect(db.tables.messages).toMatchObject([{ client_id: PAT, channel: "email", related_type: "invoice", related_id: OVER }]);
+    expect(db.tables.messages![0]!.body).toContain(SENTENCE);
+    // The database is told once, and tells the office.
+    expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: true }]);
+    expect(m.chargeInvoiceAutomatically).not.toHaveBeenCalled();
+  });
+
+  it("goes by text to a client with a phone and no email, with the same sentence", async () => {
+    const db = closed({ display_name: "Sam Ortiz", email: null, phone: "+15405550102" }, SAM);
+    expect(await sendOverLimitInvoices(env, db.db, { companyId: CO })).toMatchObject({ sent: 1, failed: 0 });
+    expect(db.called("claim_autopay_sends")).toEqual([{ p_limit: 20, p_company: CO }]);
+    expect(emails()).toEqual([]);
+    expect(texts()).toHaveLength(1);
+    expect(texts()[0]).toMatchObject({ to: "+15405550102" });
+    expect(texts()[0]!.body).toContain(`Radford Lawn Care: Here's your invoice for $600.00. ${SENTENCE}`);
+    expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: true }]);
+  });
+
+  it("stays a draft for the office to send when it can't be sent, and never falls back to charging", async () => {
+    // Email isn't set up for the company.
+    let db = closed();
+    m.sendEmail.mockResolvedValue({ sent: false, reason: "Email isn't set up yet. Add an email service in Settings." });
+    expect(await sendOverLimitInvoices(env, db.db)).toEqual({ claimed: 1, sent: 0, failed: 1, called_off: 0 });
+    expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: false, p_error: "Email isn't set up yet. Add an email service in Settings." }]);
+    expect(db.tables.invoices![0]!.status).toBe("draft");
+    expect(db.tables.messages).toEqual([]);
+    // The client has no address and no phone.
+    db = closed({ display_name: "Robin Hale", email: null, phone: null }, ROBIN);
+    db.tables.clients!.find((c) => c.id === ROBIN)!.email = null;
+    m.sendEmail.mockClear();
+    expect(await sendOverLimitInvoices(env, db.db)).toMatchObject({ sent: 0, failed: 1 });
+    expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: false, p_error: "Add a valid email address for this client first." }]);
+    expect(m.sendEmail).not.toHaveBeenCalled();
+    expect(db.tables.invoices![0]!.status).toBe("draft");
+    // The server doesn't know its own address, so no link could go out.
+    db = closed();
+    expect(await sendOverLimitInvoices({ ...env, APP_URL: undefined }, db.db)).toMatchObject({ sent: 0, failed: 1 });
+    expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: false, p_error: "This server has no web address set (APP_URL), so it can't send links to clients" }]);
+    for (const fn of ["claim_autopay_charges", "autopay_bill", "approve_autopay_charge", "request_manual_charges"]) expect(db.called(fn)).toEqual([]);
+    expect(m.chargeInvoiceAutomatically).not.toHaveBeenCalled();
+  });
+
+  it("isn't sent once it's paid, voided or gone: the send is let go and nobody is told", async () => {
+    for (const change of [{ status: "paid", balance_due: 0 }, { status: "void" }, { status: "written_off" }, null]) {
+      const db = closed();
+      if (change) Object.assign(db.tables.invoices![0]!, change);
+      else db.tables.invoices = [];
+      expect(await sendOverLimitInvoices(env, db.db)).toEqual({ claimed: 1, sent: 0, failed: 0, called_off: 1 });
+      expect(db.called("autopay_send_called_off")).toEqual([{ p_charge: CLOSED }]);
+      expect(db.called("autopay_sent")).toEqual([]);
+    }
+    expect(emails()).toEqual([]);
+  });
+
+  it("is sent in the same run that closed it, and a problem sending never undoes the charges made", async () => {
+    const db = closed();
+    db.handlers.claim_autopay_charges = () => ({ data: [] });
+    expect(await runAutopay(env, db.db, { companyId: CO })).toMatchObject({ claimed: 0, to_client: { claimed: 1, sent: 1 } });
+    expect(db.rpcs.map((r) => r.fn).filter((fn) => fn.startsWith("claim_"))).toEqual(["claim_autopay_charges", "claim_autopay_sends"]);
+    db.handlers.claim_autopay_sends = () => ({ error: { message: "the database is restarting" } });
+    expect(await runAutopay(env, db.db)).toMatchObject({ claimed: 0, charged: 0, to_client: { claimed: 0, sent: 0, failed: 0, called_off: 0 } });
+    expect(m.reportError).toHaveBeenCalledTimes(1);
+  });
+
+  it("isn't charged by the office's OK: the page is told it went to the client instead", async () => {
+    const db = closed();
+    db.handlers.claim_autopay_charges = () => ({ data: [] });
+    // The database closed it (approve_autopay_charge), as the row now says.
+    const res = await request("office-1", "POST", `/autopay/charges/${CLOSED}/approve`, {});
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, to_client: true });
+    expect(db.called("approve_autopay_charge")).toEqual([{ p_charge: CLOSED }]);
+    // The run that follows sends the invoice; it charges nothing.
+    await vi.waitFor(() => expect(db.called("autopay_sent")).toEqual([{ p_charge: CLOSED, p_sent: true }]));
+    expect(m.chargeInvoiceAutomatically).not.toHaveBeenCalled();
+    // A card's charge the OK did approve says so.
+    const approved = world({ tables: { autopay_charges: [{ id: CHARGE, company_id: CO, client_id: PAT, invoice_id: INVOICE, payment_method_id: CARD, status: "waiting", bank_limit: null, created_at: "2026-10-31T20:00:00Z" }] } });
+    approved.handlers.claim_autopay_charges = () => ({ data: [] });
+    expect(await (await request("office-1", "POST", `/autopay/charges/${CHARGE}/approve`, {})).json()).toEqual({ ok: true, to_client: false });
+  });
+
+  it("isn't charged by Charge card: the database's refusal is passed on, and no run is started for it", async () => {
+    const db = closed();
+    const refusal = { invoice_id: OVER, outcome: "bank_limit", reason: "It's over the $500.00 limit for their bank account, so it isn't taken from it. Send it to them to pay" };
+    db.handlers.request_manual_charges = () => ({ data: [refusal] });
+    const res = await request("office-1", "POST", "/invoices/charge", { invoices: [{ id: OVER, amount: 600 }] });
+    expect(await res.json()).toEqual({ results: [refusal] });
+    await new Promise((done) => setTimeout(done, 20));
+    expect(db.called("claim_autopay_charges")).toEqual([]);
+    expect(m.chargeInvoiceAutomatically).not.toHaveBeenCalled();
+  });
+
+  it("shows on the client's page as theirs to pay while it's owed, and not once it's paid or charged another way", async () => {
+    const db = closed();
+    const invoice = { id: OVER, client_id: PAT, balance_due: 600, status: "sent" };
+    const options = { tips: false, preview: false, imported: false, trust: "client" as const };
+    // No autopay line (nothing was charged), Pay as for any invoice, and the reason it's theirs.
+    expect(await hubInvoiceAutopay(env, db.db, CO, invoice, options)).toEqual({ autopay: null, save_card: false, tip_after: false, tip_method: null, yours_to_pay: true });
+    expect((await hubInvoiceAutopay(env, db.db, CO, { ...invoice, balance_due: 0, status: "paid" }, options)).yours_to_pay).toBe(false);
+    // Charged since on a card they agreed to: that charge is what the page shows.
+    db.tables.autopay_charges!.push({ id: id(42), company_id: CO, client_id: PAT, invoice_id: OVER, payment_method_id: CARD, status: "charging", failures: 0, bank_limit: null, created_at: "2026-11-02T10:00:00Z" });
+    expect(await hubInvoiceAutopay(env, db.db, CO, invoice, options)).toMatchObject({ autopay: { status: "charging" }, yours_to_pay: false });
+    // A charge called off for any other reason says nothing.
+    const other = closed();
+    Object.assign(other.tables.autopay_charges![0]!, { bank_limit: null, last_error: "Called off by the office" });
+    expect((await hubInvoiceAutopay(env, other.db, CO, invoice, options)).yours_to_pay).toBe(false);
   });
 });

@@ -1736,6 +1736,15 @@ describe("autopay on the client's home page", () => {
     ]);
     // Nothing about the payment's processor or the charges' ids goes out.
     expect(JSON.stringify(home)).not.toMatch(/processor|invoice_id/);
+    // Called off for no reason the client needs: owed the usual way, and nothing is said.
+    expect(home.invoices.map((i: { yours_to_pay: boolean }) => i.yours_to_pay)).toEqual([false, false, false, false]);
+    // Closed because it's over the limit for their bank account: theirs to pay, and the page says why.
+    Object.assign(state.tables.autopay_charges[3]!, { bank_limit: 40, created_at: "2026-11-17T12:00:00Z" });
+    const over = await (await hub({ t: "client", id: CLIENT })).json();
+    expect(over.invoices.map((i: { number: number; autopay: string | null; yours_to_pay: boolean }) => [i.number, i.autopay, i.yours_to_pay])).toEqual([
+      [2, "paid", false], [3, "charging", false], [4, null, false], [5, null, true],
+    ]);
+    expect(JSON.stringify(over)).not.toMatch(/bank_limit|invoice_id/);
   });
 });
 

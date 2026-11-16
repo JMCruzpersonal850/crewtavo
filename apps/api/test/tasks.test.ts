@@ -653,8 +653,11 @@ describe("autopay", () => {
     expect(CRON_TASKS["*/5 * * * *"]).toEqual(["outbox", "reviews", "autopay", "installments"]);
     const result = { claimed: 2, charged: 1, processing: 0, needs_approval: 0, called_off: 0, failed: 1, needs_client: 0, busy: 0, retry: 0, lost: 0 };
     autopay.charge.mockResolvedValueOnce(result);
-    expect(await runTask("autopay", env)).toEqual(result);
-    expect(autopay.charge).toHaveBeenCalledWith(env);
+    // Then the invoices closed instead of charged (over a bank account's limit) go to their clients.
+    const calls = serve((call) => (call.path === "rpc/claim_autopay_sends" ? [] : null));
+    expect(await runTask("autopay", env)).toEqual({ ...result, to_client: { claimed: 0, sent: 0, failed: 0, called_off: 0 } });
+    expect(autopay.charge.mock.calls.at(-1)![0]).toBe(env);
+    expect(calls.map((c) => c.path)).toEqual(["rpc/claim_autopay_sends"]);
   });
 
   it("hands the outbox's autopay jobs to the autopay service, and a job that keeps failing shows on Stripe's app", async () => {
