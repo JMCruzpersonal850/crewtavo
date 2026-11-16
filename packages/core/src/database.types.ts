@@ -180,14 +180,14 @@ isOneToOne: false
                   ]
                 },"autopay_charges": {
                   Row: {
-                    "approved_amount": number | null,"approved_at": string | null,"approved_by": string | null,"attempts": number,"bill": string | null,"billing_month": string | null,"busy_since": string | null,"charged_amount": number | null,"charged_at": string | null,"claim_token": string | null,"client_id": string,"company_id": string,"created_at": string,"decline_code": string | null,"due_at": string,"failures": number,"held": string | null,"id": string,"invoice_id": string | null,"job_id": string | null,"last_error": string | null,"locked_until": string | null,"payment_method_id": string | null,"requested_by": string | null,"source": string,"status": string,"updated_at": string,"visit_ids": (string)[]
+                    "approved_amount": number | null,"approved_at": string | null,"approved_by": string | null,"attempts": number,"bank_limit": number | null,"bank_limit_at": string | null,"bill": string | null,"billing_month": string | null,"busy_since": string | null,"charged_amount": number | null,"charged_at": string | null,"claim_token": string | null,"client_id": string,"company_id": string,"created_at": string,"decline_code": string | null,"due_at": string,"failures": number,"held": string | null,"id": string,"invoice_id": string | null,"job_id": string | null,"last_error": string | null,"locked_until": string | null,"payment_method_id": string | null,"requested_by": string | null,"send_claimed_at": string | null,"send_draft": boolean | null,"send_error": string | null,"send_state": string | null,"source": string,"status": string,"updated_at": string,"visit_ids": (string)[]
                   }
                   ComputedFields: never
                   Insert: {
-                    "approved_amount"?: number | null,"approved_at"?: string | null,"approved_by"?: string | null,"attempts"?: number,"bill"?: string | null,"billing_month"?: string | null,"busy_since"?: string | null,"charged_amount"?: number | null,"charged_at"?: string | null,"claim_token"?: string | null,"client_id": string,"company_id": string,"created_at"?: string,"decline_code"?: string | null,"due_at": string,"failures"?: number,"held"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"last_error"?: string | null,"locked_until"?: string | null,"payment_method_id"?: string | null,"requested_by"?: string | null,"source"?: string,"status"?: string,"updated_at"?: string,"visit_ids"?: (string)[]
+                    "approved_amount"?: number | null,"approved_at"?: string | null,"approved_by"?: string | null,"attempts"?: number,"bank_limit"?: number | null,"bank_limit_at"?: string | null,"bill"?: string | null,"billing_month"?: string | null,"busy_since"?: string | null,"charged_amount"?: number | null,"charged_at"?: string | null,"claim_token"?: string | null,"client_id": string,"company_id": string,"created_at"?: string,"decline_code"?: string | null,"due_at": string,"failures"?: number,"held"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"last_error"?: string | null,"locked_until"?: string | null,"payment_method_id"?: string | null,"requested_by"?: string | null,"send_claimed_at"?: string | null,"send_draft"?: boolean | null,"send_error"?: string | null,"send_state"?: string | null,"source"?: string,"status"?: string,"updated_at"?: string,"visit_ids"?: (string)[]
                   }
                   Update: {
-                    "approved_amount"?: number | null,"approved_at"?: string | null,"approved_by"?: string | null,"attempts"?: number,"bill"?: string | null,"billing_month"?: string | null,"busy_since"?: string | null,"charged_amount"?: number | null,"charged_at"?: string | null,"claim_token"?: string | null,"client_id"?: string,"company_id"?: string,"created_at"?: string,"decline_code"?: string | null,"due_at"?: string,"failures"?: number,"held"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"last_error"?: string | null,"locked_until"?: string | null,"payment_method_id"?: string | null,"requested_by"?: string | null,"source"?: string,"status"?: string,"updated_at"?: string,"visit_ids"?: (string)[]
+                    "approved_amount"?: number | null,"approved_at"?: string | null,"approved_by"?: string | null,"attempts"?: number,"bank_limit"?: number | null,"bank_limit_at"?: string | null,"bill"?: string | null,"billing_month"?: string | null,"busy_since"?: string | null,"charged_amount"?: number | null,"charged_at"?: string | null,"claim_token"?: string | null,"client_id"?: string,"company_id"?: string,"created_at"?: string,"decline_code"?: string | null,"due_at"?: string,"failures"?: number,"held"?: string | null,"id"?: string,"invoice_id"?: string | null,"job_id"?: string | null,"last_error"?: string | null,"locked_until"?: string | null,"payment_method_id"?: string | null,"requested_by"?: string | null,"send_claimed_at"?: string | null,"send_draft"?: boolean | null,"send_error"?: string | null,"send_state"?: string | null,"source"?: string,"status"?: string,"updated_at"?: string,"visit_ids"?: (string)[]
                   }
                   Relationships: [
                     {
@@ -4134,6 +4134,12 @@ isOneToOne: false
 "autopay_save_payment_method":
 { Args: { "p_client": string,"p_company": string,"p_method": Json }; Returns: string
                            },
+"autopay_send_called_off":
+{ Args: { "p_charge": string }; Returns: undefined
+                           },
+"autopay_sent":
+{ Args: { "p_charge": string,"p_error"?: string,"p_sent": boolean }; Returns: undefined
+                           },
 "autopay_set_settings":
 { Args: { "p_company": string,"p_settings": Json }; Returns: Json
                            },
@@ -4308,6 +4314,8 @@ isOneToOne: false
 "approved_at": string | null,
 "approved_by": string | null,
 "attempts": number,
+"bank_limit": number | null,
+"bank_limit_at": string | null,
 "bill": string | null,
 "billing_month": string | null,
 "busy_since": string | null,
@@ -4328,6 +4336,10 @@ isOneToOne: false
 "locked_until": string | null,
 "payment_method_id": string | null,
 "requested_by": string | null,
+"send_claimed_at": string | null,
+"send_draft": boolean | null,
+"send_error": string | null,
+"send_state": string | null,
 "source": string,
 "status": string,
 "updated_at": string,
@@ -4339,6 +4351,11 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_autopay_sends":
+{ Args: { "p_company"?: string,"p_limit"?: number }; Returns: {
+              "bank_limit": number,"company_id": string,"id": string,"invoice_id": string,"send_draft": boolean
+            }[]
+                           },
 "claim_backup":
 { Args: { "p_kind": string,"p_since"?: string,"p_tries"?: number }; Returns: string
                            },
