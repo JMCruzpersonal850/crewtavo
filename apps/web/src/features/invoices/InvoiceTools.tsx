@@ -43,7 +43,7 @@ export function InvoiceSummary({ onPick }: { onPick: (filter: "open" | "overdue"
   const s = summary.data;
   const stat = (label: string, value: number, change: ReactNode, hint: string, filter: "open" | "overdue" | "paid", tone?: "bad") => (
     <button type="button" className="card stat stat-button" onClick={() => onPick(filter)}>
-      <span className="label">{label}</span>
+      <span className="row-between" style={{ width: "100%" }}><span className="label">{label}</span><span className="stat-view" aria-hidden="true">View</span></span>
       <span className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <span className="value" style={tone ? { color: "var(--danger)" } : undefined}><AnimatedNumber value={value} format={MONEY} /></span>
         {change}

@@ -114,7 +114,8 @@ export function Timeline({ clientId }: { clientId: string }) {
           <Button size="sm" type="submit" loading={add.isPending} done={added} doneLabel="Added" disabled={!note.trim()}>Add note</Button>
         </div>
       </form>
-      <div className="card">
+      {/* With nothing in it yet, "No notes or messages yet" stands alone under the note box, not in a box of its own. */}
+      <div className={messages.data?.length === 0 ? undefined : "card"}>
         {messages.isPending &&
           [0, 1, 2].map((i) => (
             <div key={i} className="timeline-item">

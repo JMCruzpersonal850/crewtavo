@@ -103,7 +103,7 @@ export function HomePage() {
       <div className="row-between wrap" style={{ alignItems: "flex-end" }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{today}</div>
-          <h1 style={{ marginTop: 6, fontSize: 32, fontWeight: 800, letterSpacing: "var(--tracking-display)", lineHeight: 1.1 }}>
+          <h1 style={{ marginTop: 6, fontSize: 32, fontWeight: 700, letterSpacing: "var(--tracking-display)", lineHeight: 1.1 }}>
             {greeting(tz)}, {firstName}
           </h1>
         </div>
@@ -126,104 +126,116 @@ export function HomePage() {
           {isOffice && <WorkflowStrip workflow={data.workflow} showInvoices={seesMoney} />}
 
           <div className="two-col">
-            <section className="wide stack" aria-labelledby="today-title">
-              <div className="section-head">
-                <h2 id="today-title" className="section-title">Today's appointments</h2>
-                <Link className="btn btn-sm" to={isOffice ? "/schedule" : "/field"}>{isOffice ? "View schedule" : "My day"}</Link>
-              </div>
-              <div className="card">
-                {data.today.total > 0 && (
-                  <div className="card-pad stack-sm" style={{ paddingBottom: 14 }}>
-                    <div className="row-between">
-                      <span className="muted text-sm">
-                        <strong style={{ color: "var(--ink)" }}>{data.today.by_status.completed ?? 0}</strong> of {data.today.total} complete
-                        {data.today.by_status.in_progress ? ` · ${data.today.by_status.in_progress} ${statusText("visit", "in_progress").toLowerCase()}` : ""}
-                      </span>
-                    </div>
-                    <div className="progress" aria-hidden="true"><span style={{ width: `${((data.today.by_status.completed ?? 0) / data.today.total) * 100}%` }} /></div>
-                  </div>
-                )}
-                {data.today.visits.length === 0 ? (
-                  <EmptyState inline title="Nothing on the schedule today" action={isOffice ? <Link className="btn" to="/schedule?new=1">Schedule a visit</Link> : undefined} />
-                ) : (
-                  data.today.visits.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      className="card-row"
-                      onClick={() => navigate(isOffice && v.job_id ? `/jobs/${v.job_id}` : `/field/visits/${v.id}`)}
-                    >
-                      <span style={{ width: 4, alignSelf: "stretch", borderRadius: "var(--radius-sm)", background: v.crew_color || "var(--fill-3)" }} aria-hidden="true" />
-                      <span className="tabular" style={{ width: 76, fontWeight: 700, fontSize: 13 }}>{v.starts_at ? time(v.starts_at) : "Anytime"}</span>
-                      <span className="grow">
-                        <span className="strong ellipsis" style={{ display: "block" }}>{v.title}</span>
-                        <span className="muted small ellipsis" style={{ display: "block" }}>
-                          {[v.client, v.address, v.crew].filter(Boolean).join(" · ") || statusLabel(v.kind)}
-                        </span>
-                        {v.hold_reason && <span className="small" style={{ color: "var(--warning)", fontWeight: 600 }}>Weather: {v.hold_reason.split(";")[0]}</span>}
-                      </span>
-                      <StatusPill label={statusText("visit", v.status)} tone={visitTone(v.status)} />
-                    </button>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="narrow stack" aria-labelledby="perf-title">
-              <h2 id="perf-title" className="section-title">{seesMoney ? "Business performance" : "Needs attention"}</h2>
-              {seesMoney && (
-                <div className="card card-pad stack-sm">
-                  <div className="muted small strong">Collected this month</div>
-                  <div className="row" style={{ alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                    <AnimatedNumber value={data.month.collected} format={MONEY} className="hero-number" />
-                    {collected.data && <Change now={data.month.collected} before={collected.data.sameDaysLastMonth} compared="the same days last month" same="Same as last month" />}
-                  </div>
-                  {collected.data && collected.data.weeks.length >= MIN_WEEKS && <WeekBars weeks={collected.data.weeks} />}
-                  <div className="row-between small muted"><span>Invoiced this month</span><AnimatedNumber value={data.month.invoiced} format={MONEY} className="strong ink" /></div>
-                  <div className="row-between small muted"><span>Quotes won ({data.month.won_count})</span><AnimatedNumber value={data.month.won} format={MONEY} className="strong ink" /></div>
+            {/* The day's work: appointments, then what needs someone, both in view before the numbers. */}
+            <div className="wide stack" style={{ gap: 28 }}>
+              <section className="stack" aria-labelledby="today-title">
+                <div className="section-head">
+                  <h2 id="today-title" className="section-title">Today's appointments</h2>
+                  <Link className="btn btn-sm" to={isOffice ? "/schedule" : "/field"}>{isOffice ? "View schedule" : "My day"}</Link>
                 </div>
-              )}
-              {seesMoney && (
                 <div className="card">
-                  <div className="card-pad" style={{ paddingBottom: 8 }}>
-                    <div className="row-between">
-                      <strong>Receivables</strong>
-                      <Link to="/invoices" className="small strong">All invoices</Link>
+                  {data.today.total > 0 && (
+                    <div className="card-pad stack-sm" style={{ paddingBottom: 14 }}>
+                      <div className="row-between">
+                        <span className="muted text-sm">
+                          <strong style={{ color: "var(--ink)" }}>{data.today.by_status.completed ?? 0}</strong> of {data.today.total} complete
+                          {data.today.by_status.in_progress ? ` · ${data.today.by_status.in_progress} ${statusText("visit", "in_progress").toLowerCase()}` : ""}
+                        </span>
+                      </div>
+                      <div className="progress" aria-hidden="true"><span style={{ width: `${((data.today.by_status.completed ?? 0) / data.today.total) * 100}%` }} /></div>
                     </div>
-                    <div className="muted small" style={{ marginTop: 10 }}>{data.receivables.clients_owing} {data.receivables.clients_owing === 1 ? "client owes" : "clients owe"} you</div>
-                    <AnimatedNumber value={data.receivables.total} format={MONEY} className="hero-number" />
-                  </div>
-                  {data.receivables.top.map((row) => (
-                    <Link key={row.client_id} to={`/clients/${row.client_id}`} className="card-row" style={{ padding: "10px 20px", fontSize: 13 }}>
-                      <span className="grow ellipsis">{row.client}</span>
-                      <span className="tabular strong">{formatMoneyCompact(row.owed)}</span>
-                    </Link>
-                  ))}
+                  )}
+                  {data.today.visits.length === 0 ? (
+                    <EmptyState inline title="Nothing on the schedule today" action={isOffice ? <Link className="btn" to="/schedule?new=1">Schedule a visit</Link> : undefined} />
+                  ) : (
+                    data.today.visits.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        className="card-row"
+                        onClick={() => navigate(isOffice && v.job_id ? `/jobs/${v.job_id}` : `/field/visits/${v.id}`)}
+                      >
+                        <span style={{ width: 4, alignSelf: "stretch", borderRadius: "var(--radius-sm)", background: v.crew_color || "var(--fill-3)" }} aria-hidden="true" />
+                        <span className="tabular" style={{ width: 76, fontWeight: 700, fontSize: 13 }}>{v.starts_at ? time(v.starts_at) : "Anytime"}</span>
+                        <span className="grow">
+                          <span className="strong ellipsis" style={{ display: "block" }}>{v.title}</span>
+                          <span className="muted small ellipsis" style={{ display: "block" }}>
+                            {[v.client, v.address, v.crew].filter(Boolean).join(" · ") || statusLabel(v.kind)}
+                          </span>
+                          {v.hold_reason && <span className="small" style={{ color: "var(--warning)", fontWeight: 600 }}>Weather: {v.hold_reason.split(";")[0]}</span>}
+                        </span>
+                        <StatusPill label={statusText("visit", v.status)} tone={visitTone(v.status)} />
+                      </button>
+                    ))
+                  )}
                 </div>
-              )}
-              {seesWebsite(session) && <WebsiteCard />}
-              <div className="card" ref={attentionRows}>
-                <div className="card-head"><strong>Needs attention</strong>{attention.length > 0 && <span className="badge">{attention.length}</span>}</div>
-                {attention.length === 0 ? (
-                  <EmptyState inline title="All clear" />
-                ) : (
-                  attention.map((item, i) => (
-                    <Link key={`${item.link}-${i}`} to={item.link} className="card-row">
-                      <span className="n-icon" style={{ width: 32, height: 32, borderRadius: "var(--radius-control)", display: "grid", placeItems: "center", ...(ATTENTION_TINT[item.kind] ?? ATTENTION_PLAIN), flex: "none" }}>
-                        <Icon name={ATTENTION_ICON[item.kind] ?? "alert"} size={16} />
-                      </span>
-                      <span className="grow">
-                        <span className="strong text-sm" style={{ display: "block" }}>{item.title}</span>
-                        {item.detail && <span className="muted small ellipsis" style={{ display: "block" }}>{item.detail}</span>}
-                      </span>
-                      <Icon name="chevronRight" size={16} />
-                    </Link>
-                  ))
-                )}
-              </div>
-              {/* Last in the rail, so it never pushes the day's work down. */}
+              </section>
+
+              <section className="stack" aria-labelledby="attention-title">
+                <h2 id="attention-title" className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  Needs attention{attention.length > 0 && <span className="badge">{attention.length}</span>}
+                </h2>
+                <div className="card" ref={attentionRows}>
+                  {attention.length === 0 ? (
+                    <EmptyState inline title="All clear" />
+                  ) : (
+                    attention.map((item, i) => (
+                      <Link key={`${item.link}-${i}`} to={item.link} className="card-row">
+                        <span className="n-icon" style={{ width: 32, height: 32, borderRadius: "var(--radius-control)", display: "grid", placeItems: "center", ...(ATTENTION_TINT[item.kind] ?? ATTENTION_PLAIN), flex: "none" }}>
+                          <Icon name={ATTENTION_ICON[item.kind] ?? "alert"} size={16} />
+                        </span>
+                        <span className="grow">
+                          <span className="strong text-sm" style={{ display: "block" }}>{item.title}</span>
+                          {item.detail && <span className="muted small ellipsis" style={{ display: "block" }}>{item.detail}</span>}
+                        </span>
+                        <Icon name="chevronRight" size={16} />
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </section>
+            </div>
+
+            {/* The rail: setup while there's any left (it pushes down only the numbers), then the numbers. Empty for a crew, so it takes no room (base.css). */}
+            <div className="narrow stack" style={{ gap: 28 }}>
               <SetupCard />
-            </section>
+              {(seesMoney || seesWebsite(session)) && (
+                <section className="stack" aria-labelledby="perf-title">
+                  <h2 id="perf-title" className="section-title">Business performance</h2>
+                  {seesMoney && (
+                    <div className="card card-pad stack-sm">
+                      <div className="muted small strong">Collected this month</div>
+                      <div className="row" style={{ alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                        <AnimatedNumber value={data.month.collected} format={MONEY} className="hero-number" />
+                        {collected.data && <Change now={data.month.collected} before={collected.data.sameDaysLastMonth} compared="the same days last month" same="Same as last month" />}
+                      </div>
+                      {collected.data && collected.data.weeks.length >= MIN_WEEKS && <WeekBars weeks={collected.data.weeks} />}
+                      <div className="row-between small muted"><span>Invoiced this month</span><AnimatedNumber value={data.month.invoiced} format={MONEY} className="strong ink" /></div>
+                      <div className="row-between small muted"><span>Quotes won ({data.month.won_count})</span><AnimatedNumber value={data.month.won} format={MONEY} className="strong ink" /></div>
+                    </div>
+                  )}
+                  {seesMoney && (
+                    <div className="card">
+                      <div className="card-pad" style={{ paddingBottom: 8 }}>
+                        <div className="row-between">
+                          <strong>Receivables</strong>
+                          <Link to="/invoices" className="small strong">All invoices</Link>
+                        </div>
+                        <div className="muted small" style={{ marginTop: 10 }}>{data.receivables.clients_owing} {data.receivables.clients_owing === 1 ? "client owes" : "clients owe"} you</div>
+                        <AnimatedNumber value={data.receivables.total} format={MONEY} className="hero-number" />
+                      </div>
+                      {data.receivables.top.map((row) => (
+                        <Link key={row.client_id} to={`/clients/${row.client_id}`} className="card-row" style={{ padding: "10px 20px", fontSize: 13 }}>
+                          <span className="grow ellipsis">{row.client}</span>
+                          <span className="tabular strong">{formatMoneyCompact(row.owed)}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  {seesWebsite(session) && <WebsiteCard />}
+                </section>
+              )}
+            </div>
           </div>
         </div>
       )}

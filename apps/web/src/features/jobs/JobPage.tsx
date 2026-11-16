@@ -636,7 +636,7 @@ export function JobPage() {
               {j.property && (
                 <>
                   <span className="small">{addressLine(j.property)}</span>
-                  <span style={{ justifySelf: "start" }}><MapsLink className="btn btn-sm" place={j.property}><Icon name="navigation" size={14} />Directions</MapsLink></span>
+                  <span style={{ justifySelf: "start" }}><MapsLink className="btn btn-sm btn-ghost" place={j.property}><Icon name="navigation" size={14} />Directions</MapsLink></span>
                   <PropertyEquipment propertyId={j.property.id} inCard />
                 </>
               )}

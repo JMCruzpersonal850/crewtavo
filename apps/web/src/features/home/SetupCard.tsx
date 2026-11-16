@@ -154,25 +154,27 @@ export function SetupCard() {
     });
   return (
     // Its check usually lands after the rest of Home, so it fades in rather than popping in.
-    <section className="card" aria-labelledby="setup-title" style={{ animation: "fade-in var(--dur-enter) var(--ease-enter)" }}>
-      <div className="card-head">
-        <strong id="setup-title">Set up Crewtavo</strong>
+    <section className="stack" aria-labelledby="setup-title" style={{ animation: "fade-in var(--dur-enter) var(--ease-enter)" }}>
+      <div className="section-head">
+        <h2 id="setup-title" className="section-title">Set up Crewtavo</h2>
         <span className="muted small">{done} of {list.length} done</span>
         <Button size="sm" variant="ghost" onClick={hide}>Hide</Button>
       </div>
-      {list.map((s) => (
-        <Link key={s.key} to={s.to} className={`card-row ${styles.step}`} data-done={s.done || undefined}>
-          <span className={styles.mark} aria-hidden="true">{s.done && <Icon name="check" size={12} strokeWidth={2} />}</span>
-          <span className="grow" style={{ minWidth: 0 }}>
-            <span className={styles.stepTitle}>
-              {s.title}
-              {s.done && <span className="sr-only"> (done)</span>}
+      <div className="card">
+        {list.map((s) => (
+          <Link key={s.key} to={s.to} className={`card-row ${styles.step}`} data-done={s.done || undefined}>
+            <span className={styles.mark} aria-hidden="true">{s.done && <Icon name="check" size={12} strokeWidth={2} />}</span>
+            <span className="grow" style={{ minWidth: 0 }}>
+              <span className={styles.stepTitle}>
+                {s.title}
+                {s.done && <span className="sr-only"> (done)</span>}
+              </span>
+              <span className="muted small" style={{ display: "block" }}>{s.detail}</span>
             </span>
-            <span className="muted small" style={{ display: "block" }}>{s.detail}</span>
-          </span>
-          <Icon name="chevronRight" size={16} />
-        </Link>
-      ))}
+            <Icon name="chevronRight" size={16} />
+          </Link>
+        ))}
+      </div>
     </section>
   );
 }

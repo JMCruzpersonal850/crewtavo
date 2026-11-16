@@ -49,11 +49,15 @@ const TONES = {
 
 export type Tone = keyof typeof TONES;
 
-/** Status is always shown as text in a pill, never color alone. */
+/**
+ * Status is always shown as text, never color alone. A state that needs someone (warning, danger)
+ * is a tinted pill; a steady one is its dot and plain words, so the ones to act on stand out in a list.
+ */
 export function StatusPill({ label, tone = "muted" }: { label: string; tone?: Tone }) {
   const colors = TONES[tone];
+  const quiet = tone !== "warning" && tone !== "danger";
   return (
-    <span className="pill" style={{ background: colors.bg, color: colors.fg }}>
+    <span className={quiet ? "pill pill-quiet" : "pill"} style={quiet ? undefined : { background: colors.bg, color: colors.fg }}>
       <span className="pill-dot" style={{ background: colors.dot }} />
       {label}
     </span>

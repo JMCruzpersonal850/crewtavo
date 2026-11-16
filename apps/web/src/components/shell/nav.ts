@@ -14,18 +14,17 @@ export interface NavItem {
   also?: string[]; // other screens that count as this section (highlighted in the sidebar)
   keywords?: string; // other words people search for it by
   feature?: "team_chat" | "website" | "careers" | "drive" | "marketing" | "paving_app" | "roofing_app" | "snow_app"; // only while the business has this app on (Apps)
+  foot?: boolean; // kept with Settings at the sidebar's foot, in view however long the list is
 }
 
 /**
- * Kept short on purpose: the everyday work first, then a few tools. Setup screens (automations,
- * online booking, apps) live in Settings, the sales board and map measuring open from Quotes.
+ * Kept short on purpose: the day first, then the everyday work, the trade apps the business turned
+ * on, and the tools for running it. Setup screens (automations, online booking) live in Settings,
+ * the sales board and map measuring open from Quotes.
  */
 export const NAV_GROUPS: NavItem[][] = [
   [
     { to: "/", label: msg("Home"), icon: "home", keywords: "dashboard today overview" },
-    { to: "/paving", label: msg("Paving"), icon: "paving", roles: ["admin", "office", "estimator"], perm: "sales", feature: "paving_app", keywords: "takeoff asphalt sealcoat striping stalls parking lot estimate proposal find paving" },
-    { to: "/roofing", label: msg("Roofing"), icon: "roofing", roles: ["admin", "office", "estimator"], perm: "sales", feature: "roofing_app", keywords: "roof estimate squares pitch shingles metal tear-off measure good better best proposal" },
-    { to: "/snow", label: msg("Snow"), icon: "snow", roles: ["admin", "office"], perm: "schedule", feature: "snow_app", keywords: "snow plow plowing salt trigger inches storm forecast" },
     { to: "/field", label: msg("My day"), icon: "clock", only: ["crew_lead", "field_crew", "subcontractor"], except: ["/field/paperwork", "/field/jobs"], keywords: "today my visits route" },
     { to: "/field/jobs", label: msg("My jobs"), icon: "job", only: ["subcontractor"], keywords: "offers accept decline take turn down price owed paid 1099 total" },
     { to: "/field/paperwork", label: msg("My paperwork"), icon: "file", only: ["subcontractor"], keywords: "w-9 w9 insurance certificate liability workers comp upload send" },
@@ -41,6 +40,11 @@ export const NAV_GROUPS: NavItem[][] = [
     { to: "/drive", label: msg("Drive"), icon: "folder", roles: ["admin", "office", "estimator"], feature: "drive", keywords: "files documents folders google drive upload pdf word docx trash" },
   ],
   [
+    { to: "/paving", label: msg("Paving"), icon: "paving", roles: ["admin", "office", "estimator"], perm: "sales", feature: "paving_app", keywords: "takeoff asphalt sealcoat striping stalls parking lot estimate proposal find paving" },
+    { to: "/roofing", label: msg("Roofing"), icon: "roofing", roles: ["admin", "office", "estimator"], perm: "sales", feature: "roofing_app", keywords: "roof estimate squares pitch shingles metal tear-off measure good better best proposal" },
+    { to: "/snow", label: msg("Snow"), icon: "snow", roles: ["admin", "office"], perm: "schedule", feature: "snow_app", keywords: "snow plow plowing salt trigger inches storm forecast" },
+  ],
+  [
     { to: "/marketing", label: msg("Marketing"), icon: "marketing", roles: ["admin", "office"], perm: "marketing", feature: "marketing", keywords: "campaigns email blasts automated campaigns re-engage win back close pending quotes reviews google reviews referrals social facebook instagram posts promo promos codes coupons discounts website visits" },
     { to: "/website", label: msg("Website"), icon: "globe", roles: ["admin", "office"], perm: "marketing", feature: "website", keywords: "site web page blog posts edit content cms sveltia decap" },
     { to: "/finance", label: msg("Finance"), icon: "finance", roles: ["admin", "office"], perm: ["reports", "invoices"], keywords: "reports revenue profit payments money collected net volume fees deposits owed goal job costing expenses" },
@@ -50,9 +54,12 @@ export const NAV_GROUPS: NavItem[][] = [
     { to: "/subs", label: msg("Subcontractors"), icon: "users", roles: ["admin", "office"], perm: "subs", keywords: "subs contractors 1099 w-9 w9 insurance certificates coi liability workers comp audit paperwork vendors" },
     { to: "/equipment", label: msg("Equipment"), icon: "truck", keywords: "trucks mowers trailers tools fleet maintenance" },
     { to: "/kb", label: msg("Knowledge base"), icon: "book", keywords: "sop procedures training how to guides" },
-    { to: "/apps", label: msg("Apps"), icon: "apps", roles: ["admin"], perm: "apps", keywords: "integrations connect app store team chat website forms formspree contact form careers job applications hiring drive files documents google drive marketing reviews referrals campaigns google reviews google business profile facebook instagram social posts quickbooks zoho books stripe payments google calendar outlook twilio texts sms claude chatgpt ai assistant sveltia cms website" },
+    { to: "/apps", label: msg("Apps"), icon: "apps", roles: ["admin"], perm: "apps", foot: true, keywords: "integrations connect app store team chat website forms formspree contact form careers job applications hiring drive files documents google drive marketing reviews referrals campaigns google reviews google business profile facebook instagram social posts quickbooks zoho books stripe payments google calendar outlook twilio texts sms claude chatgpt ai assistant sveltia cms website" },
   ],
 ];
+
+/** The name over each of NAV_GROUPS in the sidebar. The first, the day, needs none. */
+export const NAV_GROUP_LABELS: Array<string | null> = [null, msg("Work"), msg("Trades"), msg("Business")];
 
 /** Screens that open from another one rather than the sidebar. Search lists them with the rest. */
 export const OTHER_SCREENS: NavItem[] = [

@@ -51,8 +51,7 @@ img, svg { flex-shrink: 0; }
 .shell { min-height: 100vh; display: flex; }
 .sidebar {
   width: var(--sidebar-width); flex: none; background: var(--ground); border-right: 1px solid var(--ground-border);
-  padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; overflow-y: auto;
-  scrollbar-width: thin;
+  padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh;
   /* Clear of a phone's notch and home indicator, sideways (a big phone is wider than 900px then). */
   padding-left: max(12px, env(safe-area-inset-left)); padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
@@ -69,7 +68,18 @@ img, svg { flex-shrink: 0; }
 .nav-link:hover { background: var(--ground-hover); color: var(--ink); }
 .nav-link[aria-current="page"], .nav-link.active { background: var(--raised); box-shadow: 0 0 0 1px var(--ground-border), var(--shadow-sm); }
 .nav-link[aria-current="page"] svg, .nav-link.active svg { color: var(--green); }
-.nav-bottom { margin-top: auto; padding-top: 10px; }
+/*
+ * The links scroll between the brand and the foot, so Apps and Settings stay in view however long the
+ * list is; it fades at the bottom edge where there's more below. Room around it for a link's focus
+ * ring, and its scrollbar sits on the sidebar's own edge.
+ */
+.nav-scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: -4px -12px 0 -4px; padding: 4px 12px 28px 4px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+.nav-scroll > * { flex: none; }
+.nav-label { padding: 16px 12px 4px; font-size: var(--fs-11); font-weight: 600; color: var(--text-3); }
+.nav-bottom { padding-top: 8px; border-top: 1px solid var(--border); }
 .nav-link .nav-badge { margin-left: auto; }
 .nav-create-dot { width: 20px; height: 20px; border-radius: var(--radius-pill); background: var(--green-solid); color: #fff; display: grid; place-items: center; }
 .nav-link:hover .nav-create-dot { transform: rotate(90deg); }
@@ -149,7 +159,7 @@ span.nav-dot.mobile-tab-badge { min-width: 0; width: 9px; height: 9px; padding: 
 
 /* ---------- Page header ---------- */
 .page-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.page-title { flex: 1 1 360px; min-width: 0; font-size: var(--fs-32); font-weight: 800; letter-spacing: var(--tracking-display); line-height: 1.15; overflow-wrap: anywhere; }
+.page-title { flex: 1 1 360px; min-width: 0; font-size: var(--fs-32); font-weight: 700; letter-spacing: var(--tracking-display); line-height: 1.15; overflow-wrap: anywhere; }
 .page-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .page-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: -16px; }
 .page-subtitle { margin: -18px 0 0; color: var(--text-3); font-size: var(--fs-14); }
@@ -166,6 +176,8 @@ span.nav-dot.mobile-tab-badge { min-width: 0; width: 9px; height: 9px; padding: 
 .two-col { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
 .two-col > .wide { flex: 2 1 560px; min-width: 0; }
 .two-col > .narrow { flex: 1 1 320px; min-width: 0; }
+/* A rail with nothing in it for this person (Home, for a crew) takes no room, so the other column has the width. */
+.two-col > .narrow:empty { display: none; }
 .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
 .stack-sm { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; }
 .stack-lg { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-content: start; }

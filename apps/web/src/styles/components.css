@@ -1,7 +1,8 @@
 /* Shared components: buttons, forms, cards, tables, dialogs, toasts, menus, skeletons and states. */
 
 /* ---------- Cards ---------- */
-.card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-xs); }
+/* Flat: the border sets a card apart. Shadows are kept for buttons and for what floats over the page. */
+.card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); }
 .card-pad { padding: 20px; }
 .card-head { display: flex; align-items: center; gap: 8px; padding: 16px 20px; border-bottom: 1px solid var(--divider); }
 .card-head h2, .card-head h3, .card-head strong { flex: 1; min-width: 0; font-size: var(--fs-16); font-weight: 700; letter-spacing: var(--tracking-tight); }
@@ -9,7 +10,10 @@
 .card > .card-row:first-child { border-top: 0; }
 a.card-row, button.card-row { width: 100%; text-align: left; background: var(--surface); border-left: 0; border-right: 0; border-bottom: 0; transition: background var(--dur-fast); }
 a.card-row:hover, button.card-row:hover { background: var(--fill); color: inherit; }
+/* A row that opens something has its own background: at the card's top or bottom edge it takes the card's corners, so it doesn't square them off. */
+.card > a.card-row:first-child, .card > button.card-row:first-child { border-radius: var(--radius-card) var(--radius-card) 0 0; }
 .card > a.card-row:last-child, .card > button.card-row:last-child { border-radius: 0 0 var(--radius-card) var(--radius-card); }
+.card > a.card-row:only-child, .card > button.card-row:only-child { border-radius: var(--radius-card); }
 /* A choice in a list (a radio in a bordered row): its border turns green once it's picked. A class, since an inline border with a borderColor React clears leaves three sides the text's colour. */
 .card-row.choice-row { border: 1px solid var(--border); border-radius: var(--radius-control); }
 .card-row.choice-row.picked { border-color: var(--green); }
@@ -33,7 +37,7 @@ a.card-row:hover, button.card-row:hover { background: var(--fill); color: inheri
 /* ---------- Buttons ---------- */
 .btn {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--control); padding: 0 14px;
-  border-radius: var(--radius-control); font-weight: 700; border: 1px solid var(--button-border); background: var(--surface); color: var(--ink);
+  border-radius: var(--radius-control); font-weight: 600; border: 1px solid var(--button-border); background: var(--surface); color: var(--ink);
   white-space: nowrap; user-select: none; box-shadow: var(--shadow-xs); -webkit-tap-highlight-color: transparent;
   transition: background var(--dur-fast), border-color var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast) var(--ease-out), color var(--dur-fast);
 }
@@ -43,7 +47,7 @@ a.card-row:hover, button.card-row:hover { background: var(--fill); color: inheri
 .btn:focus-visible { box-shadow: var(--ring); }
 /* A file picker inside a label (its input is .sr-only, so it can take focus): the label shows it (and base.css gives it the outline). */
 label.btn:focus-within { box-shadow: var(--ring); }
-.btn-primary { background: var(--green-solid); border-color: var(--green-solid); color: #fff; box-shadow: 0 1px 2px rgba(44, 97, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.btn-primary { background: var(--green-solid); border-color: var(--green-solid); color: #fff; font-weight: 700; box-shadow: 0 1px 2px rgba(44, 97, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
 .btn-primary:hover { background: var(--green-solid-hover); border-color: var(--green-solid-hover); color: #fff; }
 .btn-danger { color: var(--danger); }
 .btn-danger:hover { background: var(--danger-tint); border-color: color-mix(in srgb, var(--danger) 30%, var(--surface)); color: var(--danger-dark); }
@@ -51,6 +55,15 @@ label.btn:focus-within { box-shadow: var(--ring); }
 .btn-danger-solid:hover { background: var(--danger-solid-hover); border-color: var(--danger-solid-hover); color: #fff; }
 .btn-ghost { background: transparent; border-color: transparent; box-shadow: none; }
 .btn-ghost:hover { background: var(--fill-2); border-color: transparent; }
+/*
+ * An action beside a section's title is a quiet one: no outline, and words with no icon read as a
+ * link, as "All invoices" does. A page's own actions, in its header, keep their outline. :where()
+ * keeps these as light as .btn-ghost, so focus, loading and disabled still win.
+ */
+:where(.section-head) .btn:where(:not(.btn-primary, .btn-dark, .btn-danger-solid)) { background: transparent; border-color: transparent; box-shadow: none; }
+:where(.section-head) .btn:where(:not(.btn-primary, .btn-dark, .btn-danger, .btn-danger-solid)):hover { background: var(--fill-2); border-color: transparent; }
+:where(.section-head) .btn:where(:not(.btn-primary, .btn-dark, .btn-danger, .btn-danger-solid, :has(svg))) { color: var(--green); }
+:where(.section-head) .btn:where(:not(.btn-primary, .btn-dark, .btn-danger, .btn-danger-solid, :has(svg))):hover { color: var(--green-dark); }
 .btn-dark { background: var(--solid); border-color: var(--solid); color: var(--on-solid); }
 .btn-dark:hover { background: var(--solid-hover); border-color: var(--solid-hover); color: var(--on-solid); }
 .btn-sm { height: var(--control-sm); padding: 0 10px; font-size: var(--fs-13); gap: 6px; }
@@ -92,6 +105,9 @@ label.btn:focus-within { box-shadow: var(--ring); }
 /* A status is a word in a rounded pill (StatusPill.tsx); tags are square (.tag), so the two never read alike. */
 .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: var(--radius-pill); font-size: var(--fs-12); font-weight: 600; white-space: nowrap; }
 .pill-dot { width: 6px; height: 6px; border-radius: var(--radius-pill); }
+/* A steady state is its dot and plain words; the tint is kept for a state that needs someone. The same padding, so dots line up down a column. */
+.pill.pill-quiet { background: none; color: var(--text-2); font-size: var(--fs-13); font-weight: 500; }
+.page-meta > .pill-quiet:first-child { padding-left: 0; }
 .chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--fill-2); color: var(--text-2); font-size: var(--fs-12); font-weight: 600; white-space: nowrap; }
 .chip button { display: grid; place-items: center; width: 16px; height: 16px; margin-right: -4px; border: 0; border-radius: 50%; background: transparent; color: inherit; padding: 0; }
 .chip button:hover { background: var(--fill-3); }
@@ -297,9 +313,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   .table-stack .select-cell > label { width: 44px; height: 44px; margin: 0; }
 }
 
-.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 12px; }
-/* Compact top to bottom, but the same 20px sides as .card-pad, so a stat's text lines up with the cards around it. */
-.stat { padding: 14px 20px; }
+/* A row of figures on a hairline, the way Finance shows its balances (.fin-balances): no box around each, whatever card class it carries. */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 16px 32px; padding-top: 16px; border-top: 1px solid var(--divider); }
+.stat-row > .stat { min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; }
 .stat .label { font-size: var(--fs-12); font-weight: 600; color: var(--text-3); }
 .stat .value { font-size: var(--fs-24); font-weight: 700; letter-spacing: var(--tracking-display); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .stat .hint { font-size: var(--fs-12); color: var(--text-3); margin-top: 2px; }
@@ -544,8 +560,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .empty-inline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin: 0; color: var(--text-3); font-size: var(--fs-14); font-weight: 400; text-align: left; }
 /* Straight under a .card-head, it takes a row's padding; inside a .card-pad it already has the card's. */
 .card:not(.card-pad) > .empty-inline { padding: 14px 20px; }
-.empty-inline .btn, .empty-inline .link-btn { height: auto; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; box-shadow: none; color: var(--green); font-size: inherit; font-weight: 600; }
-.empty-inline .btn:hover, .empty-inline .link-btn:hover { background: none; color: var(--green-dark); text-decoration: underline; }
+/* A section with nothing in it yet is that one line under its heading, not a box around the line. The same for a list that is only its footer ("Show 1 past visit"). */
+.card:has(> :is(.empty-inline, .list-foot):only-child) { border: 0; border-radius: 0; background: none; padding: 0; }
+.card:has(> :is(.empty-inline, .list-foot):only-child) > :is(.empty-inline, .list-foot) { justify-content: flex-start; padding: 0; border: 0; }
+.card:has(> .list-foot:only-child) > .list-foot > :empty { display: none; }
+.empty-inline .btn, .empty-inline .link-btn, .card:has(> .list-foot:only-child) .btn { height: auto; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; box-shadow: none; color: var(--green); font-size: inherit; font-weight: 600; }
+.empty-inline .btn:hover, .empty-inline .link-btn:hover, .card:has(> .list-foot:only-child) .btn:hover { background: none; color: var(--green-dark); text-decoration: underline; }
 .empty-inline .btn:active:not(:disabled) { transform: none; }
 .empty-inline .btn:focus-visible { box-shadow: var(--ring); }
 .empty-inline .btn:disabled { background: none; border: 0; }
@@ -700,8 +720,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .more-options-sm > summary { min-height: 28px; font-size: var(--fs-13); }
 .more-options-sm[open] > summary { margin-bottom: 4px; }
 
-.stat-button { font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; width: 100%; transition: box-shadow var(--dur-fast), transform var(--dur-fast) var(--ease-out); }
-.stat-button:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.stat-button { font: inherit; color: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
+.stat-view { color: var(--green); font-size: var(--fs-13); font-weight: 600; }
+.stat-button:hover .stat-view { color: var(--green-dark); text-decoration: underline; text-underline-offset: 2px; }
 .stat-button:focus-visible { outline: none; box-shadow: var(--ring); }
 
 /* ---------- Charts (Recharts, see components/ui/Chart.tsx) ---------- */

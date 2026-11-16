@@ -376,7 +376,7 @@ export function ClientPage() {
                       {shownCustomFields(propertyFields, p.custom_fields).length > 0 && <dl className="kv small" style={{ margin: 0 }}><CustomFieldList fields={propertyFields} values={p.custom_fields} /></dl>}
                       <PropertyEquipment propertyId={p.id} inCard />
                       <div className="row wrap" style={{ marginTop: 4 }}>
-                        <MapsLink className="btn btn-sm" place={p}><Icon name="navigation" size={14} />Directions</MapsLink>
+                        <MapsLink className="btn btn-sm btn-ghost" place={p}><Icon name="navigation" size={14} />Directions</MapsLink>
                         {p.lat == null && <span className="muted small" title="Routing and weather checks need a map location">Not on the map yet</span>}
                       </div>
                     </div>

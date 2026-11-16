@@ -17,16 +17,21 @@ import { CommandPalette, openPalette } from "./CommandPalette";
 import { useChatBadge, useChatLive } from "@/features/chat/data";
 import { useMyJobs, waitingCount } from "@/features/field/myJobsData";
 import { signOutNote, subCodeWays } from "@/features/auth/textCode";
-import { createItems, mobileTabs, NAV_GROUPS, navVisible, settingsItem, subCanOpen, type NavItem } from "./nav";
+import { createItems, mobileTabs, NAV_GROUP_LABELS, NAV_GROUPS, navVisible, settingsItem, subCanOpen, type NavItem } from "./nav";
 import { HelpButton } from "./Help";
 import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
 import { RestartBanner } from "./RestartBanner";
 import { getLocale, showScreenLang, t } from "@/lib/i18n";
 
-function useVisibleGroups(): NavItem[][] {
+/** The sidebar for this person: its groups, each under its name, and the links kept at its foot. */
+function useVisibleNav(): { groups: Array<{ label: string | null; items: NavItem[] }>; foot: NavItem[] } {
   const session = useSession();
-  return NAV_GROUPS.map((group) => group.filter((item) => navVisible(session, item))).filter((g) => g.length);
+  const shown = NAV_GROUPS.map((group, i) => ({ label: NAV_GROUP_LABELS[i] ?? null, items: group.filter((item) => navVisible(session, item)) }));
+  return {
+    groups: shown.map((g) => ({ ...g, items: g.items.filter((item) => !item.foot) })).filter((g) => g.items.length),
+    foot: shown.flatMap((g) => g.items.filter((item) => item.foot)),
+  };
 }
 
 /** New requests waiting, shown beside Requests in the sidebar (which a sub doesn't have). */
@@ -116,7 +121,7 @@ function useTyping() {
 
 export function AppShell() {
   const session = useSession();
-  const groups = useVisibleGroups();
+  const { groups, foot } = useVisibleNav();
   const [moreOpen, setMoreOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
@@ -207,12 +212,12 @@ export function AppShell() {
         <Link to={sub ? "/field" : "/"} className="brand" aria-label={t("Crewtavo home")} viewTransition>
           <BrandLockup size={30} />
         </Link>
-        <nav className="nav">
+        <nav className="nav nav-scroll">
           <CreateMenu />
           {groups.map((group, i) => (
-            <div key={i} className="nav">
-              {i > 0 && <span className="nav-divider" />}
-              {group.map((item) => (
+            <div key={i} className="nav" role={group.label ? "group" : undefined} aria-labelledby={group.label ? `nav-group-${i}` : undefined}>
+              {group.label ? <span className="nav-label" id={`nav-group-${i}`}>{t(group.label)}</span> : i > 0 && <span className="nav-divider" />}
+              {group.items.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
                   <Icon name={item.icon} />
                   {t(item.label)}
@@ -223,10 +228,12 @@ export function AppShell() {
           ))}
         </nav>
         <nav className="nav nav-bottom" aria-label={t("Settings")}>
-          <NavLink to={settings.to} className={navClass(settings)} viewTransition>
-            <Icon name={settings.icon} />
-            {t(settings.label)}
-          </NavLink>
+          {[...foot, settings].map((item) => (
+            <NavLink key={item.to} to={item.to} className={navClass(item)} viewTransition>
+              <Icon name={item.icon} />
+              {t(item.label)}
+            </NavLink>
+          ))}
         </nav>
       </aside>
 
@@ -299,7 +306,7 @@ export function AppShell() {
           <div className="sheet" role="dialog" aria-label={t("All sections")} data-leaving={!moreVisible || undefined}>
             <MobileCreate onDone={() => setMoreOpen(false)} />
             <nav className="nav">
-              {[...groups.flat(), settings].map((item) => (
+              {[...groups.flatMap((g) => g.items), ...foot, settings].map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} onClick={() => setMoreOpen(false)} viewTransition>
                   <Icon name={item.icon} />
                   {t(item.label)}

@@ -277,6 +277,8 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
           : "Add a property first. Plans and files are kept with the property.";
   const addTargets = scope.kind === "client" && scope.properties.length > 1 ? scope.properties : null;
   const single = defaultTarget();
+  // With nothing in it yet, it's the hint alone, a quiet line under the heading; the box comes back while files are dragged over it.
+  const bare = Boolean(files.data) && !visible.length && !sending.length && dropOn !== "card";
 
   return (
     <section className="stack" aria-labelledby={`plans-${scopeKey(scope).join("-")}`}>
@@ -292,7 +294,7 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
           />
         )}
       </div>
-      <div className={`card card-pad ${dropOn === "card" ? styles.dropping : ""}`} {...dropProps("card", single)}>
+      <div className={bare ? undefined : `card card-pad ${dropOn === "card" ? styles.dropping : ""}`} {...dropProps("card", single)}>
         <input
           ref={picker}
           type="file"

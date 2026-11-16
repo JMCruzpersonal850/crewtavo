@@ -1563,8 +1563,8 @@ button.hub-btn { width: 100%; border: 0; font: inherit; font-size: var(--fs-16);
  * Square like tags, so they never read as the page's own buttons.
  */
 .add-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.btn.add-chip { border-radius: var(--radius-sm); font-weight: 600; color: var(--text-2); }
-.btn.add-chip:hover { color: var(--ink); }
+.btn.add-chip { border-radius: var(--radius-sm); font-weight: 600; color: var(--text-2); background: transparent; border-color: transparent; box-shadow: none; }
+.btn.add-chip:hover { background: var(--fill-2); color: var(--ink); }
 .btn.add-chip > svg { color: var(--green); }
 
 /* ---------- Marketing → Social ---------- */
