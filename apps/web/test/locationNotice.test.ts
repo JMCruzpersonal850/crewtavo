@@ -121,7 +121,7 @@ describe("acknowledging it", () => {
 });
 
 describe("what the notice says, and where", () => {
-  const dialog = readFileSync(new URL("../src/features/field/LocationNotice.tsx", import.meta.url), "utf8");
+  const dialog = readFileSync(new URL("../src/features/field/LocationNoticeDialog.tsx", import.meta.url), "utf8");
 
   it("says what's saved at a clock-in and clock-out, and that the comparing at the property saves nothing", () => {
     expect(dialog).toContain("saves where you are when you clock in and when you clock out");

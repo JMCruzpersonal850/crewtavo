@@ -20,7 +20,7 @@ import { hasRole, keepsTime, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { clockChange, clockSaved, showClockTap, type ClockChange, type ClockTarget } from "./clockTaps";
 import { CATEGORY_LABELS, clockPlace, onDayClock, recordsPlaces, useElapsed, useRunningTimer, type TimerCategory } from "./fieldData";
-import { LocationNotice } from "./LocationNotice";
+import { LocationNotice } from "./LocationNoticeDialog";
 import { msg, t } from "@/lib/i18n";
 
 interface VisitUnderWay { id: string; title: string; job_id: string | null }

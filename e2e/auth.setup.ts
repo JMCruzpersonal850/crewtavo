@@ -9,7 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { authFile, PASSWORD, PEOPLE, SUPABASE_SECRET, SUPABASE_URL, withPassword, type Person } from "./support/env";
 
 // Everyone who clocks in is shown, once, what's saved about where they are, in a dialog over My day
-// (features/field/LocationNotice.tsx). The demo team has seen it, so the other tests start past it;
+// (features/field/LocationNoticeDialog.tsx). The demo team has seen it, so the other tests start past it;
 // field.spec.ts has the test of the notice itself.
 setup("the demo team has acknowledged the location notice", async () => {
   if (!SUPABASE_URL || !SUPABASE_SECRET) throw new Error("No Supabase server key: fill in .dev.vars (see e2e/README.md).");

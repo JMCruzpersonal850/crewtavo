@@ -58,7 +58,7 @@ import { AddWork, VisitInvoice } from "./FieldBilling";
 import { addsToVisit, addsWork, fieldInvoiceKind, takesMoney, takesWork } from "./fieldMoney";
 import { VisitExtraScope } from "./FieldExtras";
 import { YourPrice } from "./YourPrice";
-import { LocationNotice } from "./LocationNotice";
+import { LocationNotice } from "./LocationNoticeDialog";
 import { msg, t, T } from "@/lib/i18n";
 
 interface ChecklistItem { key: string; label: string; type: "check" | "number" | "text" | "choice" | "photo" | "signature"; required: boolean; options?: string[]; sop_page_id?: string }

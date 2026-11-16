@@ -22,7 +22,7 @@ import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { CompanyLogo } from "./CompanyLogo";
 import { JobCostSettings } from "./JobCostSettings";
-import { NextNumbers } from "./NextNumbers";
+import { NextNumbers } from "./NextNumberSettings";
 import { QuoteSettings } from "./QuoteSettings";
 
 // The clock at the property's choices of how close counts as there, in meters, said in feet too.
