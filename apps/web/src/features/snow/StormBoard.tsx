@@ -297,19 +297,18 @@ export function StormBoard({ sites: all, team, onOpen, onWeather }: { sites: Sit
 }
 
 /**
- * The snow coming, on its sky: how much at the customers, hour by hour at the shop (or at a customer
- * picked here; with no shop on the map, where it's deepest), and the alerts in force.
+ * The snow coming, on its sky: how much at the customers, hour by hour at the shop (with no shop on
+ * the map, where it's deepest), and the alerts in force. The weather pop-up picks another place.
  */
 function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; rows: Array<{ site: Site; snow: number | null }>; canChange: boolean; onWeather: (place: string) => void }) {
   const { company } = useSession();
   const checked = rows.filter((r) => r.snow != null && !r.site.job.paused_at);
   const amounts = checked.map((r) => r.snow!);
   const most = Math.max(0, ...amounts);
-  // Whose hours the sentence and the bars are: the shop's until a customer is picked.
+  // Whose hours the sentence and the bars are: the shop's.
   const shop = hasShop(company);
   const places = rows.map((r) => r.site).filter(located).sort((a, b) => customer(a).localeCompare(customer(b)));
-  const [picked, setPicked] = useState("");
-  const site = places.find((s) => s.job_id === picked) ?? (shop ? undefined : [...checked].sort((a, b) => b.snow! - a.snow!)[0]?.site ?? places[0]);
+  const site = shop ? undefined : [...checked].sort((a, b) => b.snow! - a.snow!)[0]?.site ?? places[0];
   const at = site ? site.job_id : shop ? SHOP : null;
   const name = site ? customer(site) : "your shop";
   const weather = useQuery(weatherQuery(company.id, at));
@@ -323,13 +322,6 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
   // Today's own storm there: what has fallen since 6pm last night and what's still coming by 6pm tonight
   // (at the shop, the forecast's own count of today, as the weather popup has it).
   const today = (site ? forecast.today?.inches[site.job_id] : w?.snow_by_day[addDaysIso(forecast.date, -1)]) || 0;
-  // Whose it is, to pick, under the button that opens the weather there. Nothing to pick with one place.
-  const picker = at && places.length + (shop ? 1 : 0) > 1 && (
-    <select className={styles.place} value={at} onChange={(e) => setPicked(e.target.value)} aria-label="Whose weather, hour by hour">
-      {shop && <option value={SHOP}>At your shop</option>}
-      {places.map((s) => <option key={s.job_id} value={s.job_id}>At {customer(s)}</option>)}
-    </select>
-  );
   return (
     <section className={styles.sky} style={{ "--sky-top": backdrop[0], "--sky-bottom": backdrop[1], "--sky-glow": backdrop[2] } as CSSProperties} aria-label="The snow coming">
       <div className={styles.coming}>
@@ -339,7 +331,7 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
             <div className={styles.kicker}>At your customers, 6pm today through {formatDay(`${forecast.date}T12:00:00`)}</div>
             <div className={styles.amount}>{!amounts.length ? "No forecast" : !snowing ? "No snow" : Math.min(...amounts) > most - 0.05 ? inches(most) : `Up to ${inches(most)}`}</div>
             <div className={styles.story}>
-              {at && !picker && <strong>At {name}: </strong>}
+              {at && <strong>At {name}: </strong>}
               {w ? `${today >= 0.05 ? `Today's snow: ${inches(today)}. ` : ""}${snowStory(w.hours)}` : weather.isPending && at ? <Skeleton width={220} /> : ""}
             </div>
           </div>
@@ -354,10 +346,7 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
                 <Bar dataKey="snow" fill="var(--color-snow)" fillOpacity={0.9} radius={[3, 3, 0, 0]} maxBarSize={14} {...CHART_MOTION} />
               </BarChart>
             </ChartContainer>
-            <div className={styles.where}>
-              <button type="button" className={styles.more} onClick={() => onWeather(at)}>Each hour at {name}<Icon name="chevronRight" size={14} /></button>
-              {picker}
-            </div>
+            <button type="button" className={styles.more} onClick={() => onWeather(at)}>Each hour at {name}<Icon name="chevronRight" size={14} /></button>
           </div>
         )}
       </div>
@@ -372,10 +361,7 @@ function Coming({ forecast, rows, canChange, onWeather }: { forecast: Forecast; 
       <div className={styles.credit}>
         <span>Forecast by <a href={SOURCE_LINKS[forecast.source]} target="_blank" rel="noreferrer">{WEATHER_SOURCE_LABELS[forecast.source]}</a>{canChange && <> · <Link to="/settings?tab=weather">Change</Link></>}</span>
         {at && !data.some((d) => d.snow > 0) && (
-          <div className={styles.where}>
-            <button type="button" className={styles.more} onClick={() => onWeather(at)}>See the weather<Icon name="chevronRight" size={14} /></button>
-            {picker}
-          </div>
+          <button type="button" className={styles.more} onClick={() => onWeather(at)}>See the weather<Icon name="chevronRight" size={14} /></button>
         )}
       </div>
     </section>
