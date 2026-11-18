@@ -108,14 +108,12 @@ function steps(s: SetupStatus): { title: string; summary: string; steps: ReactNo
       case "services_not_ready":
         return fail("The database or one of its helper services didn't start in time.", [services, restart]);
       case "wrong_password":
-        return fail("Crewtavo couldn't sign in to its database. This happens when the database password was changed after the first start.", [
-          railway
-            ? <>In Railway, open the <strong>Postgres</strong> service's <strong>Variables</strong> and put back the original <Code>POSTGRES_PASSWORD</Code>. The other services read it from there.</>
-            : compose
-              ? <>Put the original <Code>POSTGRES_PASSWORD</Code> back in the <Code>.env.instance</Code> file next to <Code>docker-compose.yml</Code>.</>
-              : <>Give Crewtavo and its services the original <Code>POSTGRES_PASSWORD</Code> again.</>,
-          restart,
-        ]);
+        return fail("Crewtavo couldn't sign in to its database. This happens when the database password was changed after the first start.", railway
+          ? [<>In Railway, open the <strong>Postgres</strong> service's <strong>Variables</strong> and put back the original <Code>POSTGRES_PASSWORD</Code>. The other services read it from there.</>, restart]
+          : compose
+            // A restart keeps the password the services were started with: only starting them again reads .env.instance.
+            ? [<>Put the original <Code>POSTGRES_PASSWORD</Code> back in the <Code>.env.instance</Code> file next to <Code>docker-compose.yml</Code>, then run <Code>npm run instance</Code> in the Crewtavo folder. It starts every service again with it.</>]
+            : [<>Give Crewtavo and its services the original <Code>POSTGRES_PASSWORD</Code> again.</>, restart]);
       case "unreachable":
         return fail("Crewtavo can't reach its database.", [services, restart]);
       case "bad_url":
