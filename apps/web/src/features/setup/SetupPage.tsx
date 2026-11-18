@@ -86,10 +86,18 @@ const Code = ({ children }: { children: ReactNode }) => <code style={{ fontSize:
 
 function steps(s: SetupStatus): { title: string; summary: string; steps: ReactNode[] } {
   const railway = s.platform === "railway";
-  const restart = railway ? <>In your Railway project, open the <strong>crewtavo</strong> service and choose <strong>Redeploy</strong>.</> : <>Restart Crewtavo (<Code>docker compose restart app</Code>).</>;
+  // Docker Compose (npm run instance reads its secrets from .env.instance), or a server set up another way.
+  const compose = s.platform === "compose";
+  const restart = railway
+    ? <>In your Railway project, open the <strong>crewtavo</strong> service and choose <strong>Redeploy</strong>.</>
+    : compose
+      ? <>Restart Crewtavo: in the Crewtavo folder, run <Code>docker compose --env-file .env.instance restart crewtavo</Code>.</>
+      : <>Restart Crewtavo the way you started it.</>;
   const services = railway
     ? <>Open your Railway project and check that every service (Postgres, auth, rest, storage) says <strong>Active</strong>. If one has crashed, open it and choose <strong>Redeploy</strong>.</>
-    : <>Run <Code>docker compose ps</Code> in the Crewtavo folder and check every service is running. Start any that stopped with <Code>docker compose up -d</Code>.</>;
+    : compose
+      ? <>In the Crewtavo folder, run <Code>docker compose --env-file .env.instance ps</Code> and check every service is running. <Code>npm run instance</Code> starts any that stopped.</>
+      : <>Check that the database and its helper services (auth, rest and storage) are running.</>;
   const fail = (summary: string, list: ReactNode[]) => ({ title: "Finish setting up Crewtavo", summary, steps: list });
 
   if (s.database === "starting")
@@ -103,7 +111,9 @@ function steps(s: SetupStatus): { title: string; summary: string; steps: ReactNo
         return fail("Crewtavo couldn't sign in to its database. This happens when the database password was changed after the first start.", [
           railway
             ? <>In Railway, open the <strong>Postgres</strong> service's <strong>Variables</strong> and put back the original <Code>POSTGRES_PASSWORD</Code>. The other services read it from there.</>
-            : <>Put the original <Code>POSTGRES_PASSWORD</Code> back in the <Code>.env</Code> file next to <Code>docker-compose.yml</Code>.</>,
+            : compose
+              ? <>Put the original <Code>POSTGRES_PASSWORD</Code> back in the <Code>.env.instance</Code> file next to <Code>docker-compose.yml</Code>.</>
+              : <>Give Crewtavo and its services the original <Code>POSTGRES_PASSWORD</Code> again.</>,
           restart,
         ]);
       case "unreachable":

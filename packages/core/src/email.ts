@@ -45,7 +45,7 @@ export const MAIL_PRESETS: MailPreset[] = [
     label: "Resend",
     kind: "resend",
     recommended: true,
-    summary: "Made for sending business email, so it reaches inboxes. Free for up to 100 emails a day, and it works on every Railway plan.",
+    summary: "Made for sending business email, so it reaches inboxes. Free for up to 100 emails a day, and it works wherever Crewtavo runs, Railway included.",
     passwordLabel: "API key",
     steps: [
       {
