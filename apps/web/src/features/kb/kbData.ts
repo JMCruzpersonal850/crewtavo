@@ -65,6 +65,31 @@ export function useIsEditor() {
   return hasRole(session, "admin", "office") && can(session, "kb_edit");
 }
 
+/**
+ * The guides people outside the team can read by link, for the people who edit guides: "anyone"
+ * with the link, or how many people each is shared with. A guide nobody was added to isn't here.
+ * Empty for everyone else (they see nothing of who guides are shared with).
+ */
+export function useSharedGuides(): Map<string, "anyone" | number> {
+  const { company } = useSession();
+  const editor = useIsEditor();
+  const shared = useQuery({
+    queryKey: ["kb", company.id, "shared"],
+    enabled: editor,
+    queryFn: async () => {
+      const [shares, people] = await Promise.all([
+        everyRow(() => supabase().from("sop_shares").select("page_id, access").eq("company_id", company.id), { key: "page_id" }),
+        everyRow(() => supabase().from("sop_share_people").select("id, page_id").eq("company_id", company.id)),
+      ]);
+      const by = new Map<string, "anyone" | number>();
+      for (const p of people) by.set(p.page_id, ((by.get(p.page_id) as number | undefined) ?? 0) + 1);
+      for (const s of shares) if (s.access === "anyone") by.set(s.page_id, "anyone");
+      return by;
+    },
+  });
+  return useMemo(() => shared.data ?? new Map<string, "anyone" | number>(), [shared.data]);
+}
+
 export function useCategories() {
   const { company } = useSession();
   return useQuery({

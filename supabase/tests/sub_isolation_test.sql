@@ -344,6 +344,9 @@ insert into public.sop_feedback (company_id, page_id, revision, user_id, helpful
 insert into public.sop_feedback (company_id, page_id, revision, user_id, message) values (:'co', :'ladder_page', 1, 'd1070000-0000-0000-0000-000000000004', 'Say how far to set the feet out');
 insert into public.sop_quizzes (company_id, page_id, questions) values (:'co', :'ladder_page', '[{"question": "How far out do the feet go?", "options": ["A foot for every 4 feet up", "Against the wall"], "answer": 0}]');
 insert into public.sop_search_misses (company_id, user_id, query) values (:'co', 'd1070000-0000-0000-0000-000000000004', 'scaffold');
+-- Who a guide is shared with outside the team (20261117000200_guide_sharing.sql): the office's, never a sub's.
+insert into public.sop_shares (page_id, company_id) values (:'ladder_page', :'co');
+insert into public.sop_share_people (company_id, page_id, email) values (:'co', :'ladder_page', 'newhire@example.com');
 insert into public.stripe_invoices (company_id, origin) values (:'co', 'crewtavo');
 insert into public.sync_links (company_id, provider, entity, local_id, external_id) values (:'co', 'quickbooks', 'client', :'c1', 'qb-1');
 insert into public.terms_acceptances (company_id, user_id, role, version) values (:'co', 'd1070000-0000-0000-0000-000000000001', 'owner', 't1070');
@@ -728,6 +731,9 @@ select t1070.check(not exists (select 1 from unnest(array['public.storage_snapsh
 -- So is reading a published showcase for a visitor (20261113001580_showcases_come_down.sql): the server asks, with its visitor limits.
 select t1070.check(not has_function_privilege('authenticated', 'public.showcase_view(text)', 'execute') and not has_function_privilege('anon', 'public.showcase_view(text)', 'execute'),
   'reading a showcase for a visitor is the server''s alone');
+-- And reading a guide shared by link (20261117000200_guide_sharing.sql): the server asks, once it knows whose browser it is.
+select t1070.check(not has_function_privilege('authenticated', 'public.guide_share_view(text, text, boolean, uuid)', 'execute') and not has_function_privilege('anon', 'public.guide_share_view(text, text, boolean, uuid)', 'execute'),
+  'reading a shared guide for a visitor is the server''s alone');
 -- And so are the referral page's lead and recording a referral ask (20261031000100_referral_credits.sql,
 -- 20261031000120_referral_asks.sql): the server checks the link, Turnstile and the 6 months first.
 select t1070.check(not exists (select 1 from unnest(array['public.record_referral(uuid, uuid, text, text, text, jsonb, text)',

@@ -221,6 +221,8 @@ export const routes: RouteObject[] = [
   { path: "u/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/UnsubscribePage"), "UnsubscribePage") },
   { path: "refer/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ReferralPage"), "ReferralPage") },
   { path: "s/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ShowcasePage"), "ShowcasePage") },
+  // A guide shared by link with people outside the team.
+  { path: "g/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/SharedGuidePage"), "SharedGuidePage") },
   // A subcontractor's link to send in their W-9 and insurance.
   { path: "paperwork/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/PaperworkPage"), "PaperworkPage") },
   { path: "license", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/LicensePage"), "LicensePage") },

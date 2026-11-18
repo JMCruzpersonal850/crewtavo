@@ -19,7 +19,7 @@ import { CategoriesDialog } from "./CategoriesDialog";
 import { guideFinder } from "./finder";
 import { GuideCover } from "./GuideCover";
 import { NewGuideButton } from "./NewGuide";
-import { reviewDueAt, useCategories, useIsEditor, useSopIndex, useTraining, type SopIndexRow } from "./kbData";
+import { reviewDueAt, useCategories, useIsEditor, useSharedGuides, useSopIndex, useTraining, type SopIndexRow } from "./kbData";
 import { t } from "@/lib/i18n";
 import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 
@@ -293,6 +293,8 @@ function CoverCardsSkeleton({ label, count }: { label: string; count: number }) 
 
 /** Guides as cards: the cover photo (or a book) over the title. */
 function GuideCards({ pages, loading, error, retry, isRead, empty, showCategory }: { pages: SopIndexRow[]; loading: boolean; error?: unknown; retry?: () => void; isRead?: (p: SopIndexRow) => boolean; empty?: React.ReactNode; showCategory?: Array<{ id: string; name: string }> }) {
+  // For the people who edit guides: which ones people outside the team can read by link.
+  const shared = useSharedGuides();
   if (error) return <div className="card"><ErrorState compact error={error} onRetry={retry} /></div>;
   if (loading) return <CoverCardsSkeleton label={t("Loading guides")} count={3} />;
   if (!pages.length) return <div className="card"><EmptyState inline title={t("No guides here yet")} action={empty} /></div>;
@@ -306,9 +308,10 @@ function GuideCards({ pages, loading, error, retry, isRead, empty, showCategory 
             <span className="guide-card-body">
               <strong className="guide-card-title">{p.title}</strong>
               <span className="muted small">{showCategory && <>{showCategory.find((c) => c.id === p.category_id)?.name ?? t("Uncategorized")} · </>}{t("Updated {when}", { when: timeAgo(p.revised_at) })}{p.revision > 1 && ` · ${t("Revision {number}", { number: p.revision })}`}</span>
-              {(p.status === "draft" || (p.required && p.status === "published")) && (
+              {(p.status === "draft" || (p.required && p.status === "published") || shared.has(p.id)) && (
                 <span className="row wrap" style={{ gap: 6, marginTop: 4 }}>
                   {p.status === "draft" && <span className="pill">{t("Draft")}</span>}
+                  {shared.has(p.id) && <span className="pill" title={shared.get(p.id) === "anyone" ? t("Anyone with the link can read this") : t("Shared with people outside the team")}><Icon name={shared.get(p.id) === "anyone" ? "globe" : "link"} size={12} />{t("Shared")}</span>}
                   {p.required && p.status === "published" && <span className="pill" data-tone={read ? "success" : "warning"}>{read ? <><Icon name="check" size={12} strokeWidth={2} />{t("Read")}</> : t("Required")}</span>}
                 </span>
               )}

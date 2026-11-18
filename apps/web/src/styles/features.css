@@ -136,6 +136,9 @@
 .public-brand .tile { width: 40px; height: 40px; border-radius: var(--radius-control); background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; }
 .public-brand strong { font-size: var(--fs-16); }
 .public-brand .logo { height: 40px; width: auto; max-width: 160px; object-fit: contain; }
+/* A guide shared by link (features/public/SharedGuidePage.tsx): its contents list always folds away above it, and nothing sits over its headings. */
+.shared-guide .sop-toc-inline { display: block; }
+.shared-guide .sop-body :is(h2, h3, h4) { scroll-margin-top: 16px; }
 .public-foot { text-align: center; font-size: var(--fs-12); color: var(--text-3); }
 .option-line { display: flex; gap: 10px; align-items: flex-start; }
 .success-mark { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--green-tint); color: var(--green); margin: 0 auto; animation: pop-in var(--dur-slow) var(--ease-spring); }

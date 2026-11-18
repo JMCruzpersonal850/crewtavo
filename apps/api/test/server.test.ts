@@ -112,6 +112,12 @@ describe("the server", () => {
     expect(form["content-type"]).toContain("text/html");
     expect(form["x-frame-options"]).toBeUndefined();
     expect(form["content-security-policy"]).toBeUndefined();
+    // A guide shared by link: a page like the others, kept out of search engines.
+    const guide = await headersOf("/g/0123456789abcdef0123456789abcdef");
+    expect(guide["content-type"]).toContain("text/html");
+    expect(guide["x-robots-tag"]).toBe("noindex");
+    expect(guide["x-frame-options"]).toBe("SAMEORIGIN");
+    expect((await headersOf("/"))["x-robots-tag"]).toBeUndefined();
     // Files that aren't pages keep their own headers.
     const asset = await headersOf("/assets/app-1a2b.js");
     expect(asset["cache-control"]).toBe("public, max-age=31536000, immutable");

@@ -281,7 +281,7 @@ describe("old addresses", () => {
   it("forwards pages to the new address, but never API calls or client links", async () => {
     serve((call) => (call.path === "web_address" ? done : []));
     expect(await forwardTo(env, page("https://crewtavo-production.up.railway.app/schedule?day=2026-10-20"))).toBe("https://app.greenlawn.com/schedule?day=2026-10-20");
-    for (const path of ["/api/health", "/hub/abc", "/book/acme/quote", "/auth/v1/verify", "/.well-known/crewtavo-instance"]) {
+    for (const path of ["/api/health", "/hub/abc", "/book/acme/quote", "/g/0123456789abcdef0123456789abcdef", "/auth/v1/verify", "/.well-known/crewtavo-instance"]) {
       expect(await forwardTo(env, page(`https://crewtavo-production.up.railway.app${path}`)), path).toBeNull();
     }
     expect(await forwardTo(env, page("https://crewtavo-production.up.railway.app/sw.js", "*/*"))).toBeNull();

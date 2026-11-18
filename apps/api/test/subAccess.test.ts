@@ -276,6 +276,9 @@ const NOT_SIGNED_IN_ROUTES = [
   "GET /api/public/postcards/:file", "HEAD /api/public/postcards/:file",
   // A published job showcase and its photos (routes/showcases.ts): by the showcase's random token, only while published.
   "GET /api/public/showcases/:token", "GET /api/public/showcases/:token/:file", "HEAD /api/public/showcases/:token/:file",
+  // A guide shared by link (routes/guideShares.ts): by the share's random token, for anyone or for the people added, who prove an address with an emailed code.
+  "POST /api/public/guides/:token", "POST /api/public/guides/:token/code", "POST /api/public/guides/:token/code/check",
+  "GET /api/public/guides/:token/pictures/:name", "HEAD /api/public/guides/:token/pictures/:name",
   // The instance's own documents, AI assistants (their own tokens) and website analytics.
   "GET /.well-known/crewtavo-instance", "GET /.well-known/oauth-protected-resource", "GET /.well-known/oauth-protected-resource/mcp",
   "GET /.well-known/oauth-authorization-server", "GET /.well-known/oauth-authorization-server/auth/v1", "GET /.well-known/openid-configuration/auth/v1",

@@ -161,7 +161,7 @@ with composite keys `(company_id, parent_id)`, so a row can never point at anoth
 | Billing | `invoices`, `invoice_line_items`, `payments` |
 | Communication | `messages` (SMS, email, notes), `activity` (feed, written by triggers), `notifications` (per person), `attachments` |
 | Marketing | `campaigns`, `campaign_recipients`, `review_requests`, `referrals` |
-| Knowledge base | `sop_categories`, `sop_pages`, `sop_revisions`, `sop_acknowledgements` |
+| Knowledge base | `sop_categories`, `sop_pages`, `sop_revisions`, `sop_acknowledgements`, `sop_shares`, `sop_share_people` |
 | Automation | `automation_rules`, `automation_runs` (queue; one row per rule per matching activity event) |
 | Integrations | `integrations` (status), `integration_secrets` (encrypted, service key only), `sync_links`, `outbox` |
 | Numbering | `number_sequences` with `private.next_number()` |
@@ -246,6 +246,12 @@ Categories, pages, revisions, search and templates, built into our app:
 - **Checklists link to SOPs**: a checklist item can point at a page, so crews open the procedure
   from the visit.
 - Images go to Supabase Storage under the company's folder.
+- **Sharing by link**: owners and admins who edit guides can share a published guide with people
+  outside the team at `/g/<token>` (`sop_shares`, `sop_share_people`, `routes/guideShares.ts`). A
+  share is for only the people added by email address, each of whom proves the address with a
+  6-digit code emailed to it, or for anyone with the link. The server never says who a guide is
+  shared with, serves only the guide's own pictures (with their metadata taken out), and a new link
+  replaces the old one at once.
 
 ---
 

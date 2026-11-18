@@ -106,7 +106,7 @@ export const noteAsked = (userId: string) => {
 let wanted: Locale = "en";
 
 /** Pages for clients (their hub, booking forms, referral and unsubscribe links, a job showcase) stay in English for now. */
-const CLIENT_FACING = /^\/(hub|book|u|refer|s)\//;
+const CLIENT_FACING = /^\/(hub|book|u|refer|s|g)\//;
 
 /**
  * Which language to open in, from what the device holds. What's kept is somebody's own only while

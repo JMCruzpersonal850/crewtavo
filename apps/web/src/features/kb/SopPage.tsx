@@ -20,7 +20,7 @@ import { Face } from "@/components/ui/Avatar";
 import { ApiError, api, supabase, unwrap } from "@/lib/api";
 import { formatDate, formatDateTime, timeAgo } from "@/lib/format";
 import { hasContent, htmlToText, isAppPath, sanitizeHtml, withSections } from "@/lib/html";
-import { useSession } from "@/lib/session";
+import { can, hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { useCompanyRoles } from "../settings/roles";
 import { GuideContents, goToSection, useCurrentSection } from "./GuideContents";
@@ -29,6 +29,7 @@ import { GuideFeedback } from "./GuideFeedback";
 import { useGuidePictures } from "./pictures";
 import { PictureViewer } from "./PictureViewer";
 import { QuizDialog, type QuizQuestion } from "./QuizDialog";
+import { ShareGuideDialog } from "./ShareGuideDialog";
 import { VersionCompare } from "./VersionCompare";
 import { guideQuery, mustRead, reviewDueAt, ROLE_LABELS, useIsEditor, useSopIndex, useTraining } from "./kbData";
 import { msg, t } from "@/lib/i18n";
@@ -37,12 +38,16 @@ interface TeamMember { user_id: string; role: string; role_id: string | null; ac
 
 export function SopPage() {
   const { pageId = "" } = useParams();
-  const { company, userId, roleId } = useSession();
+  const session = useSession();
+  const { company, userId, roleId } = session;
   const editor = useIsEditor();
+  // Owners and admins who edit guides decide who a guide is shared with outside the team.
+  const sharer = editor && hasRole(session, "admin") && can(session, "kb_edit");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [history, setHistory] = useState(false);
   const [quizzing, setQuizzing] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [picture, setPicture] = useState<{ src: string; alt: string } | null>(null);
   const inlineContents = useRef<HTMLDetailsElement>(null);
 
@@ -69,6 +74,18 @@ export function SopPage() {
     queryKey: ["kb", company.id, "reads", pageId, page.data?.revision],
     enabled: Boolean(page.data),
     queryFn: async () => unwrap(await supabase().from("sop_acknowledgements").select("user_id, acknowledged_at").eq("page_id", pageId).eq("revision", page.data!.revision).order("acknowledged_at")),
+  });
+  // Whether people outside the team can read it by its link, for the people who edit it: what they write shows there.
+  const shared = useQuery({
+    queryKey: ["kb", company.id, "shared", pageId],
+    enabled: editor && Boolean(page.data),
+    queryFn: async () => {
+      const [share, people] = await Promise.all([
+        supabase().from("sop_shares").select("access").eq("page_id", pageId).maybeSingle(),
+        supabase().from("sop_share_people").select("id", { count: "exact", head: true }).eq("page_id", pageId),
+      ]);
+      return { anyone: unwrap(share)?.access === "anyone", people: people.count ?? 0 };
+    },
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["kb", company.id] });
   // Its quiz, as readers get it (questions and options, no answers): null when it has none.
@@ -192,6 +209,7 @@ export function SopPage() {
               label={t("More actions")}
               items={[
                 { label: t("Print"), icon: "printer", onSelect: () => window.print() },
+                { label: t("Share with a link"), icon: "share", onSelect: () => setSharing(true), hidden: !sharer },
                 { label: t("Revision history"), icon: "history", onSelect: () => setHistory(true), hidden: !editor },
                 { label: sop.pinned_at ? t("Unpin") : t("Pin to the top"), icon: sop.pinned_at ? "unpin" : "pushpin", onSelect: () => pin.mutate(!sop.pinned_at), hidden: !editor },
                 { label: t("Make a copy"), icon: "copy", onSelect: () => navigate(`/kb/new?copy=${sop.id}`), hidden: !editor },
@@ -210,6 +228,10 @@ export function SopPage() {
       <div className="page-meta">
         {sop.status === "draft" && <span className="pill" data-tone="warning">{t("Draft · only the office can see this")}</span>}
         {editor && sop.pinned_at && <span className="pill"><Icon name="pushpin" size={12} />{t("Pinned")}</span>}
+        {editor && shared.data?.anyone && <span className="pill"><Icon name="globe" size={12} />{t("Anyone with the link can read this")}</span>}
+        {editor && shared.data && !shared.data.anyone && shared.data.people > 0 && (
+          <span className="pill"><Icon name="link" size={12} />{t.plural(shared.data.people, { one: "Shared with {count} person outside the team", other: "Shared with {count} people outside the team" })}</span>
+        )}
         {jobOf.length > 0 && <span className="pill" data-tone="info">{t("Job description for {roles}", { roles: jobOf.join(", ") })}</span>}
         {trainingFor.length > 0 && <span className="pill" data-tone="info">{t("Training for {roles}", { roles: trainingFor.join(", ") })}</span>}
         {sop.required && <span className="pill" data-tone="warning">{forWhom.length ? t("Required reading for {roles}", { roles: forWhom.join(", ") }) : t("Required reading")}</span>}
@@ -313,6 +335,7 @@ export function SopPage() {
       </div>
       {history && <HistoryDialog pageId={sop.id} current={sop.revision} names={name} onClose={() => setHistory(false)} />}
       {picture && <PictureViewer src={picture.src} alt={picture.alt} onClose={() => setPicture(null)} />}
+      {sharing && <ShareGuideDialog pageId={sop.id} title={sop.title} onClose={() => setSharing(false)} />}
       {quizzing && quiz.data?.length && <QuizDialog pageId={sop.id} title={sop.title} questions={quiz.data} onClose={() => setQuizzing(false)} />}
     </>
   );

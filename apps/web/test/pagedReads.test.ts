@@ -43,7 +43,7 @@ describe("reading a page at a time", () => {
       if (!read.keyed) expect(row, `${read.where} has no id: name its key`).toContain('"id": ');
     }
     // The ones without an id that are read today, each by the columns that tell its rows apart.
-    expect(reads.filter((r) => r.keyed).map((r) => r.table).sort()).toEqual(["crew_members", "equipment_due", "sub_paperwork", "visit_assets", "visit_assignees"]);
+    expect(reads.filter((r) => r.keyed).map((r) => r.table).sort()).toEqual(["crew_members", "equipment_due", "sop_shares", "sub_paperwork", "visit_assets", "visit_assignees"]);
   });
 });
 

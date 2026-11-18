@@ -28,14 +28,14 @@ const SYNC_TAG = "crewtavo-field-sync";
 const WAITING = "crewtavo-waiting";
 /** The waiting notification's words in the app's language (src/lib/offline.ts WORDS_CACHE). */
 const WORDS = "crewtavo-words";
-/** Pages for clients (Client Hub, booking forms, referrals, unsubscribe links, job showcases): they don't run the crew's app. */
-const CLIENT_PAGES = /^\/(hub|book|u|refer|s)(\/|$)/;
+/** Pages for clients (Client Hub, booking forms, referrals, unsubscribe links, job showcases, guides shared by link): they don't run the crew's app. */
+const CLIENT_PAGES = /^\/(hub|book|u|refer|s|g)(\/|$)/;
 /**
  * Left to the browser, with nothing kept: what the server answers itself (the API, sign-in links
  * under /auth/, the database and stored files, a website form's thank-you page under /f/) and the
  * clients' pages.
  */
-const NOT_THE_APP = /^\/(api|mcp|\.well-known|storage|auth|rest|f|hub|book|u|refer|s)(\/|$)/;
+const NOT_THE_APP = /^\/(api|mcp|\.well-known|storage|auth|rest|f|hub|book|u|refer|s|g)(\/|$)/;
 /** How long opening the app waits for the network before using the copy kept here: on one bar a page can hang for a minute. */
 const NAVIGATE_WAIT = 4000;
 /** Where the page that old files were last cleared for is noted (pruneAssets). */

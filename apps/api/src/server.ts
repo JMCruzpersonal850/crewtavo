@@ -98,6 +98,8 @@ server.use("*", async (c, next) => {
     c.res.headers.set("X-Frame-Options", "SAMEORIGIN");
     c.res.headers.set("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'");
   }
+  // A guide shared by link is for whoever was sent it, never for search engines (routes/guideShares.ts says the same of its answers).
+  if (c.req.path.startsWith("/g/")) c.res.headers.set("X-Robots-Tag", "noindex");
   if (c.res.status !== 200) return;
   if (c.req.path.startsWith("/assets/")) c.res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
   else if (c.res.headers.get("content-type")?.includes("text/html")) c.res.headers.set("Cache-Control", "no-cache");

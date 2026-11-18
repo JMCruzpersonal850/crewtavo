@@ -10,7 +10,7 @@ import { useSyncExternalStore } from "react";
 export type ThemeChoice = "light" | "dark" | "system";
 
 const KEY = "crewtavo.theme"; // also read by the script in index.html
-const CLIENT_FACING = /^\/(hub|book|u|refer|s)\//;
+const CLIENT_FACING = /^\/(hub|book|u|refer|s|g)\//;
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 const listeners = new Set<() => void>();
 

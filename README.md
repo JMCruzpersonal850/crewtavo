@@ -222,7 +222,8 @@ to the **crewtavo** service's variables on Railway, or to `.env.instance` when s
     <td width="50%" valign="top">
       <img src="docs/images/knowledge-base.png" alt="The knowledge base of standard operating procedures">
       <p><strong>Knowledge base.</strong> Your SOPs, with an editor, revision history and required
-      reading for the crew.</p>
+      reading for the crew. A guide can be shared by link with people outside the team: only the
+      people you add, who prove their email address with a code, or anyone with the link.</p>
     </td>
   </tr>
 </table>

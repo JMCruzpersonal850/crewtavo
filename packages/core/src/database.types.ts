@@ -3430,6 +3430,52 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"sop_share_people": {
+                  Row: {
+                    "added_by": string | null,"company_id": string,"created_at": string,"email": string,"id": string,"last_opened_at": string | null,"page_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "added_by"?: string | null,"company_id": string,"created_at"?: string,"email": string,"id"?: string,"last_opened_at"?: string | null,"page_id": string
+                  }
+                  Update: {
+                    "added_by"?: string | null,"company_id"?: string,"created_at"?: string,"email"?: string,"id"?: string,"last_opened_at"?: string | null,"page_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sop_share_people_company_id_page_id_fkey"
+      columns: ["company_id","page_id"]
+isOneToOne: false
+      referencedRelation: "sop_shares"
+      referencedColumns: ["company_id","page_id"]
+    }
+                  ]
+                },"sop_shares": {
+                  Row: {
+                    "access": string,"company_id": string,"created_at": string,"created_by": string | null,"page_id": string,"token": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "access"?: string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"page_id": string,"token"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "access"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"page_id"?: string,"token"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sop_shares_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sop_shares_company_id_page_id_fkey"
+      columns: ["company_id","page_id"]
+isOneToOne: false
+      referencedRelation: "sop_pages"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
                 },"stale_public_files": {
                   Row: {
                     "company_id": string,"created_at": string,"id": number,"path": string
@@ -4742,6 +4788,9 @@ isOneToOne: false
                            },
 "guide_quiz":
 { Args: { "p_page": string }; Returns: Json
+                           },
+"guide_share_view":
+{ Args: { "p_email"?: string,"p_opened"?: boolean,"p_person"?: string,"p_token": string }; Returns: Json
                            },
 "hub_deposit_invoice":
 { Args: { "p_company": string,"p_online"?: boolean,"p_quote": string }; Returns: string

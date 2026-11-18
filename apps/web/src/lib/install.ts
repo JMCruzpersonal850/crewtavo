@@ -16,7 +16,7 @@ interface InstallPrompt extends Event {
 export type InstallHint = "prompt" | "ios" | null;
 
 /** Pages clients see (their hub, booking forms, referral and unsubscribe links, a job showcase): never about installing Crewtavo. */
-const CLIENT_FACING = /^\/(hub|book|u|refer|s)(\/|$)/;
+const CLIENT_FACING = /^\/(hub|book|u|refer|s|g)(\/|$)/;
 const DISMISSED = "crewtavo.install-tip.dismissed";
 
 interface Device {
