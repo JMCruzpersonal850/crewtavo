@@ -1,6 +1,6 @@
 /**
  * The Plans and files card on a quote, a job and a client: add files (drop them on the card or pick
- * them), open them in the viewer or save them, mark up a PDF or edit a Word document (saved as a
+ * them, or paste a screenshot), open them in the viewer or save them, mark up a PDF or edit a Word document (saved as a
  * new version), put a plan sheet on the Measure map, upload a new version, choose whether the crew
  * sees each one, and move a file or its newest version to the Trash (Undo puts it back). Files on
  * the property from earlier work show under "At this property", so next year's restripe has last
@@ -24,6 +24,9 @@ import { formatDate } from "@/lib/format";
 import { hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { trashFile, trashVersion, undoToast } from "../drive/trash";
+import { usePastedFiles } from "./pasteFiles";
+import { PlanPreview, previewCopies, previewLink } from "./PlanPreview";
+import { shrinksPhotos } from "./pictures";
 import { canMap, fileSize, isImage, isPdf, PLAN_FIELDS, planEntries, planMeta, usePlanLinks, type PlanEntry, type PlanFile } from "./plans";
 import { addPlanFiles, usePlanUploads, type PlanTarget } from "./planUploads";
 import styles from "./plans.module.css";
@@ -73,7 +76,8 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
   const files = usePlanFiles(scope);
   const rows = files.data ?? [];
   const entries = planEntries(rows);
-  const links = usePlanLinks(rows);
+  // Links to open and save every file, and to show the current ones' preview copies.
+  const links = usePlanLinks([...rows, ...previewCopies(entries.map((e) => e.file))]);
   const [showArchived, setShowArchived] = useState(false);
   // Uploads carry on when the card goes (planUploads.ts): back on this screen, it shows them again.
   const card = scopeKey(scope).join(":");
@@ -82,6 +86,7 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
   const [viewing, setViewing] = useState<Viewing | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   const pickFor = useRef<{ target: PlanTarget; replaces: PlanFile | null } | null>(null);
   const tooLarge = useTooLarge();
   const storageFull = useStorageFull();
@@ -100,13 +105,15 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
   };
 
   // ----- Adding files -------------------------------------------------------------------------
-  function send(list: File[], target: PlanTarget, replaces: PlanFile | null = null) {
+  /** `pasted`: from a paste, which may be anywhere on the page, so the toast says where they went. */
+  function send(list: File[], target: PlanTarget, replaces: PlanFile | null = null, pasted = false) {
     void addPlanFiles({
       companyId: session.company.id,
       card,
       files: list,
       target,
       replaces,
+      shrink: shrinksPhotos(session.company.settings),
       screen: {
         tooLarge: (error) => mounted.current && tooLarge.report(error),
         failed: (name, message) => mounted.current && toast.error(`${name}: ${message}`),
@@ -119,7 +126,8 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
               description: "It's the current one now. The crew only sees this version.",
               action: lastId ? { label: "Add a label", onClick: () => openEditor(lastId) } : undefined,
             });
-          } else toast.success(added === 1 ? "File added" : `${added} files added`);
+          } else if (pasted) toast.success(added === 1 ? "Added to Plans and files" : `${added} files added to Plans and files`);
+          else toast.success(added === 1 ? "File added" : `${added} files added`);
         },
       },
     });
@@ -277,11 +285,13 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
           : "Add a property first. Plans and files are kept with the property.";
   const addTargets = scope.kind === "client" && scope.properties.length > 1 ? scope.properties : null;
   const single = defaultTarget();
+  // A paste on the page adds to where Add files would (not for a client's several properties: which one?).
+  usePastedFiles(sectionRef, canAdd && single ? (list) => send(list, single, null, true) : null);
   // With nothing in it yet, it's the hint alone, a quiet line under the heading; the box comes back while files are dragged over it.
   const bare = Boolean(files.data) && !visible.length && !sending.length && dropOn !== "card";
 
   return (
-    <section className="stack" aria-labelledby={`plans-${scopeKey(scope).join("-")}`}>
+    <section ref={sectionRef} className="stack" aria-labelledby={`plans-${scopeKey(scope).join("-")}`}>
       <div className="section-head">
         <h2 id={`plans-${scopeKey(scope).join("-")}`} className="section-title">Plans and files</h2>
         {canAdd && single && <Button size="sm" icon="upload" onClick={() => pick(single)}>Add files</Button>}
@@ -314,12 +324,15 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
           <div className={styles.list}>
             {sending.map((u) => (
               <div key={u.key} className={styles.upload} role="status">
-                <div className={styles.uploadHead}>
-                  <span title={u.name}>{u.name}</span>
-                  <span className="muted small tabular">{u.progress === null ? `Waiting · ${fileSize(u.size)}` : u.progress >= 1 ? "Saving…" : `${Math.round(u.progress * 100)}% of ${fileSize(u.size)}`}</span>
-                  {(u.progress ?? 0) < 1 && <Button size="sm" variant="ghost" icon="x" aria-label={`Stop uploading ${u.name}`} onClick={u.stop} />}
+                <PlanIcon file={{ content_type: u.type || null, file_name: u.name }} preview={u.preview ?? undefined} />
+                <div className={styles.uploadBody}>
+                  <div className={styles.uploadHead}>
+                    <span title={u.name}>{u.name}</span>
+                    <span className="muted small tabular">{u.progress === null ? `Waiting · ${fileSize(u.size)}` : u.progress >= 1 ? "Saving…" : `${Math.round(u.progress * 100)}% of ${fileSize(u.size)}`}</span>
+                    {(u.progress ?? 0) < 1 && <Button size="sm" variant="ghost" icon="x" aria-label={`Stop uploading ${u.name}`} onClick={u.stop} />}
+                  </div>
+                  <div className="progress" aria-hidden="true"><span style={{ width: `${Math.round((u.progress ?? 0) * 100)}%` }} /></div>
                 </div>
-                <div className="progress" aria-hidden="true"><span style={{ width: `${Math.round((u.progress ?? 0) * 100)}%` }} /></div>
               </div>
             ))}
           </div>
@@ -327,7 +340,7 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
         {files.data && !visible.length && !sending.length && (
           <div className="stack-sm">
             <span className="muted small">{emptyText}</span>
-            {canAdd && single && <span className={styles.dropHint}>PDFs, pictures or any other file, up to {fileSize(200 * 1024 * 1024)} each. You can also drop them here.</span>}
+            {canAdd && single && <span className={styles.dropHint}>PDFs, pictures or any other file, up to {fileSize(200 * 1024 * 1024)} each. You can also drop them here, or paste a screenshot.</span>}
           </div>
         )}
         {files.data &&
@@ -368,13 +381,21 @@ export function PlansCard({ scope }: { scope: PlansScope }) {
 // One file
 // ---------------------------------------------------------------------------------------------
 
-export function PlanIcon({ file }: { file: Pick<PlanFile, "content_type" | "file_name"> }) {
+/**
+ * The file's kind as an icon, or for a picture, the picture itself (`preview`, a link to it) once it
+ * loads. With `onOpen`, a tap on it opens the file; the name next to it is the way in for a keyboard
+ * or a screen reader, so this isn't a stop of its own.
+ */
+export function PlanIcon({ file, preview, onOpen }: { file: Pick<PlanFile, "content_type" | "file_name">; preview?: string; onOpen?: () => void }) {
   const kind = isPdf(file) ? "pdf" : isImage(file) ? "image" : "file";
-  return (
+  const icon = (
     <span className={styles.icon} data-kind={kind} aria-hidden="true">
       <Icon name={kind === "image" ? "image" : kind === "pdf" ? "quote" : "file"} size={20} />
+      {preview && <PlanPreview src={preview} />}
     </span>
   );
+  if (!onOpen) return icon;
+  return <button type="button" className={styles.iconButton} tabIndex={-1} aria-hidden="true" onClick={onOpen}>{icon}</button>;
 }
 
 function PlanRow({ entry, save, links, menu, onOpen }: {
@@ -389,7 +410,7 @@ function PlanRow({ entry, save, links, menu, onOpen }: {
   const f = entry.file;
   return (
     <div className={styles.row}>
-      <PlanIcon file={f} />
+      <PlanIcon file={f} preview={previewLink(f, links?.open)} onOpen={() => onOpen(f)} />
       <div className={styles.body}>
         <button type="button" className={styles.title} onClick={() => onOpen(f)}>{f.title}</button>
         <span className={styles.meta}>{planMeta(entry)}</span>

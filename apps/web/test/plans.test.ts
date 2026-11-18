@@ -3,7 +3,8 @@ import {
   cornersOf, feetPerInch, feetPerPixel, fitToView, lineUp, LineUpError, moveTo, pixelAt, placementFromCorners, pointAt, scaleLabel, toMercator, turnDegrees, type LngLat,
 } from "../src/features/measure/planAlign";
 import { takeOutPaper } from "../src/features/plans/planImage";
-import { canMap, fileSize, PLAN_FIELDS, planEntries, planMeta, titleFromFileName, type PlanFile } from "../src/features/plans/plans";
+import { pastedName } from "../src/features/plans/pasteFiles";
+import { canMap, canPreview, fileSize, PLAN_FIELDS, planLinks, PREVIEW_MAX_BYTES, planEntries, planMeta, titleFromFileName, type PlanFile } from "../src/features/plans/plans";
 
 // Arrington's yard in Rocky Mount, VA.
 const YARD: LngLat = [-79.8717, 37.0547];
@@ -76,7 +77,7 @@ describe("lining a plan up with the map", () => {
 
 describe("plan files", () => {
   const file = (over: Partial<PlanFile>): PlanFile => ({
-    id: "f1", company_id: "c", property_id: "p", request_id: null, quote_id: null, job_id: "j", folder_id: null, title: "Site plan", revision: null, notes: null, path: "c/plans/f1.pdf",
+    id: "f1", company_id: "c", property_id: "p", request_id: null, quote_id: null, job_id: "j", folder_id: null, title: "Site plan", revision: null, notes: null, path: "c/plans/f1.pdf", preview_path: null,
     file_name: "Site plan.pdf", content_type: "application/pdf", size_bytes: 12_400_000, crew_visible: true, archived: false, replaces_id: null, superseded_at: null, created_by: null,
     created_at: "2026-10-01T12:00:00Z", deleted_at: null, ...over,
   });
@@ -101,7 +102,7 @@ describe("plan files", () => {
 
   it("reads every column a file needs to open in the viewer and be versioned in place, Drive folder included", () => {
     const columns = PLAN_FIELDS.split(",").map((c) => c.trim());
-    expect(columns).toEqual(expect.arrayContaining(["id", "company_id", "path", "file_name", "content_type", "size_bytes", "crew_visible", "replaces_id", "superseded_at", "folder_id", "property_id", "request_id", "quote_id", "job_id"]));
+    expect(columns).toEqual(expect.arrayContaining(["id", "company_id", "path", "preview_path", "file_name", "content_type", "size_bytes", "crew_visible", "replaces_id", "superseded_at", "folder_id", "property_id", "request_id", "quote_id", "job_id"]));
     // Every column the list reads is on the type the screens use.
     const sample = file({});
     for (const c of columns) expect(sample).toHaveProperty(c);
@@ -117,6 +118,52 @@ describe("plan files", () => {
     expect(canMap({ content_type: "image/jpeg", file_name: "scan.jpg" })).toBe(true);
     expect(canMap({ content_type: "image/heic", file_name: "IMG_1.heic" })).toBe(false);
     expect(canMap({ content_type: null, file_name: "drawing.dwg" })).toBe(false);
+  });
+
+  it("previews pictures a browser can show, small enough to load whole on the list", () => {
+    expect(canPreview({ content_type: "image/jpeg", file_name: "Gary-Lytton-3315.jpg", size_bytes: 874_000 })).toBe(true);
+    expect(canPreview({ content_type: "image/png", file_name: "site.png", size_bytes: null })).toBe(true);
+    expect(canPreview({ content_type: "image/jpeg", file_name: "scan.jpg", size_bytes: PREVIEW_MAX_BYTES + 1 })).toBe(false);
+    expect(canPreview({ content_type: "image/heic", file_name: "IMG_1.HEIC", size_bytes: 2_000_000 })).toBe(false);
+    expect(canPreview({ content_type: "image/heic", file_name: "IMG_1.jpg", size_bytes: 2_000_000 })).toBe(false);
+    expect(canPreview({ content_type: "image/tiff", file_name: "survey.tif", size_bytes: 2_000_000 })).toBe(false);
+    expect(canPreview({ content_type: "application/pdf", file_name: "plans.pdf", size_bytes: 2_000_000 })).toBe(false);
+    // Pictures browsers can't show aren't downloaded only to fail.
+    expect(canPreview({ content_type: "image/vnd.adobe.photoshop", file_name: "logo.psd", size_bytes: 2_000_000 })).toBe(false);
+    expect(canPreview({ content_type: "image/x-adobe-dng", file_name: "IMG_9.dng", size_bytes: 2_000_000 })).toBe(false);
+    // No type, or a type that says nothing: by the name.
+    expect(canPreview({ content_type: "application/octet-stream", file_name: "lot.JPG", size_bytes: 2_000_000 })).toBe(true);
+    expect(canPreview({ content_type: null, file_name: "notes.txt", size_bytes: 2_000 })).toBe(false);
+  });
+
+  it("keeps a file's link while it's good, so a preview doesn't download again when the list changes", async () => {
+    let n = 0;
+    const asked: string[][] = [];
+    const sign = async (paths: string[]) => {
+      asked.push(paths);
+      return paths.map((path) => ({ path, signedUrl: `https://files.test/${path}?token=${++n}` }));
+    };
+    const t0 = 1_800_000_000_000;
+    const first = await planLinks([{ path: "c9/plans/a.jpg", file_name: "a.jpg" }, { path: "c9/plans/b.jpg", file_name: "B 1.jpg" }], sign, t0);
+    const second = await planLinks([{ path: "c9/plans/a.jpg", file_name: "a.jpg" }, { path: "c9/plans/b.jpg", file_name: "B 1.jpg" }, { path: "c9/plans/c.jpg", file_name: "c.jpg" }], sign, t0 + 60_000);
+    expect(asked).toEqual([["c9/plans/a.jpg", "c9/plans/b.jpg"], ["c9/plans/c.jpg"]]);
+    expect(second.open["c9/plans/a.jpg"]).toBe(first.open["c9/plans/a.jpg"]);
+    expect(second.save["c9/plans/b.jpg"]).toBe(`${first.open["c9/plans/b.jpg"]}&download=B%201.jpg`);
+    // With less than ten minutes of its hour left, a link is made again.
+    const later = await planLinks([{ path: "c9/plans/a.jpg", file_name: "a.jpg" }], sign, t0 + 51 * 60_000);
+    expect(later.open["c9/plans/a.jpg"]).not.toBe(first.open["c9/plans/a.jpg"]);
+  });
+
+  it("names a pasted screenshot by when it was pasted, and keeps a pasted file's own name", () => {
+    const at = new Date(2026, 10, 18, 16, 5);
+    expect(pastedName("image.png", "image/png", at)).toBe("Pasted picture Nov 18, 2026 4.05 PM.png");
+    expect(pastedName("image.jpeg", "image/jpeg", at)).toBe("Pasted picture Nov 18, 2026 4.05 PM.jpeg");
+    expect(pastedName("", "image/jpeg", at)).toBe("Pasted picture Nov 18, 2026 4.05 PM.jpg");
+    expect(pastedName("", "", at)).toBe("Pasted picture Nov 18, 2026 4.05 PM.png");
+    expect(pastedName("C-101 Site Plan.pdf", "application/pdf", at)).toBeNull();
+    expect(pastedName("Gary-Lytton-3315.jpg", "image/jpeg", at)).toBeNull();
+    // No colon: Windows won't have one in a file name.
+    expect(titleFromFileName(pastedName("image.png", "image/png", at)!)).toBe("Pasted picture Nov 18, 2026 4.05 PM");
   });
 
   it("takes the paper out and keeps the lines", () => {

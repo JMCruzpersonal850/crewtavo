@@ -3,9 +3,13 @@
 .list { display: grid; }
 .row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--row-divider); }
 .list > .row:first-child, .list > .upload:first-child { border-top: 0; padding-top: 2px; }
-.icon { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--radius-control); background: var(--fill-2); color: var(--text-2); }
+.icon { position: relative; overflow: hidden; flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--radius-control); background: var(--fill-2); color: var(--text-2); }
 .icon[data-kind="pdf"] { background: var(--danger-tint); color: var(--danger); }
 .icon[data-kind="image"] { background: var(--info-tint); color: var(--info); }
+/* A picture's preview over its icon. White behind it, like paper, so a plan with a see-through background still reads. */
+.preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; background: #fff; opacity: 0; outline: 1px solid var(--border); outline-offset: -1px; transition: opacity var(--dur-fast); }
+.preview[data-shown] { opacity: 1; }
+.iconButton { flex: none; display: block; padding: 0; border: 0; border-radius: var(--radius-control); background: none; cursor: pointer; }
 .body { display: grid; gap: 3px; flex: 1; min-width: 0; }
 .title { color: inherit; font-weight: 700; overflow-wrap: anywhere; text-decoration: none; }
 /* The name opens the file in the viewer. */
@@ -26,7 +30,8 @@ a.title:hover, button.title:hover { color: var(--green-dark); }
 .group { margin: 14px 0 0; color: var(--text-3); font-size: var(--fs-12); font-weight: 700; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 .group:first-child { margin-top: 0; }
 
-.upload { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--row-divider); font-size: var(--fs-13); }
+.upload { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--row-divider); font-size: var(--fs-13); }
+.uploadBody { display: grid; gap: 6px; flex: 1; min-width: 0; }
 .uploadHead { display: flex; align-items: center; gap: 8px; }
 .uploadHead > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 

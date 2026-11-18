@@ -23,6 +23,8 @@ export interface DriveFile {
   content_type: string | null;
   size_bytes: number | null;
   path: string;
+  /** A picture's small copy for the list (plan_files.preview_path), or null. */
+  preview_path: string | null;
   revision: string | null;
   notes: string | null;
   crew_visible: boolean;

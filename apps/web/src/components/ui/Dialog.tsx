@@ -117,6 +117,45 @@ export function Dialog({
 }
 
 /**
+ * Lets a layer of the page's own (the file viewer, at the end of <body>) open over the dialogs
+ * that are open. A modal dialog shows above everything else and leaves the rest of the page out of
+ * reach, so a file opened from one (a snow customer's Plans and files) would open behind it. Each
+ * open modal dialog becomes an ordinary one, hidden and out of reach, until the function this
+ * returns puts it back (the one with focus last, so it's on top again), unless it was closed
+ * meanwhile. A dialog that is going away has gone by the time this is called (from an effect).
+ */
+export function lowerDialogs(): () => void {
+  let modal: HTMLDialogElement[];
+  try {
+    modal = [...document.querySelectorAll<HTMLDialogElement>("dialog:modal")];
+  } catch {
+    modal = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")]; // a browser without :modal
+  }
+  if (!modal.length) return () => undefined;
+  const focused = document.activeElement?.closest("dialog");
+  modal.sort((a, b) => Number(a === focused) - Number(b === focused));
+  for (const dialog of modal) {
+    // Its close event finds it open again, so Dialog's onClose doesn't take this for closing.
+    dialog.close();
+    dialog.show();
+    dialog.inert = true;
+    dialog.style.visibility = "hidden";
+  }
+  return () => {
+    let raised = false;
+    for (const dialog of modal) {
+      dialog.inert = false;
+      dialog.style.visibility = "";
+      if (!dialog.isConnected || !dialog.open) continue;
+      dialog.close();
+      dialog.showModal();
+      raised = true;
+    }
+    if (raised) announceTopLayer();
+  };
+}
+
+/**
  * Most dialogs close by not being rendered any more ({editing && <EditDialog open />}), which would
  * take them off the screen at once. So a copy is left where it was, inert and over a copy of the
  * backdrop, plays the same exit and is removed. It's taken while the dialog is still in the page

@@ -3,14 +3,18 @@
  * quote or job mustn't stop it. Each file is a background task (lib/tasks.ts, shown on the task
  * island) with its own Cancel, and the Plans card that started them shows their progress whenever
  * it's on the screen (usePlanUploads). As each one finishes, the plans lists load again.
+ *
+ * A camera's big photo is made smaller just before it goes (pictures.ts), so one that's then under
+ * the size limits goes through, and a picture's preview copy goes up after it.
  */
 import { useSyncExternalStore } from "react";
-import { supabase } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { startTask } from "@/lib/tasks";
 import type { ApiError } from "@/lib/errors";
 import { RefusedForSpace } from "../settings/storage";
-import { fileSize, isAbort, titleFromFileName, TooLargeError, uploadPlanFile, type PlanFile, type Upload } from "./plans";
+import { localPreview } from "./PlanPreview";
+import { preparePicture } from "./pictures";
+import { fileSize, isAbort, recordPlanFile, storePreview, titleFromFileName, TooLargeError, uploadPlanFile, type PlanFile, type Upload } from "./plans";
 
 /** Where a new file goes: the request, quote or job (the database adds the property), or a property. */
 export type PlanTarget = { request_id?: string; quote_id?: string; job_id?: string; property_id?: string };
@@ -20,7 +24,11 @@ export interface PlanUpload {
   /** The Plans card that shows it (PlansCard's scope). */
   card: string;
   name: string;
+  /** The file's type, as the browser has it ("" when it doesn't know). */
+  type: string;
   size: number;
+  /** A picture's own link on this device, to show as it goes (PlanPreview): revoked once it's off the list. */
+  preview: string | null;
   /** 0 to 1, or null while it waits for the files ahead of it. */
   progress: number | null;
   /** Stops it, or takes it out of the line if it hasn't started. */
@@ -33,6 +41,13 @@ const listeners = new Set<() => void>();
 function update(next: PlanUpload[]) {
   uploads = next;
   for (const listener of listeners) listener();
+}
+
+/** Off the list, and its picture's link let go. */
+function drop(key: string) {
+  const gone = uploads.find((u) => u.key === key);
+  if (gone?.preview) URL.revokeObjectURL(gone.preview);
+  update(uploads.filter((u) => u.key !== key));
 }
 
 function subscribe(listener: () => void) {
@@ -63,14 +78,16 @@ export interface PlanUploadScreen {
 
 /**
  * Sends the files one after another and adds each to the plans: as new files on `target`, or the
- * first as a new version of `replaces`. Resolves once they're all through, stopped or failed.
+ * first as a new version of `replaces`. `shrink`: camera photos are made smaller first (the
+ * company's setting, shrinksPhotos). Resolves once they're all through, stopped or failed.
  */
-export async function addPlanFiles({ companyId, card, files, target, replaces = null, screen = {} }: {
+export async function addPlanFiles({ companyId, card, files, target, replaces = null, shrink = true, screen = {} }: {
   companyId: string;
   card: string;
   files: File[];
   target: PlanTarget;
   replaces?: PlanFile | null;
+  shrink?: boolean;
   screen?: PlanUploadScreen;
 }): Promise<void> {
   const queue = files.map((file) => {
@@ -81,12 +98,12 @@ export async function addPlanFiles({ companyId, card, files, target, replaces = 
       if (control.upload) control.upload.abort();
       else {
         // Still waiting its turn: out of the line now, not once the files ahead of it are through.
-        update(uploads.filter((u) => u.key !== key));
+        drop(key);
         task.dismiss();
       }
     };
     const task = startTask({ label: `Uploading ${file.name}`, detail: fileSize(file.size), total: file.size, cancel: stop });
-    const entry: PlanUpload = { key, card, name: file.name, size: file.size, progress: null, stop };
+    const entry: PlanUpload = { key, card, name: file.name, type: file.type, size: file.size, preview: localPreview(file), progress: null, stop };
     return { key, file, control, task, entry };
   });
   update([...uploads, ...queue.map((q) => q.entry)]);
@@ -97,12 +114,21 @@ export async function addPlanFiles({ companyId, card, files, target, replaces = 
   // Storage checks each file against the room left, so one refused doesn't stop the rest; a file at
   // least as big as one already refused isn't sent (see RefusedForSpace).
   const refused = new RefusedForSpace();
-  for (const { key, file, control, task } of queue) {
+  for (const { key, file: picked, control, task } of queue) {
     // Taken out of the line before its turn (stop): already gone from the card and the island.
     if (control.stopped) continue;
+    // Made smaller before any size is checked, so a big photo that's then small enough goes through.
+    const prepared = await preparePicture(picked, shrink);
+    if (control.stopped) continue;
+    const file = prepared.file;
+    if (file !== picked) {
+      update(uploads.map((u) => (u.key === key ? { ...u, name: file.name, size: file.size } : u)));
+      task.rename(`Uploading ${file.name}`, fileSize(file.size));
+      task.progress(0, file.size);
+    }
     if (refused.skips(file.name, file.size)) {
       task.fail(`${file.name} wasn't added. ${refused.first?.message ?? ""}`.trim());
-      update(uploads.filter((u) => u.key !== key));
+      drop(key);
       continue;
     }
     try {
@@ -112,9 +138,8 @@ export async function addPlanFiles({ companyId, card, files, target, replaces = 
       });
       progress(key, 0);
       const path = await control.upload.promise;
-      const { data, error } = await supabase()
-        .from("plan_files")
-        .insert({
+      const { data, error } = await recordPlanFile(
+        {
           company_id: companyId,
           ...target,
           replaces_id: replaces?.id ?? null,
@@ -124,9 +149,9 @@ export async function addPlanFiles({ companyId, card, files, target, replaces = 
           content_type: (file.type || null)?.slice(0, 150) ?? null,
           size_bytes: file.size,
           crew_visible: replaces?.crew_visible ?? true,
-        })
-        .select("id")
-        .single();
+        },
+        await storePreview(path, prepared.preview),
+      );
       // A stored file with no row is tidied away by the server after a day.
       if (error) throw new Error(error.message);
       added++;
@@ -147,7 +172,7 @@ export async function addPlanFiles({ companyId, card, files, target, replaces = 
         screen.failed?.(file.name, message);
       }
     } finally {
-      update(uploads.filter((u) => u.key !== key));
+      drop(key);
     }
   }
   if (refused.first) screen.refused?.(refused.first, refused.title());

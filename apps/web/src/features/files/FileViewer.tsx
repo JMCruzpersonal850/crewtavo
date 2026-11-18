@@ -10,10 +10,13 @@
  *
  * It's a layer of its own rather than a modal <dialog>: the Word editor opens its font and style
  * lists at the end of <body>, which a modal dialog would leave behind it, out of reach. Escape
- * closes it, focus stays inside it, and the page behind it doesn't scroll.
+ * closes it, focus stays inside it, and the page behind it doesn't scroll. Opened from a modal
+ * dialog (a snow customer's Plans and files), that dialog is set aside while it's open
+ * (lowerDialogs): a modal dialog would show above it and leave it out of reach.
  */
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { createPortal } from "react-dom";
+import { lowerDialogs } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import type { PlanFile } from "@/features/plans/plans";
 import { isTyping, type ViewerFile } from "./files";
@@ -95,6 +98,8 @@ export function FileViewer(props: FileViewerProps) {
     const root = rootRef.current;
     if (!root) return;
     const before = document.activeElement as HTMLElement | null;
+    // After noting what had focus: setting a dialog aside moves it.
+    const putBack = lowerDialogs();
     const html = document.documentElement;
     const overflow = html.style.overflow;
     html.style.overflow = "hidden";
@@ -125,6 +130,8 @@ export function FileViewer(props: FileViewerProps) {
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("keydown", onKey);
       html.style.overflow = overflow;
+      // The dialogs first: showing one again moves focus into it.
+      putBack();
       if (before?.isConnected) before.focus({ preventScroll: true });
     };
   }, []);

@@ -2020,14 +2020,14 @@ isOneToOne: false
                   ]
                 },"plan_files": {
                   Row: {
-                    "archived": boolean,"company_id": string,"content_type": string | null,"created_at": string,"created_by": string | null,"crew_visible": boolean,"deleted_at": string | null,"deleted_by": string | null,"file_name": string,"folder_id": string | null,"id": string,"job_id": string | null,"notes": string | null,"path": string,"property_id": string | null,"quote_id": string | null,"replaces_id": string | null,"request_id": string | null,"revision": string | null,"size_bytes": number | null,"superseded_at": string | null,"title": string,"trashed_from": string | null,"updated_at": string
+                    "archived": boolean,"company_id": string,"content_type": string | null,"created_at": string,"created_by": string | null,"crew_visible": boolean,"deleted_at": string | null,"deleted_by": string | null,"file_name": string,"folder_id": string | null,"id": string,"job_id": string | null,"notes": string | null,"path": string,"preview_path": string | null,"property_id": string | null,"quote_id": string | null,"replaces_id": string | null,"request_id": string | null,"revision": string | null,"size_bytes": number | null,"superseded_at": string | null,"title": string,"trashed_from": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "archived"?: boolean,"company_id": string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"crew_visible"?: boolean,"deleted_at"?: string | null,"deleted_by"?: string | null,"file_name": string,"folder_id"?: string | null,"id"?: string,"job_id"?: string | null,"notes"?: string | null,"path": string,"property_id"?: string | null,"quote_id"?: string | null,"replaces_id"?: string | null,"request_id"?: string | null,"revision"?: string | null,"size_bytes"?: number | null,"superseded_at"?: string | null,"title": string,"trashed_from"?: string | null,"updated_at"?: string
+                    "archived"?: boolean,"company_id": string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"crew_visible"?: boolean,"deleted_at"?: string | null,"deleted_by"?: string | null,"file_name": string,"folder_id"?: string | null,"id"?: string,"job_id"?: string | null,"notes"?: string | null,"path": string,"preview_path"?: string | null,"property_id"?: string | null,"quote_id"?: string | null,"replaces_id"?: string | null,"request_id"?: string | null,"revision"?: string | null,"size_bytes"?: number | null,"superseded_at"?: string | null,"title": string,"trashed_from"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "archived"?: boolean,"company_id"?: string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"crew_visible"?: boolean,"deleted_at"?: string | null,"deleted_by"?: string | null,"file_name"?: string,"folder_id"?: string | null,"id"?: string,"job_id"?: string | null,"notes"?: string | null,"path"?: string,"property_id"?: string | null,"quote_id"?: string | null,"replaces_id"?: string | null,"request_id"?: string | null,"revision"?: string | null,"size_bytes"?: number | null,"superseded_at"?: string | null,"title"?: string,"trashed_from"?: string | null,"updated_at"?: string
+                    "archived"?: boolean,"company_id"?: string,"content_type"?: string | null,"created_at"?: string,"created_by"?: string | null,"crew_visible"?: boolean,"deleted_at"?: string | null,"deleted_by"?: string | null,"file_name"?: string,"folder_id"?: string | null,"id"?: string,"job_id"?: string | null,"notes"?: string | null,"path"?: string,"preview_path"?: string | null,"property_id"?: string | null,"quote_id"?: string | null,"replaces_id"?: string | null,"request_id"?: string | null,"revision"?: string | null,"size_bytes"?: number | null,"superseded_at"?: string | null,"title"?: string,"trashed_from"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -4668,7 +4668,7 @@ isOneToOne: false
                            },
 "drive_list":
 { Args: { "p_company": string,"p_id"?: string,"p_limit"?: number,"p_query"?: string,"p_scope": string }; Returns: {
-              "archived": boolean,"client_id": string,"client_name": string,"content_type": string,"created_at": string,"created_by": string,"created_by_name": string,"crew_visible": boolean,"file_name": string,"folder_id": string,"folder_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"notes": string,"path": string,"property_id": string,"property_label": string,"quote_id": string,"quote_number": number,"quote_title": string,"replaces_id": string,"request_id": string,"request_title": string,"revision": string,"size_bytes": number,"title": string,"updated_at": string,"versions": number
+              "archived": boolean,"client_id": string,"client_name": string,"content_type": string,"created_at": string,"created_by": string,"created_by_name": string,"crew_visible": boolean,"file_name": string,"folder_id": string,"folder_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"notes": string,"path": string,"preview_path": string,"property_id": string,"property_label": string,"quote_id": string,"quote_number": number,"quote_title": string,"replaces_id": string,"request_id": string,"request_title": string,"revision": string,"size_bytes": number,"title": string,"updated_at": string,"versions": number
             }[]
                            },
 "drive_restore":
@@ -4696,7 +4696,7 @@ isOneToOne: false
                            },
 "drive_versions":
 { Args: { "p_file": string }; Returns: {
-              "archived": boolean,"client_id": string,"client_name": string,"content_type": string,"created_at": string,"created_by": string,"created_by_name": string,"crew_visible": boolean,"file_name": string,"folder_id": string,"folder_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"notes": string,"path": string,"property_id": string,"property_label": string,"quote_id": string,"quote_number": number,"quote_title": string,"replaces_id": string,"request_id": string,"request_title": string,"revision": string,"size_bytes": number,"title": string,"updated_at": string,"versions": number
+              "archived": boolean,"client_id": string,"client_name": string,"content_type": string,"created_at": string,"created_by": string,"created_by_name": string,"crew_visible": boolean,"file_name": string,"folder_id": string,"folder_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"notes": string,"path": string,"preview_path": string,"property_id": string,"property_label": string,"quote_id": string,"quote_number": number,"quote_title": string,"replaces_id": string,"request_id": string,"request_title": string,"revision": string,"size_bytes": number,"title": string,"updated_at": string,"versions": number
             }[]
                            },
 "drop_unmade_installments":
@@ -5223,6 +5223,9 @@ isOneToOne: false
 "rate_limit_hit":
 { Args: { "p_key": string,"p_max": number,"p_window_seconds": number }; Returns: boolean
                            },
+"rate_limit_spend":
+{ Args: { "p_amount": number,"p_key": string,"p_max": number,"p_window_seconds": number }; Returns: boolean
+                           },
 "record_photos":
 { Args: { "p_client"?: string,"p_company": string,"p_job"?: string }; Returns: {
               "can_share": boolean,"cant_share": string,"content_type": string,"created_at": string,"created_by": string,"file_name": string,"id": string,"job_id": string,"job_number": number,"job_title": string,"marked_path": string,"owner_type": string,"path": string,"shareable": boolean,"shareable_at": string,"visit_id": string,"visit_on": string
@@ -5522,7 +5525,10 @@ isOneToOne: false
 { Args: { "p_basis": string,"p_bytes": number,"p_company": string }; Returns: undefined
                            },
 "storage_set_limit":
-{ Args: { "p_company": string,"p_limit_bytes"?: number,"p_mode": string }; Returns: Json
+{ Args: { "p_company": string,"p_limit_bytes"?: number,"p_limit_dollars"?: number,"p_mode": string }; Returns: Json
+                           },
+"storage_set_rate":
+{ Args: { "p_cap_bytes": number,"p_company": string,"p_price_per_gb": number }; Returns: undefined
                            },
 "storage_snapshot":
 { Args: { "p_company": string,"p_user": string }; Returns: {

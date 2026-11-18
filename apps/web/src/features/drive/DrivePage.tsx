@@ -26,7 +26,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton, TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { editKind, FileViewer, type ViewerFile } from "@/features/files/FileViewer";
-import { fileSize, planLink, titleFromFileName, TooLargeError, uploadPlanFile } from "@/features/plans/plans";
+import { usePastedFiles } from "@/features/plans/pasteFiles";
+import { localPreview, PlanPreview, previewable, previewLink } from "@/features/plans/PlanPreview";
+import { preparePicture, shrinksPhotos } from "@/features/plans/pictures";
+import { fileSize, planLink, recordPlanFile, storePreview, titleFromFileName, TooLargeError, uploadPlanFile, usePlanLinks } from "@/features/plans/plans";
 import { useTooLarge } from "@/features/plans/UploadLimit";
 import {
   addEach, companyLine, fullness, managesStorage, personalLine, RefusedForSpace, shareOf, STORAGE_SETTINGS, useStorageFull, useStorageOverview,
@@ -258,6 +261,10 @@ interface Destination {
 interface Sending {
   key: string;
   name: string;
+  /** The file's type, when it's known (not for a copy from Google Drive). */
+  type: string | null;
+  /** A picture's own link on this device, shown as it goes (revoked once it's done). */
+  preview: string | null;
   size: number | null;
   /** 0 to 1; null while copying from Google Drive (no way to tell how far along). */
   progress: number | null;
@@ -321,6 +328,7 @@ function DriveBrowser() {
   const [googleFor, setGoogleFor] = useState<Destination | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const pickFor = useRef<{ to: Destination | null; replaces: DriveFile | null } | null>(null);
 
   // ----- Search, kept in the address (?view=search&q=) -----------------------------------------
@@ -357,17 +365,29 @@ function DriveBrowser() {
   // ----- Adding files ---------------------------------------------------------------------------
   const remove = (key: string) => setSending((s) => s.filter((u) => u.key !== key));
   async function send(list: File[], to: Destination | null, replaces: DriveFile | null = null) {
+    const shrink = shrinksPhotos(session.company.settings);
     const { added, refused } = await addEach(
       list,
-      async (file) => {
+      async (picked) => {
         const key = crypto.randomUUID();
-        const upload = uploadPlanFile(session.company.id, file, (progress) => setSending((s) => s.map((u) => (u.key === key ? { ...u, progress } : u))));
-        setSending((s) => [...s, { key, name: file.name, size: file.size, progress: 0, abort: upload.abort }]);
+        const preview = localPreview(picked);
+        // Stop before it's sending: it isn't sent at all.
+        let stopped = false;
+        let abort = () => {
+          stopped = true;
+        };
+        setSending((s) => [...s, { key, name: picked.name, type: picked.type || null, preview, size: picked.size, progress: 0, abort: () => abort() }]);
         try {
+          // A camera's big photo made smaller before it's sent, so the size limits apply to what's sent.
+          const prepared = await preparePicture(picked, shrink);
+          if (stopped) throw new DOMException("Stopped", "AbortError");
+          const file = prepared.file;
+          if (file !== picked) setSending((s) => s.map((u) => (u.key === key ? { ...u, name: file.name, size: file.size } : u)));
+          const upload = uploadPlanFile(session.company.id, file, (progress) => setSending((s) => s.map((u) => (u.key === key ? { ...u, progress } : u))));
+          abort = upload.abort;
           const path = await upload.promise;
-          const { error } = await supabase()
-            .from("plan_files")
-            .insert({
+          const { error } = await recordPlanFile(
+            {
               company_id: session.company.id,
               // A new version takes its place from the one before (the database copies it).
               ...(replaces ? {} : to?.target),
@@ -379,14 +399,15 @@ function DriveBrowser() {
               size_bytes: file.size,
               // A company file is the office's until someone shows it to the crew.
               crew_visible: replaces?.crew_visible ?? !(to && "folder_id" in to.target),
-            })
-            .select("id")
-            .single();
+            },
+            await storePreview(path, prepared.preview),
+          );
           // "Someone added a newer version meanwhile" in the database's words, not "That already exists."
           // A row that isn't saved leaves its stored file behind; the server tidies those away after a day.
           if (error) throw versionRefused(error);
         } finally {
           remove(key);
+          if (preview) URL.revokeObjectURL(preview);
         }
       },
       (file, error) => {
@@ -405,6 +426,8 @@ function DriveBrowser() {
     pickFor.current = { to, replaces };
     picker.current?.click();
   };
+  // A paste on the page (a screenshot, say) goes where Upload would; with a client's several properties, nowhere: which one?
+  usePastedFiles(pageRef, single ? (list) => void send(list, single) : null);
 
   // ----- Copying from Google Drive --------------------------------------------------------------
   async function importFiles(files: PickedFile[], accessToken: string, to: Destination) {
@@ -423,7 +446,7 @@ function DriveBrowser() {
         setSending((s) => s.map((u) => (u.key === key ? { ...u, stopping: true } : u)));
       };
       const name = file.name ?? "A file from Google Drive";
-      setSending((s) => [...s, { key, name, size: null, progress: null, abort: stop }]);
+      setSending((s) => [...s, { key, name, type: null, preview: null, size: null, progress: null, abort: stop }]);
       try {
         // `full`: a storage limit refused it, in the server's sentence.
         const res = await api.post<{ files: unknown[]; skipped: Array<{ name: string; reason: string; full?: boolean }> }>("/drive/import", { accessToken, files: [file], target: to.target });
@@ -606,7 +629,7 @@ function DriveBrowser() {
 
   return (
     <Actions.Provider value={actions}>
-      <div className={styles.page} {...(view === "company" || view === "recent" || view === "search" ? dropProps("page", single) : {})}>
+      <div ref={pageRef} className={styles.page} {...(view === "company" || view === "recent" || view === "search" ? dropProps("page", single) : {})}>
         <PageHeader title="Drive" actions={headerActions} />
         <StorageLine />
         <DriveTabs view={view} />
@@ -716,15 +739,18 @@ function Uploads({ sending }: { sending: Sending[] }) {
         const status = copying ? (u.stopping ? "Stopping after this one…" : "Copying from Google Drive…") : u.progress! >= 1 ? "Saving…" : `${Math.round(u.progress! * 100)}% of ${fileSize(u.size)}`;
         return (
           <div key={u.key} className={styles.upload} role="status">
-            <div className={styles.uploadHead}>
-              <span title={u.name}>{u.name}</span>
-              <span className="muted small tabular">{status}</span>
-              {(copying ? !u.stopping : u.progress! < 1) && (
-                <Button size="sm" variant="ghost" icon="x" aria-label={copying ? `Stop copying after ${u.name}` : `Stop uploading ${u.name}`} title="Stop" onClick={u.abort} />
-              )}
-            </div>
-            <div className={`progress${copying ? ` ${styles.indeterminate}` : ""}`} aria-hidden="true">
-              <span style={copying ? undefined : { width: `${Math.round(u.progress! * 100)}%` }} />
+            <FileIcon file={{ content_type: u.type, file_name: u.name }} preview={u.preview ?? undefined} />
+            <div className={styles.uploadBody}>
+              <div className={styles.uploadHead}>
+                <span title={u.name}>{u.name}</span>
+                <span className="muted small tabular">{status}</span>
+                {(copying ? !u.stopping : u.progress! < 1) && (
+                  <Button size="sm" variant="ghost" icon="x" aria-label={copying ? `Stop copying after ${u.name}` : `Stop uploading ${u.name}`} title="Stop" onClick={u.abort} />
+                )}
+              </div>
+              <div className={`progress${copying ? ` ${styles.indeterminate}` : ""}`} aria-hidden="true">
+                <span style={copying ? undefined : { width: `${Math.round(u.progress! * 100)}%` }} />
+              </div>
             </div>
           </div>
         );
@@ -737,8 +763,21 @@ function Uploads({ sending }: { sending: Sending[] }) {
 // Rows
 // ---------------------------------------------------------------------------------------------
 
+/** A file's kind as an icon, or a picture's preview (`preview`, a link to it) once it has loaded. */
+function FileIcon({ file, preview }: { file: Pick<DriveFile, "content_type" | "file_name">; preview?: string }) {
+  const kind = iconKind(file);
+  return (
+    <span className={styles.icon} data-kind={kind} aria-hidden="true">
+      <Icon name={ICON_FOR[kind]} size={18} />
+      {preview && <PlanPreview src={preview} />}
+    </span>
+  );
+}
+
 /** Folders, then files: each opens with a tap, and has its menu at the end. `where` adds the column saying where each file is. */
 function FileTable({ folders = [], files, where, caption }: { folders?: DriveFolder[]; files: DriveFile[]; where: "records" | "all" | null; caption: string }) {
+  // Links for the pictures' previews (the rest make theirs when they're opened or downloaded).
+  const links = usePlanLinks(previewable(files));
   return (
     <table className={`table table-stack ${styles.files}`}>
       <caption className="sr-only">{caption}</caption>
@@ -751,7 +790,7 @@ function FileTable({ folders = [], files, where, caption }: { folders?: DriveFol
       </thead>
       <tbody>
         {folders.map((f) => <FolderRow key={f.id} folder={f} where={Boolean(where)} />)}
-        {files.map((f) => <FileRow key={f.id} file={f} where={where} />)}
+        {files.map((f) => <FileRow key={f.id} file={f} where={where} preview={previewLink(f, links.data?.open)} />)}
       </tbody>
     </table>
   );
@@ -780,9 +819,8 @@ function FolderRow({ folder, where }: { folder: DriveFolder; where: boolean }) {
   );
 }
 
-function FileRow({ file: f, where }: { file: DriveFile; where: "records" | "all" | null }) {
+function FileRow({ file: f, where, preview }: { file: DriveFile; where: "records" | "all" | null; preview?: string }) {
   const a = useActions();
-  const kind = iconKind(f);
   const onRecord = SLOTS.some((s) => f[s]);
   const places = placesOf(f);
   const folder = f.folder_id ? a.tree.byId.get(f.folder_id) : undefined;
@@ -791,7 +829,7 @@ function FileRow({ file: f, where }: { file: DriveFile; where: "records" | "all"
     <tr className="row-link" onClick={() => a.openFile(f)}>
       <td className={styles.nameCell}>
         <div className={styles.name}>
-          <span className={styles.icon} data-kind={kind} aria-hidden="true"><Icon name={ICON_FOR[kind]} size={18} /></span>
+          <FileIcon file={f} preview={preview} />
           <div className={styles.body}>
             <button type="button" className={styles.title} onClick={(e) => { stop(e); a.openFile(f); }}>{f.title}</button>
             <span className={styles.meta}>{fileMeta(f)}</span>
@@ -910,7 +948,7 @@ function CompanyFiles({ folderId, loading, dropping }: { folderId: string | null
               </>
             }
           >
-            Make folders for your forms, price sheets and insurance papers, or drop files here.
+            Make folders for your forms, price sheets and insurance papers, or drop or paste files here.
           </EmptyState>
         </div>
       ) : (

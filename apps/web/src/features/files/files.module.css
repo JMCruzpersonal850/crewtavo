@@ -90,7 +90,8 @@
 .docxEdit > * { flex: 1; min-height: 0; }
 
 /* Pictures: dragged and zoomed with transforms. */
-.imageStage { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; outline: none; }
+/* Under the zoom bar, not behind it: fitted to the whole pane, a wide picture covered the buttons. */
+.imageStage { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; outline: none; }
 .imageStage[data-dragging] { cursor: grabbing; }
 .imageStage:focus-visible { box-shadow: inset var(--ring); }
 .image { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; background: #fff; box-shadow: var(--shadow-md); -webkit-user-drag: none; }

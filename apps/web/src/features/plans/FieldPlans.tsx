@@ -11,6 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { FileViewer } from "@/features/files/FileViewer";
 import { supabase, unwrap } from "@/lib/api";
 import { hasRole, useSession } from "@/lib/session";
+import { previewCopies, previewLink } from "./PlanPreview";
 import { PLAN_FIELDS, planEntries, planMeta, usePlanLinks, type PlanFile } from "./plans";
 import { PlanIcon } from "./PlansCard";
 import styles from "./plans.module.css";
@@ -32,7 +33,8 @@ export function FieldPlans({ visitId, jobId, propertyId }: { visitId: string; jo
     },
   });
   const entries = planEntries(files.data ?? []);
-  const links = usePlanLinks(files.data ?? []);
+  // Links to open and save each file, and to show their preview copies.
+  const links = usePlanLinks([...(files.data ?? []), ...previewCopies(files.data ?? [])]);
   if (!entries.length) return null;
   return (
     <section className="card card-pad stack-sm">
@@ -46,7 +48,7 @@ export function FieldPlans({ visitId, jobId, propertyId }: { visitId: string; jo
           const save = links.data?.save[f.path];
           return (
             <div key={f.id} className={styles.fieldRow}>
-              <PlanIcon file={f} />
+              <PlanIcon file={f} preview={previewLink(f, links.data?.open, false)} onOpen={() => setViewing(f)} />
               <div className={styles.body}>
                 <button type="button" className={styles.title} onClick={() => setViewing(f)}>{f.title}</button>
                 <span className={styles.meta}>{planMeta(entry)}</span>

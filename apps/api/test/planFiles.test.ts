@@ -56,6 +56,46 @@ describe("tidying plans and files", () => {
     expect(calls.some((c) => c.path === "/rest/v1/plan_files" && c.method !== "GET")).toBe(false);
   });
 
+  it("keeps a picture's preview copy its row names, and removes one no row does", async () => {
+    const calls: Call[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const body = typeof init?.body === "string" && init.body ? JSON.parse(init.body) : undefined;
+      const call: Call = { method: (init?.method ?? "GET").toUpperCase(), path: url.pathname, search: url.searchParams, body };
+      calls.push(call);
+      if (call.path === "/rest/v1/plan_files" && call.search.has("path")) return Response.json([{ path: "co-1/plans/photo.jpg" }]);
+      if (call.path === "/rest/v1/plan_files" && call.search.has("preview_path")) return Response.json([{ preview_path: "co-1/plans/photo.preview.webp" }]);
+      if (call.path === "/rest/v1/companies") return Response.json([{ id: "co-1" }]);
+      if (call.path === "/storage/v1/object/list/files") {
+        return Response.json([
+          { id: "o1", name: "photo.jpg", created_at: hoursAgo(72) },
+          { id: "o2", name: "photo.preview.webp", created_at: hoursAgo(72) },
+          // Its file's save failed after the copy went up.
+          { id: "o3", name: "failed.preview.jpg", created_at: hoursAgo(30) },
+        ]);
+      }
+      return Response.json([]);
+    });
+    expect(await tidyPlanFiles(adminClient(env), NOW)).toEqual({ unrecorded: 1 });
+    expect(calls.filter((c) => c.path === "/storage/v1/object/files" && c.method === "DELETE").map((c) => c.body.prefixes)).toEqual([["co-1/plans/failed.preview.jpg"]]);
+    // Only the copies are looked up as copies.
+    expect(calls.find((c) => c.path === "/rest/v1/plan_files" && c.search.has("preview_path"))?.search.get("preview_path")).toBe("in.(co-1/plans/photo.preview.webp,co-1/plans/failed.preview.jpg)");
+  });
+
+  it("removes nothing when it can't tell which copies are named", async () => {
+    const calls: Call[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      calls.push({ method: (init?.method ?? "GET").toUpperCase(), path: url.pathname, search: url.searchParams, body: undefined });
+      if (url.pathname === "/rest/v1/plan_files" && url.searchParams.has("preview_path")) return Response.json({ code: "57014", message: "timeout", details: null, hint: null }, { status: 500 });
+      if (url.pathname === "/rest/v1/companies") return Response.json([{ id: "co-1" }]);
+      if (url.pathname === "/storage/v1/object/list/files") return Response.json([{ id: "o1", name: "old.preview.webp", created_at: hoursAgo(72) }]);
+      return Response.json([]);
+    });
+    await expect(tidyPlanFiles(adminClient(env), NOW)).rejects.toThrow("timeout");
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
   it("removes nothing when it can't tell what's in the Trash", async () => {
     const calls: Call[] = [];
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {

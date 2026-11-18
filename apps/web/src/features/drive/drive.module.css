@@ -30,7 +30,7 @@
 .files tbody tr { transition: background var(--dur-fast); }
 .files tr[data-drop] td { background: var(--green-tint); }
 .name { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.icon { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: var(--fill-2); color: var(--text-2); }
+.icon { position: relative; overflow: hidden; flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 9px; background: var(--fill-2); color: var(--text-2); }
 .icon[data-kind="folder"] { background: var(--warning-tint); color: var(--warning); }
 .icon[data-kind="pdf"] { background: var(--danger-tint); color: var(--danger); }
 .icon[data-kind="image"], .icon[data-kind="doc"] { background: var(--info-tint); color: var(--info); }
@@ -64,7 +64,8 @@ a.place:hover { color: var(--ink); box-shadow: inset 0 0 0 1px var(--border-stro
 
 /* Files on their way up, or being copied from Google Drive. */
 .uploads { display: grid; gap: 0; padding-top: 6px; padding-bottom: 6px; }
-.upload { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--row-divider); font-size: 13px; }
+.upload { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--row-divider); font-size: 13px; }
+.uploadBody { display: grid; gap: 6px; flex: 1; min-width: 0; }
 .upload:first-child { border-top: 0; }
 .uploadHead { display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .uploadHead > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

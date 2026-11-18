@@ -5,7 +5,8 @@
  *
  * The daily "plans" task removes uploads nobody recorded:
  *   - A plan file uploaded but never recorded (a booking form closed before its files were recorded,
- *     an upload cut off before its row was saved) goes once it's a day old.
+ *     an upload cut off before its row was saved) goes once it's a day old. So does a picture's
+ *     preview copy no row names (20261118000100_plan_previews.sql).
  *   - The same for a sub's paperwork: a file sent by link that was never recorded goes once it's a
  *     day old.
  *   - And for an applicant's files: one stored for an application that then wasn't kept goes once
@@ -124,7 +125,14 @@ export async function tidyUnrecordedFiles(admin: Db): Promise<{ unrecorded: numb
   return counts;
 }
 
-/** Plan files uploaded but never recorded. One in the Trash still has its row, so it stays. */
+/** A picture's small preview copy, stored next to its file (plan_files.preview_path). */
+const PREVIEW_COPY = /\.preview\.(webp|jpg)$/;
+
+/**
+ * Plan files uploaded but never recorded. One in the Trash still has its row, so it stays. A
+ * picture's preview copy stays while a row names it, and goes like any stray once none does (its
+ * file's save failed, or its row was deleted and the copy wasn't removed then).
+ */
 export async function tidyPlanFiles(admin: Db, now = Date.now()): Promise<{ unrecorded: number }> {
   const files = admin.storage.from("files");
   const { data: companies, error } = await admin.from("companies").select("id").limit(1000);
@@ -133,7 +141,14 @@ export async function tidyPlanFiles(admin: Db, now = Date.now()): Promise<{ unre
   const known = async (paths: string[]) => {
     const { data, error: lookup } = await admin.from("plan_files").select("path").in("path", paths);
     if (lookup) throw new Error(lookup.message);
-    return new Set([...(data ?? []).map((k) => k.path), ...(await trashedPaths(admin, paths))]);
+    const copies = paths.filter((path) => PREVIEW_COPY.test(path));
+    const named = new Set<string>();
+    if (copies.length) {
+      const { data: rows, error: copyLookup } = await admin.from("plan_files").select("preview_path").in("preview_path", copies);
+      if (copyLookup) throw new Error(copyLookup.message);
+      for (const row of rows ?? []) if (row.preview_path) named.add(row.preview_path);
+    }
+    return new Set([...(data ?? []).map((k) => k.path), ...named, ...(await trashedPaths(admin, paths))]);
   };
   let unrecorded = 0;
   for (const { id } of companies ?? []) unrecorded += await sweepFolder(files, `${id}/plans`, known, now);

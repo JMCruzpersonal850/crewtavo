@@ -18,7 +18,8 @@ import { supabase, unwrap } from "@/lib/api";
 import { hasRole, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { forgetPlanPdf, releasePlanImage, renderPlan, type PlanImage } from "../plans/planImage";
-import { canMap, fileSize, isAbort, PLAN_FIELDS, planLink, titleFromFileName, TooLargeError, uploadPlanFile, type PlanFile } from "../plans/plans";
+import { preparePicture } from "../plans/pictures";
+import { canMap, fileSize, isAbort, PLAN_FIELDS, planLink, recordPlanFile, storePreview, titleFromFileName, TooLargeError, uploadPlanFile, type PlanFile } from "../plans/plans";
 import type { MeasureMapHandle } from "./MeasureMap";
 import {
   cornersOf, feetPerInch, fitToView, isCorners, lineUp, LineUpError, moveTo, pixelAt, placementFromCorners, pointAt, scaleLabel, type Corners, type LngLat, type Placement,
@@ -236,15 +237,16 @@ export function usePlanOnMap({
   const add = async (file: File) => {
     const target = where.quote ? { quote_id: where.quote } : where.property ? { property_id: where.property } : null;
     if (!target) return;
+    // A preview copy for the lists, but never made smaller: a plan to measure from keeps every pixel.
+    const { preview } = await preparePicture(file, false);
     const upload = uploadPlanFile(companyId, file, (progress) => setSending((s) => (s ? { ...s, progress } : s)));
     setSending({ name: file.name, progress: 0, abort: upload.abort });
     try {
       const path = await upload.promise;
-      const row = await supabase()
-        .from("plan_files")
-        .insert({ company_id: companyId, ...target, title: titleFromFileName(file.name), path, file_name: file.name.slice(0, 255), content_type: file.type || null, size_bytes: file.size })
-        .select(PLAN_FIELDS)
-        .single();
+      const row = await recordPlanFile(
+        { company_id: companyId, ...target, title: titleFromFileName(file.name), path, file_name: file.name.slice(0, 255), content_type: file.type || null, size_bytes: file.size },
+        await storePreview(path, preview),
+      );
       // A stored file with no row is tidied away by the server after a day.
       if (row.error) throw new Error(row.error.message);
       queryClient.invalidateQueries({ queryKey: ["plans"] });
