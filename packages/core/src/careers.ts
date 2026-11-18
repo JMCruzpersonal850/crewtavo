@@ -7,7 +7,7 @@
  * they heard about the job. Every other field comes along as an answer under its own name. Files are
  * taken too, when the form sends them (enctype="multipart/form-data"): a résumé, a cover letter.
  */
-import { fieldLabel, fieldRole, readSubmission, spelling, type FieldValue, type Fields } from "./websiteForms";
+import { exampleCheckLines, fieldLabel, fieldRole, readSubmission, spelling, type BotCheck, type FieldValue, type Fields } from "./websiteForms";
 
 export const APPLICANT_STATUSES = [
   { key: "new", label: "New" },
@@ -231,8 +231,12 @@ export function applicationEmail(input: { formName: string; application: Applica
   };
 }
 
-/** An application form to start from: paste it into the website and it works, résumé and all. */
-export function exampleApplicationForm(action: string): string {
+/**
+ * An application form to start from: paste it into the website and it works, résumé and all.
+ * `botCheck`: the form's check comes with it (`siteKey`: the business's Turnstile site key).
+ */
+export function exampleApplicationForm(action: string, options: { botCheck?: BotCheck; siteKey?: string | null } = {}): string {
+  const check = exampleCheckLines(action, options.botCheck, options.siteKey);
   return [
     `<form action="${action}" method="POST" enctype="multipart/form-data">`,
     `  <label>Name <input type="text" name="name" autocomplete="name" required></label>`,
@@ -260,7 +264,9 @@ export function exampleApplicationForm(action: string): string {
     `  <label>How did you hear about the job? <input type="text" name="heard_from"></label>`,
     `  <!-- Keeps bots out. Leave it here, hidden. -->`,
     `  <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off">`,
+    ...check.aboveButton,
     `  <button type="submit">Apply</button>`,
     `</form>`,
+    ...check.afterForm,
   ].join("\n");
 }

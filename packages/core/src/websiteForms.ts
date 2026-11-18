@@ -8,6 +8,10 @@
  * Formspree's own fields work the same, so a form moves over by changing its action: _gotcha (left
  * empty by people, filled in by bots), _subject, _next and _replyto. Other fields that start with _
  * are instructions, never answers.
+ *
+ * Beyond _gotcha, a form can ask for a bot check (website_forms.bot_check): Crewtavo's own, one
+ * script line on the page that sends a token in _check, or Cloudflare Turnstile, whose widget sends
+ * cf-turnstile-response. botCheckLines() is what the business adds to its form for each.
  */
 import { emailKey } from "./email";
 
@@ -41,6 +45,21 @@ const SPELLINGS: Record<Role, string[]> = {
   promo: ["promo", "promocode", "coupon", "couponcode", "discountcode"],
 };
 const ROLE_OF = new Map<string, Role>(Object.entries(SPELLINGS).flatMap(([role, names]) => names.map((n) => [n, role as Role])));
+/**
+ * What keeps bots out beyond the hidden field: nothing more, Crewtavo's own check (a script on the
+ * page), or Cloudflare Turnstile with the business's own keys.
+ */
+export const BOT_CHECKS = ["off", "script", "turnstile"] as const;
+export type BotCheck = (typeof BOT_CHECKS)[number];
+/** The hidden field Crewtavo's check adds to the form: its token (routes/websiteForms.ts). */
+export const CHECK_FIELD = "_check";
+/** The hidden field Turnstile's widget adds to the form: its answer. */
+export const TURNSTILE_FIELD = "cf-turnstile-response";
+/** Cloudflare's script, which draws the widget wherever the page has a cf-turnstile block. */
+export const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+/** A Turnstile site key as Cloudflare writes them (0x4AAAAAAA…): what's safe to put in the form's HTML. */
+export const isTurnstileSiteKey = (value: string) => /^[0-9A-Za-z_-]{10,100}$/.test(value);
+
 /** Captcha answers other form services' widgets add. */
 const CAPTCHAS = new Set(["g-recaptcha-response", "h-captcha-response", "cf-turnstile-response", "frc-captcha-solution"]);
 
@@ -77,17 +96,20 @@ export interface Submission {
 
 export type ReadResult = { ok: true; submission: Submission } | { ok: false; error: string };
 
+/** Without U+0000, which Postgres keeps in neither text nor JSON: one in a field would lose the whole message as it's stored. */
+const withoutNul = (text: string) => (text.includes("\u0000") ? text.split("\u0000").join("") : text);
+
 /** The values a form sent, trimmed, empty ones left out. Files aren't taken. */
 export function cleanFields(entries: Iterable<[string, unknown]>): { ok: true; fields: Array<[string, FieldValue]> } | { ok: false; error: string } {
   const out = new Map<string, FieldValue>();
   let size = 0;
   for (const [rawName, raw] of entries) {
-    const name = rawName.trim().slice(0, 100);
+    const name = withoutNul(rawName).trim().slice(0, 100);
     if (!name) continue;
     const values = (Array.isArray(raw) ? raw : [raw])
       .map((v) => (typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : null))
       .filter((v): v is string => v !== null)
-      .map((v) => v.replace(/\r\n?/g, "\n").trim())
+      .map((v) => withoutNul(v).replace(/\r\n?/g, "\n").trim())
       .filter(Boolean);
     if (!values.length) continue;
     if (values.some((v) => v.length > MAX_VALUE)) return { ok: false, error: "Part of the message is too long. Shorten it and try again." };
@@ -262,11 +284,45 @@ export function messageEmail(input: { formName: string; submission: Submission; 
   };
 }
 
+/** Where a form's check script loads from: its address, then /check.js. */
+export const checkScriptUrl = (action: string) => `${action.replace(/\/+$/, "")}/check.js`;
+
+const attribute = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Turnstile's widget, for inside the form: it adds its own hidden field with the answer. */
+const turnstileWidget = (siteKey: string | null | undefined) => `<div class="cf-turnstile" data-sitekey="${attribute(siteKey ?? "")}"></div>`;
+const scriptLine = (src: string, defer = false) => `<script src="${attribute(src)}" async${defer ? " defer" : ""}></script>`;
+
+/**
+ * What a form that's already on the website needs for its check, each line with where it goes.
+ * Crewtavo's check is one script, anywhere on the page. Turnstile is its widget inside the form and
+ * Cloudflare's script on the page. Nothing for a form with no check.
+ */
+export function botCheckLines(action: string, check: BotCheck, siteKey?: string | null): Array<{ where: string; line: string }> {
+  if (check === "script") return [{ where: "Anywhere on each page that has the form", line: scriptLine(checkScriptUrl(action)) }];
+  if (check === "turnstile") {
+    return [
+      { where: "Inside the form, above its Send button", line: turnstileWidget(siteKey) },
+      { where: "Anywhere on each page that has the form", line: scriptLine(TURNSTILE_SCRIPT, true) },
+    ];
+  }
+  return [];
+}
+
+/** The same lines where an example form has them: what goes above the button, and what goes after the form. */
+export function exampleCheckLines(action: string, check: BotCheck = "off", siteKey?: string | null): { aboveButton: string[]; afterForm: string[] } {
+  if (check === "script") return { aboveButton: [], afterForm: [`<!-- Checks that a person is sending it. Leave it on the page. -->`, scriptLine(checkScriptUrl(action))] };
+  if (check === "turnstile") return { aboveButton: [`  <!-- Cloudflare's check that a person is sending it. -->`, `  ${turnstileWidget(siteKey)}`], afterForm: [scriptLine(TURNSTILE_SCRIPT, true)] };
+  return { aboveButton: [], afterForm: [] };
+}
+
 /**
  * A form to start from: paste it into the website and it works. `promo`: a promo code box too, for a
- * business that has codes (an empty box sends visitors looking for one).
+ * business that has codes (an empty box sends visitors looking for one). `botCheck`: the form's
+ * check comes with it (`siteKey`: the business's Turnstile site key).
  */
-export function exampleForm(action: string, options: { promo?: boolean } = {}): string {
+export function exampleForm(action: string, options: { promo?: boolean; botCheck?: BotCheck; siteKey?: string | null } = {}): string {
+  const check = exampleCheckLines(action, options.botCheck, options.siteKey);
   return [
     `<form action="${action}" method="POST">`,
     `  <label>Name <input type="text" name="name" autocomplete="name" required></label>`,
@@ -277,7 +333,9 @@ export function exampleForm(action: string, options: { promo?: boolean } = {}): 
     ...(options.promo ? [`  <label>Promo code <input type="text" name="promo" autocomplete="off"></label>`] : []),
     `  <!-- Keeps bots out. Leave it here, hidden. -->`,
     `  <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off">`,
+    ...check.aboveButton,
     `  <button type="submit">Send</button>`,
     `</form>`,
+    ...check.afterForm,
   ].join("\n");
 }

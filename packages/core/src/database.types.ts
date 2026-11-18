@@ -3960,16 +3960,36 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"website_forms": {
+                },"website_form_turnstile": {
                   Row: {
-                    "allowed_sites": (string)[],"company_id": string,"created_at": string,"email_to": (string)[],"id": string,"key": string,"kind": string,"name": string,"redirect_url": string | null,"updated_at": string
+                    "ciphertext": string,"company_id": string,"site_key": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "allowed_sites"?: (string)[],"company_id": string,"created_at"?: string,"email_to"?: (string)[],"id"?: string,"key"?: string,"kind"?: string,"name": string,"redirect_url"?: string | null,"updated_at"?: string
+                    "ciphertext": string,"company_id": string,"site_key": string,"updated_at"?: string
                   }
                   Update: {
-                    "allowed_sites"?: (string)[],"company_id"?: string,"created_at"?: string,"email_to"?: (string)[],"id"?: string,"key"?: string,"kind"?: string,"name"?: string,"redirect_url"?: string | null,"updated_at"?: string
+                    "ciphertext"?: string,"company_id"?: string,"site_key"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "website_form_turnstile_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: true
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"website_forms": {
+                  Row: {
+                    "allowed_sites": (string)[],"bot_check": string,"bot_check_armed_at": string | null,"bot_check_missed": number,"bot_check_missed_at": string | null,"bot_check_passed_at": string | null,"bots_blocked": number,"company_id": string,"created_at": string,"email_to": (string)[],"id": string,"key": string,"kind": string,"last_blocked_at": string | null,"name": string,"redirect_url": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "allowed_sites"?: (string)[],"bot_check"?: string,"bot_check_armed_at"?: string | null,"bot_check_missed"?: number,"bot_check_missed_at"?: string | null,"bot_check_passed_at"?: string | null,"bots_blocked"?: number,"company_id": string,"created_at"?: string,"email_to"?: (string)[],"id"?: string,"key"?: string,"kind"?: string,"last_blocked_at"?: string | null,"name": string,"redirect_url"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "allowed_sites"?: (string)[],"bot_check"?: string,"bot_check_armed_at"?: string | null,"bot_check_missed"?: number,"bot_check_missed_at"?: string | null,"bot_check_passed_at"?: string | null,"bots_blocked"?: number,"company_id"?: string,"created_at"?: string,"email_to"?: (string)[],"id"?: string,"key"?: string,"kind"?: string,"last_blocked_at"?: string | null,"name"?: string,"redirect_url"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -5584,6 +5604,12 @@ isOneToOne: false
                            },
 "web_visit_for":
 { Args: { "p_agent": string,"p_company": string,"p_ip": string }; Returns: Json
+                           },
+"website_form_blocked":
+{ Args: { "p_form": string }; Returns: undefined
+                           },
+"website_form_check_noted":
+{ Args: { "p_check": string,"p_form": string,"p_key": string,"p_passed": boolean }; Returns: undefined
                            },
 "website_form_request":
 { Args: { "p_address"?: Json,"p_answers"?: Json,"p_company_name"?: string,"p_contact"?: Json,"p_details"?: string,"p_email"?: string,"p_form": string,"p_name"?: string,"p_phone"?: string,"p_promo"?: string,"p_title"?: string,"p_web_visit"?: Json }; Returns: Json

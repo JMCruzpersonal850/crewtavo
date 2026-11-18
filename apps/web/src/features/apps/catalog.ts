@@ -343,6 +343,8 @@ export const APP_INFO: Record<string, AppInfo> = {
     ],
     access: [
       "Take messages sent to your forms' addresses, from your website or any other you allow",
+      "Turn away what looks like a bot: a hidden field and hourly limits on every form, plus a check you can turn on for each one and decide when it starts turning messages away",
+      "With Cloudflare Turnstile turned on for a form, ask Cloudflare whether each message came from a person",
       "Add requests, and new clients for people it doesn't find by email or phone",
       "Email each message to the people you list, from your connected email",
       "Uninstalling stops taking messages and keeps your forms and requests",
@@ -363,6 +365,8 @@ export const APP_INFO: Record<string, AppInfo> = {
     ],
     access: [
       "Take applications sent to your careers forms' addresses, with up to 3 files each",
+      "Turn away what looks like a bot: a hidden field and hourly limits on every form, plus a check you can turn on for each one and decide when it starts turning messages away",
+      "With Cloudflare Turnstile turned on for a form, ask Cloudflare whether each application came from a person",
       "Add applicants, seen only by owners, admins and office staff with the hiring area",
       "Email each application to the people you list, from your connected email",
       "Uninstalling stops taking applications and keeps your forms and applicants",

@@ -282,6 +282,8 @@ const NOT_SIGNED_IN_ROUTES = [
   "GET /mcp", "POST /mcp", "GET /v.js", "POST /v",
   // Website forms: the address a business's own form sends to, and its pages.
   "OPTIONS /f/:key", "POST /f/:key", "GET /f/:key", "GET /f/:key/thanks",
+  // A form's own bot check: the script for the page it's on, and the token the script asks for (services/formBotCheck.ts).
+  "GET /f/:key/check.js", "OPTIONS /f/:key/check", "POST /f/:key/check",
   // The scheduler, with CRON_SECRET.
   "GET /api/cron/:task", "POST /api/cron/:task",
 ];

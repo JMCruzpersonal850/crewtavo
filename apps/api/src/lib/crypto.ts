@@ -83,7 +83,8 @@ export async function signToken(env: Env, payload: Record<string, unknown> & { e
   return `${body}.${toBase64Url(mac)}`;
 }
 
-export async function verifyToken<T extends { exp: number }>(env: Env, token: string): Promise<T | null> {
+/** `expired`: one that has run out is read too (its signature still has to be this server's), for a caller that only needs to know it made the token. */
+export async function verifyToken<T extends { exp: number }>(env: Env, token: string, options: { expired?: boolean } = {}): Promise<T | null> {
   const [body, mac] = token.split(".");
   if (!body || !mac) return null;
   const key = await deriveKey(env, "sign");
@@ -96,7 +97,7 @@ export async function verifyToken<T extends { exp: number }>(env: Env, token: st
   const ok = await crypto.subtle.verify("HMAC", key, signature, encoder.encode(body));
   if (!ok) return null;
   const payload = JSON.parse(decoder.decode(fromBase64Url(body))) as T;
-  return payload.exp > Date.now() / 1000 ? payload : null;
+  return options.expired || payload.exp > Date.now() / 1000 ? payload : null;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanFields, exampleForm, fieldLabel, fieldRole, MAX_VALUE, messageEmail, promoLine, readSubmission, siteAllowed, siteHost, webAddress, type FieldValue } from "../src/websiteForms";
+import { botCheckLines, cleanFields, exampleForm, fieldLabel, fieldRole, isTurnstileSiteKey, MAX_VALUE, messageEmail, promoLine, readSubmission, siteAllowed, siteHost, webAddress, type FieldValue } from "../src/websiteForms";
 
 const read = (entries: Array<[string, unknown]>) => {
   const cleaned = cleanFields(entries);
@@ -216,5 +216,65 @@ describe("the email for a message", () => {
     expect(fieldLabel("services[]")).toBe("Services");
     expect(fieldLabel("ZIP")).toBe("ZIP");
     expect(fieldLabel("Lot size (acres)")).toBe("Lot size (acres)");
+  });
+});
+
+describe("a form's bot check", () => {
+  const action = "https://crm.example.com/f/abc123def0";
+  const siteKey = "0x4AAAAAAAB1cDeFgHiJkLmN";
+
+  it("needs nothing added for the hidden field only", () => {
+    expect(botCheckLines(action, "off")).toEqual([]);
+    const form = exampleForm(action);
+    expect(form).toBe(exampleForm(action, { botCheck: "off" }));
+    expect(form).not.toContain("<script");
+    expect(form.trimEnd().endsWith("</form>")).toBe(true);
+  });
+
+  it("is one script line for Crewtavo's own check, from the form's own address", () => {
+    const line = `<script src="${action}/check.js" async></script>`;
+    expect(botCheckLines(action, "script")).toEqual([{ where: "Anywhere on each page that has the form", line }]);
+    expect(botCheckLines(`${action}/`, "script")[0]!.line).toBe(line);
+    const form = exampleForm(action, { botCheck: "script", promo: true });
+    // After the form, which still has its hidden field and its promo box.
+    expect(form.indexOf(line)).toBeGreaterThan(form.indexOf("</form>"));
+    expect(form).toContain('name="_gotcha"');
+    expect(form).toContain('name="promo"');
+  });
+
+  it("is Cloudflare's widget in the form and its script on the page for Turnstile", () => {
+    const widget = `<div class="cf-turnstile" data-sitekey="${siteKey}"></div>`;
+    const script = `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`;
+    expect(botCheckLines(action, "turnstile", siteKey).map((l) => l.line)).toEqual([widget, script]);
+    const form = exampleForm(action, { botCheck: "turnstile", siteKey });
+    // The widget sits inside the form, above its button; the script comes after the form.
+    expect(form.indexOf(widget)).toBeGreaterThan(form.indexOf('name="_gotcha"'));
+    expect(form.indexOf(widget)).toBeLessThan(form.indexOf("<button"));
+    expect(form.indexOf(script)).toBeGreaterThan(form.indexOf("</form>"));
+    expect(form).not.toContain("check.js");
+  });
+
+  it("only ever puts a site key in the HTML as text", () => {
+    expect(isTurnstileSiteKey(siteKey)).toBe(true);
+    expect(isTurnstileSiteKey("1x00000000000000000000AA")).toBe(true);
+    for (const bad of ["", "short", 'key" onload="x', "0x4AAAA AAAAAAAAAA", "<script>alert(1)</script>"]) expect(isTurnstileSiteKey(bad), bad).toBe(false);
+    expect(botCheckLines(action, "turnstile", 'k"><script>x</script>')[0]!.line).toBe('<div class="cf-turnstile" data-sitekey="k&quot;&gt;&lt;script&gt;x&lt;/script&gt;"></div>');
+  });
+
+  it("never becomes an answer: what the check sends stays out of the message", () => {
+    const read = readSubmission([["email", "jane@example.com"], ["_check", "a.token"], ["cf-turnstile-response", "an answer"], ["service", "Mowing"]]);
+    expect(read.ok && read.submission.answers).toEqual({ service: "Mowing" });
+    expect(read.ok && read.submission.fields.map(([name]) => name)).toEqual(["email", "service"]);
+  });
+});
+
+describe("a field with a character the database can't keep", () => {
+  it("loses the character, not the message", () => {
+    // U+0000 in a JSON field: Postgres takes it in neither text nor JSON, so the request would fail as it's saved.
+    const cleaned = cleanFields([["email", "jane\u0000@example.com"], ["mess\u0000age", "Hi\u0000 there"], ["tags[]", ["a\u0000", "\u0000"]], ["empty", "\u0000"]]);
+    expect(cleaned).toEqual({ ok: true, fields: [["email", "jane@example.com"], ["message", "Hi there"], ["tags[]", ["a"]]] });
+    const read = cleaned.ok && readSubmission(cleaned.fields);
+    expect(read && read.ok && read.submission).toMatchObject({ email: "jane@example.com", message: "Hi there", answers: { "tags[]": ["a"] } });
+    expect(JSON.stringify(cleaned)).not.toContain("\\u0000");
   });
 });

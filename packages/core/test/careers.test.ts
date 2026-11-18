@@ -124,6 +124,18 @@ describe("the example form", () => {
     expect(html).toContain(`name="_gotcha"`);
   });
 
+  it("comes with the form's bot check when it has one", () => {
+    const action = "https://crm.pine.test/f/abc12345";
+    expect(exampleApplicationForm(action)).not.toContain("<script");
+    const own = exampleApplicationForm(action, { botCheck: "script" });
+    expect(own.indexOf(`<script src="${action}/check.js" async></script>`)).toBeGreaterThan(own.indexOf("</form>"));
+    const cloudflare = exampleApplicationForm(action, { botCheck: "turnstile", siteKey: "0x4AAAAAAAB1cDeFgHiJkLmN" });
+    const widget = cloudflare.indexOf(`<div class="cf-turnstile" data-sitekey="0x4AAAAAAAB1cDeFgHiJkLmN"></div>`);
+    expect(widget).toBeGreaterThan(cloudflare.indexOf(`name="_gotcha"`));
+    expect(widget).toBeLessThan(cloudflare.indexOf(`<button type="submit">Apply</button>`));
+    expect(cloudflare).toContain(`<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`);
+  });
+
   it("asks only for fields the reader knows, so none of them end up as other answers", () => {
     const names = [...exampleApplicationForm("https://crm.pine.test/f/abc12345").matchAll(/name="([^"]+)"/g)].map((m) => m[1]!).filter((n) => !n.startsWith("_") && n !== "resume");
     const a = application(names.map((n) => [n, n === "email" ? "a@x.test" : n === "phone" ? "540 555 0101" : "x"]));

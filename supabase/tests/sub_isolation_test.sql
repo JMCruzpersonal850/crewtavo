@@ -271,6 +271,7 @@ insert into public.equipment_financials (company_id, equipment_id, purchase_pric
 insert into public.intake_forms (company_id, slug, name) values (:'co', 'roof-quote', 'Roof quote');
 insert into public.integrations (company_id, provider) values (:'co', 'quickbooks');
 insert into public.integration_secrets (company_id, provider, ciphertext) values (:'co', 'quickbooks', 'sealed');
+insert into public.website_form_turnstile (company_id, site_key, ciphertext) values (:'co', '0x4AAAAAAAAAAAAAAAAAAAAA', 'sealed');
 insert into public.invoice_line_items (company_id, invoice_id, name, quantity, unit_price) values (:'co', :'roof_invoice', 'Architectural shingles', 24, 450);
 insert into public.outbox (company_id, topic) values (:'co', 't1070');
 insert into public.pay_periods (company_id, starts_on, ends_on) values (:'co', current_date - 6, current_date) returning id as period \gset

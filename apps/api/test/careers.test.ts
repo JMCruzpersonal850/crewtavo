@@ -254,6 +254,8 @@ describe("Careers' app page", () => {
     expect(await res.json()).toEqual({
       enabled: true,
       email_ready: true,
+      turnstile_site_key: null,
+      turnstile_keys_unreadable: false,
       forms: [expect.objectContaining({ url: `https://crm.greenlawn.example/f/${KEY}`, last_message_at: "2026-10-28T12:00:00Z" })],
     });
     expect(db.queries.find((q) => q.table === "website_forms")!.calls).toContainEqual(["eq", "kind", "careers"]);

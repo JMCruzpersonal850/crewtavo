@@ -10,17 +10,31 @@
  * message is a job application: it lands in Applicants, with the résumé and any other files the form
  * sends (packages/core/src/careers.ts, services/careers.ts).
  *
+ * Bots: a filled-in _gotcha is told it worked and kept nowhere, and each visitor and each business
+ * has a limit. A form can ask for more (its bot check, services/formBotCheck.ts): Crewtavo's own
+ * script on the page, or Cloudflare Turnstile with the business's keys. A check only watches: what
+ * passed it and what came without it are noted for the app's page, and the form refuses messages
+ * without it only once an owner or admin says so there, which they can't before one has passed. So
+ * a page of the website that doesn't have the line yet never loses a lead by surprise.
+ *
  *   POST    /f/:key                          a message, sent by a form (sent back to the thank-you
  *                                            page) or with fetch() and Accept: application/json
  *   OPTIONS /f/:key                          lets fetch() send from any website
  *   GET     /f/:key                          what the address is, for someone who opens it
  *   GET     /f/:key/thanks                   the thank-you page people see after sending
+ *   GET     /f/:key/check.js                 Crewtavo's check, for the page the form is on
+ *   POST    /f/:key/check                    a token for that page, as old as the one it hands
+ *                                            over (and OPTIONS)
  *   GET     /api/website-forms               the app's page: the forms, whether email is set up, and
  *                                            whether there are promo codes (?kind=careers: Careers'
  *                                            page and its forms)
  *   POST    /api/website-forms/enabled       Install and Uninstall (kind: careers for Careers)
  *   POST    /api/website-forms               another form (kind: careers for a careers form)
  *   PATCH   /api/website-forms/:id           its name, who gets its email, its thank-you page, websites
+ *                                            and bot check, and whether it refuses
+ *                                            messages without the check (bot_check_refuses)
+ *   PUT     /api/website-forms/turnstile     the business's Turnstile keys, tested with Cloudflare first
+ *   DELETE  /api/website-forms/turnstile     removes them: its Turnstile forms go back to the hidden field
  *   POST    /api/website-forms/:id/address   a new address: the old one stops taking messages
  *   DELETE  /api/website-forms/:id
  *
@@ -29,7 +43,7 @@
  */
 import { ADMINS } from "@crewtavo/core";
 import { readApplication } from "@crewtavo/core/careers";
-import { cleanFields, readSubmission, siteAllowed, siteHost, webAddress } from "@crewtavo/core/websiteForms";
+import { BOT_CHECKS, cleanFields, readSubmission, siteAllowed, siteHost, webAddress, type BotCheck } from "@crewtavo/core/websiteForms";
 import { emailKey } from "@crewtavo/core/email";
 import { privacyUrl } from "@crewtavo/core/privacyPolicy";
 import { Hono, type Context } from "hono";
@@ -47,6 +61,7 @@ import { noteTextConsent } from "../services/textsOff";
 import { clientIp } from "../lib/visitor";
 import { bookingVisit } from "../services/analytics";
 import { checkFiles, emailApplication, removeFiles, storeFiles } from "../services/careers";
+import { checkMessage, checkRefusal, checkScript, loadTurnstile, newCheckToken, saveTurnstile } from "../services/formBotCheck";
 import { logoImage } from "../services/logo";
 import { emailMessage, formPage, newFormKey, type FormCompany } from "../services/websiteForms";
 import { geocodeLater } from "./public";
@@ -74,6 +89,9 @@ interface FoundForm {
   email_to: string[];
   redirect_url: string | null;
   allowed_sites: string[];
+  bot_check: BotCheck;
+  /** Refusing messages without the check since then (an owner or admin turned that on); null while it only watches. */
+  bot_check_armed_at: string | null;
   company: FormCompany;
 }
 
@@ -82,14 +100,15 @@ async function findForm(c: Ctx, key = c.req.param("key") ?? ""): Promise<FoundFo
   if (!/^[a-z0-9]{8,32}$/.test(key)) return null;
   const { data, error } = await adminClient(c.env)
     .from("website_forms")
-    .select("id, key, kind, name, email_to, redirect_url, allowed_sites, company:companies(id, name, settings)")
+    .select("id, key, kind, name, email_to, redirect_url, allowed_sites, bot_check, bot_check_armed_at, company:companies(id, name, settings)")
     .eq("key", key)
     .maybeSingle();
   if (error) throw dbError(error);
   const company = data?.company as FormCompany | null | undefined;
   const kind: Kind = data?.kind === "careers" ? "careers" : "contact";
   if (!data || !company || !installed(company.settings, kind)) return null;
-  return { ...data, kind, company };
+  const botCheck: BotCheck = (BOT_CHECKS as readonly string[]).includes(data.bot_check) ? (data.bot_check as BotCheck) : "off";
+  return { ...data, kind, bot_check: botCheck, bot_check_armed_at: data.bot_check_armed_at ?? null, company };
 }
 
 const branding = (c: Ctx, company: FormCompany) => ({ name: company.name, logo: logoImage(appUrl(c), company.id, company.settings), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null) });
@@ -149,6 +168,47 @@ async function sentFields(c: Ctx): Promise<Array<[string, unknown]> | null> {
   return null;
 }
 
+/** One more turned away, for the form's page. Counted after the answer, which it never changes. */
+function countBlocked(c: Ctx, form: FoundForm) {
+  runInBackground(c, (async () => {
+    const { error } = await adminClient(c.env).rpc("website_form_blocked", { p_form: form.id });
+    if (error) throw dbError(error);
+  })());
+}
+
+/** What the check made of a message that's being kept: it passed (true), it didn't (false), or there was nothing to say (null). */
+type CheckNote = boolean | null;
+
+/**
+ * The form's bot check, once a message is otherwise ready to keep (one of a good token's uses is
+ * taken here). A message that doesn't pass is refused, and counted, only by a form an owner or admin
+ * told to refuse. Otherwise it's kept, and `note` says what to note about it once it has been.
+ */
+async function botCheck(c: Ctx, json: boolean, form: FoundForm, sent: Array<[string, unknown]>): Promise<{ refused: Response } | { refused: null; note: CheckNote }> {
+  if (form.bot_check === "off") return { refused: null, note: null };
+  const result = await checkMessage(c.env, adminClient(c.env), form, sent, clientIp(c));
+  // A check that couldn't be made says nothing about the page the message came from.
+  if (result === "unchecked") return { refused: null, note: null };
+  if (result === "passed") return { refused: null, note: true };
+  if (!form.bot_check_armed_at) return { refused: null, note: false };
+  countBlocked(c, form);
+  const refusal = checkRefusal(result, form.bot_check, form.kind);
+  return { refused: refuse(c, json, refusal.status, refusal.message, form.company, form.kind) };
+}
+
+/**
+ * Note what the check made of a message, now that it's kept: for the app's page, which shows when
+ * one last came through with the check and how many came without. Only for the check and address
+ * it was judged by (the database sees to that). After the answer, which it never changes.
+ */
+function noteCheck(c: Ctx, form: FoundForm, note: CheckNote) {
+  if (note === null) return;
+  runInBackground(c, (async () => {
+    const { error } = await adminClient(c.env).rpc("website_form_check_noted", { p_form: form.id, p_check: form.bot_check, p_key: form.key, p_passed: note });
+    if (error) throw dbError(error);
+  })());
+}
+
 formInbox.options("/f/:key", (c) => c.body(null, 204, CORS));
 
 formInbox.post("/f/:key", async (c) => {
@@ -174,7 +234,13 @@ formInbox.post("/f/:key", async (c) => {
     const next = thanksPage(c, form, message.next);
     const done = () => sentOk(c, json, next);
     // A bot that filled in the hidden field is told it worked, and nothing is kept.
-    if (message.bot) return done();
+    if (message.bot) {
+      countBlocked(c, form);
+      return done();
+    }
+    // Before the business's limit, so what the check turns away doesn't use up real messages' share.
+    const checked = await botCheck(c, json, form, sent);
+    if (checked.refused) return checked.refused;
     if (!(await companyUnderLimit(c, company.id))) return refuse(c, json, 429, TOO_MANY.contact, company);
 
     // The website visit that brought them in, when the business counts its website's visits.
@@ -195,6 +261,7 @@ formInbox.post("/f/:key", async (c) => {
       p_promo: message.promo ?? undefined,
     });
     if (error) throw dbError(error);
+    noteCheck(c, form, checked.note);
     const made = data as {
       request_id: string; client_id?: string | null; property_id: string | null; new_property: boolean;
       promo_code: string | null; rejected_promo_code: string | null; promo_problem: string | null;
@@ -231,7 +298,13 @@ async function takeApplication(c: Ctx, json: boolean, form: FoundForm, sent: Arr
   const application = read.application;
 
   const done = () => sentOk(c, json, thanksPage(c, form, application.next));
-  if (application.bot) return done();
+  if (application.bot) {
+    countBlocked(c, form);
+    return done();
+  }
+  // Before anything of theirs is stored.
+  const checked = await botCheck(c, json, form, sent);
+  if (checked.refused) return checked.refused;
   if (!(await companyUnderLimit(c, company.id))) return refuse(c, json, 429, TOO_MANY.careers, company, "careers");
 
   const admin = adminClient(c.env);
@@ -253,6 +326,7 @@ async function takeApplication(c: Ctx, json: boolean, form: FoundForm, sent: Arr
     await removeFiles(admin, stored);
     throw dbError(error);
   }
+  noteCheck(c, form, checked.note);
   if (form.email_to.length) {
     runInBackground(c, emailApplication(c.env, { base: appUrl(c), company, form, application, files: stored, applicantId }));
   }
@@ -284,23 +358,54 @@ formInbox.get("/f/:key/thanks", async (c) => {
   }));
 });
 
+// Crewtavo's own check (services/formBotCheck.ts): the script the business puts on the form's page,
+// and the token it asks for as the page loads.
+
+const SCRIPT = { "Content-Type": "text/javascript; charset=utf-8", "X-Content-Type-Options": "nosniff", "Access-Control-Allow-Origin": "*" };
+
+formInbox.get("/f/:key/check.js", async (c) => {
+  const form = await findForm(c);
+  if (!form) return c.body("/* This form isn't taking messages right now. */\n", 404, { ...SCRIPT, "Cache-Control": "no-store" });
+  // Briefly kept, so a form that gets a new address stops being asked about soon after.
+  return c.body(checkScript(`${appUrl(c)}/f/${form.key}/check`, form.key), 200, { ...SCRIPT, "Cache-Control": "public, max-age=300" });
+});
+
+formInbox.options("/f/:key/check", (c) => c.body(null, 204, CORS));
+
+formInbox.post("/f/:key/check", async (c) => {
+  const answer = { ...CORS, "Cache-Control": "no-store" };
+  // A page asks once as it loads and every half hour after; a script asks without end.
+  if (!(await allow(c.env, `form-check:ip:${clientIp(c)}`, 60, 60 * 60))) return c.json({ ok: false, error: "Too many checks. Try again later." }, 429, answer);
+  const form = await findForm(c);
+  if (!form) return c.json({ ok: false, error: "This form isn't taking messages right now." }, 404, answer);
+  if (!siteAllowed(c.req.header("origin") ?? c.req.header("referer"), form.allowed_sites)) {
+    return c.json({ ok: false, error: "This form only takes messages from its own website." }, 403, answer);
+  }
+  // The token the page had, when it had one (was=<token>, sent as a plain form post so any website
+  // can ask without a preflight): the new one is as old as it, so a refresh doesn't look like a new page.
+  const was = new URLSearchParams(await c.req.text().catch(() => "")).get("was");
+  return c.json({ ok: true, token: await newCheckToken(c.env, form.key, was) }, 200, answer);
+});
+
 // ---------------------------------------------------------------------------------------------
 // The app's page: owners and admins who connect apps
 // ---------------------------------------------------------------------------------------------
 
 export const websiteForms = new Hono<AppEnv>();
 
-const FORM_COLUMNS = "id, key, name, email_to, redirect_url, allowed_sites, created_at";
+const FORM_COLUMNS = "id, key, name, email_to, redirect_url, allowed_sites, bot_check, bot_check_passed_at, bot_check_missed, bot_check_missed_at, bot_check_armed_at, bots_blocked, last_blocked_at, created_at";
 const kindOf = (value: unknown): Kind => (value === "careers" ? "careers" : "contact");
 
 websiteForms.get("/website-forms", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const { db, companyId } = c.var;
   const kind = kindOf(c.req.query("kind"));
-  const [company, forms, codes] = await Promise.all([
+  const [company, forms, codes, turnstile] = await Promise.all([
     db.from("companies").select("settings").eq("id", companyId).maybeSingle(),
     db.from("website_forms").select(FORM_COLUMNS).eq("company_id", companyId).eq("kind", kind).order("created_at"),
     // A contact form to paste has a promo code box only for a business with codes.
     kind === "contact" ? db.from("promo_codes").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("active", true) : null,
+    // The business's Turnstile keys, when it saved them: only the server reads where they're kept, and only the site key leaves it.
+    loadTurnstile(c.env, adminClient(c.env), companyId),
   ]);
   const rows = must(forms);
   // The latest message to each form, so the page can say it's working: a request, or an applicant.
@@ -312,6 +417,9 @@ websiteForms.get("/website-forms", requireUser, requireCompany(ADMINS, "apps"), 
     enabled: installed(must(company).settings, kind),
     email_ready: await emailReady(c.env, companyId),
     ...(codes ? { promo_codes: (codes.count ?? 0) > 0 } : {}),
+    turnstile_site_key: turnstile?.siteKey ?? null,
+    // Saved, but this server can't read the secret key any more: nothing is checked until they're entered again.
+    turnstile_keys_unreadable: Boolean(turnstile && !turnstile.secret),
     forms: rows.map((f, i) => ({ ...f, url: `${base}/f/${f.key}`, last_message_at: latest[i]?.data?.created_at ?? null })),
   });
 });
@@ -342,12 +450,42 @@ const changes = z.object({
   email_to: z.array(z.string().trim().max(254)).max(5, "Up to 5 people can get each message.").optional(),
   redirect_url: z.string().trim().max(500).nullable().optional(),
   allowed_sites: z.array(z.string().trim().max(500)).max(10, "Up to 10 websites.").optional(),
+  bot_check: z.enum(BOT_CHECKS).optional(),
+  // Refuse messages that come without the check (true), or go back to only watching (false).
+  bot_check_refuses: z.boolean().optional(),
+});
+
+const NO_TURNSTILE_KEYS = "Add your Cloudflare Turnstile keys first, then turn it on for this form.";
+const TURNSTILE_KEYS_UNREADABLE = "This Crewtavo can't read your Turnstile keys any more. Enter them again, then turn it on for this form.";
+const NO_CHECK_TO_REFUSE_BY = "This form has no check for a message to come without. Choose one first.";
+const NO_TEST_YET = "No message has come through with the check yet. Send a test from your website first, then turn this on.";
+const CHECK_JUST_CHANGED = "A check that was just changed hasn't seen a message yet. Save it, send a test from your website, then turn this on.";
+
+/**
+ * The business's Turnstile keys, for all its forms. Cloudflare is asked about the secret key before
+ * anything is saved. Forms already on Turnstile start over, refusing nothing (the database does
+ * that), since the widget on the website may still be the old one.
+ */
+websiteForms.put("/website-forms/turnstile", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(c, z.object({
+    site_key: z.string().trim().min(1, "Paste the site key.").max(200),
+    secret_key: z.string().trim().min(1, "Paste the secret key.").max(200),
+  }));
+  await saveTurnstile(c.env, adminClient(c.env), c.var.companyId, body.site_key, body.secret_key);
+  return c.json({ turnstile_site_key: body.site_key });
+});
+
+/** Without keys nothing can be checked: the forms that used them go back to the hidden field only (the database does that). */
+websiteForms.delete("/website-forms/turnstile", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const { error } = await adminClient(c.env).from("website_form_turnstile").delete().eq("company_id", c.var.companyId);
+  if (error) throw dbError(error);
+  return c.body(null, 204);
 });
 
 websiteForms.patch("/website-forms/:id", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const id = uuid.parse(c.req.param("id"));
   const body = await readJson(c, changes);
-  const update: { name?: string; email_to?: string[]; redirect_url?: string | null; allowed_sites?: string[] } = {};
+  const update: { name?: string; email_to?: string[]; redirect_url?: string | null; allowed_sites?: string[]; bot_check?: BotCheck } = {};
   if (body.name !== undefined) update.name = body.name;
   if (body.email_to !== undefined) {
     const typed = body.email_to.filter(Boolean);
@@ -367,11 +505,47 @@ websiteForms.patch("/website-forms/:id", requireUser, requireCompany(ADMINS, "ap
     if (bad) throw new HttpError(400, `${bad} isn't a website address. Type it like greenlawn.com.`);
     update.allowed_sites = [...new Set(typed.map((s) => siteHost(s)!))];
   }
-  const row = must(await c.var.db.from("website_forms").update(update).eq("id", id).eq("company_id", c.var.companyId).select(FORM_COLUMNS).maybeSingle(), "That form isn't here anymore.");
-  return c.json({ ...row, url: `${appUrl(c)}/f/${row.key}` });
+  if (body.bot_check !== undefined) {
+    if (body.bot_check === "turnstile") {
+      const keys = await loadTurnstile(c.env, adminClient(c.env), c.var.companyId);
+      if (!keys?.secret) throw new HttpError(400, keys ? TURNSTILE_KEYS_UNREADABLE : NO_TURNSTILE_KEYS);
+    }
+    // A changed check starts over: nothing passed, nothing refused (the database clears what was noted).
+    update.bot_check = body.bot_check;
+  }
+  const { db, companyId } = c.var;
+  const form = () => db.from("website_forms").select(FORM_COLUMNS).eq("id", id).eq("company_id", companyId).maybeSingle();
+  const refuses = body.bot_check_refuses;
+  if (refuses) {
+    // Refusing is for a check that has proved it's on the website: one message, at least, came through with it.
+    const current = must(await form(), "That form isn't here anymore.");
+    if (update.bot_check !== undefined && update.bot_check !== current.bot_check) throw new HttpError(400, CHECK_JUST_CHANGED);
+    if (current.bot_check === "off") throw new HttpError(400, NO_CHECK_TO_REFUSE_BY);
+    if (!current.bot_check_passed_at) throw new HttpError(400, NO_TEST_YET);
+  }
+  let row = Object.keys(update).length || refuses === undefined
+    ? must(await db.from("website_forms").update(update).eq("id", id).eq("company_id", companyId).select(FORM_COLUMNS).maybeSingle(), "That form isn't here anymore.")
+    : null;
+  if (refuses !== undefined) {
+    // Whether a form refuses is the server's to write (the database keeps it from the browser), for
+    // the owners and admins this route is for. Turning it on holds only while the form still has a
+    // check a message has passed, and keeps the day it started when it's already on.
+    const admin = adminClient(c.env);
+    const { error } = refuses
+      ? await admin.from("website_forms").update({ bot_check_armed_at: new Date().toISOString() }).eq("id", id).eq("company_id", companyId)
+          .neq("bot_check", "off").not("bot_check_passed_at", "is", null).is("bot_check_armed_at", null)
+      : await admin.from("website_forms").update({ bot_check_armed_at: null }).eq("id", id).eq("company_id", companyId);
+    if (error) throw dbError(error);
+    row = must(await form(), "That form isn't here anymore.");
+    if (refuses && !row.bot_check_armed_at) throw new HttpError(400, NO_TEST_YET);
+  }
+  return c.json({ ...row!, url: `${appUrl(c)}/f/${row!.key}` });
 });
 
-/** A new address for a form bots have found. The old one stops taking messages at once. */
+/**
+ * A new address for a form bots have found. The old one stops taking messages at once, and the
+ * form's check starts over (the database does that): Crewtavo's own line has the address in it.
+ */
 websiteForms.post("/website-forms/:id/address", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   const id = uuid.parse(c.req.param("id"));
   const row = must(await c.var.db.from("website_forms").update({ key: newFormKey() }).eq("id", id).eq("company_id", c.var.companyId).select(FORM_COLUMNS).maybeSingle(), "That form isn't here anymore.");

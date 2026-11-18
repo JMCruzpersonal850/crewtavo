@@ -339,6 +339,8 @@ describe("the app's page", () => {
       enabled: true,
       email_ready: true,
       promo_codes: false,
+      turnstile_site_key: null,
+      turnstile_keys_unreadable: false,
       forms: [expect.objectContaining({ url: `https://crm.greenlawn.example/f/${KEY}`, last_message_at: "2026-10-26T12:00:00Z" })],
     });
   });
