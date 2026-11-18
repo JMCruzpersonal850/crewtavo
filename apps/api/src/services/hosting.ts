@@ -14,9 +14,26 @@
  *
  * The task runs twice a day and tells the owner and admins about each warning once (the bell, plus
  * email and push by the "hosting" notification topic); the keys of those already sent are kept in
- * companies.settings.hosting_alerts.
+ * companies.settings.hosting_alerts. Besides what could stop Crewtavo or bill over the plan, it
+ * says when data sent out (downloads, which Railway charges for and nothing limits) is on track for
+ * an unusual month or jumps well above its usual rate (sentWarnings), and once, when photos and files
+ * are on a volume at least half full on a plan with buckets, what moving them to a bucket would
+ * save and what it gives up (bucketTip).
  */
-import { ADMINS, RAILWAY_PLANS, RAILWAY_TRIAL, serviceLabel, STORAGE_PRICES, type HostingDisk, type HostingOverview, type HostingService, type HostingWarning, type RailwayPlan } from "@crewtavo/core";
+import {
+  ADMINS,
+  RAILWAY_PLANS,
+  RAILWAY_TRIAL,
+  serviceLabel,
+  STORAGE_PRICES,
+  type HostingDisk,
+  type HostingOverview,
+  type HostingSent,
+  type HostingService,
+  type HostingWarning,
+  type RailwayPlan,
+  type StorageBackend,
+} from "@crewtavo/core";
 import type { Env } from "../env";
 import { platformOf } from "../lib/address";
 import { asJson, HttpError } from "../lib/http";
@@ -47,7 +64,30 @@ export const RATES: Record<Billed, number> = {
 };
 
 export const priced = (rows: Array<{ measurement: Billed; value: number }>) => rows.reduce((sum, r) => sum + (RATES[r.measurement] ?? 0) * r.value, 0);
+/** GB sent out in `rows`. */
+const sentIn = (rows: Array<{ measurement: Billed; value: number }>) => rows.reduce((sum, r) => sum + (r.measurement === "NETWORK_TX_GB" ? r.value : 0), 0);
+
+/**
+ * Data sent out worth a word, once a month: on track to send this many GB, which costs as much as
+ * the whole of what Hobby includes ($5 at $0.05 a GB). A field service business sends a few GB a
+ * month (pages, and the photos and plans people open); getting to 100 GB takes a lot of video, or a
+ * file shared by link being downloaded over and over.
+ */
+export const SENT_WARN_GB = RAILWAY_PLANS.hobby.included / STORAGE_PRICES.network;
+/**
+ * Or a last day that sent at least SENT_JUMP_TIMES its usual daily amount this month, and at least
+ * SENT_JUMP_MIN_GB ($0.10, or about $3 a month if it kept up): what a link being downloaded over and
+ * over looks like as it starts, while a quiet business's ordinary busy day (0.1 GB to 0.5) says
+ * nothing. The usual rate needs SENT_USUAL_DAYS of the month before the last day.
+ */
+export const SENT_JUMP_TIMES = 4;
+export const SENT_JUMP_MIN_GB = 2;
+const SENT_USUAL_DAYS = 2;
+/** Photos and files on a volume this full, on a plan with buckets, hear once what a bucket would save. */
+export const BUCKET_TIP_AT = 0.5;
 const cents = (n: number) => Math.round(n * 100) / 100;
+/** GB to the hundredth. */
+const hundredths = (n: number) => Math.round(n * 100) / 100;
 const money = (n: number) => `$${n.toFixed(2)}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -88,11 +128,13 @@ export async function hostingOverview(env: Env, admin: Db, companyId: string, { 
   if (!fresh && cached && now.getTime() - cached.at < CACHE_MS) return cached.overview;
   const access = await railwayAccess(env, admin, companyId);
   if (!access) throw new HttpError(409, "Connect Railway to see what Crewtavo costs.");
-  const overview = await readHosting(env, access, now);
-  cache.set(companyId, { at: now.getTime(), overview });
+  const read = await readHosting(env, access, now);
   // Settings → Storage's default limit follows the plan and the storage service's volume (services/storageUsage.ts).
-  const volume = overview.disks.find((d) => d.kind === "volume" && d.service === "storage" && d.sizeGb);
-  await keepStorageDefault(env, admin, companyId, { access, force: fresh, hint: { plan: overview.plan, ...(volume ? { volumeBytes: volume.sizeGb! * 1e9 } : {}) } });
+  const volume = read.disks.find((d) => d.kind === "volume" && d.service === "storage" && d.sizeGb);
+  const storage = await keepStorageDefault(env, admin, companyId, { access, force: fresh, hint: { plan: read.plan, ...(volume ? { volumeBytes: volume.sizeGb! * 1e9 } : {}) } });
+  // Where files are now, for the bucket tip.
+  const overview = { ...read, warnings: hostingWarnings(read, { backend: storage?.backend ?? null }) };
+  cache.set(companyId, { at: now.getTime(), overview });
   return overview;
 }
 
@@ -153,6 +195,22 @@ export async function readHosting(env: Env, access: RailwayAccess, now = new Dat
     }
   }
 
+  // Data sent out: this month, the last day, and the month's usual day before that (from when the
+  // project was made, if that's this month).
+  const counted = (now.getTime() - Math.max(Date.parse(period.start), Number.isNaN(created) ? 0 : created)) / DAY_MS;
+  const recentDays = (now.getTime() - rateFrom.getTime()) / DAY_MS;
+  const sentSoFar = usage ? sentIn(usage) : 0;
+  const sentPerDay = recent ? sentIn(recent) / recentDays : null;
+  const usualDays = counted - recentDays;
+  const sent: HostingSent | null = usage
+    ? {
+        soFar: hundredths(sentSoFar),
+        perDay: sentPerDay === null ? null : hundredths(sentPerDay),
+        usualPerDay: recent && usualDays >= SENT_USUAL_DAYS ? hundredths(Math.max(0, sentSoFar - sentIn(recent)) / usualDays) : null,
+        forecast: sentPerDay === null ? null : hundredths(sentSoFar + sentPerDay * ((Date.parse(period.end) - now.getTime()) / DAY_MS)),
+      }
+    : null;
+
   const cost = usage ? priced(usage) + bucketDaily * daysSoFar : 0;
   const perDay = recent ? priced(recent) / ((now.getTime() - rateFrom.getTime()) / DAY_MS) + bucketDaily : null;
   const forecast = usage && perDay !== null ? cost + perDay * ((Date.parse(period.end) - now.getTime()) / DAY_MS) : null;
@@ -169,6 +227,7 @@ export async function readHosting(env: Env, access: RailwayAccess, now = new Dat
           services: [...services.values()].map((s) => ({ ...s, cost: cents(s.cost) })).filter((s) => s.cost > 0).sort((a, b) => b.cost - a.cost),
         }
       : null,
+    sent,
     trial:
       plan === "trial" && !Number.isNaN(created) && spentOnTrial !== null
         ? { daysLeft: Math.max(0, Math.ceil(RAILWAY_TRIAL.days - (now.getTime() - created) / DAY_MS)), creditLeft: cents(Math.max(0, RAILWAY_TRIAL.credit - spentOnTrial)) }
@@ -191,8 +250,14 @@ export async function readHosting(env: Env, access: RailwayAccess, now = new Dat
   return { ...overview, warnings: hostingWarnings(overview) };
 }
 
-/** What needs doing before Railway stops Crewtavo or bills more than the plan includes, most urgent first. */
-export function hostingWarnings(o: Omit<HostingOverview, "warnings">): HostingWarning[] {
+const RANK: Record<HostingWarning["level"], number> = { urgent: 0, warning: 1, tip: 2 };
+
+/**
+ * What needs doing before Railway stops Crewtavo or bills more than the plan includes, most urgent
+ * first, then a way to pay less. `backend`: where photos and files are now, when it's known (the
+ * bucket tip needs it).
+ */
+export function hostingWarnings(o: Omit<HostingOverview, "warnings">, { backend = null }: { backend?: StorageBackend | null } = {}): HostingWarning[] {
   const warnings: HostingWarning[] = [];
   const period = o.period.start.slice(0, 7);
   const { plan, trial } = o;
@@ -258,7 +323,64 @@ export function hostingWarnings(o: Omit<HostingOverview, "warnings">): HostingWa
     });
   }
 
-  return warnings.sort((a, b) => (a.level === b.level ? 0 : a.level === "urgent" ? -1 : 1));
+  warnings.push(...sentWarnings(o));
+  const tip = bucketTip(o, backend);
+  if (tip) warnings.push(tip);
+
+  return warnings.sort((a, b) => RANK[a.level] - RANK[b.level]);
+}
+
+const gbText = (n: number) => `${n < 10 ? Number(n.toFixed(1)) : Math.round(n)} GB`;
+
+/** Data sent out on track for an unusual month, or a day well above the usual: once a month each. */
+export function sentWarnings(o: Pick<HostingOverview, "period" | "sent">): HostingWarning[] {
+  const sent = o.sent;
+  if (!sent) return [];
+  const period = o.period.start.slice(0, 7);
+  const price = STORAGE_PRICES.network;
+  const shared = "Opening photos, plan sets and videos sends data, and so do the pictures on guides and showcases shared by link.";
+  const warnings: HostingWarning[] = [];
+  if (sent.forecast !== null && sent.forecast >= SENT_WARN_GB) {
+    warnings.push({
+      key: `sent:${period}`,
+      level: "warning",
+      title: `Crewtavo is on track to send about ${gbText(sent.forecast)} this month`,
+      body: `That's about ${money(sent.forecast * price)} of Railway usage, at ${money(price)} for each GB sent to people's phones and browsers. ${shared} If that's more than your team and clients use, check what's shared by link.`,
+      action: null,
+    });
+  }
+  const { perDay, usualPerDay } = sent;
+  if (perDay !== null && usualPerDay !== null && perDay >= SENT_JUMP_MIN_GB && perDay >= SENT_JUMP_TIMES * Math.max(usualPerDay, 0.01)) {
+    const times = usualPerDay > 0 ? Math.floor(perDay / usualPerDay) : null;
+    warnings.push({
+      key: `sent-jump:${period}`,
+      level: "warning",
+      title: "Crewtavo sent far more data than usual in the last day",
+      body: `About ${gbText(perDay)} in the last day${times ? `, ${times} times its usual ${gbText(usualPerDay)} a day this month` : ""}. Railway charges ${money(price)} for each GB, so at that rate it's about ${money(perDay * price * 30)} a month. ${shared} If nobody expected that, check what's shared by link.`,
+      action: null,
+    });
+  }
+  return warnings;
+}
+
+/**
+ * Once, while photos and files are on the storage service's volume at least half full, on a plan
+ * with buckets (Hobby and Pro: the trial's bucket goes when the trial does, and Free's when its $1
+ * runs out): what a bucket would save, and what it gives up.
+ */
+export function bucketTip(o: Pick<HostingOverview, "plan" | "disks">, backend: StorageBackend | null): HostingWarning | null {
+  if (backend !== "volume" || (o.plan !== "hobby" && o.plan !== "pro")) return null;
+  const volume = o.disks.find((d) => d.kind === "volume" && d.service === "storage" && d.sizeGb);
+  if (!volume?.sizeGb || volume.usedGb / volume.sizeGb < BUCKET_TIP_AT) return null;
+  const now = volume.usedGb * STORAGE_PRICES.volume;
+  const there = volume.usedGb * STORAGE_PRICES.bucket;
+  return {
+    key: "bucket",
+    level: "tip",
+    title: "Photos and files would cost a tenth as much in a Railway bucket",
+    body: `They take ${gbText(volume.usedGb)}, ${Math.floor((volume.usedGb / volume.sizeGb) * 100)}% of the ${gbText(volume.sizeGb)} volume, which costs about ${money(now)} a month; in a bucket it's about ${money(there)}, and a bucket has no size to outgrow. But Railway backs up volumes on its Pro plan, and never buckets. Settings → Hosting → Files storage moves them with one press, and can move them back.`,
+    action: "files",
+  };
 }
 
 /** Railway stopped accepting Crewtavo's sign-in: nothing else can be checked until the owner logs in again. */
@@ -272,6 +394,8 @@ const LAPSED: HostingWarning = {
 
 /** Sent warnings are forgotten after this long, so one that comes back later is sent again. */
 const REMEMBER_MS = 90 * DAY_MS;
+/** Said once and never again: the bucket tip is advice, not a problem that comes back. */
+const ONCE = new Set(["bucket"]);
 
 /** The "hosting" task, twice a day: tells the owner and admins about each new warning, once. */
 export async function checkHosting(env: Env, admin: Db, now = new Date()): Promise<Record<string, unknown>> {
@@ -301,7 +425,7 @@ export async function checkHosting(env: Env, admin: Db, now = new Date()): Promi
     const fresh = warnings.filter((w) => !before[w.key]);
     if (fresh.length) sent += await tellAdmins(admin, company.id, fresh);
     const kept = Object.fromEntries(
-      Object.entries(before).filter(([key, at]) => now.getTime() - Date.parse(at) < REMEMBER_MS && !(connected && key === LAPSED.key)),
+      Object.entries(before).filter(([key, at]) => (ONCE.has(key) || now.getTime() - Date.parse(at) < REMEMBER_MS) && !(connected && key === LAPSED.key)),
     );
     const after = { ...kept, ...Object.fromEntries(fresh.map((w) => [w.key, now.toISOString()])) };
     if (JSON.stringify(after) !== JSON.stringify(before)) await rememberAlerts(admin, company.id, after);

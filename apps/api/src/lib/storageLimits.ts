@@ -29,9 +29,17 @@
  * refusal is never given from numbers kept here: they're read again first, so a raised limit, a new
  * allowance or an emptied Trash counts at once. If the numbers can't be read, uploads go ahead: a
  * limit is a budget, and work never stops for it.
+ *
+ * Videos into Drive and plan files (FILE_RULE_FOLDERS) are also held to the company's video rules
+ * (companies.settings.files: who may add them, and how big each may be; videoRefusal), read with the
+ * numbers and read again before a refusal the same way. A video is told by the type the upload
+ * gives (tus metadata's contentType, or the request's Content-Type) or by the stored name's ending.
+ * It's a budget, like the limits: someone who renames a video to slip it past isn't stopped, and
+ * its size still counts. Refused the way a full storage is (507, with the sentence), so the app
+ * shows it as it is with the way to Settings → Storage, where the rules are set.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { companyStorageFull, personStorageFull, STORAGE_FULL, storageFolderRule } from "@crewtavo/core/storage";
+import { companyStorageFull, FILE_DEFAULTS, FILE_RULE_FOLDERS, fileSettings, isVideo, personStorageFull, STORAGE_FULL, storageFolderRule, videoRefusal, type FileSettings } from "@crewtavo/core/storage";
 import type { Db } from "./supabase";
 
 /** How long one reading of a company's and a person's numbers is used. */
@@ -56,6 +64,10 @@ export interface StorageSnapshot {
    * said: Storage lets nobody else store anything a limit refuses. False means nothing else was read.
    */
   member: boolean;
+  /** Their access level ("owner", "office", "field_crew"...), for who may add videos. */
+  role?: string | null;
+  /** The company's rules for photos and videos added to Drive and plan files; the defaults when left out. */
+  files?: FileSettings;
 }
 
 /** Where the numbers come from: public.storage_snapshot, or a stand-in in tests. */
@@ -87,8 +99,12 @@ export function snapshotsFrom(admin: () => Db): SnapshotSource {
     if (typeof role !== "string" || role === "subcontractor") {
       return { companyUsed: 0, companyLimit: null, userUsed: 0, userLimit: null, owner: false, member: false };
     }
-    const { data, error } = await inTime(client.rpc("storage_snapshot", { p_company: company, p_user: user }));
+    const [{ data, error }, rules] = await Promise.all([
+      inTime(client.rpc("storage_snapshot", { p_company: company, p_user: user })),
+      inTime(client.from("companies").select("files:settings->files").eq("id", company).maybeSingle()),
+    ]);
     if (error) throw new Error(error.message);
+    if (rules.error) throw new Error(rules.error.message);
     const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null | undefined;
     return {
       companyUsed: bytesOf(row?.company_used) ?? 0,
@@ -97,6 +113,8 @@ export function snapshotsFrom(admin: () => Db): SnapshotSource {
       userLimit: bytesOf(row?.user_limit),
       owner: row?.user_is_owner === true,
       member: true,
+      role,
+      files: fileSettings({ files: (rules.data as { files?: unknown } | null)?.files }),
     };
   };
 }
@@ -110,13 +128,16 @@ export interface StorageUpload {
   bytes: number | null;
   /** A resumable upload being made: its file comes later, in pieces. */
   resumable?: boolean;
+  /** The type the upload gives its file, and the name it's stored under, to tell a video. */
+  contentType?: string | null;
+  name?: string | null;
 }
 
 /**
  * Let through, or refused with why. One let through counts toward the numbers until a reading has
  * it: `stored` says it's in Storage now (the next reading has it), `release` that it never will be.
  */
-export type StorageVerdict = { ok: true; release: () => void; stored: () => void } | { ok: false; message: string };
+export type StorageVerdict = { ok: true; release: () => void; stored: () => void } | { ok: false; message: string; video?: boolean };
 
 /** One reading of the database's numbers. */
 interface Count {
@@ -126,10 +147,13 @@ interface Count {
   seq: number;
   used: number;
   limit: number | null;
+  /** The company's video rules, from the same reading. */
+  files?: FileSettings;
 }
 interface PersonCount extends Count {
   owner: boolean;
   member: boolean;
+  role: string | null;
 }
 
 /** An upload let through, counted until a reading has it (or for CACHE_MS, if Storage never says). */
@@ -212,9 +236,11 @@ async function countsFor(source: SnapshotSource, company: string, user: string):
       .then((snapshot) => {
         sweep();
         // Someone else's reading, asked for after this one, is the newer: it stays.
-        if (snapshot.member && !((companies.get(company)?.seq ?? 0) > seq)) companies.set(company, { at, seq, used: snapshot.companyUsed, limit: snapshot.companyLimit });
+        if (snapshot.member && !((companies.get(company)?.seq ?? 0) > seq)) {
+          companies.set(company, { at, seq, used: snapshot.companyUsed, limit: snapshot.companyLimit, files: snapshot.files ?? FILE_DEFAULTS });
+        }
         if (!((people.get(key)?.seq ?? 0) > seq)) {
-          people.set(key, { at, seq, used: snapshot.userUsed, limit: snapshot.owner ? null : snapshot.userLimit, owner: snapshot.owner, member: snapshot.member });
+          people.set(key, { at, seq, used: snapshot.userUsed, limit: snapshot.owner ? null : snapshot.userLimit, owner: snapshot.owner, member: snapshot.member, role: snapshot.role ?? null });
         }
       })
       .finally(() => reading.delete(key));
@@ -265,12 +291,19 @@ function hold(keys: string[], bytes: number): { release: () => void; stored: () 
   };
 }
 
-type Decision = { ok: true } | { ok: false; message: string };
+type Decision = { ok: true } | { ok: false; message: string; video?: boolean };
+
+/** Folders a video is held to the company's video rules in. */
+const videoFolder = (folder: string) => (FILE_RULE_FOLDERS as readonly string[]).includes(folder);
 
 function decide(rule: { company: boolean; person: boolean }, upload: StorageUpload, counts: { company: Count; person: PersonCount }, keys: [string, string]): Decision {
   const now = Date.now();
   const need = Math.max(upload.bytes ?? 0, 1);
   const { company, person } = counts;
+  if (videoFolder(upload.folder) && isVideo({ contentType: upload.contentType, name: upload.name })) {
+    const why = videoRefusal(company.files ?? FILE_DEFAULTS, person.owner ? "owner" : person.role, upload.bytes);
+    if (why) return { ok: false, message: why, video: true };
+  }
   const companyUsed = company.used + pending(keys[0], company, now);
   const personUsed = person.used + pending(keys[1], person, now);
   if (rule.company && company.limit !== null && companyUsed + need > company.limit) {
@@ -285,7 +318,8 @@ function decide(rule: { company: boolean; person: boolean }, upload: StorageUplo
 /**
  * Whether an upload may be stored, and if so it's counted. The company's limit applies to the
  * folders storageFolderRule says, a person's to Drive and plan files and guides; owners have no
- * personal limit. A size that isn't said counts as a byte, so a full company still refuses it.
+ * personal limit. A size that isn't said counts as a byte, so a full company still refuses it. A
+ * video into Drive and plan files is held to the company's video rules first.
  */
 export async function reserveStorage(source: SnapshotSource, upload: StorageUpload): Promise<StorageVerdict> {
   const rule = storageFolderRule(upload.folder);
@@ -450,6 +484,15 @@ function placeOf(name: string, encoded: boolean): { company: string; folder: str
   return { company, folder };
 }
 
+/**
+ * What a file sent in one request says it is: the request's own type (a form's says only that it's a
+ * form, so then just the name) and the name it's stored under, read decoded when it can be.
+ */
+function kindOf(request: Request, name: string): { contentType: string | null; name: string } {
+  const type = request.headers.get("content-type");
+  return { contentType: type && !type.toLowerCase().startsWith("multipart/") ? type : null, name: decoded(name) ?? name };
+}
+
 /** Storage's resumable uploads: "/" and "/*", and the same under "/sign" for signed upload links. */
 const RESUMABLE = /^\/storage\/v1\/upload\/resumable(?:\/|$)/;
 const RESUMABLE_SIGNED = /^\/storage\/v1\/upload\/resumable\/sign(?:\/|$)/;
@@ -478,25 +521,28 @@ export function uploadOf(request: Request, secret: string | null | undefined): S
     const place = placeOf(meta.objectName, false);
     // On a signed link's route Storage goes by the link and ignores Authorization.
     const user = RESUMABLE_SIGNED.test(path) ? linkOwner(request.headers.get("x-signature"), secret) : signedInUser(request, secret);
-    return place && { ...place, user, bytes: sizeOf(request.headers.get("upload-length")), resumable: true };
+    return place && { ...place, user, bytes: sizeOf(request.headers.get("upload-length")), resumable: true, contentType: meta.contentType ?? null, name: meta.objectName };
   }
   const signed = path.match(SIGNED_UPLOAD);
   if (signed) {
     if (method !== "PUT" || decoded(signed[1]!) !== FILES) return null;
     const place = placeOf(signed[2]!, true);
-    return place && { ...place, user: linkOwner(url.searchParams.get("token"), secret), bytes: sizeOf(request.headers.get("content-length")) };
+    return place && { ...place, user: linkOwner(url.searchParams.get("token"), secret), bytes: sizeOf(request.headers.get("content-length")), ...kindOf(request, signed[2]!) };
   }
   const direct = path.match(DIRECT_UPLOAD);
   if (direct && (method === "POST" || method === "PUT") && decoded(direct[1]!) === FILES) {
     const place = placeOf(direct[2]!, true);
-    return place && { ...place, user: signedInUser(request, secret), bytes: sizeOf(request.headers.get("content-length")) };
+    return place && { ...place, user: signedInUser(request, secret), bytes: sizeOf(request.headers.get("content-length")), ...kindOf(request, direct[2]!) };
   }
   return null;
 }
 
-/** What Storage-style clients get for an upload a limit refuses. */
-export function storageFull(message: string): Response {
-  return Response.json({ statusCode: String(STORAGE_FULL.status), error: STORAGE_FULL.error, message }, { status: STORAGE_FULL.status });
+/**
+ * What Storage-style clients get for an upload a limit refuses, or a video the company's rules do
+ * (the same status, so the app shows the sentence the same way).
+ */
+export function storageFull(message: string, video = false): Response {
+  return Response.json({ statusCode: String(STORAGE_FULL.status), error: video ? "Video not allowed" : STORAGE_FULL.error, message }, { status: STORAGE_FULL.status });
 }
 
 /**
@@ -527,7 +573,7 @@ export async function guardStorage(source: SnapshotSource, secret: string | null
     return Response.json({ statusCode: "411", error: "Length Required", message }, { status: 411 });
   }
   const verdict = await reserveStorage(source, upload);
-  if (!verdict.ok) return storageFull(verdict.message);
+  if (!verdict.ok) return storageFull(verdict.message, verdict.video);
   const res = await send(request);
   if (!res.ok) verdict.release();
   // A file sent whole is stored once Storage answers; a resumable one arrives later, in pieces

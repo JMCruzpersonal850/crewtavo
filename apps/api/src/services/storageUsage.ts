@@ -9,6 +9,11 @@
  *    (one Railway gave earlier no longer says anything true); the same when Railway answers but
  *    what it says gives no default (a plan Crewtavo doesn't know). Only while Railway can't be
  *    reached for a moment does the last default stay.
+ *  - what a GB costs where files are now, and the most a monthly amount can buy there
+ *    (storage_set_rate, alongside the default), so a limit set in dollars on Railway
+ *    (settings.storage.limit_dollars) turns into the right size, and follows files when they move
+ *    between the volume and a bucket. These are only ever replaced, never cleared: a limit in
+ *    dollars keeps the last price Railway gave rather than going away.
  *  - GET /api/storage's overview (storageOverviewFor): storage_overview as the person sees it, plus,
  *    for owners and admins on Railway, where files live and what a GB of them costs a month.
  *  - the "storage" task's warnings (checkStorage): owners and admins hear (the bell, plus email and
@@ -18,7 +23,7 @@
  *    back under, so the next time it's crossed they hear again.
  */
 import { ADMINS, RAILWAY_PLANS, type RailwayPlan, type StorageBackend } from "@crewtavo/core";
-import { defaultStorageLimit, formatBytes, STORAGE_WARN_AT, storagePricePerGb } from "@crewtavo/core/storage";
+import { defaultStorageLimit, formatBytes, storageCap, storageCapKnown, STORAGE_WARN_AT, storagePricePerGb } from "@crewtavo/core/storage";
 import type { Env } from "../env";
 import { platformOf } from "../lib/address";
 import { asJson, dbError } from "../lib/http";
@@ -157,6 +162,14 @@ export async function keepStorageDefault(
       const { answered, ...read } = await readFacts(env, railway, hint);
       const storage: RailwayStorage = { ...read, pricePerGbMonth: storagePricePerGb(read.backend) };
       facts.set(companyId, { at: Date.now(), storage });
+      // What a GB costs where files are now, and the most a monthly amount can buy there, for a limit
+      // set in dollars: only once Railway has said both (a lookup that failed just now keeps the last).
+      if (storage.pricePerGbMonth !== null && storageCapKnown(read)) {
+        const { error } = await admin.rpc("storage_set_rate", { p_company: companyId, p_price_per_gb: storage.pricePerGbMonth, p_cap_bytes: storageCap(read) } as never);
+        if (error) console.warn("Couldn't save what storage costs:", error.message);
+        // A limit in dollars may have just come down (files moved back to the volume): it counts at the next upload.
+        else forgetStorageReadings();
+      }
       const { bytes, basis } = defaultStorageLimit(read);
       if (bytes !== null) {
         const { error } = await admin.rpc("storage_set_default", { p_company: companyId, p_bytes: bytes, p_basis: basis ?? "" });
@@ -188,14 +201,22 @@ export async function keepStorageDefault(
  * Settings → Storage and Drive: storage_overview as this person sees it (their client, so the
  * database decides what they see), and for owners and admins on Railway, `railway`: where files live
  * and what a GB costs a month there, read with the default limit brought up to date first. `fresh`
- * reads Railway now rather than what it said in the last few minutes.
+ * reads Railway now rather than what it said in the last few minutes. Owners and admins also get
+ * what a limit in dollars was set to (`limit_dollars`, null for any other kind of limit) and the most
+ * one can buy where files are now (`cap_bytes`), for the page to say the size it means.
  */
 export async function storageOverviewFor(env: Env, db: Db, admin: Db, companyId: string, { owners, fresh = false }: { owners: boolean; fresh?: boolean }): Promise<Record<string, unknown>> {
   const railway = owners ? await keepStorageDefault(env, admin, companyId, { force: fresh }) : null;
-  const { data, error } = await db.rpc("storage_overview", { p_company: companyId });
+  const [{ data, error }, kept] = await Promise.all([
+    db.rpc("storage_overview", { p_company: companyId }),
+    owners ? admin.from("companies").select("storage:settings->storage").eq("id", companyId).maybeSingle() : null,
+  ]);
   if (error) throw dbError(error);
   const overview = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
-  return { ...overview, railway };
+  if (!owners) return { ...overview, railway };
+  const storage = ((kept?.data as { storage?: unknown } | null)?.storage ?? {}) as Record<string, unknown>;
+  const positive = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
+  return { ...overview, railway, limit_dollars: overview.limit_mode === "dollars" ? positive(storage.limit_dollars) : null, cap_bytes: positive(storage.cap_bytes) };
 }
 
 // ---------------------------------------------------------------------------------------------

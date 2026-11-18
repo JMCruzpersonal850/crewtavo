@@ -74,9 +74,11 @@ import { formPage } from "../services/websiteForms";
 import { firstName } from "../lib/email";
 import { smsReady } from "../lib/notify";
 import { noteTextConsent } from "../services/textsOff";
+import { sha256Hex } from "../lib/recovery";
 import { fromBase64Url, signToken, verifyToken } from "../lib/crypto";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
+import { LINK_PAUSED, linkCanSend } from "../lib/linkBudget";
 import { clientLink, linkPreview, linksReplaced, readClientLink, REVIEW_TOKEN, type ClientLink, type LinkKind } from "../lib/links";
 import { storedFile } from "../lib/storedFile";
 import { adminClient } from "../lib/supabase";
@@ -1620,6 +1622,15 @@ publicRoutes.get("/hub/:token/drawings/:file", async (c) => {
   const bytes = await storedFile(admin, drawing.snapshot_path, DRAWING_MAX_BYTES);
   const type = bytes && (isJpeg(bytes) ? "image/jpeg" : isPng(bytes) ? "image/png" : null);
   if (!bytes || !type) throw new HttpError(404, "Drawing not found.");
+  // At most a day's worth through one link (lib/linkBudget.ts): counted by the link itself, so
+  // resetting the client's links gives the new one a fresh day (hashed: a key is 200 characters at most).
+  const within = await linkCanSend(c.env, `hub-drawings:${await sha256Hex(c.req.param("token") ?? "")}`, bytes.length, {
+    company: l.c,
+    title: `A${l.t === "quote" ? " quote's" : "n invoice's"} map drawings are paused for the day`,
+    body: `The Client Hub link to this ${l.t} has sent its map drawings far more times in the last day than a client looks at them, so they're paused until tomorrow; the ${l.t} itself still opens. If the link went somewhere it shouldn't, reset the client's links from their page.`,
+    open: `/${l.t === "quote" ? "quotes" : "invoices"}/${l.id}`,
+  });
+  if (!within) throw new HttpError(429, LINK_PAUSED);
   return c.body(bytes, 200, { "Content-Type": type, "Cache-Control": "private, max-age=3600" });
 });
 

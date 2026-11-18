@@ -707,7 +707,7 @@ select t1070.check(array(
   -- Scheduling the snow jobs that reach their trigger: the owner and the office with the schedule area only, never a sub.
   'snow_schedule(uuid, date, jsonb)',
   'social_photos(uuid, timestamp with time zone, uuid, integer, uuid)',
-  'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
+  'storage_overview(uuid)', 'storage_set_allowance(uuid, uuid, text, bigint)', 'storage_set_limit(uuid, text, bigint, numeric)', 'stripe_fees(uuid, timestamp with time zone)', 'sub_1099_totals(uuid, integer)', 'sub_wc_audit(uuid, date, date)', 'time_entry_places(uuid, uuid[])',
   -- Installs Paving, Roofing or Snow: owners and admins who connect apps only, never a sub.
   'trade_app_set_enabled(uuid, text, boolean)',
   'trash_delete_forever(uuid, jsonb)', 'undo_price_change(uuid, uuid)', 'visit_autopay(uuid)', 'visit_contact(uuid)',
@@ -724,8 +724,10 @@ select t1070.check(not exists (select 1 from unnest(array['public.sign_in_code_s
     'public.sub_sign_ins_for_phone(text)', 'public.sub_sign_ins_for_email(text)', 'public.tidy_sign_in_codes()', 'public.sub_notice_contacts(uuid[])']) as f
   where has_function_privilege('authenticated', f, 'execute') or has_function_privilege('anon', f, 'execute')),
   'signing in with a code, by text or by email, and where a sub''s notices go, are the server''s alone');
--- So are the storage gateway's check before an upload and the default limit (20261028000400_storage_limits.sql).
-select t1070.check(not exists (select 1 from unnest(array['public.storage_snapshot(uuid, uuid)', 'public.storage_set_default(uuid, bigint, text)']) as f
+-- So are the storage gateway's check before an upload and the default limit (20261028000400_storage_limits.sql),
+-- what storage costs where files are, and a rate limit by amount (20261118000200_storage_cost_limits.sql).
+select t1070.check(not exists (select 1 from unnest(array['public.storage_snapshot(uuid, uuid)', 'public.storage_set_default(uuid, bigint, text)',
+    'public.storage_set_rate(uuid, numeric, bigint)', 'public.rate_limit_spend(text, integer, integer, integer)']) as f
   where has_function_privilege('authenticated', f, 'execute') or has_function_privilege('anon', f, 'execute')),
   'the storage check before an upload, and the default limit, are the server''s alone');
 -- So is reading a published showcase for a visitor (20261113001580_showcases_come_down.sql): the server asks, with its visitor limits.

@@ -16,7 +16,8 @@ import { DrivePanel } from "../src/features/apps/DrivePanel";
 import { RolesSettings } from "../src/features/settings/RolesSettings";
 import { settingsGroups } from "../src/features/settings/sections";
 import {
-  addEach, areaLabel, companyLine, fullness, gbField, limitText, managesStorage, monthly, notAdded, parseGb, personalLine, RefusedForSpace, reportStorageFull, setsAllowances,
+  addEach, areaLabel, companyLine, dollarsField, filesPatch, fullness, gbField, limitText, managesStorage, monthly, notAdded, parseDollars, parseGb, personalLine, RefusedForSpace,
+  reportStorageFull, setsAllowances, usd,
   type StorageOverview, type StorageReport,
 } from "../src/features/settings/storage";
 import { StorageSettings } from "../src/features/settings/StorageSettings";
@@ -154,24 +155,89 @@ describe("Settings → Storage", () => {
     expect(roomy).not.toContain("% full");
   });
 
-  it("offers Railway's default with why, no limit, or a size of your own", () => {
+  it("offers Railway's default with why and what it costs, a monthly amount, or no limit", () => {
     const page = text(settingsPage(REPORT));
-    expect(page).toContain("Default (50 GB)");
+    expect(page).toContain("Default (50 GB, about $0.75 a month)");
     expect(page).toContain("50 GB: Railway Hobby bucket. Railway's Hobby plan holds up to 1 TB in buckets for your whole Railway workspace");
+    expect(page).toContain("A monthly amount Files can cost up to this much a month on Railway.");
     expect(page).toContain("No limit");
-    expect(page).toContain("Custom");
+    // On Railway a limit of your own is in dollars, not GB.
+    expect(page).not.toContain("Custom");
     expect(page).toContain("At 50 GB, storage would cost about $0.75 a month on Railway once files filled it.");
 
     const volume = text(settingsPage({ ...REPORT, default_bytes: 45e9, default_basis: "90% of your 50 GB volume", railway: { backend: "volume", plan: "pro", volumeBytes: 50e9, pricePerGbMonth: 0.15 } }));
     expect(volume).toContain("45 GB: 90% of your 50 GB volume. A volume holds only its size");
     expect(volume).toContain("for what the volume stores");
 
-    // Not on Railway: no default, and no cost line.
+    // Not on Railway: no default, no cost line, and a limit of your own is a size, as it always was.
+    as("owner", [], "compose");
     const elsewhere = text(settingsPage({ ...REPORT, limit_bytes: null, limit_mode: "default", default_bytes: null, default_basis: null, railway: null }));
     expect(elsewhere).toContain("there's no default limit");
     expect(elsewhere).toContain("No limit ·");
+    expect(elsewhere).toContain("Custom A size of your own.");
     expect(elsewhere).not.toContain("Railway charges");
+    expect(elsewhere).not.toContain("A monthly amount");
+    expect(elsewhere).not.toContain("bucket");
   });
+
+  it("says the size a monthly amount means where files are now, and that it follows files when they move", () => {
+    const html = settingsPage({ ...REPORT, limit_mode: "dollars", limit_dollars: 10, limit_bytes: 666_666_666_666, cap_bytes: 900e9 });
+    expect(text(html)).toContain("That's 667 GB in a Railway bucket, at $0.015 per GB a month. If files move between the volume and a bucket, it stays $10 and the size follows.");
+    expect(html).toContain('value="10"');
+  });
+
+  it("never lets a monthly amount run past the volume, and says what a bucket would hold for it", () => {
+    const html = settingsPage({
+      ...REPORT, used_bytes: 1e9, trash_bytes: 0, limit_mode: "dollars", limit_dollars: 10, limit_bytes: 4.5e9, cap_bytes: 4.5e9, default_bytes: 4.5e9, default_basis: "90% of your 5 GB volume",
+      railway: { backend: "volume", plan: "hobby", volumeBytes: 5e9, pricePerGbMonth: 0.15 },
+    });
+    const page = text(html);
+    expect(page).toContain("That's more than the volume holds Uploads stop at 4.5 GB, about $0.67 a month, so the volume never fills.");
+    expect(page).toContain("move files to a bucket , where $10 a month holds 667 GB.");
+  });
+
+  it("keeps a size set before limits were in dollars, priced, until someone chooses again", () => {
+    const page = text(settingsPage({ ...REPORT, limit_mode: "custom", limit_bytes: 45e9 }));
+    expect(page).toContain("A size Set before limits were in dollars: about $0.67 a month in a Railway bucket. A monthly amount stays the same if files move between the volume and a bucket.");
+    expect(page).toContain("A monthly amount");
+  });
+
+  it("points to Files storage once the volume is half full, on a plan with buckets, and only on Railway", () => {
+    const half = { ...REPORT, used_bytes: 2.6e9, trash_bytes: 0, railway: { backend: "volume" as const, plan: "hobby" as const, volumeBytes: 5e9, pricePerGbMonth: 0.15 } };
+    const page = text(settingsPage(half));
+    expect(page).toContain("Photos and files would cost a tenth as much in a Railway bucket $0.015 per GB a month instead of $0.15 on the volume, and a bucket has no size to outgrow. But Railway backs up volumes on its Pro plan, and never buckets.");
+    expect(page).toContain("Files storage in Settings → Hosting");
+    expect(text(settingsPage({ ...half, used_bytes: 2e9 }))).not.toContain("a tenth as much");
+    expect(text(settingsPage({ ...half, railway: { ...half.railway, plan: "trial" } }))).not.toContain("a tenth as much");
+    expect(text(settingsPage({ ...half, railway: { ...half.railway, backend: "bucket" } }))).not.toContain("a tenth as much");
+  });
+
+  it("sets how photos and videos are kept: the photo switch on unless turned off, and videos for everyone up to 100 MB unless changed", () => {
+    const withSettings = (settings: Record<string, unknown>) =>
+      text(
+        render(createElement(StorageSettings), (client) => {
+          client.setQueryData(["storage", COMPANY, "report"], REPORT);
+          client.setQueryData(["company-roles", COMPANY], []);
+          client.setQueryData(["company", COMPANY, "settings"], settings);
+        }),
+      );
+    const fresh = withSettings({});
+    expect(fresh).toContain("Photos and videos For what's added to Drive and to Plans and files on clients' work.");
+    expect(fresh).toContain("Make photos smaller as they're added");
+    expect(fresh).toContain("saved at 2560 pixels on their longest side");
+    expect(fresh).toContain("Plan sheets, PDFs and screenshots are never changed.");
+    expect(fresh).toContain("Everyone on the team");
+    expect(fresh).toContain("Only the office Owners, admins, office staff and estimators.");
+    const html = render(createElement(StorageSettings), (client) => {
+      client.setQueryData(["storage", COMPANY, "report"], REPORT);
+      client.setQueryData(["company-roles", COMPANY], []);
+      client.setQueryData(["company", COMPANY, "settings"], { files: { shrink_photos: false, videos: "office", video_max_bytes: 50e6 } });
+    });
+    expect(html).toMatch(/<input type="checkbox" class="switch"\/>/);
+    expect(html).toMatch(/<option value="50000000" selected="">50 MB<\/option>/);
+    expect(html).toMatch(/name="video-uploaders" checked=""\/>.{0,120}Only the office/);
+  });
+
 
   it("lists who's using it, with each person's limit and where it comes from, and lets the owner set one for anyone but an owner", () => {
     const html = settingsPage(REPORT);
@@ -300,6 +366,24 @@ describe("storage in words", () => {
     expect(gbField(null)).toBe("");
   });
 
+  it("reads what files may cost a month, to the cent, and says what's wrong with one that isn't", () => {
+    expect(parseDollars("10")).toEqual({ dollars: 10 });
+    expect(parseDollars(" $12.345 ")).toEqual({ dollars: 12.35 });
+    expect(parseDollars("1,000")).toEqual({ dollars: 1000 });
+    expect(parseDollars("")).toEqual({ problem: "Enter what files may cost a month." });
+    expect(parseDollars("0")).toEqual({ problem: "Enter an amount of more than $0." });
+    expect(parseDollars("200000")).toEqual({ problem: "A monthly amount can be $100,000 at most." });
+    expect(dollarsField(0.675)).toBe("0.68");
+    expect(dollarsField(null)).toBe("");
+    expect(usd(10)).toBe("$10");
+    expect(usd(0.68)).toBe("$0.68");
+  });
+
+  it("saves only the photo and video settings changed, under their own names", () => {
+    expect(filesPatch({ shrinkPhotos: false })).toEqual({ shrink_photos: false });
+    expect(filesPatch({ videos: "office", videoMaxBytes: 50e6 })).toEqual({ videos: "office", video_max_bytes: 50e6 });
+  });
+
   it("prices storage as Railway bills it", () => {
     expect(monthly(60e9, 0.015)).toBe("about $0.90 a month");
     expect(monthly(100e9, 0.15)).toBe("about $15.00 a month");
@@ -403,6 +487,38 @@ describe("an upload refused for space", () => {
       expect(done.added).toBe(1);
       expect(done.refused.first).toBeNull();
       expect(done.refused.names).toEqual([]);
+    });
+
+    it("says a video the company's rules turned away on its own, with its reason, and keeps sending: it says nothing about the room left", async () => {
+      const video = "Only the office can add videos to Drive and plan files here. Add photos instead, or ask the office to add the video.";
+      const sent: string[] = [];
+      const failed: Array<[string, string]> = [];
+      const done = await addEach(
+        [sized("Walkthrough.mp4", 20 * MB), sized("Big plan.pdf", 150 * MB)],
+        async (f) => {
+          sent.push(f.name);
+          if (f.name.endsWith(".mp4")) throw new StorageFullError(video);
+        },
+        (f, error) => failed.push([f.name, (error as Error).message]),
+      );
+      expect(sent).toEqual(["Walkthrough.mp4", "Big plan.pdf"]);
+      expect(done.added).toBe(1);
+      expect(failed).toEqual([["Walkthrough.mp4", video]]);
+      expect(done.refused.names).toEqual([]);
+      expect(done.refused.first).toBeNull();
+    });
+
+    it("never puts a video's reason over files refused for space in the same batch", async () => {
+      const video = "Only the office can add videos to Drive and plan files here. Add photos instead, or ask the office to add the video.";
+      const done = await addEach(
+        [sized("clip.mov", 20 * MB), sized("plan.pdf", 30 * MB)],
+        async (f) => {
+          throw new StorageFullError(f.name === "clip.mov" ? video : FULL);
+        },
+        () => undefined,
+      );
+      expect(done.refused.names).toEqual(["plan.pdf"]);
+      expect(done.refused.first?.message).toBe(FULL);
     });
 
     it("collects a Google Drive import's refusals the same way, sizes unknown", () => {

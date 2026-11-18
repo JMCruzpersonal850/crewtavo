@@ -48,6 +48,8 @@ interface Project {
   backend?: "volume" | "bucket";
   volumeMb?: number;
   refuse?: boolean;
+  /** Railway's answer about the volumes didn't include the storage service's (a lookup that failed). */
+  noVolume?: boolean;
 }
 
 function railway(call: Call, project: Project): Response {
@@ -66,7 +68,7 @@ function railway(call: Call, project: Project): Response {
   }
   if (query.includes("variables(")) return data({ variables: { STORAGE_BACKEND: project.backend === "bucket" ? "s3" : "file", TENANT_ID: "crewtavo" } });
   if (query.includes("environment(id")) {
-    return data({ environment: { volumeInstances: { edges: [{ node: { serviceId: "svc-storage", currentSizeMB: 1200, sizeMB: project.volumeMb ?? 50_000 } }] } } });
+    return data({ environment: { volumeInstances: { edges: project.noVolume ? [] : [{ node: { serviceId: "svc-storage", currentSizeMB: 1200, sizeMB: project.volumeMb ?? 50_000 } }] } } });
   }
   return Response.json({ errors: [{ message: `unexpected ${query.slice(0, 40)}` }] });
 }
@@ -306,14 +308,14 @@ describe("GET /api/storage", () => {
   const session = (sub: string) => `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub, role: "authenticated", exp: Math.floor(Date.now() / 1000) + 600 })}.c2ln`;
   const OVERVIEW = { used_bytes: 12.4 * GB, trash_bytes: 1 * GB, files: 812, limit_bytes: 45 * GB, limit_mode: "default", default_bytes: 45 * GB, default_basis: "90% of your 50 GB volume", me: { used_bytes: 3.1 * GB, limit_bytes: null, limit_source: null } };
 
-  async function as(role: string, e: Env) {
+  async function as(role: string, e: Env, project: Project = { volumeMb: 50_000 }) {
     const secret = await encryptJson(env, { api_key: "project-token", extra: { method: "token" } });
     const order: string[] = [];
     const calls = serve((call) => {
       if (call.url.pathname === "/auth/v1/user") return Response.json({ id: OWNER, aud: "authenticated", role: "authenticated" });
       if (call.url.host === "backboard.railway.com") {
         order.push("railway");
-        return railway(call, { volumeMb: 50_000 });
+        return railway(call, project);
       }
       if (call.path === "memberships") return [{ role, role_id: null, subcontractor_id: null }];
       if (call.path === "integrations") return [{ status: "connected" }];
@@ -329,10 +331,18 @@ describe("GET /api/storage", () => {
   it("gives owners and admins on Railway where files live and what a GB costs, with the default read first", async () => {
     const { res, calls, order } = await as("owner", env);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ...OVERVIEW, railway: { backend: "volume", plan: "hobby", volumeBytes: 50 * GB, pricePerGbMonth: 0.15 } });
+    expect(await res.json()).toEqual({ ...OVERVIEW, railway: { backend: "volume", plan: "hobby", volumeBytes: 50 * GB, pricePerGbMonth: 0.15 }, limit_dollars: null, cap_bytes: null });
     expect(order.indexOf("rpc/storage_set_default")).toBeLessThan(order.indexOf("rpc/storage_overview"));
+    // What a GB costs on the volume, and the most a monthly amount can buy there (90% of it), for a limit in dollars.
+    expect(calls.find((c) => c.path === "rpc/storage_set_rate")).toMatchObject({ body: { p_company: CO, p_price_per_gb: 0.15, p_cap_bytes: 45 * GB } });
     // The overview is read as the person, so the database decides what they see.
     expect(calls.find((c) => c.path === "rpc/storage_overview")).toMatchObject({ admin: false, body: { p_company: CO } });
+  });
+
+  it("keeps the last price and cap when Railway didn't say how big the volume is, so a limit in dollars isn't lifted", async () => {
+    const { res, calls } = await as("owner", env, { noVolume: true });
+    expect(res.status).toBe(200);
+    expect(calls.find((c) => c.path === "rpc/storage_set_rate")).toBeUndefined();
   });
 
   it("gives the rest of the team the overview alone, without asking Railway", async () => {

@@ -92,10 +92,12 @@ function fakeDb(w: ReturnType<typeof world>) {
   const queries: Query[] = [];
   const rpcs: Array<{ name: string; args: any }> = [];
   const hits = new Map<string, number>();
+  const spent = new Map<string, number>();
   const opened: string[] = [];
   const answer = (q: Query): unknown => {
     switch (q.table) {
-      case "memberships": return { role: w.role, role_id: null };
+      // One person's membership, or the owners and admins told something.
+      case "memberships": return did(q, "in") ? [{ user_id: USER }] : { role: w.role, role_id: null };
       case "sop_pages": return w.guide;
       case "companies": return { name: "Peak Lawn", phone: "540 555 0100", website: "https://peaklawn.example", settings: { branding: { color: "#226644" } } };
       case "profiles": return { full_name: "Pat Owner" };
@@ -143,6 +145,11 @@ function fakeDb(w: ReturnType<typeof world>) {
         hits.set(args.p_key, n);
         return { data: n <= args.p_max, error: null };
       }
+      if (name === "rate_limit_spend") {
+        const n = Math.min(spent.get(args.p_key) ?? 0, args.p_max) + args.p_amount;
+        spent.set(args.p_key, n);
+        return { data: n <= args.p_max, error: null };
+      }
       if (name !== "guide_share_view") return { data: null, error: null };
       if (!w.share || args.p_token !== w.share.token || w.guide?.status !== "published") return { data: null, error: null };
       const email = typeof args.p_email === "string" ? args.p_email.trim().toLowerCase() : null;
@@ -155,7 +162,7 @@ function fakeDb(w: ReturnType<typeof world>) {
     },
     auth: { getClaims: async () => ({ data: { claims: { sub: USER } }, error: null }) },
   };
-  return { queries, rpcs, opened, w };
+  return { queries, rpcs, opened, w, spent };
 }
 
 const office = (method: string, path: string, body?: unknown) =>
@@ -552,6 +559,22 @@ describe("a shared guide's pictures", () => {
     expect((await picture("7c0a0000-0000-4000-8000-000000000001.jpg")).status).toBe(404);
     current.files[PICTURE] = PHOTO.subarray(0, PHOTO.length - 40);
     expect((await picture("7c0a0000-0000-4000-8000-000000000001.jpg")).status).toBe(404);
+  });
+
+  it("send at most a day's worth through one link, and the office hears once which link it was", async () => {
+    const { spent, queries } = fakeDb(world({ share: { page_id: GUIDE, token: TOKEN, access: "anyone" } }));
+    expect((await picture("7c0a0000-0000-4000-8000-000000000001.jpg")).status).toBe(200);
+    // Counted in KB against 2 GB a day, for this link.
+    expect(spent.get(`link-bytes:guide:${TOKEN}`)).toBe(Math.ceil(CLEAN.length / 1000));
+    spent.set(`link-bytes:guide:${TOKEN}`, 2_000_000);
+    const paused = await picture("7c0a0000-0000-4000-8000-000000000001.jpg");
+    expect(paused.status).toBe(429);
+    expect(((await paused.json()) as { error: string }).error).toBe("This link has sent a lot today, so its pictures are paused until tomorrow.");
+    expect((await picture("7c0a0000-0000-4000-8000-000000000002.jpg")).status).toBe(429);
+    const told = queries.filter((q) => q.table === "notifications").map((q) => did(q, "insert")?.[1]);
+    expect(told).toEqual([[expect.objectContaining({ company_id: CO, user_id: USER, kind: "hosting", title: "A shared guide's pictures are paused for the day", link: `/kb/${GUIDE}` })]]);
+    // The page itself still opens.
+    expect((await visitor(TOKEN)).status).toBe(200);
   });
 
   it("go when the guide isn't shown any more", async () => {

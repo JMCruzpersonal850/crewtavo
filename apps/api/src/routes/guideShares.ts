@@ -32,7 +32,9 @@
  * The page never shows a file that isn't the guide's own: only the pictures its current version
  * names in its company's kb/ folder, and its cover (sharedPictures), as JPEGs with whatever a
  * camera wrote into them taken out. A picture's link never carries the reader's address: a page
- * for certain people loads its pictures with a pass that names only their row in the list.
+ * for certain people loads its pictures with a pass that names only their row in the list. A link's
+ * pictures send at most a day's worth (lib/linkBudget.ts), so a link posted somewhere public can't
+ * run up the bill; a new link starts afresh.
  */
 import { ADMINS } from "@crewtavo/core";
 import { emailKey } from "@crewtavo/core/email";
@@ -48,6 +50,7 @@ import { keyedHash, randomId, safeEqual, signToken, verifyToken } from "../lib/c
 import { renderEmail } from "../lib/email";
 import { appUrl, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { allow, allowStrict } from "../lib/limit";
+import { LINK_PAUSED, linkCanSend } from "../lib/linkBudget";
 import { emailReady, sendEmail } from "../lib/notify";
 import { storedFile } from "../lib/storedFile";
 import { adminClient, type Db } from "../lib/supabase";
@@ -404,6 +407,13 @@ guideShares.on(["GET", "HEAD"], "/public/guides/:token/pictures/:name", async (c
   const bytes = path ? await storedFile(admin, path, PICTURE_MAX_BYTES) : null;
   const clean = bytes ? withoutMetadata(bytes) : null;
   if (!clean) throw missing();
+  const within = await linkCanSend(c.env, `guide:${token}`, c.req.method === "HEAD" ? 0 : clean.length, {
+    company: view.company_id,
+    title: "A shared guide's pictures are paused for the day",
+    body: `The link to “${view.title || "a guide"}” has sent a lot of pictures in the last day, far more than people reading it need, so its pictures are paused until tomorrow; its words still show. If the link went somewhere it shouldn't, make a new one from the guide's Share.`,
+    open: `/kb/${view.page_id}`,
+  });
+  if (!within) throw new HttpError(429, LINK_PAUSED);
   // Short-lived in caches: taking someone off, or a new link, should take the pictures away soon after the page.
   const headers = { "Content-Type": "image/jpeg", "Content-Length": String(clean.length), "X-Content-Type-Options": "nosniff", "X-Robots-Tag": "noindex", "Cache-Control": `${view.access === "anyone" ? "public" : "private"}, max-age=300` };
   return c.req.method === "HEAD" ? c.body(null, 200, headers) : c.body(clean, 200, headers);

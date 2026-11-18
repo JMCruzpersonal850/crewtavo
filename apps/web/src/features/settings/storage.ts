@@ -4,9 +4,13 @@
  * come from the database (storage_overview, supabase/migrations/20261028000400_storage_limits.sql);
  * Settings → Storage adds Railway's side (where files are kept, the plan, the price) from GET
  * /api/storage. Limits are set straight from the browser: the company's with storage_set_limit
- * (owners and admins with Settings), a person's or a role's with storage_set_allowance (owners).
+ * (owners and admins with Settings), a person's or a role's with storage_set_allowance (owners). On
+ * Railway the company's can be what files may cost a month, which the database turns into a size at
+ * the price of where files are now. The company's rules for photos and videos added to Drive and
+ * plan files (companies.settings.files: fileSettings in packages/core/src/storage.ts) are saved here
+ * too, and the server holds uploads to them.
  */
-import { formatBytes, GB, STORAGE_WARN_AT, storageMonthlyCost, type StorageLimitMode } from "@crewtavo/core/storage";
+import { fileSettings, formatBytes, GB, isVideoRefusal, MOST_DOLLARS, STORAGE_WARN_AT, storageMonthlyCost, type FileSettings, type StorageLimitMode } from "@crewtavo/core/storage";
 import type { RailwayPlan, StorageBackend } from "@crewtavo/core/hosting";
 import type { Role } from "@crewtavo/core/roles";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
@@ -68,6 +72,10 @@ export interface StorageRailway {
 /** GET /api/storage: the overview, plus Railway's side (null when this Crewtavo isn't on Railway or can't read it). */
 export interface StorageReport extends StorageOverview {
   railway: StorageRailway | null;
+  /** Owners and admins: what files may cost a month, when the limit is set that way. */
+  limit_dollars?: number | null;
+  /** Owners and admins: the most a monthly amount can buy where files are now (90% of the volume; null for no cap). */
+  cap_bytes?: number | null;
 }
 
 export const STORAGE_KEY = ["storage"];
@@ -109,9 +117,59 @@ export function useStorageReport() {
 /** After an upload, a move to the Trash, or a limit changed: every count of storage again. */
 export const refreshStorage = (queryClient: QueryClient) => queryClient.invalidateQueries({ queryKey: STORAGE_KEY });
 
-/** The company's limit: Railway's default, none, or `bytes`. */
-export async function setStorageLimit(companyId: string, mode: StorageLimitMode, bytes: number | null = null) {
-  unwrap(await supabase().rpc("storage_set_limit", { p_company: companyId, p_mode: mode, p_limit_bytes: mode === "custom" ? bytes ?? undefined : undefined }));
+/** The company's limit: Railway's default, none, `bytes`, or what files may cost a month (`dollars`). */
+export async function setStorageLimit(companyId: string, mode: StorageLimitMode, bytes: number | null = null, dollars: number | null = null) {
+  unwrap(
+    await supabase().rpc("storage_set_limit", {
+      p_company: companyId,
+      p_mode: mode,
+      p_limit_bytes: mode === "custom" ? bytes ?? undefined : undefined,
+      p_limit_dollars: mode === "dollars" ? dollars ?? undefined : undefined,
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Photos and videos added to Drive and plan files
+// ---------------------------------------------------------------------------------------------
+
+/** The company's settings, as Settings → Maps reads them. */
+const settingsKey = (companyId: string) => ["company", companyId, "settings"];
+
+/** The company's rules for photos and videos (companies.settings.files), with the defaults for anything unset. */
+export function useFileSettings() {
+  const session = useSession();
+  return useQuery({
+    queryKey: settingsKey(session.company.id),
+    queryFn: async () => unwrap(await supabase().from("companies").select("settings").eq("id", session.company.id).single()).settings as Record<string, unknown> | null,
+    select: (settings) => fileSettings(settings),
+  });
+}
+
+/** What's kept in settings.files for a change on the page. */
+export function filesPatch(change: Partial<FileSettings>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (change.shrinkPhotos !== undefined) patch.shrink_photos = change.shrinkPhotos;
+  if (change.videos !== undefined) patch.videos = change.videos;
+  if (change.videoMaxBytes !== undefined) patch.video_max_bytes = change.videoMaxBytes;
+  return patch;
+}
+
+/**
+ * Saves a change to settings.files, reading the settings fresh first so a change someone made
+ * meanwhile isn't undone. The database keeps settings.files as it was for anyone without the
+ * settings area.
+ */
+export async function saveFileSettings(companyId: string, change: Partial<FileSettings>) {
+  const current = (unwrap(await supabase().from("companies").select("settings").eq("id", companyId).single()).settings ?? {}) as Record<string, unknown>;
+  const files = current.files && typeof current.files === "object" && !Array.isArray(current.files) ? (current.files as Record<string, unknown>) : {};
+  unwrap(await supabase().from("companies").update({ settings: { ...current, files: { ...files, ...filesPatch(change) } } as never }).eq("id", companyId));
+}
+
+/** After saving: the page's own copy and the session's (which the uploads read). */
+export function refreshFileSettings(queryClient: QueryClient, companyId: string, refreshSession: () => Promise<unknown>) {
+  void queryClient.invalidateQueries({ queryKey: settingsKey(companyId) });
+  void refreshSession();
 }
 
 /** Whose limit: one person, or everyone with a role (a base level or a custom role's id). */
@@ -198,6 +256,21 @@ export function parseGb(text: string): { bytes: number } | { problem: string } {
 
 /** Railway bills in US dollars. */
 const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+/** "$10", "$0.68", "$12.50": whole dollars without cents. */
+export const usd = (n: number) => (Number.isInteger(n) ? `$${n.toLocaleString("en-US")}` : dollars.format(n));
+
+/** A monthly amount for a field: "10", "0.68". */
+export const dollarsField = (n: number | null | undefined) => (n && n > 0 ? String(Math.round(n * 100) / 100) : "");
+
+/** What's typed in a dollars field, to the cent; a sentence when it isn't an amount. */
+export function parseDollars(text: string): { dollars: number } | { problem: string } {
+  const clean = text.replace(/[\s,$]/g, "");
+  if (!clean) return { problem: "Enter what files may cost a month." };
+  const amount = Math.round(Number(clean) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) return { problem: "Enter an amount of more than $0." };
+  if (amount > MOST_DOLLARS) return { problem: `A monthly amount can be ${usd(MOST_DOLLARS)} at most.` };
+  return { dollars: amount };
+}
 /** A per-GB price: "$0.015". */
 export const pricePerGb = (price: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 3 }).format(price);
 
@@ -264,9 +337,14 @@ export class RefusedForSpace {
   readonly names: string[] = [];
   private smallest = Infinity;
 
-  /** Notes a file refused for space (true). False for any other error, which the screen reports its own way. */
+  /**
+   * Notes a file refused for space (true). False for any other error, which the screen reports its
+   * own way, a video turned away by the company's video rules included: it comes the same way, but
+   * it isn't about the room left, so it's said on its own, with its own reason, and the files after
+   * it are still sent.
+   */
   add(error: unknown, name: string, size: number | null = null): boolean {
-    if (!isStorageFull(error)) return false;
+    if (!isStorageFull(error) || isVideoRefusal(error.message)) return false;
     this.first ??= error;
     this.names.push(name);
     if (size !== null) this.smallest = Math.min(this.smallest, size);
@@ -314,4 +392,19 @@ export function useStorageFull() {
   const navigate = useNavigate();
   const manages = managesStorage(session);
   return (error: unknown, title?: string) => reportStorageFull(error, { title, manages, open: () => navigate(STORAGE_SETTINGS) });
+}
+
+/**
+ * The suggestion to move files to a Railway bucket (Settings → Hosting and Storage) once an owner or
+ * admin has put it aside with "Not now" (companies.settings.bucket_tip): it isn't shown again. The
+ * bell sends it only once anyway.
+ */
+export const bucketTipDismissed = (settings: Record<string, unknown> | null | undefined) =>
+  Boolean((settings?.bucket_tip as { dismissed_at?: unknown } | null | undefined)?.dismissed_at);
+
+/** Puts the bucket suggestion aside, reading the settings fresh so every other setting stays as it is now. */
+export async function dismissBucketTip(session: Pick<Session, "company" | "userId">) {
+  const current = (unwrap(await supabase().from("companies").select("settings").eq("id", session.company.id).single()).settings ?? {}) as Record<string, unknown>;
+  const next = { ...current, bucket_tip: { dismissed_at: new Date().toISOString(), dismissed_by: session.userId } };
+  unwrap(await supabase().from("companies").update({ settings: next as never }).eq("id", session.company.id));
 }

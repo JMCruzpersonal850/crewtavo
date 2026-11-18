@@ -20,6 +20,7 @@ import { requireCompany, requireUser } from "../lib/auth";
 import { randomId } from "../lib/crypto";
 import { appUrl, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
+import { LINK_PAUSED, linkCanSend } from "../lib/linkBudget";
 import { shareJpeg, ShareImageError } from "../lib/shareImage";
 import { storedFile } from "../lib/storedFile";
 import { adminClient, type Db } from "../lib/supabase";
@@ -236,6 +237,14 @@ showcases.on(["GET", "HEAD"], "/public/showcases/:token/:file", async (c) => {
   const { data } = await admin.from("showcase_photos").select("public_path").eq("id", photoId).maybeSingle();
   const bytes = data?.public_path ? await storedFile(admin, data.public_path, COPY_MAX_BYTES) : null;
   if (!bytes || !isJpeg(bytes)) throw new HttpError(404, "Photo not found.");
+  // At most a day's worth through one showcase's link (lib/linkBudget.ts).
+  const within = await linkCanSend(c.env, `showcase:${token}`, c.req.method === "HEAD" ? 0 : bytes.length, {
+    company: view.company_id,
+    title: "A showcase's photos are paused for the day",
+    body: `The link to the showcase “${view.title}” has sent a lot of photos in the last day, far more than visitors need, so its photos are paused until tomorrow; its words still show. If that's more than you expected, unpublishing it takes the page down.`,
+    open: "/marketing?tab=showcases",
+  });
+  if (!within) throw new HttpError(429, LINK_PAUSED);
   // Short-lived in caches: unpublishing should take the photos down soon after the page.
   const headers = { "Content-Type": "image/jpeg", "Content-Length": String(bytes.length), "X-Content-Type-Options": "nosniff", "X-Robots-Tag": "noindex", "Cache-Control": "public, max-age=300" };
   return c.req.method === "HEAD" ? c.body(null, 200, headers) : c.body(bytes, 200, headers);

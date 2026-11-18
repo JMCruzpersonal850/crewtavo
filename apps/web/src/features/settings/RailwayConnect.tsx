@@ -2,7 +2,8 @@
  * Connecting Railway, for the step the owner is asked at sign-in until it's done
  * (features/setup/RailwaySetupPage.tsx) and for Settings → Hosting: why Crewtavo needs it, Login
  * with Railway beside a sketch of Railway's screen, and a project token for when Railway won't do
- * that.
+ * that. It says plainly that Crewtavo never sees billing, so Railway's own spending limit is set in
+ * Railway (Settings → Hosting shows where, once connected).
  */
 import type { AddressOverview } from "@crewtavo/core/address";
 import { Icon } from "@/components/ui/Icon";
@@ -42,8 +43,8 @@ export function RailwayConnect({ railway, returnTo }: { railway: Railway; return
       <span className="row muted small" style={{ gap: 6, flexWrap: "nowrap", alignItems: "flex-start" }}>
         <span style={{ flex: "none", marginTop: 1 }}><Icon name="lock" size={14} /></span>
         <span>
-          Crewtavo only uses {railway.projectName ? <strong>{railway.projectName}</strong> : "its own project"}, and never sees your card or billing. You can take the access back any time in
-          Settings → Hosting.
+          Crewtavo only uses {railway.projectName ? <strong>{railway.projectName}</strong> : "its own project"}, and never sees your card or billing, so it can't set a spending limit for you:
+          once you're in, Settings → Hosting shows where to set one in Railway. You can take the access back any time there too.
         </span>
       </span>
       {railway.oauth && (

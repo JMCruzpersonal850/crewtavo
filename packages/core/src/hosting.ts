@@ -70,11 +70,25 @@ export interface HostingDisk {
 export interface HostingWarning {
   /** Stays the same while the problem lasts, so the daily check sends each one once. */
   key: string;
-  level: "urgent" | "warning";
+  /** "tip": not a problem, a way to pay less (moving files to a bucket), shown after the warnings. */
+  level: "urgent" | "warning" | "tip";
   title: string;
   body: string;
-  /** The Railway page (`links`) that fixes it. */
-  action: "upgrade" | "project" | null;
+  /** The Railway page (`links`) that fixes it, or "files": Files storage, further down Settings → Hosting. */
+  action: "upgrade" | "project" | "files" | null;
+}
+
+/**
+ * What Crewtavo sends out to people's browsers and phones (Railway's NETWORK_TX_GB, at
+ * STORAGE_PRICES.network a GB): this month so far, the last day's rate, its usual daily rate this
+ * month before that (null in the month's first days), and a forecast for the month at the last day's
+ * rate. In GB.
+ */
+export interface HostingSent {
+  soFar: number;
+  perDay: number | null;
+  usualPerDay: number | null;
+  forecast: number | null;
 }
 
 export interface HostingOverview {
@@ -85,6 +99,8 @@ export interface HostingOverview {
   period: { start: string; end: string };
   /** Usage so far this month, the last day's rate, a forecast for the month at that rate, and what each service used. */
   project: { cost: number; perDay: number | null; forecast: number | null; services: HostingService[] } | null;
+  /** Data sent out this month, when Railway shared the month's usage. */
+  sent?: HostingSent | null;
   /**
    * On Railway's trial, counted from when this project was made: right for a Railway account made to
    * run Crewtavo, which is how crewtavo.com/start sets one up. Railway's dashboard has the exact figures.

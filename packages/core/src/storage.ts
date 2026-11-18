@@ -11,10 +11,14 @@
  *  - nothing a crew needs to finish a job is ever refused (STORAGE_FIELD_FOLDERS), though it counts;
  *  - owners are never limited by a personal limit, and server work, public forms and one-time
  *    upload links never are.
+ * On Railway an owner can set the company limit as what files may cost a month instead
+ * (storageLimitFromDollars). Videos added to Drive and plan files have their own rules (who may add
+ * them, and how big each may be: videoRefusal), checked at the same place, on Railway or not.
  * Sizes are in decimal units throughout (1 GB is 1,000,000,000 bytes), as Railway counts them and
  * as Settings → Hosting shows them.
  */
 import { STORAGE_PRICES, type RailwayPlan, type StorageBackend } from "./hosting";
+import type { Role } from "./roles";
 
 /**
  * Folders (a stored path's second part, <company>/<folder>/...) whose uploads no limit ever
@@ -133,5 +137,125 @@ export function personStorageFull(used: number, limit: number, bytes?: number | 
   return size ? `This ${size} file doesn't fit in your storage: ${why}` : sentence(why);
 }
 
-/** How a company limit is set (companies.settings.storage.limit_bytes: absent, null, or a number). */
-export type StorageLimitMode = "default" | "none" | "custom";
+/**
+ * How a company limit is set: Railway's default (settings.storage.limit_bytes left out), none (null),
+ * a size of its own (a number), or on Railway what files may cost a month (limit_dollars, which the
+ * database turns into bytes at the price of where files are now: storageLimitFromDollars).
+ */
+export type StorageLimitMode = "default" | "none" | "custom" | "dollars";
+
+// ---------------------------------------------------------------------------------------------
+// A limit in dollars (Railway)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The most a monthly amount can buy where files are now, so a limit in dollars never runs past what
+ * the place holds: on a volume, the same share of it as the default (VOLUME_SHARE), since a full
+ * volume stops every upload, crews' photos too; in a Railway bucket, what the plan lets a bucket
+ * hold (BUCKET_DEFAULTS), except on Pro, where buckets have no cap. Null for no cap, or when it
+ * isn't known. Kept in settings.storage.cap_bytes by the server (storage_set_rate).
+ */
+export function storageCap({ backend, volumeBytes, plan }: { backend: StorageBackend | null; volumeBytes: number | null; plan: RailwayPlan | null }): number | null {
+  if (backend === "volume") return volumeBytes && volumeBytes > 0 ? Math.floor(volumeBytes * VOLUME_SHARE) : null;
+  if (backend === "bucket" && plan && plan !== "pro") return BUCKET_DEFAULTS[plan].bytes;
+  return null;
+}
+
+/**
+ * Whether storageCap's answer is known: the volume's size was read, or the plan a bucket is on (on
+ * Pro, known to be no cap). When it isn't (one of Railway's answers didn't come), saving null as the
+ * cap would lift a limit in dollars past the volume's room until the next good reading.
+ */
+export function storageCapKnown({ backend, volumeBytes, plan }: { backend: StorageBackend | null; volumeBytes: number | null; plan: RailwayPlan | null }): boolean {
+  if (backend === "volume") return Boolean(volumeBytes && volumeBytes > 0);
+  if (backend === "bucket") return plan !== null;
+  return false;
+}
+
+/**
+ * What a limit of `dollars` a month allows at `pricePerGbMonth`, no more than `cap`: the same
+ * sum as private.storage_company_limit (supabase/migrations/20261118000200_storage_cost_limits.sql),
+ * so the page says the size the server holds uploads to. When files move between the volume and a
+ * bucket the dollars stay and the size follows.
+ */
+export function storageLimitFromDollars(dollars: number, pricePerGbMonth: number, cap: number | null = null): number {
+  const bytes = Math.max(1, Math.floor((dollars / pricePerGbMonth) * GB));
+  return cap !== null && cap > 0 ? Math.min(bytes, cap) : bytes;
+}
+
+/** The most a limit in dollars can be: far past anything Crewtavo stores ($1.5M a year in a bucket). */
+export const MOST_DOLLARS = 100_000;
+
+// ---------------------------------------------------------------------------------------------
+// Photos and videos added to Drive and plan files (companies.settings.files)
+// ---------------------------------------------------------------------------------------------
+
+/** Folders the video rules apply to: Drive and plan files (Plans and files on clients' work, and Drive). */
+export const FILE_RULE_FOLDERS = ["plans"] as const;
+
+/** Who may add videos there: everyone on the team, or only the office (not crew leads or field crew). */
+export type VideoUploaders = "everyone" | "office";
+
+/** The levels that count as the office for videos: owners, admins, office staff and estimators. */
+export const VIDEO_OFFICE_ROLES: readonly Role[] = ["owner", "admin", "office", "estimator"];
+
+/** The sizes a video may be offered as (other files go up to the 200 MB every upload is held to). */
+export const VIDEO_SIZE_CHOICES = [25, 50, 100, 200].map((mb) => mb * 1_000_000);
+
+/**
+ * companies.settings.files, as the app and the server read it:
+ *  - shrink_photos: camera photos added to Drive and plan files are made smaller as they're added
+ *    (2560 px on the long side); on unless an owner or admin turned it off. Plan sheets, PDFs and
+ *    screenshots are never changed.
+ *  - videos: who may add videos there; video_max_bytes: how big each may be.
+ */
+export interface FileSettings {
+  shrinkPhotos: boolean;
+  videos: VideoUploaders;
+  videoMaxBytes: number;
+}
+
+export const FILE_DEFAULTS: FileSettings = { shrinkPhotos: true, videos: "everyone", videoMaxBytes: 100_000_000 };
+
+/** The biggest a video can be set to: the most any upload can be. */
+const VIDEO_MOST_BYTES = 200_000_000;
+
+/** A company's file settings from companies.settings (or settings.files itself), with the defaults for anything unset. */
+export function fileSettings(settings: unknown): FileSettings {
+  const all = settings && typeof settings === "object" && !Array.isArray(settings) ? (settings as Record<string, unknown>) : {};
+  const own = all.files && typeof all.files === "object" && !Array.isArray(all.files) ? (all.files as Record<string, unknown>) : all;
+  const max = Number(own.video_max_bytes);
+  return {
+    shrinkPhotos: own.shrink_photos !== false,
+    videos: own.videos === "office" ? "office" : "everyone",
+    videoMaxBytes: Number.isFinite(max) && max >= 1_000_000 ? Math.min(Math.floor(max), VIDEO_MOST_BYTES) : FILE_DEFAULTS.videoMaxBytes,
+  };
+}
+
+/** Kinds of video phones and cameras save, by the name's ending, for a file whose type isn't said. */
+const VIDEO_ENDINGS = /\.(mp4|m4v|mov|qt|webm|mkv|avi|wmv|mpe?g|3gp|3g2|mts|m2ts|hevc|ogv|flv)$/i;
+
+/** A video, by its type or, when that's missing or generic, by its name's ending. */
+export function isVideo({ contentType, name }: { contentType?: string | null; name?: string | null }): boolean {
+  const type = (contentType ?? "").toLowerCase().split(";")[0]!.trim();
+  if (type.startsWith("video/")) return true;
+  return Boolean(name && VIDEO_ENDINGS.test(name.trim()));
+}
+
+/**
+ * Why a video can't go into Drive and plan files for this person, or null when it can: `role` is
+ * their access level, `bytes` the video's size (null when it doesn't say). The size applies to the
+ * office too.
+ */
+export function videoRefusal(rules: Pick<FileSettings, "videos" | "videoMaxBytes">, role: string | null, bytes: number | null): string | null {
+  if (rules.videos === "office" && !(VIDEO_OFFICE_ROLES as readonly string[]).includes(role ?? "")) {
+    return "Only the office can add videos to Drive and plan files here. Add photos instead, or ask the office to add the video.";
+  }
+  if (bytes !== null && bytes > rules.videoMaxBytes) {
+    return `This ${formatBytes(bytes)} video is over the ${formatBytes(rules.videoMaxBytes)} limit for videos in Drive and plan files. Trim it or send a shorter clip. An owner or admin can change the limit in Settings → Storage.`;
+  }
+  return null;
+}
+
+/** Whether a refusal's sentence is one of videoRefusal's (said as a 507, like a full storage, so the app shows it as it is). */
+export const isVideoRefusal = (message: string) => /^(Only the office can add videos|This .+ video is over the .+ limit for videos)/.test(message);

@@ -290,8 +290,10 @@ async function bringIn(c: Ctx, accessToken: string, picked: Picked, place: Place
   const { companyId, userId } = c.var;
   const limits = snapshotsFrom(() => adminClient(c.env));
   const upload = { company: companyId, user: userId, folder: "plans" };
-  const early = await reserveStorage(limits, { ...upload, bytes: exported ? null : Number(file.size) || null });
-  if (!early.ok) throw new Skipped(early.message, true);
+  // With its type and name, so a video is held to the company's video rules as it would be from the browser.
+  const early = await reserveStorage(limits, { ...upload, bytes: exported ? null : Number(file.size) || null, contentType: exported ? exported.mime : file.mimeType, name: file.name });
+  // A video turned away isn't the storage being full: it's said as a file skipped, with why.
+  if (!early.ok) throw new Skipped(early.message, !early.video);
   early.release();
 
   // Google's own documents are converted (Docs to Word, Sheets to Excel...); every other file comes as it is.
@@ -314,8 +316,8 @@ async function bringIn(c: Ctx, accessToken: string, picked: Picked, place: Place
   const contentType = (exported ? exported.mime : file.mimeType || "application/octet-stream").slice(0, 150);
 
   // ...then by what came, which counts from here until the numbers are read again.
-  const held = await reserveStorage(limits, { ...upload, bytes: bytes.byteLength });
-  if (!held.ok) throw new Skipped(held.message, true);
+  const held = await reserveStorage(limits, { ...upload, bytes: bytes.byteLength, contentType, name: fileName });
+  if (!held.ok) throw new Skipped(held.message, !held.video);
 
   // Buffered, so it's sent with its length: a gateway refuses an upload without one.
   const { db } = c.var;

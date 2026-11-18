@@ -20,6 +20,8 @@ export interface Env {
   ENCRYPTION_KEY?: string;
   /** Public URL of this deployment, e.g. https://ops.example.com. Defaults to the request origin. */
   APP_URL?: string;
+  /** What one public link may send of its pictures a day, in GB (lib/linkBudget.ts): 2 when unset, 0 for no limit. */
+  PUBLIC_LINK_GB_A_DAY?: string;
   /** Set by Railway on every deployment: where this instance lives, for Settings → Web address. */
   RAILWAY_PUBLIC_DOMAIN?: string;
   RAILWAY_PROJECT_ID?: string;

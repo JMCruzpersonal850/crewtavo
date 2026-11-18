@@ -11,7 +11,11 @@
  * and costs first, and the move's progress as it goes.
  *
  * The connection reaches the project, not the account's billing, so plans, credit, the card and
- * the usage limit open Railway's own pages. Without a connection, the screen asks for one.
+ * the usage limit open Railway's own pages. Without a connection, the screen asks for one. Because
+ * only Railway can stop the bill, owners on a paid plan are asked to set Railway's hard usage limit
+ * until they say they have (companies.settings.railway_usage_limit). A volume half full on a plan
+ * with buckets brings a tip that leads to Files storage, and the month's data sent out is shown with
+ * the rest, since Railway charges for it.
  */
 import type { AddressOverview } from "@crewtavo/core/address";
 import {
@@ -37,11 +41,11 @@ import { Icon } from "@/components/ui/Icon";
 import { LazySparkline } from "@/components/ui/LazySparkline";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
-import { api } from "@/lib/api";
+import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
-import { useSession } from "@/lib/session";
+import { useSession, type Session } from "@/lib/session";
 import { RailwayConnect } from "./RailwayConnect";
-import { managesStorage, STORAGE_SETTINGS } from "./storage";
+import { bucketTipDismissed, dismissBucketTip, managesStorage, STORAGE_SETTINGS } from "./storage";
 import { ExternalButton, RailwayAccess, useRailwayReturn, WEB_ADDRESS_KEY } from "./WebAddressSettings";
 import styles from "./HostingSettings.module.css";
 
@@ -57,6 +61,7 @@ const gb = (n: number) => `${Number(n.toFixed(n < 10 ? 2 : 1))} GB`;
 const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
 export function HostingSettings() {
+  const session = useSession();
   const queryClient = useQueryClient();
   const address = useQuery({ queryKey: WEB_ADDRESS_KEY, queryFn: () => api.get<AddressOverview>("/address"), staleTime: 5_000, meta: { silent: true } });
   const railway = address.data?.railway ?? null;
@@ -66,6 +71,12 @@ export function HostingSettings() {
     meta: { inline: true },
     mutationFn: () => api.get<HostingOverview>("/railway/usage?fresh=1"),
     onSuccess: (next) => queryClient.setQueryData(HOSTING_KEY, next),
+  });
+  // "Not now" on the suggestion to move files to a bucket: put aside for good (the bell sends it once).
+  const aside = useMutation({
+    meta: { inline: true },
+    mutationFn: () => dismissBucketTip(session),
+    onSuccess: () => session.refresh(),
   });
   useRailwayReturn();
 
@@ -86,7 +97,11 @@ export function HostingSettings() {
   const o = hosting.data;
   return (
     <div className={`stack ${styles.page}`}>
-      {o.warnings.map((w) => <Warning key={w.key} warning={w} links={o.links} />)}
+      {o.warnings.filter((w) => w.level !== "tip").map((w) => <Warning key={w.key} warning={w} links={o.links} />)}
+      <SpendingLimit o={o} />
+      {o.warnings.filter((w) => w.level === "tip" && !(w.key === "bucket" && bucketTipDismissed(session.company.settings))).map((w) => (
+        <Warning key={w.key} warning={w} links={o.links} onAside={w.key === "bucket" ? () => aside.mutate() : undefined} asiding={aside.isPending} />
+      ))}
       <Summary o={o} />
       {o.project && o.project.services.length > 0 && <Services services={o.project.services} />}
       {o.week.length > 1 && <Week week={o.week} />}
@@ -107,21 +122,97 @@ export function HostingSettings() {
   );
 }
 
-const ACTIONS: Record<NonNullable<HostingWarning["action"]>, { label: string; link: keyof HostingOverview["links"] }> = {
+const ACTIONS: Record<Exclude<HostingWarning["action"], "files" | null>, { label: string; link: keyof HostingOverview["links"] }> = {
   upgrade: { label: "Choose a plan on Railway", link: "upgrade" },
   project: { label: "Open Railway", link: "project" },
 };
 
-function Warning({ warning, links }: { warning: HostingWarning; links: HostingOverview["links"] }) {
-  const action = warning.action ? ACTIONS[warning.action] : null;
+/** Files storage, further down this page. */
+const toFilesStorage = () => document.getElementById("hosting-files")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+/** `onAside`: a "Not now" that puts a tip aside for good (the bucket suggestion). */
+export function Warning({ warning, links, onAside, asiding }: { warning: HostingWarning; links: HostingOverview["links"]; onAside?: () => void; asiding?: boolean }) {
+  const action = warning.action && warning.action !== "files" ? ACTIONS[warning.action] : null;
   const href = action ? links[action.link] : null;
+  const tone = warning.level === "urgent" ? "callout-danger" : warning.level === "tip" ? "callout-info" : "callout-warning";
   return (
-    <div className={`callout ${warning.level === "urgent" ? "callout-danger" : "callout-warning"}`} role={warning.level === "urgent" ? "alert" : undefined}>
-      <Icon name="alert" size={20} />
+    <div className={`callout ${tone}`} role={warning.level === "urgent" ? "alert" : undefined}>
+      <Icon name={warning.level === "tip" ? "info" : "alert"} size={20} />
       <div className="grow">
         <div>{warning.title}</div>
         <div style={{ fontWeight: 400 }}>{warning.body}</div>
         {href && action && <div style={{ marginTop: 10 }}><ExternalButton href={href} primary>{action.label}</ExternalButton></div>}
+        {(warning.action === "files" || onAside) && (
+          <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+            {warning.action === "files" && <Button size="sm" icon="cloud" onClick={toFilesStorage}>Go to Files storage</Button>}
+            {onAside && <Button size="sm" variant="ghost" loading={asiding} onClick={onAside}>Not now</Button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Railway's own spending limit
+// ---------------------------------------------------------------------------------------------
+
+/** When an owner said they've set Railway's hard limit (companies.settings.railway_usage_limit), or null. */
+export function usageLimitSetAt(settings: Record<string, unknown> | null | undefined): string | null {
+  const kept = settings?.railway_usage_limit as { set_at?: unknown } | null | undefined;
+  return typeof kept?.set_at === "string" ? kept.set_at : null;
+}
+
+/**
+ * A hard limit to suggest: about twice a normal month (the forecast, or what the plan includes),
+ * rounded up to $5, and never under Railway's lowest, $10.
+ */
+export function suggestedLimit(o: Pick<HostingOverview, "plan" | "project">): number {
+  const usual = Math.max(o.project?.forecast ?? 0, o.plan ? RAILWAY_PLANS[o.plan].included : 0);
+  return Math.max(10, Math.ceil((usual * 2) / 5) * 5);
+}
+
+/** Notes that the owner set Railway's hard limit, reading the settings fresh so every other setting stays as it is now. */
+async function noteUsageLimit(session: Pick<Session, "company" | "userId">) {
+  const current = (unwrap(await supabase().from("companies").select("settings").eq("id", session.company.id).single()).settings ?? {}) as Record<string, unknown>;
+  const next = { ...current, railway_usage_limit: { set_at: new Date().toISOString(), set_by: session.userId } };
+  unwrap(await supabase().from("companies").update({ settings: next as never }).eq("id", session.company.id));
+}
+
+/**
+ * For owners on a paid plan, until they say it's done: Railway's hard usage limit is the one thing
+ * that stops the bill, and only the owner can set it (Crewtavo's Railway sign-in doesn't reach
+ * billing). Hitting it stops Crewtavo too, so the amount suggested is well above a normal month.
+ */
+export function SpendingLimit({ o }: { o: HostingOverview }) {
+  const session = useSession();
+  const done = useMutation({
+    meta: { inline: true, success: () => "Noted. Thanks for setting it." },
+    mutationFn: () => noteUsageLimit(session),
+    onSuccess: () => session.refresh(),
+  });
+  if (session.role !== "owner" || (o.plan !== "hobby" && o.plan !== "pro") || usageLimitSetAt(session.company.settings)) return null;
+  return (
+    <div className="callout callout-info">
+      <Icon name="dollar" size={20} />
+      <div className="grow stack-sm">
+        <div>Set a spending limit in Railway</div>
+        <span style={{ fontWeight: 400 }}>
+          Crewtavo warns you when usage climbs, but only Railway can stop the bill: its hard limit takes your project offline once the month reaches an amount you choose, so nothing can run
+          it past that. Crewtavo can't set it for you, since it never sees your Railway billing.
+        </span>
+        <ol className={styles.steps} style={{ fontWeight: 400 }}>
+          <li>Open Railway's usage page and press <strong>Set Usage Limits</strong>.</li>
+          <li>
+            Under compute usage, set a <strong>Hard limit</strong> well above a normal month, like ${suggestedLimit(o)}: Crewtavo stops too when it's reached. Railway's lowest is $10. Add an
+            email alert a little below it, if you like.
+          </li>
+        </ol>
+        <div className="row wrap" style={{ gap: 8 }}>
+          <ExternalButton href={o.links.usage} primary>Set a limit on Railway</ExternalButton>
+          <Button size="sm" loading={done.isPending} onClick={() => done.mutate()}>I've set it</Button>
+        </div>
+        <FormError error={done.error} />
       </div>
     </div>
   );
@@ -167,6 +258,7 @@ function Summary({ o }: { o: HostingOverview }) {
           Railway's bill for the month: the {usd(plan.price)} plan{over >= 0.01 ? `, plus about ${usd(over)} of usage over what it includes` : ", with your usage included"}.
         </span>
       )}
+      {o.sent && o.sent.soFar > 0 && <span className="muted small">{sentLine(o.sent)}</span>}
       {o.trial && (
         <div className="stack-sm" style={{ gap: 6 }}>
           <span className="small">
@@ -181,6 +273,13 @@ function Summary({ o }: { o: HostingOverview }) {
       )}
     </section>
   );
+}
+
+/** "Sent to people's phones and browsers: 3.2 GB so far ($0.16), about 5 GB by the month's end." */
+function sentLine(sent: NonNullable<HostingOverview["sent"]>): string {
+  const price = STORAGE_PRICES.network;
+  const forecast = sent.forecast !== null && sent.forecast > sent.soFar ? `, about ${gb(sent.forecast)} by the month's end` : "";
+  return `Data sent to people's phones and browsers, at ${usd(price)} a GB: ${gb(sent.soFar)} so far (${usd(sent.soFar * price)})${forecast}. Photos, plans and videos people open count, and so do pictures on links shared outside the team.`;
 }
 
 function Meter({ spent, forecast, included }: { spent: number; forecast: number | null; included: number | null }) {
@@ -569,6 +668,8 @@ const PLAN_WORDS: Record<string, string> = {
 
 /** The plan, with Railway's pages to change it, pay, and set a usage limit. */
 function Plan({ o }: { o: HostingOverview }) {
+  const session = useSession();
+  const setAt = usageLimitSetAt(session.company.settings);
   const upgradeFirst = o.plan === "trial" || o.plan === "free";
   return (
     <section className="card card-pad stack" aria-labelledby="hosting-plan">
@@ -584,9 +685,9 @@ function Plan({ o }: { o: HostingOverview }) {
         <strong className="small">Usage limit</strong>
         <span className="muted small">
           Railway can stop your projects when usage reaches an amount you choose, so a busy month never surprises you. Set it well above what Crewtavo normally uses: when it's reached, Crewtavo
-          stops too.
+          stops too.{setAt ? ` You noted setting one on ${on(setAt)}.` : ""}
         </span>
-        <ExternalButton href={o.links.usage}>Set a limit on Railway</ExternalButton>
+        <ExternalButton href={o.links.usage}>{setAt ? "Change the limit on Railway" : "Set a limit on Railway"}</ExternalButton>
       </div>
       <span className="muted small">Railway takes payments and changes plans itself, so these open Railway's pages.</span>
     </section>

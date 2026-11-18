@@ -54,7 +54,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("which requests are uploads, and where to", () => {
   it("reads a resumable upload as it's made: its size, and the stored name from its metadata", () => {
-    expect(upload(tus(`${CO}/plans/a.pdf`))).toEqual({ company: CO, user: ANA, folder: "plans", bytes: 5000, resumable: true });
+    expect(upload(tus(`${CO}/plans/a.pdf`))).toEqual({ company: CO, user: ANA, folder: "plans", bytes: 5000, resumable: true, contentType: "application/pdf", name: `${CO}/plans/a.pdf` });
     expect(upload(tus(`${CO}/kb/a.jpg`, {}, "/storage/v1/upload/resumable/"))).toMatchObject({ folder: "kb", user: ANA });
   });
 
@@ -85,8 +85,8 @@ describe("which requests are uploads, and where to", () => {
   });
 
   it("reads a file sent in one request by its address and length", () => {
-    expect(upload(request("POST", `/storage/v1/object/files/${CO}/kb/a.jpg`, { "Content-Length": "4096", Authorization: `Bearer ${ana}` }))).toEqual({ company: CO, user: ANA, folder: "kb", bytes: 4096 });
-    expect(upload(request("PUT", `/storage/v1/object/files/${CO}/chat/c1/a.jpg`, { "Content-Length": "10" }))).toEqual({ company: CO, user: null, folder: "chat", bytes: 10 });
+    expect(upload(request("POST", `/storage/v1/object/files/${CO}/kb/a.jpg`, { "Content-Length": "4096", Authorization: `Bearer ${ana}` }))).toEqual({ company: CO, user: ANA, folder: "kb", bytes: 4096, contentType: null, name: `${CO}/kb/a.jpg` });
+    expect(upload(request("PUT", `/storage/v1/object/files/${CO}/chat/c1/a.jpg`, { "Content-Length": "10" }))).toMatchObject({ company: CO, user: null, folder: "chat", bytes: 10 });
     expect(upload(request("POST", `/storage/v1/object/files/${CO}/plans/a.pdf`))).toMatchObject({ bytes: null });
     // Storage's router decodes the address before it matches it.
     expect(upload(request("POST", `/storage/v1/%6Fbject/f%69les/${CO}/plans/a.pdf`, { "Content-Length": "1", Authorization: `Bearer ${ana}` }))).toMatchObject({ folder: "plans", user: ANA });
@@ -213,7 +213,7 @@ describe("whose upload it is", () => {
 
   it("takes an upload to a link as the link's, whatever Authorization says (Storage doesn't read it there)", () => {
     const put = (token: string, headers: Record<string, string> = {}) => upload(request("PUT", `/storage/v1/object/upload/sign/files/${CO}/plans/a.pdf?token=${token}`, { "Content-Length": "7", ...headers }));
-    expect(put(link({ owner: ANA }))).toEqual({ company: CO, user: ANA, folder: "plans", bytes: 7 });
+    expect(put(link({ owner: ANA }))).toMatchObject({ company: CO, user: ANA, folder: "plans", bytes: 7 });
     expect(put(link({}), { Authorization: `Bearer ${ana}` })).toMatchObject({ user: null });
     expect(put(link({ owner: ANA }), { Authorization: `Bearer ${sign({ sub: BEN, role: "authenticated", exp: LATER })}` })).toMatchObject({ user: ANA });
     expect(put("t")).toMatchObject({ user: null, folder: "plans" });
@@ -404,22 +404,103 @@ describe("deciding", () => {
   });
 });
 
+describe("videos into Drive and plan files", () => {
+  let numbers: StorageSnapshot;
+  let reads = 0;
+  const source = async () => {
+    reads++;
+    return { ...numbers };
+  };
+  const rules = (videos: "everyone" | "office", videoMaxBytes = 100 * MB) => ({ shrinkPhotos: true, videos, videoMaxBytes });
+  const room = (over: Partial<StorageSnapshot> = {}): StorageSnapshot => ({ companyUsed: 0, companyLimit: null, userUsed: 0, userLimit: null, owner: false, member: true, role: "field_crew", files: rules("everyone"), ...over });
+  const video = (folder: string, bytes: number, kind: { contentType?: string | null; name?: string } = { contentType: "video/mp4" }) =>
+    reserveStorage(source, { company: CO, user: ANA, folder, bytes, name: `${CO}/${folder}/a.bin`, ...kind });
+
+  beforeEach(() => {
+    reads = 0;
+    numbers = room();
+  });
+
+  it("take videos up to the size the company chose, 100 MB unless it chose otherwise", async () => {
+    expect(await video("plans", 100 * MB)).toMatchObject({ ok: true });
+    expect(await video("plans", 240 * MB)).toEqual({
+      ok: false,
+      video: true,
+      message: "This 240 MB video is over the 100 MB limit for videos in Drive and plan files. Trim it or send a shorter clip. An owner or admin can change the limit in Settings → Storage.",
+    });
+    // Anything else goes up to the 200 MB every upload is held to.
+    expect(await reserveStorage(source, { company: CO, user: ANA, folder: "plans", bytes: 180 * MB, contentType: "application/pdf", name: `${CO}/plans/a.pdf` })).toMatchObject({ ok: true });
+  });
+
+  it("tell a video by its type, or by its name when the type says nothing", async () => {
+    expect(await video("plans", 150 * MB, { contentType: "video/quicktime; codecs=hvc1" })).toMatchObject({ ok: false });
+    expect(await video("plans", 150 * MB, { contentType: "application/octet-stream", name: `${CO}/plans/clip.MOV` })).toMatchObject({ ok: false });
+    expect(await video("plans", 150 * MB, { contentType: null, name: `${CO}/plans/clip.mp4` })).toMatchObject({ ok: false });
+    expect(await video("plans", 150 * MB, { contentType: "image/jpeg", name: `${CO}/plans/photo.jpg` })).toMatchObject({ ok: true });
+  });
+
+  it("keep crews' videos out when only the office may add them, and let the office's in", async () => {
+    numbers = room({ files: rules("office") });
+    expect(await video("plans", 5 * MB)).toEqual({
+      ok: false,
+      video: true,
+      message: "Only the office can add videos to Drive and plan files here. Add photos instead, or ask the office to add the video.",
+    });
+    for (const role of ["owner", "admin", "office", "estimator"]) {
+      forgetStorageUsage();
+      numbers = room({ files: rules("office"), role });
+      expect(await video("plans", 5 * MB), role).toMatchObject({ ok: true });
+    }
+    forgetStorageUsage();
+    numbers = room({ files: rules("office"), role: "crew_lead" });
+    expect(await video("plans", 5 * MB)).toMatchObject({ ok: false });
+  });
+
+  it("never stop what crews need to finish a job, or uploads into other folders", async () => {
+    numbers = room({ files: rules("office", 25 * MB) });
+    for (const folder of ["visit", "quote", "subs", "receipts"]) expect(await video(folder, 150 * MB), folder).toMatchObject({ ok: true });
+    expect(await video("chat", 150 * MB)).toMatchObject({ ok: true });
+  });
+
+  it("read the rules again before refusing, so a rule just loosened counts at once", async () => {
+    numbers = room({ files: rules("everyone", 50 * MB) });
+    expect(await video("plans", 10 * MB)).toMatchObject({ ok: true });
+    numbers = room({ files: rules("everyone", 200 * MB) });
+    expect(await video("plans", 150 * MB)).toMatchObject({ ok: true });
+    expect(reads).toBe(2);
+  });
+
+  it("are refused at the gateway the way a full storage is, from what a resumable upload says it is", async () => {
+    numbers = room({ files: rules("office") });
+    const send = vi.fn(async () => new Response("stored"));
+    const clip = request("POST", "/storage/v1/upload/resumable", {
+      "Upload-Length": String(20 * MB),
+      "Upload-Metadata": `bucketName ${b64("files")},objectName ${b64(`${CO}/plans/clip.mp4`)},contentType ${b64("video/mp4")}`,
+      Authorization: `Bearer ${ana}`,
+    });
+    const res = await guardStorage(source, SECRET, clip, send);
+    expect(res.status).toBe(507);
+    expect(await res.json()).toMatchObject({ error: "Video not allowed", message: expect.stringMatching(/^Only the office can add videos/) });
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
 describe("the database's numbers", () => {
-  /** A service-role client: the membership asked about, and storage_snapshot's row. */
-  function admin(role: string | null, row: object = { company_used: 1200, company_limit: 45e9, user_used: 300, user_limit: null, user_is_owner: false }) {
+  /** A service-role client: the membership asked about, storage_snapshot's row, and the company's settings.files. */
+  function admin(role: string | null, row: object = { company_used: 1200, company_limit: 45e9, user_used: 300, user_limit: null, user_is_owner: false }, files: unknown = null) {
     const calls: unknown[] = [];
-    const chain = (filters: unknown[]): unknown => ({
-      select: () => chain(filters),
-      eq: (column: string, value: unknown) => chain([...filters, [column, value]]),
+    const chain = (table: string, filters: unknown[]): unknown => ({
+      select: (columns: string) => chain(table, table === "companies" ? [...filters, ["select", columns]] : filters),
+      eq: (column: string, value: unknown) => chain(table, [...filters, [column, value]]),
       maybeSingle: async () => {
-        calls.push(["memberships", filters]);
-        return { data: role ? { role } : null, error: null };
+        calls.push([table, filters]);
+        return { data: table === "companies" ? { files } : role ? { role } : null, error: null };
       },
     });
     const db = {
       from: (table: string) => {
-        expect(table).toBe("memberships");
-        return chain([]);
+        expect(["memberships", "companies"]).toContain(table);
+        return chain(table, []);
       },
       rpc: async (name: string, args: unknown) => {
         calls.push([name, args]);
@@ -431,11 +512,20 @@ describe("the database's numbers", () => {
 
   it("come from storage_snapshot, as the server, for someone on the company's team", async () => {
     const { db, calls } = admin("office");
-    expect(await snapshotsFrom(() => db)(CO, ANA)).toEqual({ companyUsed: 1200, companyLimit: 45e9, userUsed: 300, userLimit: null, owner: false, member: true });
+    expect(await snapshotsFrom(() => db)(CO, ANA)).toEqual({
+      companyUsed: 1200, companyLimit: 45e9, userUsed: 300, userLimit: null, owner: false, member: true, role: "office",
+      files: { shrinkPhotos: true, videos: "everyone", videoMaxBytes: 100 * MB },
+    });
     expect(calls).toEqual([
       ["memberships", [["company_id", CO], ["user_id", ANA], ["active", true]]],
       ["storage_snapshot", { p_company: CO, p_user: ANA }],
+      ["companies", [["select", "files:settings->files"], ["id", CO]]],
     ]);
+  });
+
+  it("bring the company's video rules along with the numbers", async () => {
+    const { db } = admin("field_crew", undefined, { videos: "office", video_max_bytes: 50 * MB, shrink_photos: false });
+    expect(await snapshotsFrom(() => db)(CO, ANA)).toMatchObject({ role: "field_crew", files: { shrinkPhotos: false, videos: "office", videoMaxBytes: 50 * MB } });
   });
 
   it("aren't added up at all for anyone else: not a member, or a sub", async () => {
@@ -448,7 +538,10 @@ describe("the database's numbers", () => {
 
   it("say why when the database refuses", async () => {
     const db = {
-      from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: "owner" }, error: null }) }) }) }) }) }),
+      from: (table: string) =>
+        table === "companies"
+          ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }
+          : { select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: "owner" }, error: null }) }) }) }) }) },
       rpc: async () => ({ data: null, error: { message: "permission denied for function storage_snapshot" } }),
     } as unknown as Db;
     await expect(snapshotsFrom(() => db)(CO, ANA)).rejects.toThrow("permission denied");

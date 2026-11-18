@@ -62,12 +62,31 @@ push (the `hosting` notification topic): the trial ending in about 7, 3 or 1 day
 nearly gone, usage on track to go over what the plan includes, a volume over 85% full, or a
 Railway sign-in that stopped working. These usage queries are the ones Railway's dashboard uses
 but aren't in Railway's API docs, so each is optional: what Railway doesn't share is left out.
+
+**Data sent out** (downloads: every photo, plan and video someone opens, at Railway's $0.05 per GB)
+is shown with the month, and the same task warns once a month when:
+- it's on track to send 100 GB this month, which costs as much as the whole of what Hobby includes
+  ($5). A field service business sends a few GB a month; 100 GB takes a lot of video, or a file
+  shared by link being downloaded over and over;
+- or the last day sent at least 4 times its usual daily amount this month, and at least 2 GB
+  ($0.10, about $3 a month if it kept up): what a link being downloaded over and over looks like
+  as it starts, while a quiet business's busy day (0.1 GB to 0.5) says nothing. It waits for two
+  days of the month to know what's usual.
+
+**Railway's spending limit:** only Railway can stop the bill, and Crewtavo can't set its limit (its
+Railway sign-in doesn't reach billing). So on Hobby and Pro, Settings → Hosting asks the owner to
+set a **Hard limit** on Railway's usage page (**Set Usage Limits**, under compute usage; Railway's
+lowest is $10), suggests about twice a normal month, and links there. **I've set it** hides the
+reminder (`companies.settings.railway_usage_limit`). When the limit is reached Railway takes the
+project offline, Crewtavo included, so set it well above a normal month.
 A storage bucket isn't in Railway's usage figures, so it's priced from what it holds now ($0.015 per
 GB a month) and added to the month, and it's shown without a size, since it never fills up.
 
 **Files storage:** photos and files are kept on the `storage` service's volume. **Settings →
 Hosting → Files storage** can move them into a Railway bucket instead, with one press (see
-[Moving files to a bucket](#moving-files-to-a-bucket)).
+[Moving files to a bucket](#moving-files-to-a-bucket)). Once the volume is half full, on Hobby or
+Pro, owners and admins hear once what a bucket would save and what it gives up, and Settings →
+Hosting and Settings → Storage point to Files storage while it stays that way.
 
 **Your own domain:** after connecting Railway, the owner sees **Your web address**: four steps on a
 timeline, ticked off as they're done, with what to do now opened under the current one.
@@ -464,6 +483,8 @@ The server checks each import's Google sign-in was made for `GOOGLE_CLIENT_ID` a
 On Railway, photos and files live on the `storage` service's volume. A Railway storage bucket keeps
 them for a tenth of the price ($0.015 per GB a month instead of $0.15) and has no size to outgrow,
 but Railway's Limited Trial has no buckets, and Railway backs up volumes (on Pro) but never buckets.
+A bucket's own downloads are free, but files reach people through Crewtavo, so what they open still
+counts as data sent ($0.05 per GB) either way.
 So the template keeps the volume, and an owner or admin can move files from **Settings → Hosting →
 Files storage** (`apps/api/src/services/storageBucket.ts`); installing Drive does it too:
 
@@ -505,9 +526,10 @@ who uploaded what and which parts of Crewtavo it's in, and the company's limit. 
 sees the company's total on the Drive page.
 
 **The company limit** stops uploads before Crewtavo runs out of room or runs up the bill. Unless an
-owner or admin sets one of their own (a number of GB, or **No limit**), it's a bit under what Railway
-allows, read from Railway whenever Crewtavo checks it (Settings → Hosting, Settings → Storage, the
-server's tasks, and after files move to or from a bucket):
+owner or admin sets one of their own (on Railway, what files may cost a month; elsewhere a number of
+GB; or **No limit**), it's a bit under what Railway allows, read from Railway whenever Crewtavo
+checks it (Settings → Hosting, Settings → Storage, the server's tasks, and after files move to or
+from a bucket):
 
 | Where files are | Default limit |
 |---|---|
@@ -522,6 +544,23 @@ be reached for a moment, the last default stays.
 
 The page shows what the limit would cost a month if it filled ($0.015 per GB in a bucket, $0.15 per
 GB on a volume).
+
+**A limit in dollars (Railway):** an owner or admin on Railway sets a limit of their own as **A
+monthly amount**: "files can cost up to $10 a month". The page shows the size it means where files
+are now ($10 is 66.7 GB on the volume, 667 GB in a bucket). It's kept as dollars
+(`settings.storage.limit_dollars`) and the database works out the size whenever it checks, at the
+price of where files are now, which the server keeps up to date from Railway
+(`storage_set_rate`, `supabase/migrations/20261118000200_storage_cost_limits.sql`). So when files
+move between the volume and a bucket, the dollars stay and the size follows. On a volume it never
+goes past 90% of the volume (the default's share), since a full volume stops every upload, crews'
+photos too; in a bucket, past what the plan lets a bucket hold (none on Pro). If Railway is
+disconnected later, the last price stays, so the limit doesn't go away. Off Railway nothing
+changed: a limit of your own is a size in GB.
+
+What existing companies see: nothing changes until someone chooses again. The default stays the
+default (now shown with what it costs a month on Railway), **No limit** stays, and a size set
+before stays a size (offered on Railway as **A size**, with what it costs a month where files are
+now) until an owner or admin picks a monthly amount instead.
 
 **Limits for people:** an owner can also give a person, or everyone with a role, a limit of their own
 for what they upload (a person's own wins over their role's). It counts what they uploaded that isn't
@@ -546,6 +585,29 @@ so raising a limit or emptying the Trash counts straight away.
 - A few uploads at the same moment can go a little over; the limit catches up within half a minute.
 - An upload has to say its size where a limit could refuse it (Crewtavo's own uploads always do),
   and Storage's S3 address takes no uploads: files go in through Crewtavo.
+
+**Photos and videos** (Settings → Storage, everywhere), for what's added to Drive and to Plans and
+files (`companies.settings.files`; an admin without the settings area can't change it):
+- **Make photos smaller as they're added** (`shrink_photos`, on unless turned off): photos from a
+  phone or camera are saved at 2560 pixels on their longest side. Plan sheets, PDFs and screenshots
+  are never changed.
+- **Videos:** who may add them (everyone on the team, or only the office: owners, admins, office
+  staff and estimators) and how big each may be (25, 50, 100 or 200 MB; 100 MB until changed; other
+  files go up to 200 MB). The server checks them where it checks the storage limits, only for Drive
+  and plan files, never for what crews need to finish a job, and refuses one with "Only the office
+  can add videos to Drive and plan files here…" or "This 240 MB video is over the 100 MB limit for
+  videos in Drive and plan files…" (a 507, like a full storage, so the app shows it as it is). A
+  video is told by the type the upload gives or its name's ending: it's a budget, like the limits,
+  not a lock.
+
+**Pictures behind a public link:** a guide shared with anyone, a showcase, and a quote's or
+invoice's map drawings on the Client Hub are sent by Crewtavo each time they're asked for. Each link
+sends at most 2 GB of them a day (about $0.10 on Railway; a guide with 20 pictures is a few MB a
+read), on Railway or not (`apps/api/src/lib/linkBudget.ts`). `PUBLIC_LINK_GB_A_DAY` changes it (in
+GB; `0` for no limit), for a business whose showcase is shared widely. Past that its pictures pause until the
+day is over: the page still opens, and owners and admins hear once a day which link it was. A
+guide's new link (**Share → Get a new link**) starts afresh; a showcase can be unpublished, and a
+client's links reset from their page. Visitors also have their own per-address limits.
 
 **Warnings:** the `storage` task (every 6 hours, on Railway or not) tells owners and admins, by the
 bell, when the company's files reach 80% and then 95% of the limit (or that storage is full, when

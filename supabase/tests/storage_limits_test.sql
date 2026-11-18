@@ -153,7 +153,7 @@ insert into public.trashed_files (company_id, path, source, label) values (:'co'
 
 -- ===== Who calls what ===========================================================================
 select tsl.check(has_function_privilege('authenticated', 'public.storage_overview(uuid)', 'execute')
-    and has_function_privilege('authenticated', 'public.storage_set_limit(uuid, text, bigint)', 'execute')
+    and has_function_privilege('authenticated', 'public.storage_set_limit(uuid, text, bigint, numeric)', 'execute')
     and has_function_privilege('authenticated', 'public.storage_set_allowance(uuid, uuid, text, bigint)', 'execute'),
   'the team calls storage_overview, storage_set_limit and storage_set_allowance (each checks who)');
 select tsl.check(not has_function_privilege('authenticated', 'public.storage_snapshot(uuid, uuid)', 'execute')

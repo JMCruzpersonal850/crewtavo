@@ -10,7 +10,7 @@ import type { Env } from "../src/env";
 import { SCOPE, type RailwayAccess } from "../src/integrations/railway";
 import { encryptJson } from "../src/lib/crypto";
 import { adminClient } from "../src/lib/supabase";
-import { checkHosting, forgetHosting, hostingWarnings, readHosting } from "../src/services/hosting";
+import { bucketTip, checkHosting, forgetHosting, hostingWarnings, readHosting, SENT_JUMP_MIN_GB, SENT_WARN_GB, sentWarnings } from "../src/services/hosting";
 import { railwayClient, railwayNeeded } from "../src/services/railway";
 
 const env: Env = {
@@ -338,5 +338,64 @@ describe("asking the owner to connect Railway", () => {
     expect(await railwayClient(env, adminClient(env), "co-1", "https://x/cb", "Crewtavo")).toMatchObject({ client_id: "new", scope: SCOPE });
     expect(calls.find((c) => c.url.pathname === "/oauth/register")?.body.scope).toBe(SCOPE);
     expect(calls.some((c) => c.method === "DELETE" && c.url.pathname === "/oauth/register/old")).toBe(true);
+  });
+});
+
+describe("data sent out", () => {
+  const period = { start: "2026-10-01T00:00:00.000Z", end: "2026-11-01T00:00:00.000Z" };
+  const sent = (over: Partial<NonNullable<HostingOverview["sent"]>> = {}) => ({ period, sent: { soFar: 2, perDay: 0.1, usualPerDay: 0.1, forecast: 3.2, ...over } });
+
+  it("is read with the month's usage: so far, the last day, the usual day before it, and a forecast", async () => {
+    serve((call) => railway(call));
+    const o = await readHosting(env, oauth, NOW);
+    // 0.1 GB a day for 19.5 days, and the same rate for the 11.5 left.
+    expect(o.sent).toEqual({ soFar: 1.95, perDay: 0.1, usualPerDay: 0.1, forecast: 3.1 });
+    expect(o.warnings.filter((w) => w.key.startsWith("sent"))).toEqual([]);
+  });
+
+  it("warns once a month when it's on track to cost what Hobby includes for everything", () => {
+    expect(SENT_WARN_GB).toBe(100);
+    expect(sentWarnings(sent({ forecast: 99 }))).toEqual([]);
+    const [warning] = sentWarnings(sent({ forecast: 140 }));
+    expect(warning).toMatchObject({ key: "sent:2026-10", level: "warning", title: "Crewtavo is on track to send about 140 GB this month" });
+    expect(warning!.body).toContain("about $7.00 of Railway usage, at $0.05 for each GB");
+  });
+
+  it("warns when a day sends far more than the month's usual, but not over a quiet business's busy day", () => {
+    // Five times a usual 0.1 GB, but only half a GB: nothing to say.
+    expect(sentWarnings(sent({ perDay: 0.5 }))).toEqual([]);
+    expect(SENT_JUMP_MIN_GB).toBe(2);
+    const [jump] = sentWarnings(sent({ perDay: 6, usualPerDay: 0.7 }));
+    expect(jump).toMatchObject({ key: "sent-jump:2026-10", title: "Crewtavo sent far more data than usual in the last day" });
+    expect(jump!.body).toContain("About 6 GB in the last day, 8 times its usual 0.7 GB a day this month");
+    // Busy all month at 3 GB a day isn't a jump.
+    expect(sentWarnings(sent({ perDay: 3, usualPerDay: 2.5, forecast: 80 }))).toEqual([]);
+    // Too early in the month to know what's usual.
+    expect(sentWarnings(sent({ perDay: 6, usualPerDay: null }))).toEqual([]);
+  });
+});
+
+describe("the bucket tip", () => {
+  const disks = (usedGb: number) => [{ service: "storage", kind: "volume" as const, usedGb, sizeGb: 5 }];
+
+  it("says once what a bucket saves and gives up, while files are on a volume half full, on Hobby or Pro", () => {
+    const tip = bucketTip({ plan: "hobby", disks: disks(2.5) }, "volume");
+    expect(tip).toMatchObject({ key: "bucket", level: "tip", action: "files", title: "Photos and files would cost a tenth as much in a Railway bucket" });
+    expect(tip!.body).toContain("about $0.38 a month; in a bucket it's about $0.04");
+    expect(tip!.body).toContain("Railway backs up volumes on its Pro plan, and never buckets");
+    expect(bucketTip({ plan: "pro", disks: disks(4) }, "volume")).not.toBeNull();
+  });
+
+  it("says nothing under half full, once files are in a bucket, where it isn't known, or on a plan whose buckets go away", () => {
+    expect(bucketTip({ plan: "hobby", disks: disks(2.4) }, "volume")).toBeNull();
+    expect(bucketTip({ plan: "hobby", disks: disks(4) }, "bucket")).toBeNull();
+    expect(bucketTip({ plan: "hobby", disks: disks(4) }, null)).toBeNull();
+    for (const plan of ["trial", "free"] as const) expect(bucketTip({ plan, disks: disks(4) }, "volume"), plan).toBeNull();
+  });
+
+  it("comes after the warnings, which stay most urgent first", () => {
+    const o = { plan: "hobby" as const, trial: null, project: null, sent: null, period: { start: "2026-10-01T00:00:00.000Z", end: "2026-11-01T00:00:00.000Z" }, disks: [{ service: "storage", kind: "volume" as const, usedGb: 4.8, sizeGb: 5 }] };
+    const keys = hostingWarnings(o as Omit<HostingOverview, "warnings">, { backend: "volume" }).map((w) => w.key);
+    expect(keys).toEqual(["disk:storage:95", "bucket"]);
   });
 });

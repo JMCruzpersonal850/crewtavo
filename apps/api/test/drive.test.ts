@@ -359,6 +359,20 @@ describe("importing from Google Drive", () => {
     expect(db.find("user", "plan_files", "insert")).toEqual([]);
   });
 
+  it("holds a video from Google Drive to the company's video rules, as from the browser, and doesn't call that storage being full", async () => {
+    const db = office({ rpc: { storage_snapshot: () => [{ company_used: 1e9, company_limit: null, user_used: 0, user_limit: null, user_is_owner: false }] } });
+    const requests = google({ vid: { meta: { id: "vid", name: "Walkthrough.mp4", mimeType: "video/mp4", size: "150000000", capabilities: { canDownload: true } }, bytes: 10 } });
+    const body = await (await post("/drive/import", { accessToken: TOKEN, files: [{ id: "vid", name: "Walkthrough.mp4" }], target: { folder_id: FORMS } })).json();
+    expect(body.files).toEqual([]);
+    expect(body.skipped).toHaveLength(1);
+    expect(body.skipped[0]).toMatchObject({ name: "Walkthrough.mp4" });
+    expect(body.skipped[0].reason).toMatch(/video/i);
+    expect(body.skipped[0].full).toBeUndefined();
+    // Turned away by the size Google gives, before it's downloaded.
+    expect(requests.some((r) => r.url.searchParams.get("alt") === "media")).toBe(false);
+    expect(db.uploads).toEqual([]);
+  });
+
   it("holds the person importing to their own limit, by what Google sends", async () => {
     // Room by Google's word (a converted document doesn't say its size), but not for what came.
     const db = office({ rpc: { storage_snapshot: () => [{ company_used: 1e9, company_limit: null, user_used: 9_999_000, user_limit: 10_000_000, user_is_owner: false }] } });
