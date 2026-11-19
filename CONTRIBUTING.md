@@ -1,8 +1,7 @@
 # Contributing to Crewtavo
 
 Crewtavo doesn't accept contributions. Pull requests are closed automatically without review, and
-code posted in issues or anywhere else isn't copied in. That keeps Crewtavo's copyright with one
-owner, so its license can stay simple and commercial licenses stay possible.
+code posted in issues or anywhere else isn't copied in.
 
 You're free to change Crewtavo for yourself under its [license](LICENSE) (AGPL-3.0, with the
 additional terms in [NOTICE](NOTICE)). If you run a changed version for other people, offer them
