@@ -93,6 +93,9 @@ export function CommandPalette() {
   // the plain table lookups need it without the characters their filters use.
   const typed = useDeferredValue(query.trim());
   const term = searchTerm(typed);
+  // Two letters before it looks, except a number: "#7" or "7" is job, quote or invoice 7, and a small
+  // business's numbers start at 1.
+  const searchable = term.length >= 2 || /^#?\d+$/.test(typed);
 
   useEffect(() => {
     opener = () => setOpen(true);
@@ -137,7 +140,7 @@ export function CommandPalette() {
 
   const results = useQuery({
     queryKey: ["global-search", session.company.id, typed],
-    enabled: open && term.length >= 2,
+    enabled: open && searchable,
     placeholderData: keepPreviousData,
     staleTime: 15_000,
     meta: { silent: true },
@@ -220,7 +223,9 @@ export function CommandPalette() {
       return words.every((w) => text.includes(w));
     });
     const best = local.filter((i) => i.title.toLowerCase().startsWith(q)).map((i) => ({ ...i, group: msg("Best match") }));
-    const records: Item[] = (results.data ?? []).map((r) => ({
+    // What the last search found stays up while the next one runs, but not once too little is typed
+    // to search at all (back to one letter): those results were for something else.
+    const records: Item[] = (searchable ? (results.data ?? []) : []).map((r) => ({
       id: `${r.kind}-${r.id}`,
       group: msg("Results"),
       icon: KIND_ICON[r.kind] ?? "file",
@@ -230,7 +235,7 @@ export function CommandPalette() {
     }));
     return [...best, ...records, ...local.filter((i) => !best.some((b) => b.id === i.id))];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, results.data, apps.data, session.company.id, session.role, session.permissions]);
+  }, [query, searchable, results.data, apps.data, session.company.id, session.role, session.permissions]);
 
   useEffect(() => setIndex(0), [query]);
   useEffect(() => {
@@ -251,7 +256,7 @@ export function CommandPalette() {
   };
 
   let lastGroup = "";
-  const searching = term.length >= 2 && results.isFetching;
+  const searching = searchable && results.isFetching;
 
   return (
     <dialog
@@ -289,7 +294,7 @@ export function CommandPalette() {
             {items.length === 0 && (
               <div className="empty-state empty-state-sm">
                 <span className="empty-icon"><Icon name="search" size={20} /></span>
-                <h3>{term.length < 2 ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}</h3>
+                <h3>{!searchable ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}</h3>
                 
               </div>
             )}
