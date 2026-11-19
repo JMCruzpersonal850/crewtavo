@@ -219,9 +219,13 @@ export function AppShell() {
               {group.label ? <span className="nav-label" id={`nav-group-${i}`}>{t(group.label)}</span> : i > 0 && <span className="nav-divider" />}
               {group.items.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
-                  <Icon name={item.icon} />
-                  {t(item.label)}
-                  {badge(item)}
+                  {({ isActive }) => (
+                    <>
+                      <Icon name={item.icon} filled={active(item, isActive)} />
+                      {t(item.label)}
+                      {badge(item)}
+                    </>
+                  )}
                 </NavLink>
               ))}
             </div>
@@ -230,8 +234,12 @@ export function AppShell() {
         <nav className="nav nav-bottom" aria-label={t("Settings")}>
           {[...foot, settings].map((item) => (
             <NavLink key={item.to} to={item.to} className={navClass(item)} viewTransition>
-              <Icon name={item.icon} />
-              {t(item.label)}
+              {({ isActive }) => (
+                <>
+                  <Icon name={item.icon} filled={active(item, isActive)} />
+                  {t(item.label)}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -284,12 +292,16 @@ export function AppShell() {
       <nav className="mobile-nav" aria-label={t("Primary")} lang={shellLang} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, 1fr)` }}>
         {tabs.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => (active(item, isActive) ? "active" : "")} aria-current={current(item)} viewTransition>
-            <span className="mobile-tab-icon">
-              <Icon name={item.icon} size={20} />
-              {item.to === "/field/jobs" && offers > 0 && <span className="badge badge-green mobile-tab-badge" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
-              {item.to === "/chat" && (chat.mentions ? <span className="badge badge-red mobile-tab-badge">{chat.mentions}</span> : chat.unread ? <span className="nav-dot mobile-tab-badge" /> : null)}
-            </span>
-            {t(item.label)}
+            {({ isActive }) => (
+              <>
+                <span className="mobile-tab-icon">
+                  <Icon name={item.icon} size={20} filled={active(item, isActive)} />
+                  {item.to === "/field/jobs" && offers > 0 && <span className="badge badge-green mobile-tab-badge" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
+                  {item.to === "/chat" && (chat.mentions ? <span className="badge badge-red mobile-tab-badge">{chat.mentions}</span> : chat.unread ? <span className="nav-dot mobile-tab-badge" /> : null)}
+                </span>
+                {t(item.label)}
+              </>
+            )}
           </NavLink>
         ))}
         {!sub && (
@@ -308,9 +320,13 @@ export function AppShell() {
             <nav className="nav">
               {[...groups.flatMap((g) => g.items), ...foot, settings].map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} onClick={() => setMoreOpen(false)} viewTransition>
-                  <Icon name={item.icon} />
-                  {t(item.label)}
-                  {badge(item)}
+                  {({ isActive }) => (
+                    <>
+                      <Icon name={item.icon} filled={active(item, isActive)} />
+                      {t(item.label)}
+                      {badge(item)}
+                    </>
+                  )}
                 </NavLink>
               ))}
             </nav>

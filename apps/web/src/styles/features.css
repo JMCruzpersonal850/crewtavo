@@ -142,8 +142,10 @@
 .public-foot { text-align: center; font-size: var(--fs-12); color: var(--text-3); }
 .option-line { display: flex; gap: 10px; align-items: flex-start; }
 .success-mark { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--green-tint); color: var(--green); margin: 0 auto; animation: pop-in var(--dur-slow) var(--ease-spring); }
-.success-mark svg { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 0.5s 0.15s var(--ease-out) forwards; }
-@keyframes draw { to { stroke-dashoffset: 0; } }
+/* The check wipes in from the left, as if drawn. */
+.success-mark svg { clip-path: inset(0 100% 0 0); animation: draw 0.5s 0.15s var(--ease-out) forwards; }
+@keyframes draw { to { clip-path: inset(0); } }
+@media (prefers-reduced-motion: reduce) { @keyframes draw { from, to { clip-path: inset(0); } } }
 
 /* ---------- Field app ---------- */
 /*
@@ -451,7 +453,7 @@ a.field-card:active { transform: scale(0.99); }
 .prose ul[data-type="taskList"] > li > label { flex: none; display: grid; place-items: center; height: 1lh; }
 .prose ul[data-type="taskList"] > li > label input { width: 18px; height: 18px; margin: 0; accent-color: var(--green-solid); }
 .prose ul[data-type="taskList"] > li:not(:has(> label))::before { content: ""; flex: none; box-sizing: border-box; width: 18px; height: 18px; margin-top: calc((1lh - 18px) / 2); border: 2px solid var(--border-strong); border-radius: var(--radius-sm); }
-.prose ul[data-type="taskList"] > li[data-checked="true"]:not(:has(> label))::before { border-color: var(--green-solid); background: var(--green-solid) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 12px no-repeat; }
+.prose ul[data-type="taskList"] > li[data-checked="true"]:not(:has(> label))::before { border-color: var(--green-solid); background: var(--green-solid) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='white'%3E%3Cpath d='M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z'/%3E%3C/svg%3E") center / 12px no-repeat; }
 .prose blockquote { margin: 0 0 1em; padding: 10px 14px; border-left: 3px solid var(--green); background: var(--green-tint); border-radius: 0 var(--radius-control) var(--radius-control) 0; color: var(--ink); }
 /* Callouts: Tip, Important and Warning, labelled in the box itself. */
 .prose [data-callout] { margin: 0 0 1em; padding: 10px 14px 12px; border-left: 3px solid var(--info); border-radius: 0 var(--radius-control) var(--radius-control) 0; background: var(--info-tint); color: var(--ink); }

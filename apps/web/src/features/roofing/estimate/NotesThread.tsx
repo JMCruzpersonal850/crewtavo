@@ -207,7 +207,7 @@ function Photo({ photo, n, canDelete, onDelete }: { photo: QuotePhoto; n: number
           aria-label={`Remove ${label}`}
           onClick={onDelete}
         >
-          <Icon name="x" size={12} strokeWidth={2} />
+          <Icon name="x" size={12} bold />
         </button>
       )}
     </span>

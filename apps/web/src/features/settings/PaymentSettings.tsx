@@ -274,7 +274,7 @@ function Check({ ok, title, children }: { ok: boolean | null; title: string; chi
   return (
     <div className="row" style={{ gap: 10, alignItems: "flex-start" }}>
       <span style={{ color: ok ? "var(--green-dark)" : ok === false ? "var(--danger)" : "var(--text-2)", flex: "none", marginTop: 2 }}>
-        <Icon name={ok ? "check" : ok === false ? "x" : "info"} size={16} strokeWidth={2} label={ok ? "Done" : ok === false ? "Not yet" : "In Stripe"} />
+        <Icon name={ok ? "check" : ok === false ? "x" : "info"} size={16} bold label={ok ? "Done" : ok === false ? "Not yet" : "In Stripe"} />
       </span>
       <span className="grow" style={{ display: "grid", gap: 2 }}>
         <strong className="small">{title}</strong>

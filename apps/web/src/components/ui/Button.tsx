@@ -61,7 +61,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
             {children}
           </span>
           <span className="btn-face btn-face-done" aria-hidden="true">
-            <Icon name="check" size={iconSize} strokeWidth={2} />
+            <Icon name="check" size={iconSize} bold />
             {children ? doneLabel : null}
           </span>
           <span className="sr-only" aria-live="polite">{done ? doneLabel : ""}</span>

@@ -132,7 +132,7 @@ export function OAuthConsentPage() {
       </div>
       <span className="muted small strong" style={{ marginBottom: -10 }}>It will be able to read</span>
       <ul className={styles.scopes} aria-label="It will be able to read">
-        <li><Icon name="check" size={14} strokeWidth={2} />{CAN_READ}</li>
+        <li><Icon name="check" size={14} bold />{CAN_READ}</li>
       </ul>
       <span className="muted small" style={{ marginTop: -8 }}>{kept ? keepsAccess(kept) : CANT_CHANGE}</span>
       {error && <div className="callout callout-warning" role="alert" style={{ padding: "10px 12px" }}><Icon name="alert" size={16} /><span className="grow small" style={{ fontWeight: 600 }}>{error}</span></div>}

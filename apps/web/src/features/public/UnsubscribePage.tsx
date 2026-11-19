@@ -37,7 +37,7 @@ export function UnsubscribePage() {
         <div className="card card-pad stack" style={{ textAlign: "center", justifyItems: "center", padding: 32 }}>
           {isTest ? (
             <>
-              <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+              <span className="success-mark"><Icon name="check" size={30} bold /></span>
               <h1 style={{ fontSize: 24, letterSpacing: "var(--tracking-display)" }}>This is a test email</h1>
               <p className="muted" style={{ margin: 0 }}>In a real campaign, this link unsubscribes the client from marketing email.</p>
             </>
@@ -51,7 +51,7 @@ export function UnsubscribePage() {
             </>
           ) : status.data?.unsubscribed ? (
             <>
-              <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+              <span className="success-mark"><Icon name="check" size={30} bold /></span>
               <h1 style={{ fontSize: 24, letterSpacing: "var(--tracking-display)" }}>You're unsubscribed</h1>
               <p className="muted" style={{ margin: 0 }}>You won't get marketing emails or review requests from {status.data.company} anymore. You'll still get your quotes, invoices and visit reminders.</p>
               <Button variant="ghost" loading={change.isPending} onClick={() => change.mutate(true)}>Subscribe again</Button>

@@ -1,236 +1,220 @@
 /**
- * Icons used across the app: Lucide's, plus six of Crewtavo's own for the things it's built around,
- * drawn on the same 24px grid so they take the same props, and one of Tabler's (salt, below).
- * Decorative unless given a label.
+ * Icons used across the app: Phosphor's (https://phosphoricons.com, MIT License), plus seven of
+ * Crewtavo's own for things Phosphor doesn't draw, on the same 256 grid with the same round stroke so
+ * they take the same weights. Decorative unless given a label.
+ *
+ * To add a Phosphor icon, put its name (as phosphoricons.com spells it) in ICONS and run
+ * `npm run icons`, which copies its drawings into phosphor.ts.
  */
-import {
-  Archive, ArchiveRestore, ArrowLeft, AtSign, ArrowRight, Banknote, Bell, Bold, BookOpen, Calculator, Calendar, CalendarCheck, Camera, ChartColumn, ChartLine, Check, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, Circle, CircleCheck, CircleQuestionMark, ClipboardCheck, Clock, Cloud, CloudSnow, CodeXml, Command, Copy, CreditCard, DollarSign, Download, Ellipsis, ExternalLink, Eye, File, FileImage,
-  FileSpreadsheet, Folder, FolderInput, FolderOpen, FolderPlus, Funnel, Gauge, Gift, Globe, GripVertical, HardDrive, Hash, Heading, Hexagon, Highlighter, History, House, Image,
-  Inbox, Info, Italic, Kanban, Landmark, Layers, LayoutGrid, Link, List, ListChecks, ListOrdered, Lock, LogOut, Mail, Map, MapPin, Maximize, Megaphone, Menu, Minimize, MessageSquareText,
-  MessageSquareWarning, MessagesSquare, Minus, Monitor, Moon, MoveUpRight, Package, Palette, Paperclip, PenLine, Signature, Tablet, Type, MousePointer2, Navigation,
-  Pause, Pencil, Percent, Phone, Pin, PinOff, Play, Plus, Printer, Quote,  ReceiptText, Redo2, RefreshCw, Reply, Ruler, Scissors, Search, Send, SeparatorHorizontal,
-  Settings, Share, Smartphone, SmilePlus, Snowflake, Sparkles, Spline, Square, SquareUserRound, Star, StickyNote, Sun, Table, Tag, Thermometer, ThumbsUp, Trash, TriangleAlert, TriangleRight, Truck, Underline, Undo2, Upload,
-  User, Users, Video, WifiOff, Wind, Wrench, X, Zap, ZoomIn, ZoomOut, createLucideIcon, type LucideIcon,
-} from "lucide-react";
-
-// Crewtavo's own: round caps and joins, about 2px clear of the grid's edge, and only a few strokes
-// each so they still read at 14px.
-
-/** A request: a client asking for work, as a speech bubble with a plus. */
-const Request = createLucideIcon("CrewtavoRequest", [
-  ["path", { d: "M7.5 16.5H6a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6.5L7.5 20z", key: "bubble" }],
-  ["path", { d: "M12 7.5v5M9.5 10h5", key: "plus" }],
-]);
-
-/** A quote: a page with a dollar sign and the line it gets signed on. */
-const QuoteDoc = createLucideIcon("CrewtavoQuote", [
-  ["rect", { x: 5, y: 2, width: 14, height: 20, rx: 2, key: "page" }],
-  ["path", { d: "M14.5 6H11a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9.5", key: "s" }],
-  ["path", { d: "M12 5v10", key: "bar" }],
-  ["path", { d: "M8.5 18.5h7", key: "sign" }],
-]);
-
-/** A job: a hard hat, ribbed, on its brim. */
-const HardHat = createLucideIcon("CrewtavoJob", [
-  ["path", { d: "M5 15v-2.5a7 7 0 0 1 14 0V15", key: "shell" }],
-  ["path", { d: "M10 15V6.25M14 15V6.25", key: "ribs" }],
-  ["path", { d: "M2.5 15h19v1.5a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5z", key: "brim" }],
-]);
-
-/** An invoice: a page with a folded corner, a dollar sign and two short lines beside it. */
-const InvoiceDoc = createLucideIcon("CrewtavoInvoice", [
-  ["path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", key: "page" }],
-  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "fold" }],
-  ["path", { d: "M11.5 8H9a2 2 0 0 0 0 4h1a2 2 0 0 1 0 4H7", key: "s" }],
-  ["path", { d: "M9.5 6.5v11", key: "bar" }],
-  ["path", { d: "M14.5 12H17M14.5 16H17", key: "lines" }],
-]);
-
+import { useId } from "react";
+import { PHOSPHOR, type PhosphorName } from "./phosphor";
 
 /**
- * A salt run: Tabler Icons' salt shaker, unchanged (https://tabler.io/icons, MIT License, Copyright
- * (c) 2020-2025 Paweł Kuna). Lucide has none, and it's drawn on the same grid with the same stroke.
+ * One of Crewtavo's own, as strokes on Phosphor's grid (16 wide, 24 bold). Filled, `shape` turns
+ * solid and `marks` are cut out of it; `lines` stay strokes, as they're outside the shape.
  */
-const Salt = createLucideIcon("TablerSalt", [
-  ["path", { d: "M12 13v.01", key: "grain-1" }],
-  ["path", { d: "M10 16v.01", key: "grain-2" }],
-  ["path", { d: "M14 16v.01", key: "grain-3" }],
-  ["path", { d: "M7.5 8h9l-.281 -2.248a2 2 0 0 0 -1.985 -1.752h-4.468a2 2 0 0 0 -1.986 1.752l-.28 2.248z", key: "cap" }],
-  ["path", { d: "M7.5 8l-1.612 9.671a2 2 0 0 0 1.973 2.329h8.278a2 2 0 0 0 1.973 -2.329l-1.612 -9.671", key: "shaker" }],
-]);
+type Own = { shape: string; marks?: string; lines?: string };
 
-/** Paving: a road in perspective, its edges closing in toward the top, a dashed line down the middle. */
-const Road = createLucideIcon("CrewtavoPaving", [
-  ["path", { d: "M10 3 3 21", key: "left" }],
-  ["path", { d: "m14 3 7 18", key: "right" }],
-  ["path", { d: "M12 7.5V11M12 15v5", key: "dashes" }],
-]);
+/** A request: a client asking for work, as Phosphor's centered speech bubble with a plus. */
+const REQUEST: Own = {
+  shape: '<path d="M40 48h176a8 8 0 0 1 8 8v128a8 8 0 0 1-8 8h-63l-25 32-25-32H40a8 8 0 0 1-8-8V56a8 8 0 0 1 8-8z"/>',
+  marks: '<path d="M128 92v56M100 120h56"/>',
+};
 
-/** Roofing: a gabled roof with two rows of shingles under the ridge. */
-const Roof = createLucideIcon("CrewtavoRoofing", [
-  ["path", { d: "M2 15.5 12 6.5l10 9", key: "ridge" }],
-  ["path", { d: "M9 13.5h6", key: "upper" }],
-  ["path", { d: "M5.5 17.5h13", key: "lower" }],
-]);
+/** A quote: a page with a dollar sign and the line it gets signed on. */
+const QUOTE: Own = {
+  shape: '<rect x="48" y="24" width="160" height="208" rx="8"/>',
+  marks: '<path d="M156 72h-40a20 20 0 0 0 0 40h24a20 20 0 0 1 0 40h-40M128 56v112M88 196h80"/>',
+};
+
+/** Roofing: a gabled roof with a row of shingles under the ridge, and the eave's row below it. */
+const ROOF: Own = {
+  shape: '<path d="M24 156 128 68l104 88"/>',
+  marks: '<path d="M96 136h64"/>',
+  lines: '<path d="M56 196h144"/>',
+};
+
+/** A salt run: a salt shaker, its cap screwed on, with three grains. */
+const SALT: Own = {
+  shape: '<path d="M72 88h112l-10-48H82zM72 88l-16 128h144L184 88"/>',
+  marks: '<path d="M72 88h112M128 136v.01M104 172v.01M152 172v.01"/>',
+};
+
+/** A roof's pitch: rise over run, as a right triangle. */
+const PITCH: Own = { shape: '<path d="M32 208h192V48z"/>' };
+
+/** A spreadsheet: Phosphor's page with its corner folded, and a grid on it. */
+const SHEET: Own = {
+  shape: '<path d="M56 32h96l56 56v128a8 8 0 0 1-8 8H56a8 8 0 0 1-8-8V40a8 8 0 0 1 8-8z"/>',
+  marks: '<path d="M152 32v56h56M80 128h96v64H80zM128 128v64M80 160h96"/>',
+};
+
+/** Move to a folder: Phosphor's plain folder with an arrow going in. */
+const FOLDER_MOVE: Own = {
+  shape: '<path d="M40 48h55.4l32 32H216a8 8 0 0 1 8 8v112a8 8 0 0 1-8 8H40a8 8 0 0 1-8-8V56a8 8 0 0 1 8-8z"/>',
+  marks: '<path d="M96 144h64M136 120l24 24-24 24"/>',
+};
 
 const ICONS = {
-  plus: Plus,
-  minus: Minus,
-  home: House,
-  calendar: Calendar,
-  calendarCheck: CalendarCheck,
-  clients: SquareUserRound,
-  requests: Request,
-  pipeline: Kanban,
-  quote: QuoteDoc,
-  job: HardHat,
-  invoice: InvoiceDoc,
-  marketing: Megaphone,
-  finance: ChartLine,
-  metrics: ChartColumn,
-  clock: Clock,
-  bolt: Zap,
-  truck: Truck,
-  gauge: Gauge,
-  globe: Globe,
-  book: BookOpen,
-  apps: LayoutGrid,
-  search: Search,
-  messages: MessageSquareText,
+  plus: "plus",
+  minus: "minus",
+  home: "house",
+  calendar: "calendar-dots",
+  calendarCheck: "calendar-check",
+  clients: "address-book",
+  requests: REQUEST,
+  pipeline: "kanban",
+  quote: QUOTE,
+  job: "hard-hat",
+  invoice: "invoice",
+  marketing: "megaphone-simple",
+  finance: "chart-line-up",
+  metrics: "chart-bar",
+  clock: "clock",
+  bolt: "lightning",
+  truck: "truck",
+  gauge: "gauge",
+  globe: "globe-simple",
+  book: "book-open-text",
+  apps: "squares-four",
+  search: "magnifying-glass",
+  messages: "chat-text",
   /** AI only: asking the knowledge base, writing with AI, finding paving on the map. */
-  sparkle: Sparkles,
-  bell: Bell,
-  help: CircleQuestionMark,
-  settings: Settings,
-  menu: Menu,
-  layers: Layers,
-  area: Hexagon,
-  line: Spline,
-  pin: MapPin,
-  pointer: MousePointer2,
-  trash: Trash,
-  edit: Pencil,
-  send: Send,
-  x: X,
-  check: Check,
-  arrowLeft: ArrowLeft,
-  arrowRight: ArrowRight,
-  phone: Phone,
-  mail: Mail,
-  logout: LogOut,
-  chevronRight: ChevronRight,
-  chevronLeft: ChevronLeft,
-  chevronDown: ChevronDown,
-  chevronUp: ChevronUp,
-  more: Ellipsis,
-  grip: GripVertical,
-  filter: Funnel,
-  download: Download,
-  upload: Upload,
-  copy: Copy,
-  star: Star,
-  gift: Gift,
-  alert: TriangleAlert,
-  info: Info,
-  external: ExternalLink,
-  eye: Eye,
-  image: Image,
-  camera: Camera,
-  video: Video,
-  refresh: RefreshCw,
-  archive: Archive,
-  undo: Undo2,
-  user: User,
-  users: Users,
-  tag: Tag,
-  dollar: DollarSign,
-  card: CreditCard,
-  bank: Landmark,
-  cash: Banknote,
-  printer: Printer,
-  play: Play,
-  pause: Pause,
-  list: List,
-  map: Map,
-  file: File,
-  link: Link,
-  code: CodeXml,
-  lock: Lock,
-  history: History,
-  note: StickyNote,
-  cloud: Cloud,
-  navigation: Navigation,
-  receipt: ReceiptText,
-  percent: Percent,
-  clipboard: ClipboardCheck,
-  command: Command,
-  inbox: Inbox,
-  thumbsUp: ThumbsUp,
-  wifiOff: WifiOff,
-  bold: Bold,
-  italic: Italic,
-  underline: Underline,
-  heading: Heading,
-  listOrdered: ListOrdered,
-  quoteMark: Quote,
-  divider: SeparatorHorizontal,
-  redo: Redo2,
-  sun: Sun,
-  moon: Moon,
-  monitor: Monitor,
-  share: Share,
-  chat: MessagesSquare,
-  hash: Hash,
-  megaphone: Megaphone,
-  reply: Reply,
-  react: SmilePlus,
-  mention: AtSign,
-  onIt: CircleCheck,
-  pushpin: Pin,
-  unpin: PinOff,
-  restore: ArchiveRestore,
-  scissors: Scissors,
-  smartphone: Smartphone,
-  pitch: TriangleRight,
-  ruler: Ruler,
-  calculator: Calculator,
-  paving: Road,
-  roofing: Roof,
-  snow: Snowflake,
-  salt: Salt,
-  cloudSnow: CloudSnow,
-  wind: Wind,
-  thermometer: Thermometer,
-  checklist: ListChecks,
-  callout: MessageSquareWarning,
-  table: Table,
-  signature: Signature,
-  package: Package,
-  palette: Palette,
-  pen: PenLine,
-  type: Type,
-  tablet: Tablet,
-  folder: Folder,
-  folderOpen: FolderOpen,
-  folderPlus: FolderPlus,
-  folderMove: FolderInput,
-  paperclip: Paperclip,
-  hardDrive: HardDrive,
-  fileImage: FileImage,
-  fileSpreadsheet: FileSpreadsheet,
-  zoomIn: ZoomIn,
-  zoomOut: ZoomOut,
-  maximize: Maximize,
-  minimize: Minimize,
-  highlighter: Highlighter,
+  sparkle: "sparkle",
+  bell: "bell",
+  help: "question",
+  settings: "gear-six",
+  menu: "list",
+  layers: "stack",
+  area: "hexagon",
+  line: "bezier-curve",
+  pin: "map-pin",
+  pointer: "cursor",
+  trash: "trash",
+  edit: "pencil-simple",
+  send: "paper-plane-tilt",
+  x: "x",
+  check: "check",
+  arrowLeft: "arrow-left",
+  arrowRight: "arrow-right",
+  phone: "phone",
+  mail: "envelope-simple",
+  logout: "sign-out",
+  chevronRight: "caret-right",
+  chevronLeft: "caret-left",
+  chevronDown: "caret-down",
+  chevronUp: "caret-up",
+  more: "dots-three",
+  grip: "dots-six-vertical",
+  filter: "funnel-simple",
+  download: "download-simple",
+  upload: "upload-simple",
+  copy: "copy",
+  star: "star",
+  gift: "gift",
+  alert: "warning",
+  info: "info",
+  external: "arrow-square-out",
+  eye: "eye",
+  image: "image",
+  camera: "camera",
+  video: "video-camera",
+  refresh: "arrows-clockwise",
+  archive: "archive",
+  undo: "arrow-u-up-left",
+  user: "user",
+  users: "users",
+  tag: "tag",
+  dollar: "currency-dollar",
+  card: "credit-card",
+  bank: "bank",
+  cash: "money",
+  printer: "printer",
+  play: "play",
+  pause: "pause",
+  list: "list-bullets",
+  map: "map-trifold",
+  file: "file",
+  link: "link",
+  code: "code",
+  lock: "lock",
+  history: "clock-counter-clockwise",
+  note: "note", // i18n-ignore: icon names, not words on screen
+  cloud: "cloud",
+  navigation: "navigation-arrow",
+  receipt: "receipt",
+  percent: "percent",
+  clipboard: "clipboard-text",
+  command: "command",
+  inbox: "tray",
+  thumbsUp: "thumbs-up",
+  wifiOff: "wifi-slash",
+  bold: "text-b",
+  italic: "text-italic",
+  underline: "text-underline",
+  heading: "text-h", // i18n-ignore
+  listOrdered: "list-numbers",
+  quoteMark: "quotes",
+  divider: "arrows-out-line-vertical",
+  redo: "arrow-u-up-right",
+  sun: "sun",
+  moon: "moon",
+  monitor: "monitor",
+  share: "export",
+  chat: "chats-circle",
+  hash: "hash",
+  megaphone: "megaphone",
+  reply: "arrow-bend-up-left",
+  react: "smiley",
+  mention: "at",
+  onIt: "check-circle",
+  pushpin: "push-pin",
+  unpin: "push-pin-slash",
+  restore: "box-arrow-up",
+  scissors: "scissors",
+  smartphone: "device-mobile",
+  pitch: PITCH,
+  ruler: "ruler",
+  calculator: "calculator",
+  paving: "road-horizon",
+  roofing: ROOF,
+  snow: "snowflake",
+  salt: SALT,
+  cloudSnow: "cloud-snow",
+  wind: "wind",
+  thermometer: "thermometer",
+  checklist: "list-checks",
+  callout: "chat-centered-text",
+  table: "table",
+  signature: "signature",
+  package: "package",
+  palette: "palette",
+  pen: "pencil-line",
+  type: "text-t",
+  tablet: "device-tablet",
+  folder: "folder-simple",
+  folderOpen: "folder-open",
+  folderPlus: "folder-simple-plus",
+  folderMove: FOLDER_MOVE,
+  paperclip: "paperclip",
+  hardDrive: "hard-drive",
+  fileImage: "file-image",
+  fileSpreadsheet: SHEET,
+  zoomIn: "magnifying-glass-plus",
+  zoomOut: "magnifying-glass-minus",
+  maximize: "corners-out",
+  minimize: "corners-in",
+  highlighter: "highlighter",
   /** The photo editor's shapes. */
-  circle: Circle,
-  square: Square,
-  arrowUpRight: MoveUpRight,
+  circle: "circle",
+  square: "square",
+  arrowUpRight: "arrow-up-right",
   /** A repair or a tool (equipment); a job is the hard hat. */
-  wrench: Wrench,
-} satisfies Record<string, LucideIcon>;
+  wrench: "wrench",
+  /** A client's page: a licensed business and an insured one. */
+  certificate: "certificate",
+  shieldCheck: "shield-check",
+} satisfies Record<string, PhosphorName | Own>;
 
 export type IconName = keyof typeof ICONS;
 
@@ -240,12 +224,42 @@ export type IconName = keyof typeof ICONS;
  */
 export const iconSize = (size: number) => (size <= 12 ? 12 : size <= 15 ? 14 : size <= 17 ? 16 : size <= 22 ? 20 : size <= 26 ? 24 : size);
 
-/** The stroke in screen pixels, so every size has the same weight: 1.5 up to 14px, 1.75 above, and 2 on the grid's scale for illustrations. */
-const strokeFor = (size: number) => (size <= 14 ? 1.5 : size <= 26 ? 1.75 : size / 12);
+type Weight = "regular" | "bold" | "fill";
 
-/** `size` snaps to the set above (18, the default, draws at 20). `strokeWidth` is in pixels: about 2 makes a small check or cross bold. */
-export function Icon({ name, size = 18, label, strokeWidth }: { name: IconName; size?: number; label?: string; strokeWidth?: number }) {
-  const Glyph = ICONS[name];
+const strokes = (width: number, color: string, inner: string) =>
+  `<g fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round">${inner}</g>`;
+
+/** One of Crewtavo's own in a weight. A filled one cuts its marks out with a mask, named by `id` so it's unique on the page. */
+function drawOwn(own: Own, weight: Weight, id: string): string {
+  const all = own.shape + (own.marks ?? "") + (own.lines ?? "");
+  if (weight !== "fill") return strokes(weight === "bold" ? 24 : 16, "currentColor", all);
+  const mask = own.marks ? `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256"><rect width="256" height="256" fill="#fff"/>${strokes(16, "#000", own.marks)}</mask>` : "";
+  const solid = `<g fill="currentColor" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"${own.marks ? ` mask="url(#${id})"` : ""}>${own.shape}</g>`;
+  return mask + solid + (own.lines ? strokes(16, "currentColor", own.lines) : "");
+}
+
+/**
+ * `size` snaps to the set above (18, the default, draws at 20). Up to 16px an icon is drawn bold,
+ * since Phosphor's regular line is too faint that small; `bold` asks for it at any size (a check that
+ * should stand out). `filled` is for something selected: the screen you're on, a chosen star.
+ */
+export function Icon({ name, size = 18, label, bold, filled }: { name: IconName; size?: number; label?: string; bold?: boolean; filled?: boolean }) {
+  const id = `icon${useId().replace(/:/g, "")}`;
   const px = iconSize(size);
-  return <Glyph size={px} strokeWidth={strokeWidth ?? strokeFor(px)} absoluteStrokeWidth role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true} />;
+  const weight: Weight = filled ? "fill" : bold || px <= 16 ? "bold" : "regular";
+  const drawing: PhosphorName | Own = ICONS[name];
+  const html = typeof drawing === "string" ? PHOSPHOR[drawing][weight] : drawOwn(drawing, weight, id);
+  return (
+    <svg
+      width={px}
+      height={px}
+      viewBox="0 0 256 256"
+      fill="currentColor"
+      focusable="false"
+      role={label ? "img" : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

@@ -127,7 +127,7 @@ export function AddContact({ clientId }: { clientId: string }) {
   return (
     <>
       <button type="button" className="link-btn text-sm row" style={{ gap: 6, justifySelf: "start" }} onClick={() => setAdding(true)}>
-        <Icon name="plus" size={14} strokeWidth={2} />
+        <Icon name="plus" size={14} bold />
         Add another contact
       </button>
       {adding && <ContactDialog clientId={clientId} contact={null} onClose={() => setAdding(false)} />}

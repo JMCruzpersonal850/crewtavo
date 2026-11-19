@@ -312,7 +312,7 @@ function GuideCards({ pages, loading, error, retry, isRead, empty, showCategory 
                 <span className="row wrap" style={{ gap: 6, marginTop: 4 }}>
                   {p.status === "draft" && <span className="pill">{t("Draft")}</span>}
                   {shared.has(p.id) && <span className="pill" title={shared.get(p.id) === "anyone" ? t("Anyone with the link can read this") : t("Shared with people outside the team")}><Icon name={shared.get(p.id) === "anyone" ? "globe" : "link"} size={12} />{t("Shared")}</span>}
-                  {p.required && p.status === "published" && <span className="pill" data-tone={read ? "success" : "warning"}>{read ? <><Icon name="check" size={12} strokeWidth={2} />{t("Read")}</> : t("Required")}</span>}
+                  {p.required && p.status === "published" && <span className="pill" data-tone={read ? "success" : "warning"}>{read ? <><Icon name="check" size={12} bold />{t("Read")}</> : t("Required")}</span>}
                 </span>
               )}
             </span>

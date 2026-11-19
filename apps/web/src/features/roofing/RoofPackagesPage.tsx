@@ -1058,7 +1058,7 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
                       else run(addItem, { serviceId: service.id, kind: "quick" });
                     }}
                   >
-                    <Icon name={on ? "check" : "plus"} size={14} strokeWidth={2} />
+                    <Icon name={on ? "check" : "plus"} size={14} bold />
                     {service.name}
                     <small>{unitPrice(service.unit_price, service.unit, FORMAT, true)}</small>
                   </button>
@@ -1070,7 +1070,7 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
             <div className={styles.chips}>
               {chips.filter((c) => c.on).map(({ service }) => (
                 <span key={service.id} className={styles.quick} data-on="">
-                  <Icon name="check" size={14} strokeWidth={2} />
+                  <Icon name="check" size={14} bold />
                   {service.name}
                   <small>{unitPrice(service.unit_price, service.unit, FORMAT, true)}</small>
                 </span>

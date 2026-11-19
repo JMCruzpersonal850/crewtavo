@@ -97,7 +97,7 @@ export function AppTile({ app, installed }: { app: AppRow; installed: boolean })
         <AppIcon id={app.id} name={app.name} />
         {badge && (
           <span className="app-badge" data-tone={badge.tone} aria-hidden="true">
-            <Icon name={badge.tone === "good" ? "check" : "alert"} size={12} strokeWidth={2} />
+            <Icon name={badge.tone === "good" ? "check" : "alert"} size={12} bold />
           </span>
         )}
       </span>

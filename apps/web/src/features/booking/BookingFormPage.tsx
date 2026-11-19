@@ -158,7 +158,7 @@ export function BookingFormPage() {
         )}
         {view.data && submit.data && (
           <div className="card card-pad stack-sm" style={{ textAlign: "center", justifyItems: "center", padding: 32 }}>
-            <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+            <span className="success-mark"><Icon name="check" size={30} bold /></span>
             <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)" }}>{submit.data.booking?.status === "booked" ? `You're booked, ${contact.name.trim().split(" ")[0]}` : `Thanks, ${contact.name.trim().split(" ")[0]}`}</h1>
             {submit.data.booking && booking ? (
               <BookedNote sent={submit.data.booking} booking={booking} company={view.data.company.name} reference={submit.data.reference} />
@@ -317,7 +317,7 @@ function TimePicker({ path, booking, postalCode, picked, onPick, onNoneOpen, inv
   }, [week.data]);
   const dayName = (date: string) => slotLabel({ date, starts_at: null }, booking.timezone);
   const choice = (key: string, on: boolean, label: string, pick: () => void) => (
-    <button key={key} type="button" className="tab" aria-pressed={on} style={{ height: "var(--control)", padding: "0 14px" }} onClick={pick}>{on && <Icon name="check" size={14} strokeWidth={2} />}{label}</button>
+    <button key={key} type="button" className="tab" aria-pressed={on} style={{ height: "var(--control)", padding: "0 14px" }} onClick={pick}>{on && <Icon name="check" size={14} bold />}{label}</button>
   );
   return (
     <fieldset className="field" data-invalid={invalid || undefined} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10 }}>
@@ -459,7 +459,7 @@ export function QuestionField({ q, value, invalid, onChange }: { q: Question; va
               const on = q.type === "multi_choice" ? list.includes(o) : value === o;
               return (
                 <button key={o} type="button" className="tab" aria-pressed={on} style={{ height: "var(--control)", padding: "0 14px" }} onClick={() => onChange(q.type === "multi_choice" ? (on ? list.filter((x) => x !== o) : [...list, o]) : o)}>
-                  {on && <Icon name="check" size={14} strokeWidth={2} />}{o}
+                  {on && <Icon name="check" size={14} bold />}{o}
                 </button>
               );
             })}

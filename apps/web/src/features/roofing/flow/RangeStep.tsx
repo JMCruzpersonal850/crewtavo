@@ -101,7 +101,7 @@ export function RangeStep({ quote, salesperson, canSell, refresh, onSend }: {
     return (
       <div className={styles.stepBody}>
         <div className={styles.yes} role="status">
-          <span className={styles.yesIcon} aria-hidden="true"><Icon name="check" size={16} strokeWidth={2} /></span>
+          <span className={styles.yesIcon} aria-hidden="true"><Icon name="check" size={16} bold /></span>
           <p>
             <strong>{Who} said yes{quote.range_accepted_at ? ` on ${dayText(quote.range_accepted_at, tz)}` : ""}.</strong> Book {rep ? `${rep}'s` : "the site"} visit.
           </p>

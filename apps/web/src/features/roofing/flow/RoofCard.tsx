@@ -47,7 +47,7 @@ export function RoofCard({ takeoff, picture, editLink, action }: { takeoff: Take
           <h3 className={styles.roofTitle}>
             {pitched ? (
               <>
-                <span className={styles.roofCheck} aria-hidden="true"><Icon name="check" size={14} strokeWidth={2} /></span>
+                <span className={styles.roofCheck} aria-hidden="true"><Icon name="check" size={14} bold /></span>
                 {fromReport ? "From a report" : "Measured"}: {formatNumber(values.roof_squares!, 1)} squares{pitch ? (pitch === "flat" ? ", flat" : ` at ${pitch}`) : ""}
               </>
             ) : (

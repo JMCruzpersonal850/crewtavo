@@ -136,7 +136,7 @@ export function PaperworkPage() {
 
             {sent.length > 0 && (
               <div className="card card-pad stack-sm" style={{ textAlign: "center", justifyItems: "center", padding: 28 }} role="status">
-                <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+                <span className="success-mark"><Icon name="check" size={30} bold /></span>
                 <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "var(--tracking-display)" }}>{t("Thanks, it's in")}</h1>
                 <p style={{ margin: 0 }}>{t.plural(sent.length, { one: "{company} got {list}. They'll check it and get in touch if anything's missing.", other: "{company} got {list}. They'll check them and get in touch if anything's missing." }, { company: data.company.name, list: getLocale() === "en" ? askingFor(sent.map((label) => ({ label }))) : sent.map((label) => t(label)).join(", ") })}</p>
                 {allSent && <Button variant="ghost" onClick={() => setSent([])}>{t("Send something else")}</Button>}

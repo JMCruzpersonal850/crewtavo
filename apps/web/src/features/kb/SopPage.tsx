@@ -200,7 +200,7 @@ export function SopPage() {
           <>
             {editor && reviewDue && <Button icon="check" loading={review.isPending} onClick={() => review.mutate()}>{t("Mark reviewed")}</Button>}
             {askToRead && (acknowledged ? (
-              <span className="pill" data-tone="success" style={{ height: "var(--control)", padding: "0 14px" }}><Icon name="check" size={14} strokeWidth={2} />{t("You've read this")}</span>
+              <span className="pill" data-tone="success" style={{ height: "var(--control)", padding: "0 14px" }}><Icon name="check" size={14} bold />{t("You've read this")}</span>
             ) : (
               <Button variant="primary" icon="check" loading={acknowledge.isPending} disabled={reads.isPending || quiz.isPending} onClick={confirmRead}>{t("I've read this")}</Button>
             ))}
@@ -262,7 +262,7 @@ export function SopPage() {
             {askToRead && !body.empty && (
               <section className="card card-pad guide-done no-print" aria-label={t("Confirm you've read it")}>
                 {acknowledged ? (
-                  <span className="row" style={{ gap: 8, color: "var(--green-dark)" }}><Icon name="check" size={16} strokeWidth={2} /><strong>{t("You've read this revision")}</strong></span>
+                  <span className="row" style={{ gap: 8, color: "var(--green-dark)" }}><Icon name="check" size={16} bold /><strong>{t("You've read this revision")}</strong></span>
                 ) : (
                   <>
                     <span className="stack-sm" style={{ gap: 2 }}>

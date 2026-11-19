@@ -163,7 +163,7 @@ export function SetupCard() {
       <div className="card">
         {list.map((s) => (
           <Link key={s.key} to={s.to} className={`card-row ${styles.step}`} data-done={s.done || undefined}>
-            <span className={styles.mark} aria-hidden="true">{s.done && <Icon name="check" size={12} strokeWidth={2} />}</span>
+            <span className={styles.mark} aria-hidden="true">{s.done && <Icon name="check" size={12} bold />}</span>
             <span className="grow" style={{ minWidth: 0 }}>
               <span className={styles.stepTitle}>
                 {s.title}

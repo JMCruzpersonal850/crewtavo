@@ -151,7 +151,7 @@ export function EquipmentPhotos({ photos, name }: { photos: EquipmentPhotoList; 
             {photos.photos.map((p) => (
               <div key={p.id} className="thumb">
                 {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.file_name ? `${name}: ${p.file_name}` : name} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
-                {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label="Remove photo" onClick={() => photos.remove(p)}><Icon name="x" size={12} strokeWidth={2} /></button>}
+                {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label="Remove photo" onClick={() => photos.remove(p)}><Icon name="x" size={12} bold /></button>}
               </div>
             ))}
             {Array.from({ length: photos.uploading }, (_, i) => <div key={`u${i}`} className="thumb" style={{ display: "grid", placeItems: "center" }}><span className="spinner" style={{ width: 20, height: 20, color: "var(--text-3)" }} /></div>)}

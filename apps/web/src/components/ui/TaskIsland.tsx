@@ -157,9 +157,9 @@ function TaskRow({ task, onCancel }: { task: Task; onCancel: () => void }) {
 
 /** A progress ring while it runs (spinning while there's no total yet), then a check, a stop or a cross. */
 function TaskMark({ task }: { task: Task }) {
-  if (task.status === "done") return <span className="task-mark" data-status="done"><Icon name="check" size={12} strokeWidth={2} /></span>;
-  if (task.status === "stopped") return <span className="task-mark" data-status="stopped"><Icon name="minus" size={12} strokeWidth={2} /></span>;
-  if (task.status === "failed") return <span className="task-mark" data-status="failed"><Icon name="x" size={12} strokeWidth={2} /></span>;
+  if (task.status === "done") return <span className="task-mark" data-status="done"><Icon name="check" size={12} bold /></span>;
+  if (task.status === "stopped") return <span className="task-mark" data-status="stopped"><Icon name="minus" size={12} bold /></span>;
+  if (task.status === "failed") return <span className="task-mark" data-status="failed"><Icon name="x" size={12} bold /></span>;
   const fraction = taskFraction(task);
   const circumference = 2 * Math.PI * 8;
   return (

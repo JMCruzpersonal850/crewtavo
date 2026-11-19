@@ -105,7 +105,7 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
           {shown?.map((p) => (
             <label key={p.id} className={styles.preset} data-selected={p.id === preset || undefined}>
               <input type="radio" name="preset" value={p.id} checked={p.id === preset} onChange={() => setPreset(p.id)} />
-              {p.id === preset && <span className={styles.check}><Icon name="check" size={12} strokeWidth={2} /></span>}
+              {p.id === preset && <span className={styles.check}><Icon name="check" size={12} bold /></span>}
               <strong>{p.name}</strong>
               <span className={styles.presetText}>{p.description}</span>
             </label>

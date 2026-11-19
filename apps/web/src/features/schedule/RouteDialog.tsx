@@ -143,7 +143,7 @@ export function RouteDialog({ date, crewId, crewName, onClose }: { date: string;
             <ol className="route-list" aria-label="Stops in order">
               {p.started.map((s) => (
                 <li key={s.id} className="route-stop" data-started>
-                  <span className="route-num"><Icon name="check" size={12} strokeWidth={2} /></span>
+                  <span className="route-num"><Icon name="check" size={12} bold /></span>
                   <span style={{ minWidth: 0 }}>
                     <strong>{s.title}</strong>
                     <span className="muted small" style={{ display: "block" }}>{statusText("visit", s.status)}{s.address ? ` · ${s.address}` : ""}</span>

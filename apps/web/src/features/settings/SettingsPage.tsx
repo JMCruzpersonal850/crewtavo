@@ -56,7 +56,7 @@ export function SettingsPage() {
               {g.items.map((item) =>
                 "tab" in item ? (
                   <button key={item.tab} type="button" className="nav-link" aria-current={tab === item.tab ? "page" : undefined} onClick={() => setParams({ tab: item.tab }, { replace: true })}>
-                    <Icon name={item.icon} />
+                    <Icon name={item.icon} filled={tab === item.tab} />
                     {t(item.label)}
                   </button>
                 ) : (

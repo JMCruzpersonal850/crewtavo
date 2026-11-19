@@ -281,7 +281,7 @@ export function SocialComposer({ open, onClose, state, post, start }: { open: bo
                           <div className="thumb">
                             {p.url && <img src={p.url} alt="" loading="lazy" />}
                             <button type="button" className="thumb-pick" aria-pressed={on} disabled={!on && picked.length >= MAX_PHOTOS} aria-label={`Photo from ${p.job_number != null ? `job #${p.job_number}` : "a client"}, ${formatDate(p.visit_on ?? p.created_at)}`} onClick={() => toggle(p.id)}>
-                              <span className="thumb-pick-badge"><Icon name="check" size={13} strokeWidth={3} /></span>
+                              <span className="thumb-pick-badge"><Icon name="check" size={13} bold /></span>
                             </button>
                           </div>
                           <span className="muted small ellipsis">{p.job_number != null ? `Job #${p.job_number} · ` : ""}{photoDay(p, tz)}</span>
@@ -472,7 +472,7 @@ function PhotoPreview({ photos, instagram, onRemove }: { photos: Array<Pick<Shar
         {photos.map((p, i) => (
           <div key={p.id} className="thumb" style={{ height: 150, aspectRatio: frame(p) ?? ratios[p.id] ?? 1, background: instagram ? pad : "var(--fill-2)", borderRadius: 8, flex: "none", display: "grid", placeItems: "center" }}>
             {p.url && <img src={p.url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} onLoad={(e) => { const img = e.currentTarget; setRatios((now) => ({ ...now, [p.id]: img.naturalWidth / img.naturalHeight })); }} />}
-            <button type="button" className="thumb-x" aria-label={`Take photo ${i + 1} off this post`} onClick={() => onRemove(p.id)}><Icon name="x" size={12} strokeWidth={2} /></button>
+            <button type="button" className="thumb-x" aria-label={`Take photo ${i + 1} off this post`} onClick={() => onRemove(p.id)}><Icon name="x" size={12} bold /></button>
           </div>
         ))}
       </div>

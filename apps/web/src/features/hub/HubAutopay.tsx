@@ -180,7 +180,7 @@ export function AutopayView({ token, data, hubFetch, back, onChanged }: { token:
       <>
         {top}
         <div className="hub-card hub-done" role="status">
-          <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+          <span className="success-mark"><Icon name="check" size={30} bold /></span>
           <h2>{title}</h2>
           <p>{text}</p>
           <Button onClick={back}>Back to your account</Button>
@@ -292,7 +292,7 @@ export function AutopayView({ token, data, hubFetch, back, onChanged }: { token:
           <li key={s.step} aria-current={s.step === current ? "step" : undefined} data-done={i < at || undefined}>
             {i < at ? (
               <button type="button" onClick={() => goTo(s.step)}>
-                <span className="hub-step-n"><Icon name="check" size={14} strokeWidth={2} /></span>
+                <span className="hub-step-n"><Icon name="check" size={14} bold /></span>
                 {s.label}
                 <span className="sr-only"> (done, go back)</span>
               </button>
