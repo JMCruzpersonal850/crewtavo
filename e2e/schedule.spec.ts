@@ -26,7 +26,8 @@ test("schedule a visit, then drag it to a new time on the Schedule", async ({ as
   // Any length, like Google Calendar: 50 minutes.
   await dialog.getByLabel("Ends").fill("09:50");
   await expect(dialog.getByText("50 min")).toBeVisible();
-  await expect(dialog.getByLabel("Crew", { exact: true })).toHaveValue(job.crewId);
+  // On a computer the crew is a list of its own (components/ui/Select): it shows the job's crew by name.
+  await expect(dialog.getByRole("combobox", { name: "Crew", exact: true })).toHaveText(/Paving crew/);
   await expectAccessible(page, "the visit dialog");
   await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
   await expect(dialog).toBeHidden();

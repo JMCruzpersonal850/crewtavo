@@ -10,6 +10,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { bandsKey } from "./snowData";
@@ -39,12 +40,12 @@ export function DepthRows({ rows, onChange, money, what, addLabel }: { rows: Dep
         <div key={i} className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <span className="muted small">Up to</span>
           <div className="input-group" style={{ width: 120 }}>
-            <input className="input" type="number" inputMode="decimal" min={0.1} max={100} step={0.1} value={r.upTo} onChange={(e) => set(i, { upTo: e.target.value })} placeholder="any" aria-label={`${what} ${i + 1}: up to how many inches`} />
+            <NumberInput className="input" inputMode="decimal" min={0.1} max={100} step={0.1} value={r.upTo} onChange={(e) => set(i, { upTo: e.target.value })} placeholder="any" aria-label={`${what} ${i + 1}: up to how many inches`} />
             <span className="addon addon-right addon-unit">in</span>
           </div>
           <div className="input-group" style={{ width: 130 }}>
             <span className="addon">{money ? "$" : "×"}</span>
-            <input className="input" type="number" inputMode="decimal" min={0} step={0.01} value={r.value} onChange={(e) => set(i, { value: e.target.value })} aria-label={`${what} ${i + 1}: ${money ? "price" : "times the push price"}`} />
+            <NumberInput className="input" inputMode="decimal" min={0} step={0.01} value={r.value} onChange={(e) => set(i, { value: e.target.value })} aria-label={`${what} ${i + 1}: ${money ? "price" : "times the push price"}`} />
           </div>
           <Button size="sm" variant="ghost" onClick={() => onChange(rows.filter((_, n) => n !== i))}>Remove</Button>
         </div>

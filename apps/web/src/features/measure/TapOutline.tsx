@@ -23,6 +23,7 @@ import { PAVING_ITEMS } from "@crewtavo/core/paving";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { toast } from "@/lib/toast";
 import { lotAt, lotsAndBuildingsIn } from "./buildings";
 import type { ImageryId } from "./imagery";
@@ -513,9 +514,9 @@ export function TapBanner({ tap }: { tap: TapOutline }) {
                       : <><strong>Tap the pavement</strong> to outline it as</>}
       </span>
       {mode !== "out" && (
-        <select className="select measure-edge" value={tap.item} onChange={(e) => tap.setItem(e.target.value)} aria-label="Outline as">
+        <Select className="select measure-edge" value={tap.item} onChange={(e) => tap.setItem(e.target.value)} aria-label="Outline as">
           {TAP_ITEMS.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-        </select>
+        </Select>
       )}
       <div className="segmented measure-tap-modes" role="group" aria-label="What taps do">
         <button type="button" aria-pressed={mode === "add"} onClick={() => tap.setMode("add")} title="Tap to outline, or to add to the outline">Add</button>

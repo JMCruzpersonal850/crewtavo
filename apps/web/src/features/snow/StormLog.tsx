@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -121,8 +122,8 @@ function StormRow({ storm: e }: { storm: Storm }) {
       <td>
         <span className="row" style={{ gap: 6 }}>
           <span className="input-group" style={{ width: 104 }}>
-            <input
-              className="input" type="number" inputMode="decimal" min={0} max={100} step={0.1} value={fell} placeholder="—" aria-label={`What fell at ${name(e)} on ${formatDate(e.snow_date)}, in inches`}
+            <NumberInput
+              className="input" inputMode="decimal" min={0} max={100} step={0.1} value={fell} placeholder="—" aria-label={`What fell at ${name(e)} on ${formatDate(e.snow_date)}, in inches`}
               onChange={(ev) => setFell(ev.target.value)} onBlur={() => changed && save.mutate()} onKeyDown={(ev) => ev.key === "Enter" && changed && save.mutate()}
             />
             <span className="addon addon-right addon-unit">in</span>

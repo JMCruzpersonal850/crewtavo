@@ -15,6 +15,8 @@ import { featureOn } from "@/components/shell/nav";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -151,7 +153,7 @@ function RuleDialog({ rule, services, calculator, onClose, onSave }: { rule: Wea
     <Dialog open onClose={onClose} title={rule ? "Edit weather rule" : "Add a weather rule"}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label="Work" hint={kind ? "Visits for jobs priced with the paving calculator that have this work are checked against the rule. Each calculator item says what kind of work it is in Paving → Calculator → Set up." : "Visits for jobs with this on them are checked against the rule."}>
-          <select className="select" value={work} onChange={(e) => setWork(e.target.value)}>
+          <Select className="select" value={work} onChange={(e) => setWork(e.target.value)}>
             <option value="">Every job</option>
             {missing && <option value={work}>{rule?.applies_to ?? "An item"} (not on your price list)</option>}
             {(calculator || kind) && (
@@ -164,12 +166,12 @@ function RuleDialog({ rule, services, calculator, onClose, onSave }: { rule: Wea
                 {offered.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </optgroup>
             ))}
-          </select>
+          </Select>
         </Field>
         <div className="form-grid">
           {LIMITS.map(([k, label, min, max]) => (
             <Field key={k} label={label} optional hint={k === "requires_dry_hours" ? "Rain likely during them, the visit day included, gets a warning." : undefined}>
-              <input className="input" type="number" min={min} max={max} step={k === "requires_dry_hours" ? 1 : "any"} value={limits[k]} onChange={(e) => setLimits({ ...limits, [k]: e.target.value })} />
+              <NumberInput className="input" min={min} max={max} step={k === "requires_dry_hours" ? 1 : "any"} value={limits[k]} onChange={(e) => setLimits({ ...limits, [k]: e.target.value })} />
             </Field>
           ))}
         </div>

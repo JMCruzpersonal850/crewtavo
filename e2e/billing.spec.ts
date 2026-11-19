@@ -37,7 +37,10 @@ test("invoice a job, send it, and record the payment", async ({ as, browser, dat
   await page.getByRole("button", { name: "Record payment" }).click();
   const payment = page.getByRole("dialog", { name: "Record payment" });
   await expect(payment.getByLabel("Amount")).toHaveValue("1250.00");
-  await payment.getByLabel("Method").selectOption("check");
+  // On a computer the method is a list of its own (components/ui/Select), not the browser's.
+  await payment.getByRole("combobox", { name: "Method" }).click();
+  await page.getByRole("option", { name: "Check" }).click();
+  await expect(payment.getByRole("combobox", { name: "Method" })).toHaveText(/Check/);
   await payment.getByLabel("Reference").fill("Check #4417");
   await expectAccessible(page, "the record payment dialog");
   await payment.getByRole("button", { name: "Record $1,250.00" }).click();

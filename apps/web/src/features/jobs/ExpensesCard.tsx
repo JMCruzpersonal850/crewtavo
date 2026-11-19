@@ -20,6 +20,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -371,9 +372,9 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
           <Field label={t("Date")} hint={read("date")}><input className="input" type="date" value={f.incurred_on} onChange={(e) => set("incurred_on", e.target.value)} required /></Field>
           <Field label={t("Vendor")} optional hint={read("vendor")}><input className="input" value={f.vendor} onChange={(e) => set("vendor", e.target.value)} maxLength={120} placeholder={t("Home Depot, quarry…")} /></Field>
           <Field label={t("Category")} hint={read("category")}>
-            <select className="select" value={f.category} onChange={(e) => set("category", e.target.value)}>
+            <Select className="select" value={f.category} onChange={(e) => set("category", e.target.value)}>
               {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{t(CATEGORY_NAMES[c] ?? c)}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label={t("Tax")} optional hint={read("tax") ?? t("Included in the amount.")}><span className="input-group"><span className="addon">$</span><input className="input" inputMode="decimal" style={{ paddingLeft: 22 }} value={f.tax} onChange={(e) => set("tax", e.target.value.replace(/[^0-9.]/g, ""))} /></span></Field>
           {!jobId && !draft?.job_id && (
@@ -399,10 +400,10 @@ export function ExpenseDialog({ jobId, expense, draft, onClose, onSaved }: { job
                     </span>
                     {lineTotal !== null && <span className="small tabular">{formatMoneyCents(lineTotal)}</span>}
                     {onJob && candidates.length > 0 && (
-                      <select className="select" style={{ width: "auto", maxWidth: 220 }} aria-label={t("Log {line} as", { line: l.description })} value={choices[i] ?? -1} onChange={(e) => setChoices(choices.map((c, n) => (n === i ? Number(e.target.value) : c)))}>
+                      <Select className="select" style={{ width: "auto", maxWidth: 220 }} aria-label={t("Log {line} as", { line: l.description })} value={choices[i] ?? -1} onChange={(e) => setChoices(choices.map((c, n) => (n === i ? Number(e.target.value) : c)))}>
                         <option value={-1}>{t("Not a material on this job")}</option>
                         {candidates.map((c, n) => <option key={n} value={n}>{c.name} ({c.unit}){c.estimated ? "" : t(" · price list")}</option>)}
-                      </select>
+                      </Select>
                     )}
                     {onJob && logMaterials && <LineAlreadyLogged plan={plan.lines[i]} again={Boolean(again[i])} onAgain={(on) => setAgain(lines.map((_, n) => (n === i ? on : Boolean(again[n]))))} />}
                   </div>

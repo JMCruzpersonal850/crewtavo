@@ -29,6 +29,7 @@ import { Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { EntityStatus } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap } from "@/lib/api";
 import { addDaysIso, addressLine, formatTime, todayIn } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
@@ -877,9 +878,9 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
       <span className="schedule-filter-label" aria-hidden="true">{label}</span>
       <span aria-hidden="true">{options.find(([v]) => v === value)?.[1] ?? options[0]?.[1]}</span>
       <Icon name="chevronDown" size={14} />
-      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+      <Select className="select-plain" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
         {options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -925,10 +926,10 @@ function ShiftDialog({ defaultDate, crews, allCrews, onClose }: { defaultDate: s
             <input ref={(el) => el?.setCustomValidity(fromDate && fromDate === toDate ? t("Pick a different day.") : "")} className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} required />
           </Field>
           <Field label={t("Crew")}>
-            <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+            <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
               {allCrews && <option value="">{t("All crews")}</option>}
               {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <FormError error={shift.error} />
@@ -973,10 +974,10 @@ function BulkVisitsDialog({ defaultDate, crews, onClose }: { defaultDate: string
         <div className="form-grid">
           <Field label={t("Date")}><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></Field>
           <Field label={t("Crew")}>
-            <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+            <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
               <option value="">{t("Each job's default crew")}</option>
               {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="row-between">

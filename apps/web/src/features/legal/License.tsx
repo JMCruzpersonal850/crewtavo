@@ -70,13 +70,16 @@ export function TermsText({ open = false }: { open?: boolean }) {
 
 /**
  * The license's notices (copyright, AGPL, no warranty, where the source is) and its full text: the
- * "Appropriate Legal Notices" the AGPL asks the app to show.
+ * "Appropriate Legal Notices" the AGPL asks the app to show. Beside them, the licenses of the
+ * open-source packages built into the app, which ask to go with every copy (apps/web/licenses.ts
+ * writes the file at each build).
  */
 export function LicenseNotice() {
   return (
     <div className="stack-sm" style={{ gap: 10 }}>
       <span className="muted small">
         Copyright (C) 2026 Joshua Viars. Crewtavo is free software under the GNU Affero General Public License, version 3, with the additional terms in its notice, and comes with no warranty. <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">Source code</a>
+        {" · "}<a href="/licenses.txt" target="_blank" rel="noopener noreferrer">Open-source licenses</a>
       </span>
       <details className="more-options">
         <summary>Read the notice and additional terms</summary>

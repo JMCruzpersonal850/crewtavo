@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useSession } from "@/lib/session";
@@ -296,9 +297,9 @@ function KeysForm({ app, initial, onSaved, onCancel }: { app: AppRow; initial: N
         <ol className="app-steps" style={{ gap: 14 }}>
           <li><div className="stack-sm" style={{ gap: 8 }}>
             <span>Pick where your Zoho account is. When you're in Zoho Books, the address shows it: <strong>books.zoho.eu</strong> is Europe.</span>
-            <select className="select" style={{ maxWidth: 260 }} value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Where your Zoho account is">
+            <Select className="select" style={{ maxWidth: 260 }} value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Where your Zoho account is">
               {ZOHO_REGIONS.map((r) => <option key={r.tld} value={r.tld}>{r.label} (books.{r.tld})</option>)}
-            </select>
+            </Select>
           </div></li>
           <li><div className="stack-sm" style={{ gap: 8 }}>
             <span>Open Zoho's API Console, click <strong>Add Client</strong> (or <strong>Get Started</strong>) and choose <strong>Server-based Applications</strong>.</span>

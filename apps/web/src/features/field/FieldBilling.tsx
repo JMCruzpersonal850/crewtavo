@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EntityStatus } from "@/components/ui/StatusPill";
 import { api, supabase, unwrap, unwrapOne } from "@/lib/api";
@@ -99,10 +100,10 @@ function AddWorkDialog({ choices, loading, toVisit, onClose, onAdd }: { choices:
       >
         <Field label={t("What")} requiredMessage={t("Choose what you added.")}>
           {loading ? <Skeleton height={44} radius={8} /> : (
-            <select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required autoFocus>
+            <Select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required autoFocus>
               <option value="">{choices?.length ? t("Choose from the price list…") : t("The price list isn't on this phone yet")}</option>
               {choices?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         <Field label={t("How many")} hint={item?.unit} requiredMessage={t("Enter how many.")}>

@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, SkeletonText } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { useSession } from "@/lib/session";
@@ -426,9 +427,9 @@ function FilesCard() {
         </fieldset>
         <label className="row wrap small" style={{ gap: 8 }}>
           <span>Each video can be up to</span>
-          <select className="input" style={{ width: "auto" }} value={f.videoMaxBytes} disabled={busy} onChange={(e) => save.mutate({ videoMaxBytes: Number(e.target.value) })}>
+          <Select className="input" style={{ width: "auto" }} value={f.videoMaxBytes} disabled={busy} onChange={(e) => save.mutate({ videoMaxBytes: Number(e.target.value) })}>
             {[...new Set([...VIDEO_SIZE_CHOICES, f.videoMaxBytes])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{formatBytes(n)}</option>)}
-          </select>
+          </Select>
         </label>
         <span className="muted small">
           A minute of phone video is often 100 MB or more, and each one is downloaded in full every time someone plays it. Other files can be up to 200 MB. Visit and quote photos are never

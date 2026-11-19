@@ -12,6 +12,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Menu } from "@/components/ui/Menu";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -164,10 +165,10 @@ function RateDialog({ payee, rate, onClose }: { payee: PayeeRef; rate: PayRate |
             {services.isPending ? (
               <Skeleton height={38} />
             ) : (
-              <select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required>
+              <Select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required>
                 <option value="">Choose a service from your price list</option>
                 {choices.map((s) => <option key={s.id} value={s.id}>{s.name}{s.unit ? ` (${s.unit})` : ""}</option>)}
-              </select>
+              </Select>
             )}
           </Field>
         )}

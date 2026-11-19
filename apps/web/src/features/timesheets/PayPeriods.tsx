@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -187,9 +188,9 @@ function MarkPaidDialog({ summary, people, onClose, onSaved }: { summary: Summar
     <Dialog open onClose={onClose} title="Mark paid" description={`${people.length} ${people.length === 1 ? "person" : "people"}, ${formatMoney(total)}. Record this after you've paid them: Crewtavo doesn't send money. Their time and piece pay in this period are then locked.`}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label="How they were paid">
-          <select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
+          <Select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
             {METHODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Reference" optional hint="A check number or your payroll run's ID."><input className="input" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={200} /></Field>
         <Field label="Paid on"><input className="input" type="date" value={paidOn} onChange={(e) => e.target.value && setPaidOn(e.target.value)} /></Field>

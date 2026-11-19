@@ -1,8 +1,8 @@
 /**
  * A machine's photos (public.equipment_photos): the machine, its VIN plate, the registration card,
  * damage. Anyone on the team adds them, as they log work; the person who added one or an equipment
- * manager takes it out, with Undo, and it goes to the Trash. Mirrors a visit's photos
- * (FieldVisitPage useVisitPhotos).
+ * manager takes it out, with Undo, and it goes to the Trash. A photo opens in the gallery with the
+ * others. Mirrors a visit's photos (FieldVisitPage useVisitPhotos).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ChangeEvent } from "react";
@@ -16,6 +16,7 @@ import { useSession } from "@/lib/session";
 import { startTask } from "@/lib/tasks";
 import { undoable } from "@/lib/undo";
 import { IN_TRASH } from "../drive/trash";
+import { galleryOf, usePhotoGallery } from "../files/PhotoGallery";
 import { managesEquipment } from "./equipmentData";
 
 interface Photo {
@@ -124,7 +125,10 @@ function PhotoInput({ photos }: { photos: EquipmentPhotoList }) {
 
 export function EquipmentPhotos({ photos, name }: { photos: EquipmentPhotoList; name: string }) {
   const grid = useListAnimation<HTMLDivElement>();
+  const gallery = usePhotoGallery();
   const empty = !photos.loading && !photos.photos.length && !photos.uploading;
+  const alt = (p: { file_name: string | null }) => (p.file_name ? `${name}: ${p.file_name}` : name);
+  const shown = galleryOf(photos.photos, alt);
   return (
     <section className="stack">
       <div className="section-head">
@@ -150,7 +154,7 @@ export function EquipmentPhotos({ photos, name }: { photos: EquipmentPhotoList; 
             {photos.loading && [0, 1, 2].map((i) => <Skeleton key={i} height={96} radius={8} />)}
             {photos.photos.map((p) => (
               <div key={p.id} className="thumb">
-                {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.file_name ? `${name}: ${p.file_name}` : name} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
+                {p.url ? <a href={p.url} target="_blank" rel="noreferrer" onClick={gallery.opener(shown, p.id, name)}><img src={p.url} alt={alt(p)} loading="lazy" /></a> : <span className="muted small">Unavailable</span>}
                 {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label="Remove photo" onClick={() => photos.remove(p)}><Icon name="x" size={12} bold /></button>}
               </div>
             ))}
@@ -158,6 +162,7 @@ export function EquipmentPhotos({ photos, name }: { photos: EquipmentPhotoList; 
           </div>
         )}
       </div>
+      {gallery.dialog}
     </section>
   );
 }

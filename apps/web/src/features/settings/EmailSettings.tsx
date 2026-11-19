@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { ErrorState } from "@/components/ui/States";
@@ -352,10 +353,10 @@ function ConnectForm({ existing, onRailway, onSaved, onCancel }: { existing: Mai
                   <Field label="Outgoing mail (SMTP) server"><input className="input" value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.example.com" required maxLength={200} spellCheck={false} /></Field>
                   <Field label="Port"><input className="input" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} placeholder="465" required maxLength={5} /></Field>
                   <Field label="Security">
-                    <select className="select" value={security} onChange={(e) => setSecurity(e.target.value as "tls" | "starttls")} required>
+                    <Select className="select" value={security} onChange={(e) => setSecurity(e.target.value as "tls" | "starttls")} required>
                       <option value="tls">SSL/TLS (usually port 465)</option>
                       <option value="starttls">STARTTLS (usually port 587)</option>
-                    </select>
+                    </Select>
                   </Field>
                   <Field label="Sign-in name" optional hint="Usually the email address."><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={fromEmail} maxLength={200} spellCheck={false} /></Field>
                 </div>

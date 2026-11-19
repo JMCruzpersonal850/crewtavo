@@ -14,6 +14,7 @@ import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -188,9 +189,9 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
         <div className="form-grid">
           <Field label="Form name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required /></Field>
           <Field label="Type">
-            <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <Select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
               {Object.entries(KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <Field label="Link" error={clash ? "Another form uses this link" : null} hint={`${window.location.origin}/book/${company.slug}/${finalSlug}`}>
@@ -213,9 +214,9 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
               <>
                 <div className="form-grid">
                   <Field label="Visit length" hint="How much time each booking takes on the schedule.">
-                    <select className="select" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+                    <Select className="select" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
                       {(LENGTHS.some(([m]) => m === minutes) ? LENGTHS : [...LENGTHS, [minutes, `${minutes} minutes`] as [number, string]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}
-                    </select>
+                    </Select>
                   </Field>
                   <Field label="Earliest booking, in days" hint="How many days ahead the first time offered is. 0 lets people book today.">
                     <input className="input" inputMode="numeric" value={leadDays} onChange={(e) => setLeadDays(e.target.value.replace(/\D/g, "").slice(0, 2))} />
@@ -224,10 +225,10 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
                     <input className="input" inputMode="numeric" value={mostADay} onChange={(e) => setMostADay(e.target.value.replace(/\D/g, "").slice(0, 2))} />
                   </Field>
                   <Field label="Who it books" hint={crewId ? "Times are offered when this crew is free." : "A time is offered only when nothing else on the schedule has it, so nobody is double-booked."}>
-                    <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+                    <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
                       <option value="">No crew: the whole schedule</option>
                       {(crews.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    </Select>
                   </Field>
                 </div>
                 <label className="row" style={{ gap: 12, alignItems: "flex-start" }}>
@@ -249,9 +250,9 @@ function FormEditor({ form, taken, onClose }: { form: FormRow | null; taken: str
             <div key={i} className="card" style={{ padding: 12, boxShadow: "none", background: "var(--fill)", display: "grid", gap: 8 }}>
               <div className="row">
                 <input className="input input-sm grow" value={q.label} onChange={(e) => setQ(i, { label: e.target.value })} placeholder="Question" maxLength={200} aria-label="Question" />
-                <select className="select input-sm" style={{ width: 170 }} value={q.type} onChange={(e) => setQ(i, { type: e.target.value as QType, options: ["choice", "multi_choice"].includes(e.target.value) ? q.options ?? ["Option 1"] : undefined })} aria-label="Answer type">
+                <Select className="select input-sm" style={{ width: 170 }} value={q.type} onChange={(e) => setQ(i, { type: e.target.value as QType, options: ["choice", "multi_choice"].includes(e.target.value) ? q.options ?? ["Option 1"] : undefined })} aria-label="Answer type">
                   {QTYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                </Select>
               </div>
               <div className="row wrap">
                 <label className="checkbox small"><input type="checkbox" checked={q.required} onChange={(e) => setQ(i, { required: e.target.checked })} />Required</label>

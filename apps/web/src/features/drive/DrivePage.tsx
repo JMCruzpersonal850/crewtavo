@@ -20,6 +20,7 @@ import googleLogo from "@/assets/apps/google.svg";
 import { featureOn } from "@/components/shell/nav";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Menu, type MenuEntry } from "@/components/ui/Menu";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -778,6 +779,14 @@ function FileIcon({ file, preview }: { file: Pick<DriveFile, "content_type" | "f
 function FileTable({ folders = [], files, where, caption }: { folders?: DriveFolder[]; files: DriveFile[]; where: "records" | "all" | null; caption: string }) {
   // Links for the pictures' previews (the rest make theirs when they're opened or downloaded).
   const links = usePlanLinks(previewable(files));
+  const a = useActions();
+  // A right-click, or a held finger, on a row: the same as its ⋯ menu.
+  const rowMenu = (target: Element) => {
+    const id = target.closest<HTMLElement>("tr[data-row]")?.dataset.row;
+    const file = files.find((f) => f.id === id);
+    const folder = folders.find((f) => f.id === id);
+    return file ? a.fileMenu(file) : folder ? a.folderMenu(folder) : null;
+  };
   return (
     <table className={`table table-stack ${styles.files}`}>
       <caption className="sr-only">{caption}</caption>
@@ -788,10 +797,10 @@ function FileTable({ folders = [], files, where, caption }: { folders?: DriveFol
           <th className={styles.actionsCol}><span className="sr-only">Actions</span></th>
         </tr>
       </thead>
-      <tbody>
+      <ContextMenu render={<tbody />} items={rowMenu}>
         {folders.map((f) => <FolderRow key={f.id} folder={f} where={Boolean(where)} />)}
         {files.map((f) => <FileRow key={f.id} file={f} where={where} preview={previewLink(f, links.data?.open)} />)}
-      </tbody>
+      </ContextMenu>
     </table>
   );
 }
@@ -801,7 +810,7 @@ function FolderRow({ folder, where }: { folder: DriveFolder; where: boolean }) {
   const inside = a.tree.children.get(folder.id)?.length ?? 0;
   const zone = `folder:${folder.id}`;
   return (
-    <tr className="row-link" data-drop={a.dropOn === zone || undefined} onClick={() => a.openFolder(folder.id)} {...a.dropProps(zone, { key: folder.id, target: { folder_id: folder.id }, where: folder.name })}>
+    <tr className="row-link" data-row={folder.id} data-drop={a.dropOn === zone || undefined} onClick={() => a.openFolder(folder.id)} {...a.dropProps(zone, { key: folder.id, target: { folder_id: folder.id }, where: folder.name })}>
       <td className={styles.nameCell}>
         <div className={styles.name}>
           <span className={styles.icon} data-kind="folder" aria-hidden="true"><Icon name="folder" size={18} /></span>
@@ -826,7 +835,7 @@ function FileRow({ file: f, where, preview }: { file: DriveFile; where: "records
   const folder = f.folder_id ? a.tree.byId.get(f.folder_id) : undefined;
   const stop = (e: MouseEvent) => e.stopPropagation();
   return (
-    <tr className="row-link" onClick={() => a.openFile(f)}>
+    <tr className="row-link" data-row={f.id} onClick={() => a.openFile(f)}>
       <td className={styles.nameCell}>
         <div className={styles.name}>
           <FileIcon file={f} preview={preview} />

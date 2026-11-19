@@ -4,12 +4,15 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { ClientLink } from "@/components/ui/ClientPreview";
 import { choose, confirm } from "@/components/ui/Confirm";
+import { RowMenu } from "@/components/ui/ContextMenu";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { archiveWithUndo, SelectAllCell, SelectCell, SelectionBar, useSelection } from "@/components/ui/Selection";
+import { Select } from "@/components/ui/Select";
+import { archiveWithUndo, SelectAllCell, SelectCell, SelectionBar, useHoldToPick, useSelection } from "@/components/ui/Selection";
 import { ListPageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { EntityStatus } from "@/components/ui/StatusPill";
@@ -39,7 +42,7 @@ const FILTERS = [
   { key: "archived", label: "Archived", states: ["archived"] },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
-const JOB_COLUMNS = "id, number, title, job_state, kind, default_crew_id, pricing, invoice_schedule, financials:job_financials(contract_total), lines:job_line_items(quantity, unit_price, discount_billing), client:clients(display_name), property:properties(line1, city), visits(id, status, scheduled_on)";
+const JOB_COLUMNS = "id, number, title, job_state, kind, default_crew_id, pricing, invoice_schedule, financials:job_financials(contract_total), lines:job_line_items(quantity, unit_price, discount_billing), client:clients(id, display_name), property:properties(line1, city), visits(id, status, scheduled_on)";
 const BELOW_COLUMNS = "profit_alert:job_profit_alerts!inner(below)";
 /** Below your margin lists jobs in every state but archived. */
 const BELOW_STATES = FILTERS.filter((f) => f.key !== "active" && f.key !== "archived").flatMap((f) => f.states);
@@ -130,6 +133,7 @@ export function JobsPage() {
 
   // Picking several: archiving them, pausing and resuming them, and setting their crew, as a job's menu and details do.
   const selection = useSelection(canSell ? (jobs.data?.rows ?? []).map((j) => j.id) : [], `${showBelow ? "below" : filter}|${kind}|${term}`);
+  const hold = useHoldToPick(selection);
 
   if (jobs.isPending) return <ListPageSkeleton columns={5} tabs={FILTERS.length} />;
   const rows = jobs.data?.rows ?? [];
@@ -198,11 +202,11 @@ export function JobsPage() {
             </button>
           )}
         </div>
-        <select className="select" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Job type">
+        <Select className="select" style={{ width: "auto" }} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} aria-label="Job type">
           <option value="">One-off and recurring</option>
           <option value="one_off">One-off only</option>
           <option value="recurring">Recurring only</option>
-        </select>
+        </Select>
       </div>
       {jobs.error && !jobs.data ? (
         <div className="card"><ErrorState error={jobs.error} onRetry={() => jobs.refetch()} /></div>
@@ -231,19 +235,19 @@ export function JobsPage() {
           )}
           <table className="table table-stack">
             <thead><tr>{canSell && <SelectAllCell selection={selection} label="Select all jobs on this page" />}<th>#</th><th>Job</th><th>Next visit</th>{canSell && <th className="num">Value</th>}<th>Status</th></tr></thead>
-            <tbody>
+            <RowMenu href={(id) => `/jobs/${id}`} selection={selection} {...(canSell ? hold : {})}>
               {rows.map((j) => {
                 const open = j.visits.filter((v) => !["completed", "cancelled"].includes(v.status));
                 const next = open.filter((v) => v.scheduled_on && v.scheduled_on >= today).sort((a, b) => a.scheduled_on!.localeCompare(b.scheduled_on!))[0];
                 const late = open.filter((v) => v.scheduled_on && v.scheduled_on < today).length;
                 const done = j.visits.filter((v) => v.status === "completed").length;
                 return (
-                  <tr key={j.id} className="row-link" data-selected={selection.has(j.id) || undefined} onClick={() => navigate(`/jobs/${j.id}`)}>
+                  <tr key={j.id} className="row-link" data-row={j.id} data-selected={selection.has(j.id) || undefined} onClick={() => navigate(`/jobs/${j.id}`)}>
                     {canSell && <SelectCell selection={selection} id={j.id} label={`Select job #${j.number}`} />}
                     <td className="muted tabular" style={{ width: 56 }}>#{j.number}</td>
                     <td>
                       <Link className="cell-link" to={`/jobs/${j.id}`} onClick={(e) => e.stopPropagation()}>{j.title}</Link>
-                      <div className="muted small">{j.client?.display_name}{j.property ? ` · ${j.property.line1}` : ""}</div>
+                      <div className="muted small">{j.client && <ClientLink id={j.client.id} name={j.client.display_name} />}{j.property ? ` · ${j.property.line1}` : ""}</div>
                     </td>
                     <td>
                       {next?.scheduled_on ? formatDate(next.scheduled_on) : <span className="muted">—</span>}
@@ -264,7 +268,7 @@ export function JobsPage() {
                   </tr>
                 );
               })}
-            </tbody>
+            </RowMenu>
           </table>
           <div className="list-foot">
             <span>{rows.length < total ? `Showing ${rows.length} of ${total}` : plural(rows.length, "job")}</span>
@@ -437,11 +441,11 @@ function AssignCrewDialog({ jobs, onClose, onDone }: { jobs: Array<{ id: string;
     <Dialog open onClose={onClose} title="Assign a crew" description={`For the ${plural(jobs.length, "job")} picked. New visits go to this crew.`}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (changing.length) assign.mutate(); }}>
         <Field label="Crew">
-          <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)} required>
+          <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)} required>
             <option value="" disabled>Choose a crew</option>
             <option value="none">No crew</option>
             {crews.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </Select>
         </Field>
         {crewId && changing.length < jobs.length && (
           <span className="muted small" role="status">

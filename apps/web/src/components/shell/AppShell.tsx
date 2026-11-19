@@ -1,11 +1,11 @@
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigation, useViewTransitionState } from "react-router-dom";
 import { supabase } from "@/lib/api";
 import { logoUrl } from "@/lib/files";
-import { usePresence } from "@/lib/motion";
 import { isSub, useSession } from "@/lib/session";
+import { setTheme, useTheme } from "@/lib/theme";
 import { prefetchScreens } from "@/routes";
 import { Face, initials } from "../ui/Avatar";
 import { Icon } from "../ui/Icon";
@@ -23,6 +23,9 @@ import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
 import { RestartBanner } from "./RestartBanner";
 import { getLocale, showScreenLang, t } from "@/lib/i18n";
+
+const loadMoreSheet = () => import("./MoreSheet");
+const MoreSheet = lazy(loadMoreSheet);
 
 /** The sidebar for this person: its groups, each under its name, and the links kept at its foot. */
 function useVisibleNav(): { groups: Array<{ label: string | null; items: NavItem[] }>; foot: NavItem[] } {
@@ -144,9 +147,11 @@ export function AppShell() {
   const tabs = mobileTabs(session);
   // A sub has My day, My jobs, My paperwork and their profile: no search, Create, messages or More.
   const sub = isSub(session);
-  // The More sheet stays a moment after it closes, to slide back down.
   const moreVisible = moreOpen && !sub;
-  const moreShown = usePresence(moreVisible);
+  // The More sheet is only put in the page once it's been opened, and its code fetched when the
+  // phone is idle (or as the button is touched), so the first tap opens it straight away.
+  const [moreUsed, setMoreUsed] = useState(false);
+  if (moreVisible && !moreUsed) setMoreUsed(true);
   // A sub on a sign-in Crewtavo made for them has no password: to get back in they ask for a code by
   // text or email, or, when neither goes out or their record has nothing to send it to, a new link
   // from the office. So they're asked first, and told how. (Someone's own account has its password.)
@@ -164,9 +169,16 @@ export function AppShell() {
   };
   const settings = settingsItem(session);
   const shownEmail = isPlaceholderEmail(session.profile.email) ? null : session.profile.email;
+  // Light or dark from the account menu too, as in Settings → Profile (where it's explained).
+  const theme = useTheme();
 
   useEffect(() => {
     prefetchScreens();
+    if (!sub && window.matchMedia("(max-width: 900px)").matches) {
+      const fetchSheet = () => void loadMoreSheet().catch(() => undefined);
+      if ("requestIdleCallback" in window) window.requestIdleCallback(fetchSheet, { timeout: 4000 });
+      else setTimeout(fetchSheet, 1500);
+    }
     try {
       sessionStorage.removeItem("crewtavo.chunk-reload");
     } catch {
@@ -280,6 +292,15 @@ export function AppShell() {
               { heading: session.profile.full_name || shownEmail || t("Account") },
               { label: t("Your profile"), icon: "user", onSelect: () => navigate("/settings?tab=profile") },
               { label: t("Settings"), icon: "settings", hidden: sub, onSelect: () => navigate("/settings") },
+              {
+                label: t("Appearance"),
+                icon: theme === "dark" ? "moon" : theme === "light" ? "sun" : "monitor",
+                items: (["light", "dark", "system"] as const).map((choice) => ({
+                  label: choice === "light" ? t("Light") : choice === "dark" ? t("Dark") : t("System"),
+                  checked: theme === choice,
+                  onCheckedChange: () => setTheme(choice),
+                })),
+              },
               { separator: true },
               { label: t("Sign out"), icon: "logout", onSelect: () => void signOut() },
             ]}
@@ -305,17 +326,16 @@ export function AppShell() {
           </NavLink>
         ))}
         {!sub && (
-          <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}>
+          <button type="button" onPointerDown={() => void loadMoreSheet().catch(() => undefined)} onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}>
             <Icon name="menu" size={20} />
             {t("More")}
           </button>
         )}
       </nav>
 
-      {moreShown && (
-        <>
-          <div className="sheet-backdrop" data-leaving={!moreVisible || undefined} onClick={() => setMoreOpen(false)} />
-          <div className="sheet" role="dialog" aria-label={t("All sections")} data-leaving={!moreVisible || undefined}>
+      {moreUsed && (
+        <Suspense fallback={null}>
+          <MoreSheet open={moreVisible} onOpenChange={setMoreOpen} label={t("All sections")}>
             <MobileCreate onDone={() => setMoreOpen(false)} />
             <nav className="nav">
               {[...groups.flatMap((g) => g.items), ...foot, settings].map((item) => (
@@ -330,8 +350,8 @@ export function AppShell() {
                 </NavLink>
               ))}
             </nav>
-          </div>
-        </>
+          </MoreSheet>
+        </Suspense>
       )}
 
       {!sub && <CommandPalette />}

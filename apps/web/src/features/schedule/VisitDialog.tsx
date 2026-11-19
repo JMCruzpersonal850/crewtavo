@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/States";
 import { statusText } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap, unwrapOne } from "@/lib/api";
 import { addDaysIso, formatDate, formatTime, todayIn } from "@/lib/format";
 import { shopPlace } from "@/lib/maps";
@@ -375,9 +376,9 @@ export function VisitDialog({ visit, onClose, onSaved }: { visit: VisitInput; on
             {isNew && canDispatch && (
               <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
                 <Field label="How many days" hint={days > 1 && validDate ? `${days} linked visits: ${workDays(date, days, skipped).map(shortDay).join(", ")}` : "Multi-day work becomes one visit per day."}>
-                  <select className="select" value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 120 }}>
+                  <Select className="select" value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ width: 120 }}>
                     {Array.from({ length: 14 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? "1 day" : `${n} days`}</option>)}
-                  </select>
+                  </Select>
                 </Field>
                 {days > 1 && (
                   <label className="switch-row" style={{ fontWeight: 400, paddingBottom: 26 }}>
@@ -399,16 +400,16 @@ export function VisitDialog({ visit, onClose, onSaved }: { visit: VisitInput; on
         <div className="form-grid">
           <Field label="Crew">
             {options.isPending ? <Skeleton height={38} radius={8} /> : (
-              <select className="select" value={crewId} onChange={(e) => chooseCrew(e.target.value)} disabled={!canDispatch}>
+              <Select className="select" value={crewId} onChange={(e) => chooseCrew(e.target.value)} disabled={!canDispatch}>
                 {!rights.ownCrew && <option value="">No crew</option>}
                 {crewChoices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </Select>
             )}
           </Field>
           <Field label="Status">
-            <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <Select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUSES.map((value) => <option key={value} value={value}>{statusText("visit", value)}{value === "unscheduled" ? " (no date yet)" : ""}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
 

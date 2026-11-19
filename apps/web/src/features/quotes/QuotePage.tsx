@@ -26,6 +26,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
 import { Button, cx } from "@/components/ui/Button";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
@@ -34,6 +35,7 @@ import { Menu } from "@/components/ui/Menu";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { BackLink, useDocumentTitle } from "@/components/ui/PageHeader";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { PageError } from "@/components/ui/States";
 import { EntityStatus } from "@/components/ui/StatusPill";
@@ -653,7 +655,7 @@ export function QuotePage() {
           </>
         )}
         <SaveStatus status={save.status} />
-        {q.client && <Link to={`/clients/${q.client.id}`} className="strong">{q.client.display_name}</Link>}
+        {q.client && <ClientPreview id={q.client.id}><Link to={`/clients/${q.client.id}`} className="strong">{q.client.display_name}</Link></ClientPreview>}
         {q.property && <span className="muted">{addressLine(q.property)}</span>}
       </div>
 
@@ -828,7 +830,7 @@ export function QuotePage() {
           {canSell && !isTemplate && templateRows.length > 1 && (
             <div className="card card-pad stack-sm">
               <label htmlFor="quote-template"><strong>Document style</strong></label>
-              <select
+              <Select
                 id="quote-template"
                 className="select"
                 value={templateId}
@@ -840,7 +842,7 @@ export function QuotePage() {
                 }}
               >
                 {templateRows.map((t) => <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (default)" : ""}</option>)}
-              </select>
+              </Select>
               <span className="muted small">{frozen ? "It keeps the look it was signed with." : "How it looks printed, as a PDF and on the client's link."}</span>
             </div>
           )}
@@ -1218,9 +1220,9 @@ function LostDialog({ onClose, onSave }: { onClose: () => void; onSave: (reason:
         }}
       >
         <Field label="Reason">
-          <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
+          <Select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
             {LOST_REASONS.map((r) => <option key={r}>{r}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Note" optional><input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} /></Field>
         <div className="form-actions">

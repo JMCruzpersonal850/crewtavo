@@ -16,6 +16,17 @@ import { autopayBankNote, bankPayment, bankPaymentNote, paidInStripe, paymentAmo
 // The company's settings, for the tests that need autopay on (it's off, with the starter $500 limit, otherwise).
 const company = vi.hoisted(() => ({ settings: {} as Record<string, unknown> }));
 
+// The page's ⋯ menu opens in a portal, which a render to HTML leaves out (Base UI), so its entries
+// are drawn as plain buttons here: these tests are about what the page offers, not the menu.
+vi.mock("../src/components/ui/Menu", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/components/ui/Menu")>();
+  type Entry = { label?: string; onSelect?: () => void; disabled?: boolean; title?: string; hidden?: boolean };
+  return {
+    ...actual,
+    Menu: ({ items }: { items: Entry[] }) =>
+      createElement("div", null, items.filter((i) => !i.hidden && i.onSelect).map((i) => createElement("button", { key: i.label, type: "button", disabled: i.disabled, title: i.title }, i.label))),
+  };
+});
 // The invoice page draws as an office user with the invoices area sees it, from data already loaded.
 vi.mock("../src/lib/session", () => ({
   useSession: () => ({

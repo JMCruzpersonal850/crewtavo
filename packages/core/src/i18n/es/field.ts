@@ -624,6 +624,16 @@ export default {
   "Save to this phone": "Guardar en este teléfono",
   "No signal: plans you saved to this phone are in its Files or Downloads.": "Sin señal: los planos que guardaste en este teléfono están en Archivos o Descargas.",
 
+  // The gallery a visit's photos open in (features/files/PhotoGallery.tsx, gallery.ts)
+  "{number} of {count}": "{number} de {count}",
+  "Photo {number} of {count}": "Foto {number} de {count}",
+  "Previous photo": "Foto anterior",
+  "Next photo": "Foto siguiente",
+  "Open full size": "Abrir en tamaño completo",
+  // What a screen reader calls the gallery and each photo in it
+  "carousel": "carrusel",
+  "slide": "diapositiva",
+
   // Sending an invoice from the field (features/quotes/SendDialog.tsx)
   "Quote #{number}": "Cotización #{number}",
   "Sent": "Enviado",

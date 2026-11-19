@@ -14,6 +14,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -158,9 +160,9 @@ export function CompanySettings() {
             <input className="input" value={f.privacy_url} onChange={set("privacy_url")} maxLength={PRIVACY_URL_MAX} placeholder="https://" />
           </Field>
           <Field label="Trade" hint="Picks your starter prices and terms. Paving and Roofing are apps: turn on either or both in Apps.">
-            <select className="select" value={f.trade} onChange={set("trade")}>
+            <Select className="select" value={f.trade} onChange={set("trade")}>
               {Object.values(PRESETS).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="field">
@@ -189,37 +191,37 @@ export function CompanySettings() {
         <strong>Defaults</strong>
         <div className="form-grid">
           <Field label="Time zone">
-            <select className="select" value={f.timezone} onChange={set("timezone")}>
+            <Select className="select" value={f.timezone} onChange={set("timezone")}>
               {timeZoneChoices(f.timezone).map((z) => <option key={z} value={z}>{z.replace(/_/g, " ")}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Currency" hint="Changing it doesn't convert amounts already saved.">
-            <select className="select" value={f.currency} onChange={set("currency")}>
+            <Select className="select" value={f.currency} onChange={set("currency")}>
               {!CURRENCIES.some((c) => c.code === f.currency) && <option value={f.currency}>{f.currency}</option>}
               {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Sales tax (%)"><input className="input" inputMode="decimal" value={f.default_tax_rate} onChange={(e) => setF({ ...f, default_tax_rate: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
-          <Field label="Invoice due after (days)" hint="0 means due on receipt. A client can have their own, on their page."><input className="input" type="number" min={0} max={365} value={f.payment_terms_days} onChange={set("payment_terms_days")} /></Field>
+          <Field label="Invoice due after (days)" hint="0 means due on receipt. A client can have their own, on their page."><NumberInput className="input" min={0} max={365} value={f.payment_terms_days} onChange={set("payment_terms_days")} /></Field>
           <Field label="Minimum charge" optional hint="An invoice under it gets a Minimum charge line that makes up the difference.">
             <input className="input" inputMode="decimal" value={f.minimum_charge} placeholder="Off" onChange={(e) => setF({ ...f, minimum_charge: e.target.value.replace(/[^0-9.]/g, "") })} />
           </Field>
           <Field label="Late fee" hint={f.late_fee === "off" ? "Added once to an invoice still unpaid after its due date." : `Added once, if it's still unpaid that many days after it's due. Late fees aren't taxed. You can take one off an invoice, or turn them off for it, on the invoice. ${LATE_FEE_LAW_NOTE}`}>
-            <select className="select" value={f.late_fee} onChange={set("late_fee")}>
+            <Select className="select" value={f.late_fee} onChange={set("late_fee")}>
               <option value="off">Off</option>
               <option value="flat">A flat amount</option>
               <option value="percent">A percent of what's owed</option>
-            </select>
+            </Select>
           </Field>
           {f.late_fee !== "off" && (
             <>
               <Field label={f.late_fee === "percent" ? "Late fee (%)" : "Late fee amount"}>
                 <input className="input" inputMode="decimal" value={f.late_fee_amount} onChange={(e) => setF({ ...f, late_fee_amount: e.target.value.replace(/[^0-9.]/g, "") })} required />
               </Field>
-              <Field label="Days after the due date"><input className="input" type="number" min={0} max={365} value={f.late_fee_days} onChange={set("late_fee_days")} /></Field>
+              <Field label="Days after the due date"><NumberInput className="input" min={0} max={365} value={f.late_fee_days} onChange={set("late_fee_days")} /></Field>
             </>
           )}
-          <Field label="Quotes valid for (days)"><input className="input" type="number" min={1} max={365} value={f.quote_valid_days} onChange={set("quote_valid_days")} /></Field>
+          <Field label="Quotes valid for (days)"><NumberInput className="input" min={1} max={365} value={f.quote_valid_days} onChange={set("quote_valid_days")} /></Field>
           <Field label="Workday starts"><input className="input" type="time" value={f.hours_start} onChange={set("hours_start")} /></Field>
           <Field label="Workday ends"><input className="input" type="time" value={f.hours_end} onChange={set("hours_end")} /></Field>
           <div className="field">
@@ -238,10 +240,10 @@ export function CompanySettings() {
             <span className="muted small">Find a time and clients moving a visit online only get these days.</span>
           </div>
           <Field label="Arrival window" hint="What clients are told in their portal and reminders, like “between 9:00 AM and 11:00 AM”.">
-            <select className="select" value={f.arrival_window_min} onChange={set("arrival_window_min")}>
+            <Select className="select" value={f.arrival_window_min} onChange={set("arrival_window_min")}>
               <option value="0">None: the start time</option>
               {[30, 60, 120, 180, 240].map((m) => <option key={m} value={m}>{m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? "s" : ""}`}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <label className="switch-row" style={{ fontWeight: 400 }}>
@@ -265,27 +267,27 @@ export function CompanySettings() {
         <strong>Time clock</strong>
         <div className="form-grid">
           <Field label="How the clock works" hint={CLOCK_MODE_HINTS[f.clock_mode as ClockMode]}>
-            <select className="select" value={f.clock_mode} onChange={set("clock_mode")}>
+            <Select className="select" value={f.clock_mode} onChange={set("clock_mode")}>
               {(Object.keys(CLOCK_MODE_LABELS) as ClockMode[]).map((m) => <option key={m} value={m}>{CLOCK_MODE_LABELS[m]}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="At the property" hint={f.geofence_mode === "off" ? GEOFENCE_MODE_HINTS.off : `${GEOFENCE_MODE_HINTS[f.geofence_mode as GeofenceMode]} ${GEOFENCE_NOTE}`}>
-            <select className="select" value={f.geofence_mode} onChange={set("geofence_mode")}>
+            <Select className="select" value={f.geofence_mode} onChange={set("geofence_mode")}>
               {(Object.keys(GEOFENCE_MODE_LABELS) as GeofenceMode[]).map((m) => <option key={m} value={m}>{GEOFENCE_MODE_LABELS[m]}</option>)}
-            </select>
+            </Select>
           </Field>
           {f.geofence_mode !== "off" && (
             <Field label="How close counts as there" hint="The phone compares where it is with the property's spot on the map itself. Where it was is saved only if the switch below is on.">
-              <select className="select" value={f.geofence_radius} onChange={set("geofence_radius")}>
+              <Select className="select" value={f.geofence_radius} onChange={set("geofence_radius")}>
                 {!RADII.includes(Number(f.geofence_radius)) && <option value={f.geofence_radius}>{radiusLabel(Number(f.geofence_radius))}</option>}
                 {RADII.map((m) => <option key={m} value={m}>{radiusLabel(m)}{m === GEOFENCE_RADIUS.default ? " (usual)" : ""}</option>)}
-              </select>
+              </Select>
             </Field>
           )}
           <Field label="Breaks" hint={BREAK_PAY_HINTS[f.breaks as BreakPay]}>
-            <select className="select" value={f.breaks} onChange={set("breaks")}>
+            <Select className="select" value={f.breaks} onChange={set("breaks")}>
               {(Object.keys(BREAK_PAY_LABELS) as BreakPay[]).map((b) => <option key={b} value={b}>{BREAK_PAY_LABELS[b]}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <label className="switch-row" style={{ fontWeight: 400 }}>

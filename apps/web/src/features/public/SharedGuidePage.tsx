@@ -6,9 +6,10 @@
  * unpublished or deleted, or whose link was swapped for a new one, says it isn't available.
  */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { CodeField } from "@/components/ui/CodeField";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { PrivacyFooter } from "@/components/ui/PrivacyLink";
@@ -200,6 +201,7 @@ function CodeGate({ token, company, was, onReader }: { token: string; company: B
   // The address this browser proved before, to type it once: its 30 days ran out, or this guide was sent to another.
   const [email, setEmail] = useState(was?.email ?? "");
   const [code, setCode] = useState("");
+  const codeId = useId();
   const [asked, setAsked] = useState<{ email: string; challenge: string } | null>(null);
   const ask = useMutation({
     // What went wrong is said under the field it's about.
@@ -237,14 +239,10 @@ function CodeGate({ token, company, was, onReader }: { token: string; company: B
       </div>
       {asked ? (
         <form className="stack" style={{ gap: 12 }} onSubmit={submitCode}>
-          <label className="stack-sm" style={{ gap: 6 }}>
-            <span className="strong small">Your code</span>
-            <input
-              className="input" style={{ fontSize: 22, letterSpacing: "0.3em", fontVariantNumeric: "tabular-nums", height: 52 }} autoFocus
-              type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={8} placeholder="000000" aria-label="The 6-digit code from the email"
-              value={code} onChange={(e) => { setCode(e.target.value.replace(/[^\d ]/g, "")); check.reset(); }}
-            />
-          </label>
+          <div className="stack-sm" style={{ gap: 6 }}>
+            <label htmlFor={codeId} className="strong small">The 6-digit code from the email</label>
+            <CodeField id={codeId} length={6} value={code} onChange={(next) => { setCode(next); check.reset(); }} autoFocus />
+          </div>
           <FormError error={check.error ?? ask.error} />
           <Button type="submit" variant="primary" size="lg" loading={check.isPending} disabled={code.replace(/\D/g, "").length < 6} style={{ background: "var(--brand)", color: "var(--on-brand)", borderColor: "var(--brand)" }}>Open the guide</Button>
           <div className="row wrap small" style={{ gap: 16 }}>

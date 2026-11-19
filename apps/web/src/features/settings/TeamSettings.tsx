@@ -14,6 +14,7 @@ import { TableSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { timeAgo } from "@/lib/format";
@@ -482,11 +483,11 @@ function levelHint(choice: string, roles: ReturnType<typeof useCompanyRoles>["da
 function RolePicker({ value, roles, viewerIsOwner, disabled, label, onChange }: { value: string; roles: ReturnType<typeof useCompanyRoles>["data"]; viewerIsOwner: boolean; disabled?: boolean; label: string; onChange: (choice: string) => void }) {
   const choices = roleChoices(roles, viewerIsOwner);
   return (
-    <select className="select input-sm" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+    <Select className="select input-sm" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={label}>
       {(["Your roles", "Built-in"] as const).map((g) => {
         const items = choices.filter((c) => c.group === g);
         return items.length ? <optgroup key={g} label={g}>{items.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</optgroup> : null;
       })}
-    </select>
+    </Select>
   );
 }

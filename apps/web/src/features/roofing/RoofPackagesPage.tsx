@@ -28,8 +28,10 @@ import { confirm } from "@/components/ui/Confirm";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SaveStatus, useSaveStatus, type SaveStatusHandle } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -365,9 +367,9 @@ function RangeCard({ save }: { save: SaveStatusHandle }) {
             <MoneyInput percent max={100} width={110} value={shown.pct} onSave={(v) => change({ range_pct: v })} />
           </Field>
           <Field label="Round to">
-            <select className="select" value={shown.round} onChange={(e) => change({ range_round: Number(e.target.value) })} disabled={saveRange.isPending}>
+            <Select className="select" value={shown.round} onChange={(e) => change({ range_round: Number(e.target.value) })} disabled={saveRange.isPending}>
               {RANGE_ROUNDING.map((r) => <option key={r} value={r}>{formatMoney(r)}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
       ) : (
@@ -810,10 +812,10 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
         )}
         {editable && roofing ? (
           <Field label="The roof" hint={roof ? `Priced by the square from the roof's measurements${roof.formula ? ` (${formulaWords(roof.formula)?.toLowerCase()})` : ""}.` : "Pick the service in your price list that prices this roof by the square."}>
-            <select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => e.target.value && run(savePackage, { patch: { roof_service_id: e.target.value } })}>
+            <Select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => e.target.value && run(savePackage, { patch: { roof_service_id: e.target.value } })}>
               {!pkg.roof_service_id && <option value="">Pick the roof…</option>}
               {(roofChoices.length ? roofChoices : services.filter((s) => s.active)).map((s) => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (turned off)"}</option>)}
-            </select>
+            </Select>
           </Field>
         ) : editable ? (
           <Field
@@ -821,14 +823,14 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
             optional
             hint={roof ? `Its price shows on the package's card${roof.formula ? `, measured: ${formulaWords(roof.formula)?.toLowerCase()}` : ""}.` : "What this package is mostly about, if there's one service. Its price shows on the package's card."}
           >
-            <select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => run(savePackage, { patch: { roof_service_id: e.target.value || null } })}>
+            <Select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => run(savePackage, { patch: { roof_service_id: e.target.value || null } })}>
               <option value="">None</option>
               {[...new Set(mainChoices.map((s) => s.category?.trim() || "Other"))].map((c) => (
                 <optgroup key={c} label={c}>
                   {mainChoices.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (turned off)"}</option>)}
                 </optgroup>
               ))}
-            </select>
+            </Select>
           </Field>
         ) : null}
       </div>
@@ -984,7 +986,7 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
             <p>{roofing ? "Priced from the measurements. Nobody has to type a number." : "On the estimate every time: measured ones fill in from the measurements, the rest start at the count you set."}</p>
           </div>
           {editable && addable.length > 0 && (
-            <select
+            <Select
               className={`select ${styles.addSelect}`}
               aria-label="Add from your price list"
               value=""
@@ -996,7 +998,7 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
                   {addable.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </optgroup>
               ))}
-            </select>
+            </Select>
           )}
         </div>
         {rows.length === 0 ? (
@@ -1194,7 +1196,7 @@ function TypicalRoofPart({ pkg, byId, prices, save }: { pkg: RoofPackage; byId: 
         {editable && (
           <label className={styles.squares}>
             Typical roof
-            <input className="input input-sm" type="number" inputMode="numeric" min={1} max={TYPICAL_SQUARES_MAX} step={1} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={saveDraft} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+            <NumberInput className="input input-sm" inputMode="numeric" min={1} max={TYPICAL_SQUARES_MAX} step={1} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={saveDraft} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
             squares
           </label>
         )}
@@ -1387,7 +1389,7 @@ function AlwaysRow({
           item && editable ? (
             <label className={styles.count}>
               Count it, starts at
-              <input className="input input-sm" type="number" inputMode="decimal" min={1} step={1} value={count} onChange={(e) => setCount(e.target.value)} onBlur={saveCount} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+              <NumberInput className="input input-sm" inputMode="decimal" min={1} step={1} value={count} onChange={(e) => setCount(e.target.value)} onBlur={saveCount} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
             </label>
           ) : (
             `Count it${item?.quantity ? ` (starts at ${item.quantity})` : ""}`

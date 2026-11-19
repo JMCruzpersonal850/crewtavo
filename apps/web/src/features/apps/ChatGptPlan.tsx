@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -221,10 +222,10 @@ export function ChatGptPlanCard({ where }: { where: "app" | "settings" }) {
           <span className="muted small">Whoever runs this Crewtavo server set the model to <strong>{plan.model}</strong> (OPENAI_MODEL), so it isn't picked here.</span>
         ) : (
           <div className="row wrap" style={{ gap: 8 }}>
-            <select className="select grow" style={{ maxWidth: 320 }} value={picked ?? ""} disabled={model.isPending} onChange={(e) => model.mutate(e.target.value)} aria-label="Model your ChatGPT plan uses">
+            <Select className="select grow" style={{ maxWidth: 320 }} value={picked ?? ""} disabled={model.isPending} onChange={(e) => model.mutate(e.target.value)} aria-label="Model your ChatGPT plan uses">
               {picked && !plan.models.some((m) => m.slug === picked) && <option value={picked}>{picked} (not listed anymore)</option>}
               {plan.models.map((m) => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
-            </select>
+            </Select>
             <Button icon="refresh" loading={models.isPending} onClick={() => models.mutate()}>Check for new models</Button>
           </div>
         )

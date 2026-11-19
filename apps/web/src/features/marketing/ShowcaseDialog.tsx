@@ -17,6 +17,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -211,9 +212,9 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
                       </div>
                       {pick ? (
                         <>
-                          <select className="select" style={{ minHeight: 32, padding: "2px 8px" }} value={pick.role} disabled={published} onChange={(e) => setPick(p.id, { role: e.target.value as ShowcaseRole })} aria-label="Before or after">
+                          <Select className="select" style={{ minHeight: 32, padding: "2px 8px" }} value={pick.role} disabled={published} onChange={(e) => setPick(p.id, { role: e.target.value as ShowcaseRole })} aria-label="Before or after">
                             {SHOWCASE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                          </select>
+                          </Select>
                           {p.marked_path && <label className="check-row small"><input type="checkbox" checked={pick.use_marked} disabled={published} onChange={(e) => setPick(p.id, { use_marked: e.target.checked })} />Drawn-on copy</label>}
                         </>
                       ) : (

@@ -11,6 +11,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { featureOn } from "@/components/shell/nav";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { confirm } from "@/components/ui/Confirm";
 import { Icon } from "@/components/ui/Icon";
 import { MapsLink } from "@/components/ui/MapsLink";
@@ -402,7 +403,7 @@ export function JobPage() {
       {/* The status (an active job's late, today, upcoming or unscheduled), who it's for and how often it repeats. The number is under Details, the address with the client. */}
       <div className="page-meta">
         <EntityStatus kind="job" status={j.job_state ?? j.status} />
-        {j.client && <Link to={`/clients/${j.client.id}`}>{j.client.display_name}</Link>}
+        {j.client && <ClientPreview id={j.client.id}><Link to={`/clients/${j.client.id}`}>{j.client.display_name}</Link></ClientPreview>}
         {j.kind === "recurring" && <span className="muted">{j.recurrence_rule ? repeatText(j.recurrence_rule) : "Recurring"}</span>}
         {/* Every client needs a card on file, and this one has none they agreed to that can be charged. */}
         {autopay.card_required && jobAutopay.data && !jobAutopay.data.onFile && !["completed", "archived"].includes(j.status) && <span className="chip chip-amber"><Icon name="card" size={12} />Card not set up</span>}

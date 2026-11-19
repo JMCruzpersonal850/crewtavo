@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { licenses } from "./licenses";
 
 // In development the API runs separately (`npm run dev:api` on :8787) and Vite proxies to it. In
 // production the server (apps/api/src/server.ts) serves both from one origin.
@@ -11,9 +12,11 @@ const API = process.env.CREWTAVO_API_URL ?? "http://localhost:8787";
  * across deploys, and they download in parallel with the app's own code. Matched by package name.
  */
 const VENDOR_CHUNKS: Record<string, RegExp> = {
-  react: /^(react|react-dom|scheduler|react-router|react-router-dom|@remix-run\/router|@tanstack\/[^/]+)$/,
+  // With React, the small helpers both the charts and Base UI's menus and tooltips use: in the charts'
+  // file (a library is put with the first that needs it), every page would download the charts too.
+  react: /^(react|react-dom|scheduler|react-router|react-router-dom|@remix-run\/router|@tanstack\/[^/]+|use-sync-external-store|react-is|reselect|clsx)$/,
   supabase: /^@supabase\//,
-  charts: /^(recharts|victory-vendor|d3-[^/]+|internmap|@reduxjs\/toolkit|react-redux|redux|redux-thunk|immer|reselect|decimal\.js-light|es-toolkit|eventemitter3|tiny-invariant)$/,
+  charts: /^(recharts|victory-vendor|d3-[^/]+|internmap|@reduxjs\/toolkit|react-redux|redux|redux-thunk|immer|decimal\.js-light|es-toolkit|eventemitter3|tiny-invariant)$/,
 };
 
 function vendorChunk(id: string): string | undefined {
@@ -23,7 +26,8 @@ function vendorChunk(id: string): string | undefined {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  // licenses.txt: the open-source packages in the build and their licenses, which the minified files don't carry.
+  plugins: [react(), licenses()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

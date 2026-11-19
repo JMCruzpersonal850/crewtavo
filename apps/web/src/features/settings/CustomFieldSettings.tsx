@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -153,9 +154,9 @@ function FieldDialog({ record, field, others, onClose, onSaved }: { record: Cust
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label="Name"><input className="input" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value.trimStart() })} required maxLength={CUSTOM_FIELD_LIMITS.label} placeholder="Gate code" /></Field>
         <Field label="Type" hint={field && f.type !== field.type ? "Values already filled in keep what was typed." : undefined}>
-          <select className="select" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as CustomFieldType })}>
+          <Select className="select" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as CustomFieldType })}>
             {TYPES.map(([t, label]) => <option key={t} value={t}>{label}</option>)}
-          </select>
+          </Select>
         </Field>
         {f.type === "choice" && <Field label="Choices" hint="Separated by commas."><input className="input" value={f.choices} onChange={(e) => setF({ ...f, choices: e.target.value })} placeholder="Heat pump, Furnace, Boiler" required /></Field>}
         {sent && (

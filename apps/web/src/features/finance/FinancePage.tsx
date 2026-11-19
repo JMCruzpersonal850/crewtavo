@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon, type IconName } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { StatusPill, statusText } from "@/components/ui/StatusPill";
@@ -255,9 +256,9 @@ function Overview({ range, openTab }: { range: Range; openTab: OpenTab }) {
                     <label className="metric-pick">
                       <i className="key" style={{ borderColor: figure === "invoiced" ? "var(--invoice)" : undefined }} aria-hidden />
                       <span className="sr-only">Figure to chart</span>
-                      <select value={figure} onChange={(e) => setFigure(e.target.value as Figure)}>
+                      <Select className="select-plain" value={figure} onChange={(e) => setFigure(e.target.value as Figure)}>
                         {Object.entries(FIGURES).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
-                      </select>
+                      </Select>
                       <Icon name="chevronDown" size={14} />
                     </label>
                     <div className="fin-hero-value">{formatMoney(totals[figure].now)}</div>

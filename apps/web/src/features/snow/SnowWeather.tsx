@@ -19,6 +19,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "rec
 import { CHART_MOTION, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/Chart";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Dialog } from "@/components/ui/Dialog";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
@@ -129,10 +130,10 @@ export function WeatherDialog({ sites, place, onPick, onClose }: { sites: Site[]
     <Dialog open onClose={onClose} title="Weather" size="xl" focusField={false} className={styles.dialog}>
       <div className={styles.body}>
         {places.length + (shop ? 1 : 0) > 1 && (
-          <select className="select" value={at ?? ""} onChange={(e) => onPick(e.target.value)} aria-label="Whose weather">
+          <Select className="select" value={at ?? ""} onChange={(e) => onPick(e.target.value)} aria-label="Whose weather">
             {shop && <option value={SHOP}>Your shop</option>}
             {places.map((s) => <option key={s.job_id} value={s.job_id}>{customer(s)}{s.job.property?.city ? ` · ${s.job.property.city}` : ""}</option>)}
-          </select>
+          </Select>
         )}
         {!at ? (
           <p className="muted">The weather is shown at your shop, once its address is in Settings → Company, and at a snow customer's property, once its address is on the map.</p>

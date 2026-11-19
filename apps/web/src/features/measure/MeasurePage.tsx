@@ -25,6 +25,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -1319,10 +1320,10 @@ export function MeasurePage() {
                             {row.kind === "Area" && section?.uncut_value !== undefined && <span className="muted small">{formatNumber(section.uncut_value)} sq ft before cutouts</span>}
                             {row.kind === "Cutout" && <span className="muted small">{row.value > 0 ? "Left out of the areas under it" : "Not over an area, so nothing comes off"}</span>}
                             {roofing && row.kind === "Length" && (
-                              <select className="select measure-edge" value={edge ?? ""} onChange={(e) => setEdge(row.id, e.target.value as RoofEdge | "")} aria-label={`Roof edge for ${nameOf(row.id)}`}>
+                              <Select className="select measure-edge" value={edge ?? ""} onChange={(e) => setEdge(row.id, e.target.value as RoofEdge | "")} aria-label={`Roof edge for ${nameOf(row.id)}`}>
                                 <option value="">Not a roof edge</option>
                                 {ROOF_EDGES.map((e) => <option key={e} value={e}>{EDGE_NAMES[e]}</option>)}
-                              </select>
+                              </Select>
                             )}
                             {showPitch && (
                               <button type="button" className="chip measure-pitch-chip" data-own={own ? true : undefined} data-steep={(riseOf(at) ?? 0) >= STEEP_FROM || undefined} onClick={() => setPitchFor(row.id)} aria-label={`Pitch for ${nameOf(row.id)}: ${at.trim() ? pitchLabel(at) : "not set"}. Change it`}>

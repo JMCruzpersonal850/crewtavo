@@ -3,13 +3,15 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { confirm } from "@/components/ui/Confirm";
+import { RowMenu } from "@/components/ui/ContextMenu";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { SelectAllCell, SelectCell, SelectionBar, useSelection } from "@/components/ui/Selection";
+import { SelectAllCell, SelectCell, SelectionBar, useHoldToPick, useSelection } from "@/components/ui/Selection";
 import { ListPageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { EntityStatus, statusText } from "@/components/ui/StatusPill";
@@ -75,7 +77,7 @@ export async function remindInChunks(
 
 /** How many invoices the list shows at first, and how many more each "Load more" brings. */
 const PAGE = 300;
-const LIST_COLUMNS = "id, number, kind, status, subject, issued_on, due_on, total, balance_due, client:clients(display_name)";
+const LIST_COLUMNS = "id, number, kind, status, subject, issued_on, due_on, total, balance_due, client:clients(id, display_name)";
 
 /** The invoices a tab shows: its statuses, narrowed by what was typed. `settled`: paid, written off or void. */
 export interface Showing { companyId: string; statuses: readonly string[]; term: string; settled: boolean }
@@ -196,6 +198,7 @@ function InvoicesPageScreen() {
   });
 
   const selection = useSelection(selectable ? rows.map((i) => i.id) : [], `${filter}|${term}`);
+  const hold = useHoldToPick(selection);
   const words = (verb: string, one = "invoice") => {
     const numbers = new Map(rows.map((i) => [i.id, i.number]));
     return { verb, one, many: `${one}s`, name: (id: string) => `#${numbers.get(id) ?? "?"}` };
@@ -329,15 +332,21 @@ function InvoicesPageScreen() {
           )}
           <table className="table table-stack">
             <thead><tr>{selectable && <SelectAllCell selection={selection} label="Select all invoices on this page" />}<th>#</th><th>Client</th><th>Due</th><th className="num">Total</th><th className="num">Balance</th><th>Status</th></tr></thead>
-            <tbody>
+            <RowMenu href={(id) => `/invoices/${id}`} selection={selection} {...(selectable ? hold : {})}>
               {rows.map((i) => {
                 const late = i.due_on && Number(i.balance_due) > 0 && i.status !== "draft" && i.status !== "written_off" && i.due_on < today;
                 return (
-                  <tr key={i.id} className="row-link" data-selected={selection.has(i.id) || undefined} onClick={() => navigate(`/invoices/${i.id}`)}>
+                  <tr key={i.id} className="row-link" data-row={i.id} data-selected={selection.has(i.id) || undefined} onClick={() => navigate(`/invoices/${i.id}`)}>
                     {selectable && <SelectCell selection={selection} id={i.id} label={`Select invoice #${i.number}`} />}
                     <td className="muted tabular" style={{ width: 56 }}>#{i.number}</td>
                     <td>
-                      <Link className="cell-link" to={`/invoices/${i.id}`} onClick={(e) => e.stopPropagation()}>{i.client?.display_name}</Link>
+                      {i.client ? (
+                        <ClientPreview id={i.client.id}>
+                          <Link className="cell-link" to={`/invoices/${i.id}`} onClick={(e) => e.stopPropagation()}>{i.client.display_name}</Link>
+                        </ClientPreview>
+                      ) : (
+                        <Link className="cell-link" to={`/invoices/${i.id}`} onClick={(e) => e.stopPropagation()} />
+                      )}
                       <div className="muted small">{i.subject}{i.kind !== "standard" ? ` · ${i.kind === "visits" ? "visits" : i.kind}` : ""}</div>
                     </td>
                     <td className={late ? "text-danger strong" : undefined}>{i.due_on ? formatDate(i.due_on) : <span className="muted">On receipt</span>}</td>
@@ -347,7 +356,7 @@ function InvoicesPageScreen() {
                   </tr>
                 );
               })}
-            </tbody>
+            </RowMenu>
           </table>
           <div className="list-foot">
             <div className="row" style={{ gap: 12 }}>

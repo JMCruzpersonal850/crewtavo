@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { useSession } from "@/lib/session";
@@ -83,10 +84,10 @@ export function SubDialog({ sub, onClose, onSaved }: { sub: Sub | null; onClose:
           <Field label="Mobile phone" optional hint={phoneNote?.text ?? SUB_PHONE_HINT}><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: formatPhoneTyping(e.target.value) })} maxLength={30} autoComplete="off" /></Field>
           <Field label="Email" optional><input className="input" type="email" value={f.email} onChange={set("email")} maxLength={254} autoComplete="off" /></Field>
           <Field label="Tax classification" optional hint="Box 3 on their W-9.">
-            <select className="select" value={f.tax_classification} onChange={set("tax_classification")}>
+            <Select className="select" value={f.tax_classification} onChange={set("tax_classification")}>
               <option value="">Not set</option>
               {TAX_CLASSIFICATIONS.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <details className="more-options" open={Boolean(sub && (a.line1 || a.city || sub.notes)) || undefined}>
@@ -191,9 +192,9 @@ export function DocumentDialog({
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (datesOk) save.mutate(); }}>
         {!doc && choices.length > 1 && (
           <Field label="What is it">
-            <select className="select" value={f.kind} onChange={set("kind")}>
+            <Select className="select" value={f.kind} onChange={set("kind")}>
               {choices.map((k) => <option key={k} value={k}>{subDocumentLabel(k)}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         {!doc && (

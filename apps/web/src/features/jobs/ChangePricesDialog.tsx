@@ -20,6 +20,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { errorMessage } from "@/lib/errors";
@@ -164,22 +165,22 @@ export function ChangePricesDialog({ picked, onClose, onChanged }: { picked: rea
           )}
           <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
             <Field label="With this service" optional>
-              <select className="select" value={serviceId} onChange={(e) => edit(setServiceId)(e.target.value)}>
+              <Select className="select" value={serviceId} onChange={(e) => edit(setServiceId)(e.target.value)}>
                 <option value="">Any service</option>
                 {services.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Client tag" optional>
-              <select className="select" value={tag} onChange={(e) => edit(setTag)(e.target.value)}>
+              <Select className="select" value={tag} onChange={(e) => edit(setTag)(e.target.value)}>
                 <option value="">Any tag</option>
                 {tags.data?.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Crew" optional>
-              <select className="select" value={crewId} onChange={(e) => edit(setCrewId)(e.target.value)}>
+              <Select className="select" value={crewId} onChange={(e) => edit(setCrewId)(e.target.value)}>
                 <option value="">Any crew</option>
                 {crews.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <span className="muted small">Only active repeating jobs are changed{scope === "picked" ? ", so a one-off job you ticked is passed over" : ""}. One-off jobs keep their prices.</span>
@@ -203,15 +204,15 @@ export function ChangePricesDialog({ picked, onClose, onChanged }: { picked: rea
           </div>
           <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
             <Field label="Lines">
-              <select className="select" value={lineServiceId} onChange={(e) => edit(setLineServiceId)(e.target.value)}>
+              <Select className="select" value={lineServiceId} onChange={(e) => edit(setLineServiceId)(e.target.value)}>
                 <option value="">All lines</option>
                 {services.data?.map((s) => <option key={s.id} value={s.id}>Only {s.name} lines</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Round new prices">
-              <select className="select" value={round} onChange={(e) => edit(setRound)(e.target.value as PriceRounding)}>
+              <Select className="select" value={round} onChange={(e) => edit(setRound)(e.target.value as PriceRounding)}>
                 {ROUNDING_CHOICES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <span className="muted small">

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
@@ -226,17 +227,17 @@ function ReplaceForm({ links, services, item, onBack, onDone }: { links: Service
       <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
         {units.length > 1 && (
           <Field label="Priced by the">
-            <select className="select" value={uom} onChange={(e) => { setUom(e.target.value); setAmounts(Object.fromEntries(links.map((l) => [l.id, amountFor(l, e.target.value)]))); }}>
+            <Select className="select" value={uom} onChange={(e) => { setUom(e.target.value); setAmounts(Object.fromEntries(links.map((l) => [l.id, amountFor(l, e.target.value)]))); }}>
               {units.map((u) => <option key={u.code} value={u.code}>{u.name}{u.role === "stocking" ? " (how it's ordered)" : ""}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         {item.dimensional && (
           <Field label="Length">
-            <select className="select" required value={chosenLength ?? ""} onChange={(e) => setLength(Number(e.target.value) || null)} disabled={!lengths.length}>
+            <Select className="select" required value={chosenLength ?? ""} onChange={(e) => setLength(Number(e.target.value) || null)} disabled={!lengths.length}>
               {!lengths.length && <option value="">{detail.isPending ? "Loading lengths…" : "No lengths listed"}</option>}
               {lengths.map((l) => <option key={l} value={l}>{formatNumber(l, 2)} ft</option>)}
-            </select>
+            </Select>
           </Field>
         )}
       </div>

@@ -11,6 +11,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { BackLink, PageHeader, useDocumentTitle } from "@/components/ui/PageHeader";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
@@ -58,9 +59,9 @@ function YearEnd() {
           <>
             <label className="select-pill">
               <Icon name="calendar" size={14} />
-              <select value={year} onChange={(e) => setParams({ year: e.target.value }, { replace: true })} aria-label="Year">
+              <Select className="select-plain" value={year} onChange={(e) => setParams({ year: e.target.value }, { replace: true })} aria-label="Year">
                 {(choices.includes(year) ? choices : [year, ...choices]).map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
+              </Select>
               <Icon name="chevronDown" size={14} />
             </label>
             <Button icon="download" loading={csv.isPending} disabled={!d?.subs.length} onClick={() => csv.mutate()}>Download CSV</Button>

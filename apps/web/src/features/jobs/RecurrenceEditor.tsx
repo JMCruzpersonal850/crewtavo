@@ -7,6 +7,8 @@
  */
 import { buildSimpleRule, occurrenceDates, parseRule, parseSimpleRule, ruleDay, scheduleText, type SimpleRepeat } from "@crewtavo/core/recurrence";
 import { useMemo, useState } from "react";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { addDaysIso, formatDate, formatDay, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
@@ -63,11 +65,11 @@ export function RecurrenceEditor({ value, onChange }: { value: Recurrence; onCha
         <div className="field">
           <span>Repeats every</span>
           <div className="row" style={{ gap: 6 }}>
-            <select className="select" aria-label="How many" value={parsed.interval} onChange={(e) => set({ interval: Number(e.target.value) })}>
+            <Select className="select" aria-label="How many" value={parsed.interval} onChange={(e) => set({ interval: Number(e.target.value) })}>
               {/* One saved with a longer gap (through the API) keeps it. */}
               {Array.from({ length: Math.max(most, parsed.interval) }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <select
+            </Select>
+            <Select
               className="select"
               aria-label="Days, weeks or months"
               value={parsed.freq}
@@ -77,7 +79,7 @@ export function RecurrenceEditor({ value, onChange }: { value: Recurrence; onCha
               }}
             >
               {(Object.keys(UNITS) as Array<keyof typeof UNITS>).map((f) => <option key={f} value={f}>{UNITS[f][0]}{parsed.interval === 1 ? "" : "s"}</option>)}
-            </select>
+            </Select>
           </div>
         </div>
         <label className="field">
@@ -86,7 +88,7 @@ export function RecurrenceEditor({ value, onChange }: { value: Recurrence; onCha
         </label>
         <label className="field">
           <span>Ends</span>
-          <select
+          <Select
             className="select"
             value={ends}
             onChange={(e) => {
@@ -98,7 +100,7 @@ export function RecurrenceEditor({ value, onChange }: { value: Recurrence; onCha
             <option value="never">Never</option>
             <option value="date">On a date</option>
             <option value="count">After a number of visits</option>
-          </select>
+          </Select>
         </label>
         {ends === "date" && (
           <label className="field">
@@ -109,7 +111,7 @@ export function RecurrenceEditor({ value, onChange }: { value: Recurrence; onCha
         {ends === "count" && (
           <label className="field">
             <span>Visits</span>
-            <input className="input" type="number" inputMode="numeric" min={1} max={MAX_VISITS} value={parsed.count ?? 10} onChange={(e) => set({ count: Math.min(MAX_VISITS, Math.max(1, Math.round(Number(e.target.value)) || 1)) })} required />
+            <NumberInput className="input" inputMode="numeric" min={1} max={MAX_VISITS} value={parsed.count ?? 10} onChange={(e) => set({ count: Math.min(MAX_VISITS, Math.max(1, Math.round(Number(e.target.value)) || 1)) })} required />
           </label>
         )}
       </div>
@@ -139,17 +141,17 @@ export function RecurrenceEditor({ value, onChange }: { value: Recurrence; onCha
             </div>
             {parsed.weekday ? (
               <>
-                <select className="select" aria-label="Which week" value={parsed.weekday.week} onChange={(e) => set({ weekday: { ...parsed.weekday!, week: Number(e.target.value) } })} style={{ width: "auto" }}>
+                <Select className="select" aria-label="Which week" value={parsed.weekday.week} onChange={(e) => set({ weekday: { ...parsed.weekday!, week: Number(e.target.value) } })} style={{ width: "auto" }}>
                   {WEEKS.map(([n, label]) => <option key={n} value={n}>{label}</option>)}
-                </select>
-                <select className="select" aria-label="Day of the week" value={parsed.weekday.day} onChange={(e) => set({ weekday: { ...parsed.weekday!, day: e.target.value } })} style={{ width: "auto" }}>
+                </Select>
+                <Select className="select" aria-label="Day of the week" value={parsed.weekday.day} onChange={(e) => set({ weekday: { ...parsed.weekday!, day: e.target.value } })} style={{ width: "auto" }}>
                   {DAYS.map(([key, , name]) => <option key={key} value={key}>{name}</option>)}
-                </select>
+                </Select>
               </>
             ) : (
-              <select className="select" aria-label="Day of the month" value={parsed.monthDay} onChange={(e) => set({ monthDay: Number(e.target.value) })} style={{ width: "auto" }}>
+              <Select className="select" aria-label="Day of the month" value={parsed.monthDay} onChange={(e) => set({ monthDay: Number(e.target.value) })} style={{ width: "auto" }}>
                 {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              </Select>
             )}
           </div>
         </div>

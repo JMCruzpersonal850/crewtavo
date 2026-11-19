@@ -11,6 +11,8 @@ import { Link } from "react-router-dom";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -60,9 +62,9 @@ export function ScheduleSettings() {
       <div className="card card-pad stack">
         <strong>Calendar</strong>
         <Field label="Time steps" hint="Dragging a visit on the schedule snaps to this. You can always type any time, like 9:03, and any length.">
-          <select className="select" value={f.timeStep} onChange={(e) => set("timeStep", Number(e.target.value))} style={{ maxWidth: 360 }}>
+          <Select className="select" value={f.timeStep} onChange={(e) => set("timeStep", Number(e.target.value))} style={{ maxWidth: 360 }}>
             {TIME_STEPS.map((s) => <option key={s} value={s}>{STEP_LABELS[s]}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
 
@@ -101,10 +103,10 @@ export function ScheduleSettings() {
         </label>
         <div className="form-grid">
           <Field label="Average driving speed (mph)" hint="For drive times. Around 25–35 in town.">
-            <input className="input" type="number" inputMode="numeric" min={5} max={80} value={f.speedMph} onChange={(e) => set("speedMph", Number(e.target.value))} />
+            <NumberInput className="input" inputMode="numeric" min={5} max={80} value={f.speedMph} onChange={(e) => set("speedMph", Number(e.target.value))} />
           </Field>
           <Field label="Unload and load at each stop (minutes)" hint="Added between stops, on top of each visit's length.">
-            <input className="input" type="number" inputMode="numeric" min={0} max={120} value={f.setupMin} onChange={(e) => set("setupMin", Number(e.target.value))} />
+            <NumberInput className="input" inputMode="numeric" min={0} max={120} value={f.setupMin} onChange={(e) => set("setupMin", Number(e.target.value))} />
           </Field>
         </div>
       </div>

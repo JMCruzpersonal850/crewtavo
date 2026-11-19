@@ -9,6 +9,7 @@ import { previousRange } from "@crewtavo/core/reports";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { formatNumber } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { Breakdown, Change, ReportCard, ReportTable, TrendChart } from "../finance/Charts";
@@ -84,9 +85,9 @@ export function WebsiteSection() {
                     <label className="metric-pick">
                       <i className="key" aria-hidden />
                       <span className="sr-only">Figure to chart</span>
-                      <select value={figure} onChange={(e) => setFigure(e.target.value as Figure)}>
+                      <Select className="select-plain" value={figure} onChange={(e) => setFigure(e.target.value as Figure)}>
                         {Object.entries(FIGURES).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
-                      </select>
+                      </Select>
                       <Icon name="chevronDown" size={14} />
                     </label>
                     <div className="fin-hero-value">{count(totals.now[figure])}</div>

@@ -5,10 +5,15 @@
  * does), or anything to "Lost". A quote that offers options (quote_options) is approved from its own
  * page, where the office says which option they chose; until it's signed, its value here is its
  * cheapest option's (quotes/options.ts listPrice), as on the quotes list.
+ *
+ * Once a move is saved and the board reads again, the card glides from its old column to its new one
+ * and the cards around it close up or make room (Motion's layout animations), unless the person
+ * prefers less motion.
  */
 import type { Json } from "@crewtavo/core/database";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type DragEvent } from "react";
+import { LazyMotion, MotionConfig, domMax, m } from "motion/react";
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { confirm } from "@/components/ui/Confirm";
 import { Icon } from "@/components/ui/Icon";
@@ -64,6 +69,11 @@ const COLUMNS: Array<{ key: ColumnKey; label: string; statuses: string[]; kind: 
 ];
 
 const daysOld = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+
+/** The same card in whichever column it's in, so Motion can carry it from one to the other. */
+const cardKey = (c: Pick<Card, "kind" | "id">) => `${c.kind}-${c.id}`;
+/** Settles quickly with a small overshoot, like the app's other springs (lib/spring.ts). */
+const GLIDE = { type: "spring", bounce: 0.18, visualDuration: 0.38 } as const;
 
 export function PipelinePage() {
   const { company, profile } = useSession();
@@ -169,11 +179,17 @@ export function PipelinePage() {
   });
 
   const cards = data.data?.cards ?? [];
+  // The cards on the board when it last drew: one new to it (a quote just started) fades in, while one
+  // that only changed column glides there. Nothing fades in the first time the board draws.
+  const drawn = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (data.data) drawn.current = new Set(data.data.cards.map(cardKey));
+  }, [data.data]);
   const openValue = cards.reduce((s, c) => s + (c.value ?? 0), 0);
   const winRate = data.data && data.data.won.count + data.data.lost.count ? Math.round((data.data.won.count / (data.data.won.count + data.data.lost.count)) * 100) : null;
 
   return (
-    <>
+    <BoardMotion>
       <BackLink to="/quotes">Quotes</BackLink>
       <PageHeader title="Sales board" />
       {data.data && (
@@ -188,7 +204,8 @@ export function PipelinePage() {
       {data.isPending ? (
         <Loading><div className="board">{COLUMNS.map((c) => <div key={c.key} className="board-col"><Skeleton width="60%" height={14} />{[0, 1].map((i) => <Skeleton key={i} height={70} radius={8} />)}</div>)}</div></Loading>
       ) : (
-        <div className="board">
+        // The board scrolls sideways, so Motion measures its scroll too.
+        <m.div className="board" layoutScroll>
           {COLUMNS.map((col) => {
             const items = cards.filter((c) => c.kind === col.kind && col.statuses.includes(c.status)).sort((a, b) => a.updated.localeCompare(b.updated));
             const total = items.reduce((s, c) => s + (c.value ?? 0), 0);
@@ -201,44 +218,47 @@ export function PipelinePage() {
                 </div>
                 {items.map((c) => {
                   const age = daysOld(c.updated);
+                  const card = cardKey(c);
                   return (
-                    <Link
-                      key={c.id}
-                      to={`/${c.kind === "quote" ? "quotes" : "requests"}/${c.id}`}
-                      className="deal"
-                      draggable
-                      data-dragging={dragging?.id === c.id || undefined}
-                      data-stale={age >= 7 || undefined}
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", c.id);
-                        setDragging(c);
-                      }}
-                      onDragEnd={() => {
-                        setDragging(null);
-                        setOver(null);
-                      }}
-                    >
-                      <span className="d-title">{c.title}</span>
-                      <span className="muted small ellipsis">{c.client}</span>
-                      <span className="d-meta">
-                        <span>{c.status === "changes_requested" ? <span className="text-danger strong">{statusText("quote", c.status)}</span> : `#${c.number}`}</span>
-                        <span style={age >= 14 ? { color: "var(--danger)", fontWeight: 600 } : age >= 7 ? { color: "var(--warning)", fontWeight: 600 } : undefined}>{age === 0 ? "Today" : `${age} ${age === 1 ? "day" : "days"}`}</span>
-                      </span>
-                      {c.value != null && (
-                        <span className="d-value">
-                          {c.from ? `From ${formatMoney(c.value)}` : formatMoney(c.value)}
-                          {c.options > 0 && <span className="muted small" style={{ fontWeight: 600, overflowWrap: "anywhere" }}> · {optionsNote(c.status, c.options, c.option)}</span>}
+                    // A wrapper carries the motion: Motion would take the link's own (HTML) drag events as its gestures.
+                    <m.div key={card} layout="position" layoutId={card} transition={GLIDE} initial={drawn.current && !drawn.current.has(card) ? { opacity: 0, scale: 0.96 } : false} animate={{ opacity: 1, scale: 1 }}>
+                      <Link
+                        to={`/${c.kind === "quote" ? "quotes" : "requests"}/${c.id}`}
+                        className="deal"
+                        draggable
+                        data-dragging={dragging?.id === c.id || undefined}
+                        data-stale={age >= 7 || undefined}
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", c.id);
+                          setDragging(c);
+                        }}
+                        onDragEnd={() => {
+                          setDragging(null);
+                          setOver(null);
+                        }}
+                      >
+                        <span className="d-title">{c.title}</span>
+                        <span className="muted small ellipsis">{c.client}</span>
+                        <span className="d-meta">
+                          <span>{c.status === "changes_requested" ? <span className="text-danger strong">{statusText("quote", c.status)}</span> : `#${c.number}`}</span>
+                          <span style={age >= 14 ? { color: "var(--danger)", fontWeight: 600 } : age >= 7 ? { color: "var(--warning)", fontWeight: 600 } : undefined}>{age === 0 ? "Today" : `${age} ${age === 1 ? "day" : "days"}`}</span>
                         </span>
-                      )}
-                    </Link>
+                        {c.value != null && (
+                          <span className="d-value">
+                            {c.from ? `From ${formatMoney(c.value)}` : formatMoney(c.value)}
+                            {c.options > 0 && <span className="muted small" style={{ fontWeight: 600, overflowWrap: "anywhere" }}> · {optionsNote(c.status, c.options, c.option)}</span>}
+                          </span>
+                        )}
+                      </Link>
+                    </m.div>
                   );
                 })}
                 {items.length === 0 && <span className="muted small" style={{ padding: "4px 2px" }}>Nothing here</span>}
               </section>
             );
           })}
-        </div>
+        </m.div>
       )}
       {dragging && (
         <div className="card row" style={{ justifyContent: "center", padding: 16, borderStyle: "dashed", borderColor: over === "lost" ? "var(--danger)" : undefined, background: over === "lost" ? "var(--danger-tint)" : undefined, color: "var(--danger)", fontWeight: 600, position: "sticky", bottom: 16, transition: "background 150ms" }} {...zone("lost")}>
@@ -246,6 +266,15 @@ export function PipelinePage() {
         </div>
       )}
       {sending && <SendDialog kind="quote" id={sending.id} number={sending.number} email={sending.email} phone={sending.phone} onClose={() => setSending(null)} onSent={refresh} />}
-    </>
+    </BoardMotion>
+  );
+}
+
+/** Motion for the board: its layout animations (domMax, since the smaller domAnimation set has none), still when the person prefers less motion. */
+function BoardMotion({ children }: { children: ReactNode }) {
+  return (
+    <MotionConfig reducedMotion="user">
+      <LazyMotion features={domMax}>{children}</LazyMotion>
+    </MotionConfig>
   );
 }

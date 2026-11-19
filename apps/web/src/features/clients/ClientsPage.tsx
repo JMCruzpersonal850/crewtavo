@@ -5,12 +5,14 @@ import { useDeferredValue, useEffect, useId, useState, type FormEvent } from "re
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
+import { RowMenu } from "@/components/ui/ContextMenu";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { archiveWithUndo, SelectAllCell, SelectCell, SelectionBar, useSelection } from "@/components/ui/Selection";
+import { Select } from "@/components/ui/Select";
+import { archiveWithUndo, SelectAllCell, SelectCell, SelectionBar, useHoldToPick, useSelection } from "@/components/ui/Selection";
 import { ListPageSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { EntityStatus } from "@/components/ui/StatusPill";
@@ -149,6 +151,7 @@ export function ClientsPage() {
   const isFiltered = Boolean(term || tag || filter !== "all");
   const rows = data?.rows ?? [];
   const selection = useSelection(rows.map((c) => c.id), `${filter}|${term}|${tag}|${sort}`);
+  const hold = useHoldToPick(selection);
   const picked = rows.filter((c) => selection.has(c.id));
   const words = (verb: string) => {
     const names = new Map(rows.map((c) => [c.id, c.display_name]));
@@ -219,15 +222,15 @@ export function ClientsPage() {
           ))}
         </div>
         {!!tags.data?.length && (
-          <select className="select" style={{ width: "auto" }} value={tag} onChange={(e) => setTag(e.target.value)} aria-label="Filter by tag">
+          <Select className="select" style={{ width: "auto" }} value={tag} onChange={(e) => setTag(e.target.value)} aria-label="Filter by tag">
             <option value="">Any tag</option>
             {tags.data.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          </Select>
         )}
-        <select className="select" style={{ width: "auto", marginLeft: "auto" }} value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort">
+        <Select className="select" style={{ width: "auto", marginLeft: "auto" }} value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort">
           <option value="name">Name A–Z</option>
           <option value="newest">Newest first</option>
-        </select>
+        </Select>
       </div>
 
       {clients.error && !data ? (
@@ -276,9 +279,9 @@ export function ClientsPage() {
               <thead>
                 <tr>{canEdit && <SelectAllCell selection={selection} label="Select all clients on this page" />}<th>Name</th><th>Contact</th><th>Service address</th><th>Tags</th><th>Status</th></tr>
               </thead>
-              <tbody>
+              <RowMenu href={(id) => `/clients/${id}`} selection={selection} {...(canEdit ? hold : {})}>
                 {data.rows.map((c) => (
-                  <tr key={c.id} className="row-link" data-selected={selection.has(c.id) || undefined} onClick={() => navigate(`/clients/${c.id}`)}>
+                  <tr key={c.id} className="row-link" data-row={c.id} data-selected={selection.has(c.id) || undefined} onClick={() => navigate(`/clients/${c.id}`)}>
                     {canEdit && <SelectCell selection={selection} id={c.id} label={`Select ${c.display_name}`} />}
                     <td>
                       <Link className="cell-link" to={`/clients/${c.id}`} onClick={(e) => e.stopPropagation()}>{c.display_name}</Link>
@@ -305,7 +308,7 @@ export function ClientsPage() {
                     <td><EntityStatus kind="client" status={c.status} /></td>
                   </tr>
                 ))}
-              </tbody>
+              </RowMenu>
             </table>
             <div className="list-foot">
               <span>Showing {data.rows.length} of {data.total}</span>
@@ -400,16 +403,16 @@ function AutopayInvitesDialog({ onClose }: { onClose: () => void }) {
       <form onSubmit={submit}>
         <div className="form-grid">
           <Field label="Who">
-            <select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <Select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
               <option value="">All active clients not on autopay</option>
               {tags.data?.map((t) => <option key={t} value={t}>Active clients tagged {t}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Send by">
-            <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as "email" | "sms")}>
+            <Select className="select" value={channel} onChange={(e) => setChannel(e.target.value as "email" | "sms")}>
               <option value="email" disabled={!features.email}>Email</option>
               <option value="sms" disabled={!features.sms}>Text</option>
-            </select>
+            </Select>
           </Field>
         </div>
         <span className="muted small" role="status">
@@ -467,9 +470,9 @@ function TagClientsDialog({ mode, clients, onClose, onDone }: { mode: "add" | "r
               <datalist id={listId}>{known.data?.map((t) => <option key={t} value={t} />)}</datalist>
             </>
           ) : (
-            <select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <Select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
               {present.map((t) => <option key={t} value={t}>{t} · {plural(clients.filter((c) => has(c, t)).length, "client")}</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         {name && left > 0 && (

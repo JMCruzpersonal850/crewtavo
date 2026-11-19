@@ -13,6 +13,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -187,9 +188,9 @@ export function RoleDialog({ role, existing, storage, onClose }: { role: Company
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(grants ? password : ""); setPassword(""); }}>
         <Field label="Name" requiredMessage="Give the role a name."><input className="input" value={name} onChange={(e) => { setName(e.target.value); save.reset(); }} maxLength={60} placeholder="e.g. Foreman" required autoFocus /></Field>
         <Field label="Access level" hint={LEVEL_SUMMARY[level]}>
-          <select className="select" value={level} onChange={(e) => changeLevel(e.target.value as Role)}>
+          <Select className="select" value={level} onChange={(e) => changeLevel(e.target.value as Role)}>
             {LEVELS.map((l) => <option key={l} value={l}>{ROLE_LABELS[l]}</option>)}
-          </select>
+          </Select>
         </Field>
         {allowed.length > 0 ? (
           <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
@@ -207,10 +208,10 @@ export function RoleDialog({ role, existing, storage, onClose }: { role: Company
           <p className="muted small" style={{ margin: 0 }}>This level sees only their own visits and time.</p>
         )}
         <Field label="Job description" optional hint="The guide that says what this job is. It and every guide it links to are the job's training: people with this role have to read them all, and it shows how far each person is.">
-          <select className="select" value={guideId} onChange={(e) => { setGuideId(e.target.value); save.reset(); }}>
+          <Select className="select" value={guideId} onChange={(e) => { setGuideId(e.target.value); save.reset(); }}>
             <option value="">None</option>
             {(guides.data?.pages ?? []).map((g) => <option key={g.id} value={g.id}>{g.title}{g.status === "draft" ? " (draft)" : ""}</option>)}
-          </select>
+          </Select>
         </Field>
         {storage && (
           <Field label="Storage limit for everyone with this role" optional hint="For each person with this role who has no limit of their own: it stops what they add to Drive, plans and guides. Leave it empty for no limit.">

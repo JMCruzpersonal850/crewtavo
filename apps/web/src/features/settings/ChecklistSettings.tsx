@@ -7,6 +7,7 @@ import { featureOn } from "@/components/shell/nav";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -173,18 +174,18 @@ function TemplateEditor({ template, services, onDelete }: { template: Template; 
             <div className="row">
               <span className="muted tabular small" style={{ width: 20 }}>{i + 1}</span>
               <input className="input input-sm grow" value={item.label} maxLength={200} placeholder="What should the crew check or record?" onChange={(e) => setItem(i, { label: e.target.value })} aria-label="Item label" />
-              <select className="select input-sm" style={{ width: 130 }} value={item.type} onChange={(e) => setItem(i, { type: e.target.value as Item["type"], options: e.target.value === "choice" ? item.options ?? ["Yes", "No"] : undefined })} aria-label="Item type">
+              <Select className="select input-sm" style={{ width: 130 }} value={item.type} onChange={(e) => setItem(i, { type: e.target.value as Item["type"], options: e.target.value === "choice" ? item.options ?? ["Yes", "No"] : undefined })} aria-label="Item type">
                 {TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </Select>
             </div>
             <div className="row wrap" style={{ paddingLeft: 28 }}>
               <label className="checkbox small"><input type="checkbox" checked={item.required} onChange={(e) => setItem(i, { required: e.target.checked })} />Required</label>
               {item.type === "choice" && <input className="input input-sm grow" value={(item.options ?? []).join(", ")} placeholder="Options, separated by commas" onChange={(e) => setItem(i, { options: e.target.value.split(",").map((o) => o.trim()) })} aria-label="Options" />}
-              <select className="select input-sm" style={{ maxWidth: 240 }} value={item.sop_page_id ?? ""} onChange={(e) => setItem(i, { sop_page_id: e.target.value || undefined })} aria-label="Guide for this item" title="Crews open this guide from the item on their visit">
+              <Select className="select input-sm" style={{ maxWidth: 240 }} value={item.sop_page_id ?? ""} onChange={(e) => setItem(i, { sop_page_id: e.target.value || undefined })} aria-label="Guide for this item" title="Crews open this guide from the item on their visit">
                 <option value="">No guide</option>
                 {(guides.data?.pages ?? []).map((g) => <option key={g.id} value={g.id}>{g.title}{g.status === "draft" ? " (draft: crews can't see it)" : ""}</option>)}
                 {item.sop_page_id && guides.data && !guides.data.pages.some((g) => g.id === item.sop_page_id) && <option value={item.sop_page_id}>A deleted guide</option>}
-              </select>
+              </Select>
               <span className="grow" />
               <Button size="sm" variant="ghost" icon="chevronUp" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)} />
               <Button size="sm" variant="ghost" icon="chevronDown" aria-label="Move down" disabled={i === t.items.length - 1} onClick={() => move(i, 1)} />
@@ -241,7 +242,7 @@ function ServicesPicker({ value, services, onChange, work, calculator, onWork }:
           ))}
         </div>
       )}
-      <select className="select" value="" disabled={!addable.length && !kinds.length} onChange={(e) => add(e.target.value)}>
+      <Select className="select" value="" disabled={!addable.length && !kinds.length} onChange={(e) => add(e.target.value)}>
         <option value="">{services.length ? "Add from your price list…" : "Your price list is empty"}</option>
         {kinds.length > 0 && (
           <optgroup label="Priced with the paving calculator">
@@ -253,7 +254,7 @@ function ServicesPicker({ value, services, onChange, work, calculator, onWork }:
             {addable.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </optgroup>
         ))}
-      </select>
+      </Select>
     </Field>
   );
 }

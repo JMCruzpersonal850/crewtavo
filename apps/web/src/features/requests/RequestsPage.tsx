@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { ClientLink } from "@/components/ui/ClientPreview";
 import { Icon } from "@/components/ui/Icon";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ListPageSkeleton } from "@/components/ui/Skeleton";
@@ -167,7 +168,7 @@ export function RequestsPage() {
                       </div>
                     )}
                   </td>
-                  <td>{r.client?.display_name ?? <span className="muted">—</span>}</td>
+                  <td>{r.client ? <ClientLink id={r.client.id} name={r.client.display_name} /> : <span className="muted">—</span>}</td>
                   <td>{memberName(team.data?.find((m) => m.user_id === r.assigned_to)) ?? <span className="muted">—</span>}</td>
                   <td title={formatDate(r.created_at)}>
                     {timeAgo(r.created_at)}

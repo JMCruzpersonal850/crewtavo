@@ -19,9 +19,12 @@ import { promoCodeOf, removedPromoWords } from "@crewtavo/core/promos";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/Button";
+import { Combobox, ComboboxPopup, usePickerLayer } from "@/components/ui/Combobox";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
+import { NumberInput } from "@/components/ui/NumberInput";
 import type { SaveStatusHandle } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { ApiError, errorMessage, isAuthError, isNetworkError, isRestarting } from "@/lib/errors";
@@ -406,71 +409,60 @@ export function LineItems({
   );
 }
 
-/** "Add from price list": a searchable list of services. */
-function ServicePicker({ services, loading, onPick }: { services: Array<{ id: string; name: string; unit: string; unit_price: number; category: string | null }>; loading: boolean; onPick: (id: string) => void }) {
-  const id = useId();
-  const panel = useRef<HTMLDivElement>(null);
+type PriceListService = { id: string; name: string; unit: string; unit_price: number; category: string | null };
+
+/**
+ * "Add from price list": its button opens a search of the services (Base UI's Combobox, with the
+ * search in the list). Type to narrow it, then click one, or use the arrow keys and Enter.
+ */
+function ServicePicker({ services, loading, onPick }: { services: PriceListService[]; loading: boolean; onPick: (id: string) => void }) {
   const button = useRef<HTMLButtonElement>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const [layer, place] = usePickerLayer();
   const [term, setTerm] = useState("");
-  const [index, setIndex] = useState(0);
   const matches = services.filter((s) => `${s.name} ${s.category ?? ""}`.toLowerCase().includes(term.trim().toLowerCase())).slice(0, 50);
 
-  useEffect(() => {
-    const p = panel.current;
-    if (!p) return;
-    const onToggle = (e: Event) => {
-      if ((e as Event & { newState: string }).newState !== "open") return;
-      const r = button.current!.getBoundingClientRect();
-      const below = r.bottom + 6 + 340 < window.innerHeight;
-      p.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - p.offsetWidth - 8))}px`;
-      // Opening upward: anchor the bottom edge so the panel stays next to the button as results shrink.
-      p.style.top = below ? `${r.bottom + 6}px` : "auto";
-      p.style.bottom = below ? "auto" : `${window.innerHeight - r.top + 6}px`;
-      setTerm("");
-      setIndex(0);
-      requestAnimationFrame(() => input.current?.focus());
-    };
-    p.addEventListener("toggle", onToggle);
-    return () => p.removeEventListener("toggle", onToggle);
-  }, []);
-
-  const pick = (serviceId: string) => {
-    panel.current?.hidePopover();
-    onPick(serviceId);
-  };
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setIndex((i) => Math.min(matches.length - 1, i + 1)); }
-    if (e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => Math.max(0, i - 1)); }
-    if (e.key === "Enter" && matches[index]) { e.preventDefault(); pick(matches[index].id); }
-  };
-
   return (
-    <>
-      {/* Outlined like the other ways to add: the page's next step is its only solid button. */}
-      <button ref={button} type="button" className="btn" popovertarget={id} disabled={loading && !services.length}>
+    <Combobox.Root<PriceListService>
+      items={matches}
+      filter={null}
+      value={null}
+      onValueChange={(s) => s && onPick(s.id)}
+      inputValue={term}
+      onInputValueChange={(next, { reason }) => reason !== "item-press" && setTerm(next)}
+      onOpenChange={(open) => {
+        if (!open) return;
+        place(button.current);
+        setTerm("");
+      }}
+      itemToStringLabel={(s) => s.name}
+      isItemEqualToValue={(a, b) => a.id === b.id}
+      autoHighlight
+    >
+      {/* Outlined like the other ways to add: the page's next step is its only solid button. Named
+          outright, as a combobox isn't named by the words in it the way a button is. */}
+      <Combobox.Trigger ref={button} className="btn" aria-label="Add from price list" disabled={loading && !services.length}>
         {loading ? <span className="spinner" style={{ width: 16, height: 16 }} /> : <Icon name="list" size={16} />}
         Add from price list
-      </button>
-      <div ref={panel} id={id} popover="auto" className="menu" style={{ width: 360, maxWidth: "calc(100vw - 16px)", padding: 0 }}>
-        <div className="input-group" style={{ padding: 8, borderBottom: "1px solid var(--divider)" }}>
-          <span className="addon" style={{ left: 18 }}><Icon name="search" size={14} /></span>
-          <input ref={input} className="input input-sm" value={term} onChange={(e) => { setTerm(e.target.value); setIndex(0); }} onKeyDown={onKeyDown} placeholder="Search your services" aria-label="Search services" />
+      </Combobox.Trigger>
+      <ComboboxPopup container={layer} className="picker-popup-search" label="Your price list">
+        <div className="picker-search">
+          <span className="addon"><Icon name="search" size={14} /></span>
+          <Combobox.Input className="input input-sm" placeholder="Search your services" aria-label="Search services" />
         </div>
-        <div style={{ maxHeight: 280, overflowY: "auto", padding: 4 }} role="listbox">
-          {matches.length === 0 && <div className="empty" style={{ padding: 16 }}>{services.length ? "No services match" : "Your price list is empty. Add services in Settings."}</div>}
-          {matches.map((s, i) => (
-            <button key={s.id} type="button" role="option" aria-selected={i === index} className="menu-item" style={{ height: "auto", padding: "8px 10px", background: i === index ? "var(--fill-2)" : undefined }} onMouseMove={() => setIndex(i)} onClick={() => pick(s.id)}>
+        <Combobox.Empty className="picker-empty">{services.length ? "No services match" : "Your price list is empty. Add services in Settings."}</Combobox.Empty>
+        <Combobox.List className="picker-list">
+          {(s: PriceListService) => (
+            <Combobox.Item key={s.id} value={s} className="menu-item picker-option" style={{ height: "auto", padding: "8px 10px" }}>
               <span className="grow" style={{ minWidth: 0 }}>
                 <span className="ellipsis" style={{ display: "block" }}>{s.name}</span>
                 {s.category && <span className="muted small">{s.category}</span>}
               </span>
               <span className="muted small tabular">{formatMoneyCents(s.unit_price)}/{s.unit}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </>
+            </Combobox.Item>
+          )}
+        </Combobox.List>
+      </ComboboxPopup>
+    </Combobox.Root>
   );
 }
 
@@ -493,8 +485,13 @@ function NumberField({ value, onCommit, onEdit, onUnchanged, label, step = "any"
   return (
     <span className={prefix ? "input-group" : undefined}>
       {prefix && <span className="addon">{prefix}</span>}
-      <input
-        className="input"
+      {/* A quantity has up and down buttons; a price, like MoneyInput, is typed (its column is too narrow for both). */}
+      <NumberInput
+        steppers={!prefix}
+        step="any"
+        min={0}
+        // How it's shown once left; commit does the rounding that's saved.
+        decimals={step === "0.01" ? 2 : 3}
         aria-label={label}
         aria-describedby={describedBy}
         inputMode="decimal"
@@ -505,7 +502,11 @@ function NumberField({ value, onCommit, onEdit, onUnchanged, label, step = "any"
           onEdit?.();
         }}
         onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        onKeyDown={(e) => {
+          // Never below zero, so a minus sign isn't typed at all.
+          if (e.key === "-") e.preventDefault();
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
         onFocus={(e) => e.target.select()}
         style={{ textAlign: align, paddingLeft: prefix ? 22 : undefined }}
       />
@@ -685,7 +686,7 @@ function LineRow({ table, line, editable, withOptions, showCosts, place, viewing
         <div className="opts">
           {promo && <span id={promoHint} className="muted">{promoCodeOf(line.name) ? `Set by promo code ${promoCodeOf(line.name)}.` : "Set by a promo code."} To take it off, remove the line.</span>}
           {place && (
-            <select
+            <Select
               className="select input-sm"
               style={{ width: "auto", maxWidth: "100%", fontSize: 12 }}
               aria-label="Which options it's on"
@@ -699,7 +700,7 @@ function LineRow({ table, line, editable, withOptions, showCosts, place, viewing
             >
               <option value="">On every option</option>
               {place.map((o) => <option key={o.id} value={o.id}>{placeName(o.id, place)}</option>)}
-            </select>
+            </Select>
           )}
           {withOptions && (
             <label>

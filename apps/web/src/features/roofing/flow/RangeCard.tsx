@@ -14,6 +14,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useSession } from "@/lib/session";
 import { firstName, money, type EstimateQuote } from "../estimate";
@@ -148,7 +149,7 @@ export function SalespersonSelect({ quoteId, value, disabled, label = "Site visi
         <label htmlFor={id}>{label}</label>
         <SaveStatus status={save.status} />
       </span>
-      <select id={id} className={`select ${styles.select}`} value={value ?? ""} disabled={disabled || set.isPending || team.isPending} onChange={(e) => void save.track(set.mutateAsync(e.target.value || null))}>
+      <Select id={id} className={`select ${styles.select}`} value={value ?? ""} disabled={disabled || set.isPending || team.isPending} onChange={(e) => void save.track(set.mutateAsync(e.target.value || null))}>
         <option value="">{team.isPending ? "Loading your team…" : "Pick who goes out"}</option>
         {people.map((p) => (
           <option key={p.id} value={p.id}>
@@ -157,7 +158,7 @@ export function SalespersonSelect({ quoteId, value, disabled, label = "Site visi
             {!p.active ? " (no longer on the team)" : ""}
           </option>
         ))}
-      </select>
+      </Select>
       {team.error && <span className="field-error" role="alert">Couldn't load your team. <button type="button" className="link-btn" onClick={() => team.refetch()}>Try again</button></span>}
     </div>
   );

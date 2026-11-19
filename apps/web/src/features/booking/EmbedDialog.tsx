@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { copyText } from "@/lib/clipboard";
 import { embedCode, nextEmbedCode } from "./embed";
 import styles from "./EmbedDialog.module.css";
@@ -102,9 +103,9 @@ export function EmbedDialog({ name, url, onClose }: { name: string; url: string;
           <span className="muted small">Paste it where the form should go. The form grows and shrinks to fit, and what people send comes in under Requests, the same as from the link.</span>
         </div>
         <Field label="Your website is on">
-          <select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
+          <Select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
             {BUILDERS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </select>
+          </Select>
         </Field>
         {builder.steps ? (
           <ol className={styles.steps} aria-label={`Steps for ${builder.label}`}>

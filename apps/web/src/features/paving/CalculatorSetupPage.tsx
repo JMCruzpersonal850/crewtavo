@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Icon } from "@/components/ui/Icon";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { hasRole, useSession } from "@/lib/session";
@@ -119,9 +120,9 @@ export function CalculatorSetupPage() {
               </label>
               <label className="field">
                 <span>How it's figured</span>
-                <select className="select" value={item.basis} onChange={(e) => setItem(item.id, { basis: e.target.value as Basis })}>
+                <Select className="select" value={item.basis} onChange={(e) => setItem(item.id, { basis: e.target.value as Basis })}>
                   {BASIS_IDS.map((b) => <option key={b} value={b}>{BASES[b].label}</option>)}
-                </select>
+                </Select>
               </label>
               <div className="field">
                 <span>Price</span>
@@ -208,10 +209,10 @@ function ItemExtras({ item, onChange }: { item: CalcItem; onChange: (change: Par
     <div className="calc-setup-extras">
       <label className="row small" style={{ gap: 6 }}>
         Weather rules and checklists treat it as
-        <select className="select input-sm" style={{ width: "auto" }} aria-label={`${item.name || "Item"}: the kind of work it is`} value={item.work ?? ""} onChange={(e) => onChange({ work: isPavingWork(e.target.value) ? e.target.value : null })}>
+        <Select className="select input-sm" style={{ width: "auto" }} aria-label={`${item.name || "Item"}: the kind of work it is`} value={item.work ?? ""} onChange={(e) => onChange({ work: isPavingWork(e.target.value) ? e.target.value : null })}>
           <option value="">Nothing in particular</option>
           {PAVING_WORK_IDS.map((w) => <option key={w} value={w}>{PAVING_WORK[w]}</option>)}
-        </select>
+        </Select>
       </label>
       {item.basis === "depth" && (
         <span className="row small" style={{ gap: 6 }}>

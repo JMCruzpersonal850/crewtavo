@@ -1,10 +1,13 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDeferredValue, useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { statusText } from "@/components/ui/StatusPill";
 import { TagInput } from "@/components/ui/TagInput";
@@ -101,9 +104,9 @@ function ClientFieldset({ value, onChange, clientId, current, error }: { value: 
           <datalist id="lead-sources">{LEAD_SOURCES.map((s) => <option key={s} value={s} />)}</datalist>
         </Field>
         <Field label="Status">
-          <select className="select" value={value.status} onChange={set("status")}>
+          <Select className="select" value={value.status} onChange={set("status")}>
             {(["lead", "active", "archived"] as const).map((s) => <option key={s} value={s}>{statusText("client", s)}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
       <Field label="Tags">
@@ -260,7 +263,7 @@ export function EditClientDialog({
           <h3>Invoices</h3>
           <div className="form-grid">
             <Field label="Due after (days)" optional hint={`Empty: your usual ${businessTerms === 0 ? "due on receipt" : `${businessTerms} days`}. 0 means due on receipt.`}>
-              <input className="input" type="number" min={0} max={365} value={terms} onChange={(e) => setTerms(e.target.value)} />
+              <NumberInput className="input" min={0} max={365} value={terms} onChange={(e) => setTerms(e.target.value)} />
             </Field>
             {exempt && <Field label="Exemption number or note" optional><input className="input" value={exemptNote} onChange={(e) => setExemptNote(e.target.value)} maxLength={200} placeholder="Certificate number" /></Field>}
           </div>
@@ -283,11 +286,19 @@ export function EditClientDialog({
 export type PickedClient = { id: string; display_name: string } | null;
 
 /** Search-as-you-type client chooser, with "create new" when nothing matches. */
+/** The "Create “…” as a new client" choice, last in the picker's list. */
+const CREATE_CLIENT = "create-client";
+type ClientChoice = { id: string; display_name: string; company_name?: string | null; email?: string | null; properties?: Array<{ line1: string }> };
+
+/**
+ * Search for a client and pick one, or add a new lead by name. The list stays open under the box
+ * (Base UI's Combobox, inline), so in a dialog or on a phone nothing floats over the form: type, then
+ * tap a row, or use the arrow keys and Enter. The first match is ready for Enter as you type.
+ */
 export function ClientPicker({ value, onChange, allowCreate = true }: { value: PickedClient; onChange: (c: PickedClient) => void; allowCreate?: boolean }) {
   const { company } = useSession();
   const queryClient = useQueryClient();
   const [term, setTerm] = useState("");
-  const [index, setIndex] = useState(0);
   const query = useDeferredValue(term.trim());
   const results = useQuery({
     queryKey: ["clients", company.id, "picker", query],
@@ -308,7 +319,6 @@ export function ClientPicker({ value, onChange, allowCreate = true }: { value: P
       onChange(c);
     },
   });
-  useEffect(() => setIndex(0), [query]);
   // After a pick, start fresh if the picker is shown again.
   useEffect(() => {
     if (value) setTerm("");
@@ -324,46 +334,63 @@ export function ClientPicker({ value, onChange, allowCreate = true }: { value: P
     );
   }
   const rows = results.data ?? [];
-  const canCreate = allowCreate && term.trim().length >= 2 && !rows.some((r) => r.display_name.toLowerCase() === term.trim().toLowerCase());
-  const total = rows.length + (canCreate ? 1 : 0);
-  const choose = (i: number) => {
-    if (i < rows.length) onChange({ id: rows[i].id, display_name: rows[i].display_name });
-    else if (canCreate) create.mutate(term.trim());
-  };
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setIndex((i) => Math.min(total - 1, i + 1)); }
-    if (e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => Math.max(0, i - 1)); }
-    if (e.key === "Enter") { e.preventDefault(); if (total) choose(index); }
+  const typed = term.trim();
+  const canCreate = allowCreate && typed.length >= 2 && !rows.some((r) => r.display_name.toLowerCase() === typed.toLowerCase());
+  const choices: ClientChoice[] = canCreate ? [...rows, { id: CREATE_CLIENT, display_name: typed }] : rows;
+  const choose = (c: ClientChoice | null) => {
+    if (!c) return;
+    if (c.id !== CREATE_CLIENT) onChange({ id: c.id, display_name: c.display_name });
+    else if (!create.isPending) create.mutate(typed);
   };
   return (
-    <div className="stack-sm">
-      <div className="input-group">
-        <span className="addon"><Icon name="search" size={16} /></span>
-        <input className="input" placeholder="Search by name, email or phone" value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={onKeyDown} aria-label="Search clients" autoComplete="off" />
+    <Combobox.Root<ClientChoice>
+      inline
+      open
+      items={choices}
+      // The search is the database's (textFilter above), so every row it sends is shown.
+      filter={null}
+      value={null}
+      onValueChange={choose}
+      inputValue={term}
+      onInputValueChange={(next, { reason }) => reason !== "item-press" && setTerm(next)}
+      itemToStringLabel={(c) => c.display_name}
+      isItemEqualToValue={(a, b) => a.id === b.id}
+      autoHighlight
+    >
+      <div className="stack-sm">
+        {/* Enter picks the client the list has lit up and never sends the form around the picker, even
+            with nothing lit up (too few letters, no match): Base UI has acted by the time it gets here. */}
+        <div className="input-group" onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}>
+          <span className="addon"><Icon name="search" size={16} /></span>
+          <Combobox.Input className="input" placeholder="Search by name, email or phone" aria-label="Search clients" autoComplete="off" />
+        </div>
+        <div className="card picker-rows" style={{ maxHeight: 248, overflowY: "auto", boxShadow: "none" }}>
+          {results.isPending &&
+            [0, 1, 2].map((i) => (
+              <div key={i} className="card-row" style={{ padding: "10px 12px" }}><Skeleton width={`${60 - i * 12}%`} height={12} /></div>
+            ))}
+          <Combobox.List aria-label="Clients">
+            {(c: ClientChoice) =>
+              c.id === CREATE_CLIENT ? (
+                <Combobox.Item key={c.id} value={c} disabled={create.isPending} className="card-row picker-option" style={{ padding: "10px 12px", color: "var(--green-dark)", fontWeight: 600 }}>
+                  <Icon name="plus" size={16} />
+                  {create.isPending ? "Creating…" : `Create “${typed}” as a new client`}
+                </Combobox.Item>
+              ) : (
+                <Combobox.Item key={c.id} value={c} className="card-row picker-option" style={{ padding: "9px 12px" }}>
+                  <span className="grow">
+                    <strong>{c.display_name}</strong>
+                    {c.company_name && c.company_name !== c.display_name && <span className="muted"> · {c.company_name}</span>}
+                    <span className="muted small ellipsis" style={{ display: "block" }}>{c.properties?.[0]?.line1 ?? c.email ?? "No address yet"}</span>
+                  </span>
+                </Combobox.Item>
+              )
+            }
+          </Combobox.List>
+          {!results.isPending && choices.length === 0 && <div className="empty" style={{ padding: 16 }}>{term ? "No matching clients" : "No clients yet. Type a name to add one."}</div>}
+        </div>
       </div>
-      <div className="card" style={{ maxHeight: 248, overflowY: "auto", boxShadow: "none" }} role="listbox" aria-label="Clients">
-        {results.isPending &&
-          [0, 1, 2].map((i) => (
-            <div key={i} className="card-row" style={{ padding: "10px 12px" }}><Skeleton width={`${60 - i * 12}%`} height={12} /></div>
-          ))}
-        {rows.map((c, i) => (
-          <button key={c.id} type="button" role="option" aria-selected={i === index} className="card-row" onMouseMove={() => setIndex(i)} onClick={() => choose(i)} style={{ padding: "9px 12px", background: i === index ? "var(--fill-2)" : "var(--surface)" }}>
-            <span className="grow">
-              <strong>{c.display_name}</strong>
-              {c.company_name && c.company_name !== c.display_name && <span className="muted"> · {c.company_name}</span>}
-              <span className="muted small ellipsis" style={{ display: "block" }}>{c.properties[0]?.line1 ?? c.email ?? "No address yet"}</span>
-            </span>
-          </button>
-        ))}
-        {canCreate && (
-          <button type="button" role="option" aria-selected={index === rows.length} className="card-row" onMouseMove={() => setIndex(rows.length)} onClick={() => choose(rows.length)} disabled={create.isPending} style={{ padding: "10px 12px", background: index === rows.length ? "var(--fill-2)" : "var(--surface)", color: "var(--green-dark)", fontWeight: 600 }}>
-            <Icon name="plus" size={16} />
-            {create.isPending ? "Creating…" : `Create “${term.trim()}” as a new client`}
-          </button>
-        )}
-        {!results.isPending && total === 0 && <div className="empty" style={{ padding: 16 }}>{term ? "No matching clients" : "No clients yet. Type a name to add one."}</div>}
-      </div>
-    </div>
+    </Combobox.Root>
   );
 }
 
@@ -381,9 +408,9 @@ export function PropertySelect({ clientId, value, onChange }: { clientId: string
   if (properties.isPending) return <Skeleton height={38} radius={8} />;
   if (!properties.data?.length) return <p className="muted small" style={{ margin: 0 }}>No service address on file.</p>;
   return (
-    <select className="select" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+    <Select className="select" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
       {properties.data.map((p) => <option key={p.id} value={p.id}>{p.label ? `${p.label} · ` : ""}{addressLine(p)}</option>)}
       <option value="">No specific property</option>
-    </select>
+    </Select>
   );
 }

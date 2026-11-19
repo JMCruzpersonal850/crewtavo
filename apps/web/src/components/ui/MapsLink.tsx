@@ -9,6 +9,7 @@ import { copyText } from "@/lib/clipboard";
 import { MAPS_LABELS, mapsApps, mapsUrl, placeText, rememberApp, rememberedApp, routeApp, routeApps, routeLegs, type MapsApp, type Place, type Route, type RouteApp } from "@/lib/maps";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
+import { Select } from "./Select";
 import { t } from "@/lib/i18n";
 
 export function MapsLink({ place, className = "address-link", title, children }: { place: Place; className?: string; title?: string; children: ReactNode }) {
@@ -152,7 +153,7 @@ export function MapsAppSetting() {
   return (
     <div className="card card-pad stack-sm">
       <strong id="maps-app-title">{t("Directions")}</strong>
-      <select
+      <Select
         className="select"
         aria-labelledby="maps-app-title"
         style={{ maxWidth: 280 }}
@@ -165,7 +166,7 @@ export function MapsAppSetting() {
       >
         <option value="">{t("Ask which app each time")}</option>
         {mapsApps().map((a) => <option key={a} value={a}>{t(MAPS_LABELS[a])}</option>)}
-      </select>
+      </Select>
       <span className="muted small">{t("Tapping an address or Directions opens this app. Saved on this device.")}</span>
     </div>
   );

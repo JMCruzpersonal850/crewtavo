@@ -5,6 +5,7 @@
  */
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import type { AiState, AppRow, OpenAiState } from "./catalog";
@@ -72,11 +73,11 @@ export function OpenAiModelCard({ app, onChanged }: { app: AppRow; onChanged: ()
         <>
           <span className="muted small">The OpenAI model your key uses for Crewtavo's AI. These are the ones OpenAI lists for your key; OpenAI's prices differ by model.</span>
           <div className="row wrap" style={{ gap: 8 }}>
-            <select className="select grow" style={{ maxWidth: 320 }} value={model ?? ""} disabled={pick.isPending} onChange={(e) => pick.mutate(e.target.value)} aria-label="OpenAI model">
+            <Select className="select grow" style={{ maxWidth: 320 }} value={model ?? ""} disabled={pick.isPending} onChange={(e) => pick.mutate(e.target.value)} aria-label="OpenAI model">
               {/* A model picked before that OpenAI no longer lists still shows, so it can be seen and changed. */}
               {model && !state.models.some((m) => m.slug === model) && <option value={model}>{model} (not listed anymore)</option>}
               {state.models.map((m) => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
-            </select>
+            </Select>
             <Button icon="refresh" loading={check.isPending} onClick={() => check.mutate()}>Check for new models</Button>
           </div>
         </>

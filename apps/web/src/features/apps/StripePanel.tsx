@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { importRunning, STRIPE_NEW_KEY, type AppRow } from "./catalog";
@@ -85,12 +86,12 @@ export function StripePanel({ app, onChanged }: { app: AppRow; onChanged: () => 
           <span className="small" role="status"><Icon name="refresh" size={14} /> Importing… {counts ? plural(counts.invoices, "invoice") : ""} so far</span>
         ) : (
           <div className="row wrap" style={{ gap: 8 }}>
-            <select className="select grow" value={since} onChange={(e) => setSince(e.target.value)} aria-label="Import from">
+            <Select className="select grow" value={since} onChange={(e) => setSince(e.target.value)} aria-label="Import from">
               <option value={`${year}-01-01`}>This year</option>
               <option value={`${year - 1}-01-01`}>Since January {year - 1}</option>
               <option value={`${year - 2}-01-01`}>Since January {year - 2}</option>
               <option value="">Everything</option>
-            </select>
+            </Select>
             <Button icon="download" loading={start.isPending} onClick={() => start.mutate()}>{state ? "Import again" : "Import"}</Button>
           </div>
         )}

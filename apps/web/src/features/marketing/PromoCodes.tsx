@@ -8,6 +8,7 @@ import { choose } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Menu } from "@/components/ui/Menu";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill, type Tone } from "@/components/ui/StatusPill";
@@ -256,7 +257,7 @@ function PromoDialog({ promo, onClose, onSaved }: { promo: Promo | null; onClose
             <span className="input-group"><span className="addon">$</span><input className="input" style={{ paddingLeft: 22 }} inputMode="decimal" value={f.min_subtotal} onChange={(e) => setF({ ...f, min_subtotal: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="0" /></span>
           </Field>
           <Field label="Total uses allowed" optional hint="Leave empty for no limit.">
-            <input className="input" type="number" min={1} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: e.target.value })} />
+            <NumberInput className="input" min={1} value={f.max_uses} onChange={(e) => setF({ ...f, max_uses: e.target.value })} />
           </Field>
         </div>
         <div className="stack-sm">

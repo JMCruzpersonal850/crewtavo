@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CardSkeleton, Loading, Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
@@ -58,9 +59,9 @@ export function RangePicker({ state }: { state: RangeParams }) {
       <label className="select-pill range-pill">
         <Icon name="calendar" size={14} />
         <span className="range-pill-label">Date range</span>
-        <select value={presetKey} onChange={(e) => update(e.target.value === "custom" ? { range: "custom", from: range.from, to: range.to } : { range: e.target.value, from: null, to: null })}>
+        <Select className="select-plain" value={presetKey} onChange={(e) => update(e.target.value === "custom" ? { range: "custom", from: range.from, to: range.to } : { range: e.target.value, from: null, to: null })}>
           {PRESETS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-        </select>
+        </Select>
         <Icon name="chevronDown" size={14} />
       </label>
       {presetKey === "custom" && (

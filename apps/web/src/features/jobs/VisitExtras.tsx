@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { supabase, unwrap, unwrapOne } from "@/lib/api";
 import { formatDate, formatDateTime, formatMoneyCents } from "@/lib/format";
@@ -202,10 +203,10 @@ export function VisitExtrasEditor({ visitId, jobId, onChanged }: { visitId: stri
       {edits && open && (
         <div className="stack-sm">
           <div className="row wrap" style={{ gap: 8, alignItems: "flex-end" }}>
-            <select className="select input-sm" style={{ width: "auto", maxWidth: 220 }} value={serviceId} onChange={(e) => pick(e.target.value)} aria-label="From the price list">
+            <Select className="select input-sm" style={{ width: "auto", maxWidth: 220 }} value={serviceId} onChange={(e) => pick(e.target.value)} aria-label="From the price list">
               <option value="">{services.data?.length ? "From the price list…" : "Type a line"}</option>
               {services.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            </Select>
             <input className="input input-sm grow" style={{ minWidth: 140 }} placeholder="What was done" aria-label="Extra work" value={draft.name} maxLength={200} onKeyDown={onKey} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             <input className="input input-sm" style={{ width: 70 }} inputMode="decimal" aria-label="Quantity" title="Quantity" value={draft.quantity} onKeyDown={onKey} onChange={(e) => setDraft({ ...draft, quantity: e.target.value.replace(/[^0-9.]/g, "") })} />
             <span className="input-group" style={{ width: 110 }}>
@@ -301,10 +302,10 @@ export function ExtrasToReview({ jobId, extras, visits }: { jobId: string; extra
                 <div key={e.id} className="row wrap small" style={{ gap: 8 }}>
                   <span className="grow">{extraText(e)} · its visit{was ? ` on ${formatDate(was)}` : ""} was {e.visit_id ? "cancelled" : "removed"}</span>
                   {edits && targets.length > 0 && (
-                    <select className="select input-sm" style={{ width: "auto" }} value="" aria-label={`Put ${e.name} on another visit`} onChange={(ev) => ev.target.value && move.mutate({ id: e.id, visitId: ev.target.value })}>
+                    <Select className="select input-sm" style={{ width: "auto" }} value="" aria-label={`Put ${e.name} on another visit`} onChange={(ev) => ev.target.value && move.mutate({ id: e.id, visitId: ev.target.value })}>
                       <option value="">Put on another visit…</option>
                       {targets.slice(0, 60).map((v) => <option key={v.id} value={v.id}>{v.scheduled_on ? formatDate(v.scheduled_on) : "Not scheduled"} · {v.status === "completed" ? "done" : v.title}</option>)}
-                    </select>
+                    </Select>
                   )}
                   {edits && <Button size="sm" variant="ghost" icon="trash" loading={remove.isPending && remove.variables === e.id} onClick={() => remove.mutate(e.id)}>Remove</Button>}
                 </div>

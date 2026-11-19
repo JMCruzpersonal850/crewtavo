@@ -21,6 +21,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, StatsSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { EntityStatus } from "@/components/ui/StatusPill";
@@ -322,10 +323,10 @@ export function GoogleReviewList({ g }: { g: GoogleState }) {
       {g.reviews > 0 && <div className="row wrap" style={{ gap: 6 }} role="group" aria-label="Show">
         <button type="button" className="tab" aria-pressed={!filtersOn({ ...filters, client: null })} onClick={() => change({ ...NO_FILTERS, client: filters.client })}>All</button>
         <button type="button" className="tab" aria-pressed={filters.needsReply} onClick={() => change({ ...filters, needsReply: !filters.needsReply })}>Needs a reply</button>
-        <select className="select" style={{ width: "auto" }} aria-label="Stars" value={filters.stars ?? ""} onChange={(e) => change({ ...filters, stars: e.target.value ? Number(e.target.value) : null })}>
+        <Select className="select" style={{ width: "auto" }} aria-label="Stars" value={filters.stars ?? ""} onChange={(e) => change({ ...filters, stars: e.target.value ? Number(e.target.value) : null })}>
           <option value="">Any stars</option>
           {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n === 1 ? "1 star" : `${n} stars`}</option>)}
-        </select>
+        </Select>
         <button type="button" className="tab" aria-pressed={filters.matched === "matched"} onClick={() => change({ ...filters, matched: filters.matched === "matched" ? "all" : "matched" })}>Matched</button>
         <button type="button" className="tab" aria-pressed={filters.matched === "unmatched"} onClick={() => change({ ...filters, matched: filters.matched === "unmatched" ? "all" : "unmatched" })}>Not matched</button>
         {filters.client && (

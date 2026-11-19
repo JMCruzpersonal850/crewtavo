@@ -31,6 +31,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -333,9 +334,9 @@ function EditEmailDialog({ card, backlog, onClose }: { card: AutomatedCard; back
     <Dialog open onClose={onClose} title={campaign.name} size="lg">
       <form className="stack" onSubmit={submit}>
         <Field label={key === "reengage" ? "No visit in" : key === "win_back" ? "After a quote is marked lost" : "After a quote is sent"} hint={DAYS_HINTS[key]} error={daysError(key, draft.days)}>
-          <select className="select" style={{ maxWidth: 220 }} value={draft.days} onChange={(e) => set({ days: Number(e.target.value) })}>
+          <Select className="select" style={{ maxWidth: 220 }} value={draft.days} onChange={(e) => set({ days: Number(e.target.value) })}>
             {dayChoices(key, draft.days).map((c) => <option key={c.days} value={c.days}>{c.label}</option>)}
-          </select>
+          </Select>
         </Field>
         <SubjectField value={draft.subject} onChange={(subject) => set({ subject })} />
         <MessageField

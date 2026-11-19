@@ -24,6 +24,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill, statusText } from "@/components/ui/StatusPill";
@@ -307,10 +308,10 @@ function AddPayDialog({ job, visits, pays, payees, areas, elsewhere, onClose, on
           hint={kind === "sub" && elsewhere ? "Subs with their paperwork in order come first. It covers the same visits as the offer that ended." : undefined}
         >
           {loadingChoices ? <Skeleton height={38} /> : (
-            <select className="select" value={payeeId} onChange={(e) => { setPayeeId(e.target.value); setCovered(startCovered); }}>
+            <Select className="select" value={payeeId} onChange={(e) => { setPayeeId(e.target.value); setCovered(startCovered); }}>
               <option value="">{kind === "sub" ? "Choose a sub" : "Choose someone"}</option>
               {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         {kind === "sub" && !loadingChoices && choices.length === 0 && (

@@ -2,10 +2,12 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useDeferredValue, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { ClientLink } from "@/components/ui/ClientPreview";
 import { confirm } from "@/components/ui/Confirm";
+import { RowMenu } from "@/components/ui/ContextMenu";
 import { Icon } from "@/components/ui/Icon";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { archiveWithUndo, SelectAllCell, SelectCell, SelectionBar, useSelection } from "@/components/ui/Selection";
+import { archiveWithUndo, SelectAllCell, SelectCell, SelectionBar, useHoldToPick, useSelection } from "@/components/ui/Selection";
 import { ListPageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { EntityStatus, statusText } from "@/components/ui/StatusPill";
@@ -46,7 +48,7 @@ export async function loadQuotes({ companyId, statuses, templates, term }: { com
     () => {
       let q = supabase()
         .from("quotes")
-        .select("id, number, title, status, total, tax_rate, discount_amount, promo:promo_codes(kind, value), sent_at, valid_until, updated_at, client:clients(display_name), options:quote_options!quote_options_quote_fkey(id), option:quote_options!quotes_option_fkey(name, tier)", { count: "exact" })
+        .select("id, number, title, status, total, tax_rate, discount_amount, promo:promo_codes(kind, value), sent_at, valid_until, updated_at, client:clients(id, display_name), options:quote_options!quote_options_quote_fkey(id), option:quote_options!quotes_option_fkey(name, tier)", { count: "exact" })
         .eq("company_id", companyId)
         .in("status", [...statuses])
         .eq("is_template", templates);
@@ -96,6 +98,7 @@ export function QuotesPage() {
   // Templates aren't picked: each is a starting point, not a quote to archive with others.
   const selectable = canSell && !templates;
   const selection = useSelection(selectable ? (quotes.data?.rows ?? []).map((q) => q.id) : [], `${filter}|${term}`);
+  const hold = useHoldToPick(selection);
 
   if (quotes.isPending) return <ListPageSkeleton columns={5} tabs={7} />;
   const rows = quotes.data?.rows ?? [];
@@ -179,18 +182,18 @@ export function QuotesPage() {
           {templates ? (
             <table className="table table-stack">
               <thead><tr><th>Quote template</th><th className="num">Total</th><th>Changed</th></tr></thead>
-              <tbody>
+              <RowMenu href={(id) => `/quotes/${id}`}>
                 {rows.map((q) => {
                   const price = listPrice(q);
                   return (
-                    <tr key={q.id} className="row-link" onClick={() => navigate(`/quotes/${q.id}`)}>
+                    <tr key={q.id} className="row-link" data-row={q.id} onClick={() => navigate(`/quotes/${q.id}`)}>
                       <td><Link className="cell-link" to={`/quotes/${q.id}`} onClick={(e) => e.stopPropagation()}>{q.title}</Link></td>
                       <td className="num">{price.from ? `From ${formatMoney(price.amount)}` : formatMoney(price.amount)}</td>
                       <td title={formatDate(q.updated_at)}>{timeAgo(q.updated_at)}</td>
                     </tr>
                   );
                 })}
-              </tbody>
+              </RowMenu>
             </table>
           ) : (
             <>
@@ -201,17 +204,17 @@ export function QuotesPage() {
               )}
               <table className="table table-stack">
                 <thead><tr>{selectable && <SelectAllCell selection={selection} label="Select all quotes on this page" />}<th>#</th><th>Quote</th><th className="num">Total</th><th>Sent</th><th>Status</th></tr></thead>
-                <tbody>
+                <RowMenu href={(id) => `/quotes/${id}`} selection={selection} {...(selectable ? hold : {})}>
                   {rows.map((q) => {
                     const note = optionsNote(q.status, q.options.length, q.option);
                     const price = listPrice(q);
                     return (
-                      <tr key={q.id} className="row-link" data-selected={selection.has(q.id) || undefined} onClick={() => navigate(`/quotes/${q.id}`)}>
+                      <tr key={q.id} className="row-link" data-row={q.id} data-selected={selection.has(q.id) || undefined} onClick={() => navigate(`/quotes/${q.id}`)}>
                         {selectable && <SelectCell selection={selection} id={q.id} label={`Select quote #${q.number}`} />}
                         <td className="muted tabular" style={{ width: 56 }}>#{q.number}</td>
                         <td>
                           <Link className="cell-link" to={`/quotes/${q.id}`} onClick={(e) => e.stopPropagation()}>{q.title}</Link>
-                          <div className="muted small">{q.client?.display_name}</div>
+                          <div className="muted small">{q.client && <ClientLink id={q.client.id} name={q.client.display_name} />}</div>
                         </td>
                         <td className="num">
                           {price.from ? <span title="Its cheapest option">From {formatMoney(price.amount)}</span> : formatMoney(price.amount)}
@@ -222,7 +225,7 @@ export function QuotesPage() {
                       </tr>
                     );
                   })}
-                </tbody>
+                </RowMenu>
               </table>
             </>
           )}

@@ -12,6 +12,7 @@ import { Button, Spinner } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -160,10 +161,10 @@ export function PriceList() {
                     <td>
                       <input className="input input-sm" defaultValue={s.formula ?? ""} disabled={!canEdit} placeholder="None" maxLength={300} onBlur={(e) => checkFormula(s.id, e.target.value, s.formula)} aria-label="Formula" style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }} />
                       {s.formula && (
-                        <select className="select input-sm" style={{ marginTop: 4, fontSize: 12 }} value={s.formula_target} disabled={!canEdit} onChange={(e) => change({ id: s.id, patch: { formula_target: e.target.value } })} aria-label="Formula sets">
+                        <Select className="select input-sm" style={{ marginTop: 4, fontSize: 12 }} value={s.formula_target} disabled={!canEdit} onChange={(e) => change({ id: s.id, patch: { formula_target: e.target.value } })} aria-label="Formula sets">
                           <option value="quantity">Sets the quantity</option>
                           <option value="unit_price">Sets the price</option>
-                        </select>
+                        </Select>
                       )}
                       {usesDepth(s.formula) && (
                         <label className="row small" style={{ gap: 6, marginTop: 4 }} title="The depth this item's formula starts with when a drawing fills a quote. Each line's depth is shown to confirm then.">

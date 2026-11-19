@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { ClientPicker, PropertySelect, type PickedClient } from "../clients/ClientForm";
@@ -55,11 +56,11 @@ export function NewRequestDialog({ open, onClose, onCreated, initialClient = nul
         </Field>
         <Field label="Details" optional><textarea className="textarea" value={details} onChange={(e) => setDetails(e.target.value)} maxLength={4000} /></Field>
         <Field label="How did it come in?">
-          <select className="select" value={source} onChange={(e) => setSource(e.target.value)}>
+          <Select className="select" value={source} onChange={(e) => setSource(e.target.value)}>
             <option value="phone">Phone</option>
             <option value="email">Email</option>
             <option value="manual">In person</option>
-          </select>
+          </Select>
         </Field>
         <FormError error={create.error} />
         <div className="form-actions">

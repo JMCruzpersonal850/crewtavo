@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { readAmount } from "@/components/ui/MoneyInput";
+import { Select } from "@/components/ui/Select";
 import { formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { markPaid, refreshPay } from "./payData";
@@ -68,9 +69,9 @@ export function MarkPaidDialog({ pays, onClose, onPaid }: { pays: readonly ToPay
                 : undefined
           }
         >
-          <select className="select" value={method} onChange={(e) => setMethod(e.target.value as SubPayMethod)}>
+          <Select className="select" value={method} onChange={(e) => setMethod(e.target.value as SubPayMethod)}>
             {SUB_PAY_METHODS.map((m) => <option key={m} value={m}>{jobPayMethodLabel(m)}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Reference" optional hint="A check number or the transfer's confirmation."><input className="input" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={200} /></Field>
         <FormError error={save.error} />

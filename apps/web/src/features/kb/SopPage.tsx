@@ -17,6 +17,7 @@ import { BackLink, PageHeader } from "@/components/ui/PageHeader";
 import { DetailSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState, PageError } from "@/components/ui/States";
 import { Face } from "@/components/ui/Avatar";
+import { Select } from "@/components/ui/Select";
 import { ApiError, api, supabase, unwrap } from "@/lib/api";
 import { formatDate, formatDateTime, timeAgo } from "@/lib/format";
 import { hasContent, htmlToText, isAppPath, sanitizeHtml, withSections } from "@/lib/html";
@@ -393,9 +394,9 @@ function HistoryDialog({ pageId, current, names, onClose }: { pageId: string; cu
             {mode === "changes" && all.length > 1 && (
               <label className="row small" style={{ gap: 8 }}>
                 <span className="muted" style={{ whiteSpace: "nowrap" }}>{t("Compared with")}</span>
-                <select className="select input-sm" value={against ?? ""} onChange={(e) => setAgainst(Number(e.target.value))}>
+                <Select className="select input-sm" value={against ?? ""} onChange={(e) => setAgainst(Number(e.target.value))}>
                   {all.filter((r) => r.revision !== shown.revision).map((r) => <option key={r.revision} value={r.revision}>{label(r)}</option>)}
-                </select>
+                </Select>
               </label>
             )}
           </div>

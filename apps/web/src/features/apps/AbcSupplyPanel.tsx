@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { CATALOG } from "../materials/data";
@@ -166,14 +167,14 @@ function AccountCard({ app, supplier, onChanged, onChangeKeys }: { app: AppRow; 
       {app.status === "error" && app.last_error && <span className="field-error" role="alert">{app.last_error}</span>}
       <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
         <Field label="ABC account">
-          <select className="select" value={shipTo} onChange={(e) => { setShipTo(e.target.value); choose.reset(); }}>
+          <Select className="select" value={shipTo} onChange={(e) => { setShipTo(e.target.value); choose.reset(); }}>
             {supplier.accounts.map((a) => <option key={a.number} value={a.number}>{a.name} ({a.number}{a.city ? `, ${a.city}` : ""})</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Branch">
-          <select className="select" value={branchNow} onChange={(e) => { setBranch(e.target.value); choose.reset(); }}>
+          <Select className="select" value={branchNow} onChange={(e) => { setBranch(e.target.value); choose.reset(); }}>
             {(account?.branches ?? []).map((b) => <option key={b.number} value={b.number}>{b.name}{b.home ? " (home branch)" : ""}</option>)}
-          </select>
+          </Select>
         </Field>
         {changed && <Button variant="primary" loading={choose.isPending} onClick={() => choose.mutate()}>Use these</Button>}
       </div>

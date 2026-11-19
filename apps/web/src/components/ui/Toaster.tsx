@@ -1,62 +1,111 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Toast } from "@base-ui/react/toast";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { springBack, springIn } from "@/lib/spring";
 import { dismissToast, getToasts, subscribeToasts, type ToastItem } from "@/lib/toast";
+import { Spinner } from "./Button";
 import { Icon } from "./Icon";
+import { supportsPopover, TOP_LAYER_EVENT, topLayerProps } from "./topLayer";
 import { t } from "@/lib/i18n";
 
-const supportsPopover = typeof HTMLElement !== "undefined" && "showPopover" in HTMLElement.prototype;
 /** How far each older toast peeks out above the one in front, and the gap between them fanned out. */
 const PEEK = 10;
 const GAP = 8;
 /** A toast's height until it has been measured. */
 const GUESS = 52;
-/** How far a toast has to be swiped sideways for letting go to dismiss it. */
-const SWIPE = 80;
 
 const coarsePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
-/** Focus that came from the keyboard (a click on a toast's button shouldn't hold the stack open). */
-const keyboardFocus = (el: Element) => {
-  try {
-    return el.matches(":focus-visible");
-  } catch {
-    return true;
-  }
-};
-
 const lessMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-/** In like --dur-slow with --ease-spring, out like --dur-exit with --ease-exit. */
-const ENTER: KeyframeAnimationOptions = { duration: 320, easing: "cubic-bezier(0.34, 1.4, 0.64, 1)" };
+/** Out like --dur-exit with --ease-exit (in is a spring: lib/spring.ts). */
 const EXIT: KeyframeAnimationOptions = { duration: 180, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "forwards" };
 
 /**
- * A toast's entrance or exit, with Web Animations: raising the toaster again hides and shows it,
- * which would replay a CSS animation. With less motion it only fades.
+ * A toast's exit, with Web Animations: raising the toaster again hides and shows it, which would
+ * replay a CSS animation. Base UI waits for it to finish before taking the toast out. With less
+ * motion it only fades.
  */
 function animate(node: HTMLElement, from: Keyframe, to: Keyframe, options: KeyframeAnimationOptions) {
   if (typeof node.animate !== "function") return;
   node.animate(lessMotion() ? [{ opacity: from.opacity }, { opacity: to.opacity }] : [from, to], options);
 }
 
+/** What Base UI keeps for each toast: the store's own (lib/toast.ts). */
+type Shown = Toast.Root.ToastObject<{ item: ToastItem }>;
+
 /**
- * Renders toasts in the browser's top layer (popover), so they appear above open dialogs.
- * Re-raised whenever a toast is added, and when a dialog or the command palette opens
- * ("crewtavo:toplayer"), so it stacks above anything opened since.
- *
- * Two or more stack up, newest in front with up to two older ones peeking behind it, and fan out
- * into a list while hovered, tabbed into or (on a touch screen) tapped. Their timers wait meanwhile.
+ * Shows lib/toast.ts's toasts with Base UI's Toast, which runs their timers (waiting while they're
+ * hovered, tabbed into or touched, or the window is in the background), stacks them, lets a finger
+ * swipe one away and moves keyboard focus on when one closes. F6 jumps to them.
  */
 export function Toaster() {
-  const toasts = useSyncExternalStore(subscribeToasts, getToasts);
+  return (
+    <Toast.Provider limit={4}>
+      <Stack />
+    </Toast.Provider>
+  );
+}
+
+/**
+ * The toaster is in the browser's top layer (a popover), so it appears above open dialogs. It's
+ * raised again whenever a toast is added, and when a dialog or the command palette opens
+ * ("crewtavo:toplayer"), so it stacks above anything opened since. While a modal dialog is open it
+ * sits inside it, so it can be used there too (useHome).
+ *
+ * Two or more stack up, newest in front with up to two older ones peeking behind it, and fan out
+ * into a list while hovered, tabbed into or (on a touch screen) touched.
+ */
+function Stack() {
+  const { toasts, add, close } = Toast.useToastManager<{ item: ToastItem }>();
   const ref = useRef<HTMLDivElement>(null);
-  const [heights, setHeights] = useState<Record<number, number>>({});
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const [tapped, setTapped] = useState(false);
   const count = toasts.length;
   const countRef = useRef(count);
   countRef.current = count;
-  const showing = toasts.filter((t) => !t.leaving).length;
-  const paused = hovered || focused || tapped;
-  const expanded = showing > 1 && paused;
+  // The window in the background holds Base UI's timers too, so the Undo ring waits with them.
+  const away = useAway();
+
+  // A swipe or Escape that Base UI turns into a close is the person closing the toast, not its time running out.
+  const closing = useRef<number | null>(null);
+  const byPerson = useCallback((id: number) => {
+    closing.current = id;
+    setTimeout(() => {
+      if (closing.current === id) closing.current = null;
+    }, 0);
+  }, []);
+
+  // The store's toasts, handed to Base UI as they come, change and go. Adding one Base UI already has
+  // changes it in place and starts its time over (the same message again, a wait that's done).
+  const handed = useRef(new Map<number, ToastItem>());
+  useEffect(() => {
+    const sync = () => {
+      const items = getToasts();
+      for (const item of items) {
+        const before = handed.current.get(item.id);
+        if (before === item) continue;
+        handed.current.set(item.id, item);
+        if (item.leaving) {
+          if (before && !before.leaving) close(String(item.id));
+          continue;
+        }
+        add({
+          id: String(item.id),
+          title: item.title,
+          description: item.description,
+          type: item.kind,
+          timeout: item.duration,
+          data: { item },
+          // Base UI's own closes: the timer, a swipe, Escape.
+          onClose: () => {
+            const known = handed.current.get(item.id);
+            if (known) handed.current.set(item.id, { ...known, leaving: true });
+            dismissToast(item.id, closing.current === item.id ? "dismiss" : "timeout");
+          },
+        });
+      }
+      for (const id of handed.current.keys()) if (!items.some((i) => i.id === id)) handed.current.delete(id);
+    };
+    sync();
+    return subscribeToasts(sync);
+  }, [add, close]);
 
   const raise = useCallback(() => {
     const el = ref.current;
@@ -69,120 +118,240 @@ export function Toaster() {
     }
   }, []);
 
-  useLayoutEffect(raise, [count, toasts[count - 1]?.id, raise]);
+  const home = useHome(raise);
+  useLayoutEffect(raise, [count, toasts[0]?.id, raise]);
 
-  useEffect(() => {
-    window.addEventListener("crewtavo:toplayer", raise);
-    return () => window.removeEventListener("crewtavo:toplayer", raise);
-  }, [raise]);
-
-  // Nothing showing: a hidden toaster never hears the pointer leave, so start the next toast fresh.
-  useEffect(() => {
-    if (!count) {
-      setHovered(false);
-      setFocused(false);
-      setTapped(false);
-      setHeights({});
-    } else if (showing < 2) setTapped(false);
-    if (focused && !ref.current?.contains(document.activeElement)) setFocused(false);
-  }, [count, showing, focused]);
-
-  // A stack fanned out by a tap folds back when the person taps anywhere else, so the timers run again.
-  useEffect(() => {
-    if (!tapped) return;
-    const fold = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setTapped(false);
-    };
-    document.addEventListener("pointerdown", fold, true);
-    return () => document.removeEventListener("pointerdown", fold, true);
-  }, [tapped]);
-
-  const onHeight = useCallback((id: number, height: number) => {
-    setHeights((all) => (all[id] === height ? all : { ...all, [id]: height }));
-  }, []);
-
-  // Newest first. A leaving toast keeps its place while it fades, and the ones behind move into it.
-  const layout = new Map<number, { index: number; offset: number }>();
+  // Newest first, as Base UI keeps them. One leaving keeps its place while it fades, and the ones behind move into it.
+  const layout = new Map<string, { index: number; offset: number }>();
   let index = 0;
   let offset = 0;
   let frontHeight = 0;
-  for (const t of [...toasts].reverse()) {
-    layout.set(t.id, { index, offset });
-    if (t.leaving) continue;
-    const height = heights[t.id] ?? GUESS;
+  for (const shown of toasts) {
+    layout.set(shown.id, { index, offset });
+    if (shown.transitionStatus === "ending") continue;
+    const height = shown.height || GUESS;
     if (!index) frontHeight = height;
     offset += height + GAP;
     index += 1;
   }
-  const height = expanded ? offset - GAP : frontHeight + Math.min(Math.max(showing - 1, 0), 2) * PEEK;
+  const showing = index;
+  const stacked = frontHeight + Math.min(Math.max(showing - 1, 0), 2) * PEEK;
+  const fanned = offset - GAP;
 
-  return (
-    <div
+  return createPortal(
+    <Toast.Viewport
       ref={ref}
       className="toaster"
-      popover={supportsPopover ? "manual" : undefined}
-      data-fallback={supportsPopover ? undefined : ""}
-      style={{ height: height || undefined }}
-      aria-live="polite"
-      aria-relevant="additions"
-      onPointerEnter={(e) => e.pointerType === "mouse" && setHovered(true)}
-      onPointerLeave={(e) => e.pointerType === "mouse" && setHovered(false)}
-      onFocus={(e) => keyboardFocus(e.target) && setFocused(true)}
-      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setFocused(false)}
-      onClick={(e) => {
-        if (coarsePointer() && showing > 1 && !(e.target as HTMLElement).closest("button")) setTapped((t) => !t);
-      }}
+      {...topLayerProps}
+      aria-label={t("Notifications")}
+      style={(state) => ({ height: (state.expanded && showing > 1 ? fanned : stacked) || undefined })}
     >
-      {toasts.map((t) => {
-        const place = layout.get(t.id) ?? { index: 0, offset: 0 };
-        return <Toast key={t.id} toast={t} index={place.index} offset={place.offset} expanded={expanded} frontHeight={frontHeight} paused={paused} onHeight={onHeight} />;
-      })}
-    </div>
+      {/* Oldest first in the page, so the newest paints on top. */}
+      {[...toasts].reverse().map((shown) => (
+        <Item key={shown.id} shown={shown as Shown} place={layout.get(shown.id) ?? { index: 0, offset: 0 }} showing={showing} frontHeight={frontHeight} away={away} byPerson={byPerson} />
+      ))}
+    </Toast.Viewport>,
+    home,
   );
 }
 
-function Toast({ toast, index, offset, expanded, frontHeight, paused, onHeight }: { toast: ToastItem; index: number; offset: number; expanded: boolean; frontHeight: number; paused: boolean; onHeight: (id: number, height: number) => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const left = useRef(toast.duration);
-  const swipe = useRef<{ pointer: number; x: number; dx: number; dragging: boolean } | null>(null);
-  const dragged = useRef(false);
+const isModal = (dialog: HTMLDialogElement) => {
+  try {
+    return dialog.matches(":modal");
+  } catch {
+    return dialog.open;
+  }
+};
+
+/**
+ * Where the toaster sits in the page. A modal dialog leaves everything outside it out of reach
+ * (inert), a popover in the top layer included: Undo could be seen above it but not pressed. So
+ * while one is open the toaster moves inside the newest, where it's still drawn above it (raised
+ * again as it moves) and can be used, and it goes back to the end of the page once that closes.
+ * The element itself moves, so the toasts on it carry on as they were.
+ */
+function useHome(raise: () => void): HTMLElement {
+  const [home] = useState(() => {
+    const el = document.createElement("div");
+    // No box of its own: inside a dialog it takes no room in its layout.
+    el.style.display = "contents";
+    return el;
+  });
+  useLayoutEffect(() => {
+    // Modal dialogs as they opened, newest last.
+    const open: HTMLDialogElement[] = [];
+    let watch: MutationObserver | null = null;
+    /** Moves the toaster where it belongs now; true when it moved (and so has to be shown again). */
+    const settle = (): boolean => {
+      for (const dialog of document.querySelectorAll("dialog")) if (isModal(dialog) && !open.includes(dialog)) open.push(dialog);
+      for (let i = open.length - 1; i >= 0; i--) if (!open[i]!.isConnected || !isModal(open[i]!)) open.splice(i, 1);
+      const host = open.at(-1) ?? document.body;
+      // A dialog can be taken out of the page while open (its screen went away), which says nothing:
+      // while the toaster is in one, it notices.
+      if (host === document.body) {
+        watch?.disconnect();
+        watch = null;
+      } else if (!watch) {
+        watch = new MutationObserver(() => {
+          const parent = home.parentElement;
+          if (parent !== document.body && (!parent || !home.isConnected || !(parent instanceof HTMLDialogElement) || !isModal(parent)) && settle()) raise();
+        });
+        watch.observe(document.body, { childList: true, subtree: true });
+      }
+      if (home.parentElement === host) return false;
+      host.append(home);
+      return true;
+    };
+    if (settle()) raise();
+    // A dialog or the command palette went up: move into it if it's a modal dialog, and stay above it either way.
+    const opened = () => {
+      settle();
+      raise();
+    };
+    const closed = () => settle() && raise();
+    // close doesn't bubble, so it's heard on the way down.
+    window.addEventListener("close", closed, true);
+    window.addEventListener(TOP_LAYER_EVENT, opened);
+    return () => {
+      window.removeEventListener("close", closed, true);
+      window.removeEventListener(TOP_LAYER_EVENT, opened);
+      watch?.disconnect();
+      home.remove();
+    };
+  }, [home, raise]);
+  return home;
+}
+
+/** Whether the window is in the background (another app or tab in front). */
+function useAway() {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    const blur = (e: FocusEvent) => e.target === window && setAway(true);
+    const focus = () => setAway(false);
+    window.addEventListener("blur", blur, true);
+    window.addEventListener("focus", focus, true);
+    return () => {
+      window.removeEventListener("blur", blur, true);
+      window.removeEventListener("focus", focus, true);
+    };
+  }, []);
+  return away;
+}
+
+interface ItemProps {
+  shown: Shown;
+  place: { index: number; offset: number };
+  showing: number;
+  frontHeight: number;
+  away: boolean;
+  byPerson: (id: number) => void;
+}
+
+function Item({ shown, place, showing, frontHeight, away, byPerson }: ItemProps) {
+  const item = shown.data!.item;
+  const node = useRef<HTMLDivElement>(null);
+  // Where a finger left it, so a swipe let go short of dismissing springs back from there.
+  const dragged = useRef("");
+  const touch = coarsePointer();
+
+  return (
+    <Toast.Root
+      ref={node}
+      toast={shown}
+      className="toast"
+      // Only a finger swipes a toast away; a mouse selects its text.
+      swipeDirection={touch ? ["left", "right"] : []}
+      // A status, or an alert for an error, rather than Base UI's dialog: a toast is read out, not entered.
+      role={item.kind === "error" ? "alert" : "status"}
+      aria-modal={undefined}
+      // Focus can still be put on it (when the one before it closes), but Tab goes to its buttons.
+      tabIndex={-1}
+      data-kind={item.kind}
+      data-tone={item.tone}
+      onPointerUp={() => {
+        dragged.current = node.current?.style.transform ?? "";
+        byPerson(item.id);
+      }}
+      onKeyDown={(e) => e.key === "Escape" && byPerson(item.id)}
+      render={(props, state) => {
+        const expanded = state.expanded && showing > 1;
+        const behind = !expanded && place.index > 0;
+        const depth = Math.min(place.index, 2);
+        const style: CSSProperties = behind ? { translate: `0 ${-depth * PEEK}px`, scale: String(1 - depth * 0.04), height: frontHeight || undefined } : { translate: `0 ${-place.offset}px` };
+        return (
+          <div {...props} style={{ ...props.style, ...style }} data-behind={behind ? Math.min(place.index, 3) : undefined}>
+            <Face item={item} dragged={dragged} paused={state.expanded || away} swiping={state.swiping} ending={state.transitionStatus === "ending"} swipe={state.swipeDirection} />
+          </div>
+        );
+      }}
+    />
+  );
+}
+
+interface FaceProps {
+  item: ToastItem;
+  dragged: { current: string };
+  paused: boolean;
+  swiping: boolean;
+  ending: boolean;
+  swipe: string | undefined;
+}
+
+function Face({ item, dragged, paused, swiping, ending, swipe }: FaceProps) {
+  // The toast itself is this content's parent. (Its own ref isn't set yet when these effects first
+  // run: React sets a parent's ref after its children's layout effects.)
+  const content = useRef<HTMLDivElement>(null);
+  const node = useMemo(() => ({ get current() { return content.current?.parentElement ?? null; } }), []);
   const ring = useRef<SVGRectElement>(null);
   const drain = useRef<Animation>();
-  const behind = !expanded && index > 0;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+  const firstUpdate = useRef(item.updates);
 
-  // Rises into place from just below.
+  // Springs into place from just below.
   useLayoutEffect(() => {
-    if (ref.current) animate(ref.current, { opacity: 0, transform: "translateY(14px) scale(0.96)" }, { opacity: 1, transform: "none" }, ENTER);
-  }, []);
+    if (node.current) springIn(node.current, "translateY(14px) scale(0.96)");
+  }, [node]);
+
+  // Shown again, or changed in place (a wait that's done): a small nudge says so.
+  useEffect(() => {
+    const el = node.current;
+    if (item.updates === firstUpdate.current || !el || typeof el.animate !== "function" || lessMotion()) return;
+    el.animate([{ transform: "scale(1.03)" }, { transform: "none" }], { duration: 260, easing: "cubic-bezier(0.34, 1.4, 0.64, 1)" });
+  }, [item.updates, node]);
+
+  // A finger let go short of a swipe: it springs back from where it was left.
+  const wasSwiping = useRef(false);
+  useLayoutEffect(() => {
+    if (swiping) {
+      wasSwiping.current = true;
+      return;
+    }
+    if (!wasSwiping.current) return;
+    wasSwiping.current = false;
+    const from = dragged.current;
+    const moved = Math.abs(parseFloat(from.match(/translateX\((-?[\d.]+)px\)/)?.[1] ?? "0"));
+    if (!ending && node.current && moved > 1) void springBack(node.current, from);
+  }, [swiping, ending, dragged, node]);
 
   // Leaves where it was dropped, or carries on the way it was swiped.
   useLayoutEffect(() => {
-    const node = ref.current;
-    if (!node || !toast.leaving) return;
-    const swiped = node.dataset.swipe;
-    const away = swiped === "right" ? "translateX(calc(100% + 32px))" : swiped === "left" ? "translateX(calc(-100% - 32px))" : "translateY(6px) scale(0.97)";
-    animate(node, { opacity: 1, transform: node.style.transform || "none" }, { opacity: 0, transform: away }, EXIT);
-  }, [toast.leaving]);
+    const el = node.current;
+    if (!el || !ending) return;
+    const away = swipe === "right" ? "translateX(calc(100% + 32px))" : swipe === "left" ? "translateX(calc(-100% - 32px))" : "translateY(6px) scale(0.97)";
+    const from = swipe ? `translateX(${getComputedStyle(el).getPropertyValue("--toast-swipe-movement-x").trim() || "0px"})` : el.style.transform || "none";
+    animate(el, { opacity: 1, transform: from }, { opacity: 0, transform: away }, EXIT);
+  }, [ending, swipe, node]);
 
-  // Counts down only while nobody is reading the toasts, picking up where it left off.
-  useEffect(() => {
-    if (paused || toast.leaving) return;
-    const started = Date.now();
-    const timer = setTimeout(() => dismissToast(toast.id, "timeout"), Math.max(left.current, 0));
-    return () => {
-      clearTimeout(timer);
-      left.current -= Date.now() - started;
-    };
-  }, [paused, toast.leaving, toast.id]);
-
-  // The countdown ring drains with the same pauses.
+  // The countdown ring drains with Base UI's timer: it starts over when the toast does, and waits with it.
   useLayoutEffect(() => {
     const rect = ring.current;
-    if (!rect || typeof rect.animate !== "function") return;
-    const animation = rect.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: 100 }], { duration: toast.duration, easing: "linear", fill: "forwards" });
+    if (!rect || typeof rect.animate !== "function" || !item.duration) return;
+    const animation = rect.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: 100 }], { duration: item.duration, easing: "linear", fill: "forwards" });
+    if (pausedRef.current) animation.pause();
     drain.current = animation;
     return () => animation.cancel();
-  }, [toast.duration]);
+  }, [item.duration, item.updates]);
   useEffect(() => {
     const animation = drain.current;
     if (!animation || animation.playState === "finished") return;
@@ -190,110 +359,34 @@ function Toast({ toast, index, offset, expanded, frontHeight, paused, onHeight }
     else animation.play();
   }, [paused]);
 
-  // Its own height, measured with any stacked height lifted, so fanning out knows where each one goes.
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const measure = () => {
-      const stacked = node.style.height;
-      node.style.height = "";
-      onHeight(toast.id, node.offsetHeight);
-      node.style.height = stacked;
-    };
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(node);
-    return () => observer?.disconnect();
-  }, [toast.id, onHeight]);
-
-  // On a touch screen a toast follows the finger sideways and goes when flung far enough.
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    dragged.current = false;
-    if (e.pointerType === "mouse" || toast.leaving || !coarsePointer()) return;
-    swipe.current = { pointer: e.pointerId, x: e.clientX, dx: 0, dragging: false };
-  };
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const s = swipe.current;
-    const node = ref.current;
-    if (!s || s.pointer !== e.pointerId || !node) return;
-    s.dx = e.clientX - s.x;
-    if (!s.dragging) {
-      if (Math.abs(s.dx) < 6) return;
-      s.dragging = true;
-      try {
-        node.setPointerCapture(e.pointerId);
-      } catch {
-        // The finger already lifted.
-      }
-      node.dataset.swiping = "";
-    }
-    node.style.transform = `translateX(${s.dx}px)`;
-  };
-  const onPointerEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const s = swipe.current;
-    const node = ref.current;
-    if (!s || s.pointer !== e.pointerId || !node) return;
-    swipe.current = null;
-    if (!s.dragging) return;
-    dragged.current = true;
-    delete node.dataset.swiping;
-    if (e.type === "pointerup" && Math.abs(s.dx) > SWIPE) {
-      node.dataset.swipe = s.dx > 0 ? "right" : "left";
-      dismissToast(toast.id, "dismiss");
-    } else {
-      node.style.transform = "";
-    }
-  };
-
-  const depth = Math.min(index, 2);
-  const style: CSSProperties = behind ? { translate: `0 ${-depth * PEEK}px`, scale: String(1 - depth * 0.04), height: frontHeight || undefined } : { translate: `0 ${-offset}px` };
-
+  const icon: ReactNode = item.kind === "loading" ? <Spinner size={12} /> : <Icon name={item.kind === "success" ? "check" : item.kind === "error" ? "x" : item.kind === "warning" ? "alert" : "info"} size={12} bold />;
   return (
-    <div
-      ref={ref}
-      className="toast"
-      style={style}
-      data-kind={toast.kind}
-      data-tone={toast.tone}
-      data-leaving={toast.leaving || undefined}
-      data-behind={behind ? Math.min(index, 3) : undefined}
-      role={toast.kind === "error" ? "alert" : "status"}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
-      onClickCapture={(e) => {
-        // A swipe that ended over a button isn't a press.
-        if (!dragged.current) return;
-        dragged.current = false;
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-    >
-      <span className="toast-icon"><Icon name={toast.kind === "success" ? "check" : toast.kind === "error" ? "x" : toast.kind === "warning" ? "alert" : "info"} size={12} bold /></span>
+    // Base UI measures the toast again whenever what's in here changes size (a wait that's done says more).
+    <Toast.Content ref={content} className="toast-content">
+      <span className="toast-icon">{icon}</span>
       <div className="toast-body">
-        {toast.title}
-        {toast.description && <div className="toast-desc">{toast.description}</div>}
+        {item.title}
+        {item.description && <div className="toast-desc">{item.description}</div>}
       </div>
-      {toast.action && (
+      {item.action && (
         <button
           type="button"
           className="toast-action"
-          data-toast={toast.id}
+          data-toast={item.id}
           onClick={() => {
-            toast.action!.onClick();
-            dismissToast(toast.id, "action");
+            item.action!.onClick();
+            dismissToast(item.id, "action");
           }}
         >
-          {toast.action.label}
-          {toast.countdown && (
+          {item.action.label}
+          {item.countdown && (
             <svg className="toast-ring" aria-hidden="true">
               <rect ref={ring} width="100%" height="100%" rx="9" pathLength={100} />
             </svg>
           )}
         </button>
       )}
-      <button type="button" className="toast-x" aria-label={t("Dismiss")} onClick={() => dismissToast(toast.id)}><Icon name="x" size={14} /></button>
-    </div>
+      <button type="button" className="toast-x" aria-label={t("Dismiss")} onClick={() => dismissToast(item.id)}><Icon name="x" size={14} /></button>
+    </Toast.Content>
   );
 }

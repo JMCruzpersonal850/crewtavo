@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { TagInput } from "@/components/ui/TagInput";
 import { api, supabase, unwrap } from "@/lib/api";
 import { hasRole, useSession } from "@/lib/session";
@@ -117,7 +118,7 @@ export function PropertyDialog({ clientId, property, access, onClose }: { client
         )}
         <Field label="Property notes" optional><textarea className="textarea" value={p.notes} onChange={set("notes")} maxLength={4000} /></Field>
         <div className="form-grid">
-          <Field label="Lot size (sq ft)" optional><input className="input" type="number" inputMode="numeric" min={0} max={1000000000} step="any" value={p.lot_size_sqft} onChange={set("lot_size_sqft")} /></Field>
+          <Field label="Lot size (sq ft)" optional><NumberInput className="input" inputMode="numeric" min={0} max={1000000000} step="any" value={p.lot_size_sqft} onChange={set("lot_size_sqft")} /></Field>
           <Field label="Tags" optional><TagInput value={tags} onChange={setTags} /></Field>
         </div>
         <CustomFieldInputs fields={customFields} current={property?.custom_fields} draft={custom} onChange={setCustom} />

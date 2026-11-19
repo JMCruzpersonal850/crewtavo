@@ -9,6 +9,7 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
@@ -17,6 +18,7 @@ import { Menu } from "@/components/ui/Menu";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { BackLink, PageHeader, useDocumentTitle } from "@/components/ui/PageHeader";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, NoAccess, PageError } from "@/components/ui/States";
 import { EntityStatus, statusText } from "@/components/ui/StatusPill";
@@ -417,7 +419,7 @@ function InvoicePageScreen() {
       <div className="page-meta">
         <EntityStatus kind="invoice" status={inv.status} />
         <SaveStatus status={save.status} />
-        {inv.client && <Link to={`/clients/${inv.client.id}`} className="strong">{inv.client.display_name}</Link>}
+        {inv.client && <ClientPreview id={inv.client.id}><Link to={`/clients/${inv.client.id}`} className="strong">{inv.client.display_name}</Link></ClientPreview>}
         {inv.job && <Link to={`/jobs/${inv.job.id}`} className="muted">Job #{inv.job.number}: {inv.job.title}</Link>}
         {inv.kind === "progress" && <span className="chip">Pay application {inv.pay_app_number}</span>}
         {inv.kind === "deposit" && <span className="chip">Deposit</span>}
@@ -825,9 +827,9 @@ function PaymentDialog({ invoice, bank, onClose, onSaved }: { invoice: { id: str
             <span className="input-group"><span className="addon">$</span><input className="input" style={{ paddingLeft: 22 }} inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value.replace(/[^0-9.]/g, ""))} /></span>
           </Field>
           <Field label="Method">
-            <select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
+            <Select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
               {Object.entries(METHODS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Received"><input className="input" type="date" value={date} max={todayIn(session.company.timezone)} onChange={(e) => setDate(e.target.value)} required /></Field>
         </div>

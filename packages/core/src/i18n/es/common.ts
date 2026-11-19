@@ -173,6 +173,7 @@ export default {
   "Type <word>{typed}</word> to confirm": "Escribe <word>{typed}</word> para confirmar",
   "Confirm": "Confirmar",
   "Close": "Cerrar",
+  "Digit {n} of {length}": "Dígito {n} de {length}",
   "Cancel": "Cancelar",
   "Save": "Guardar",
   "Add": "Agregar",
@@ -588,4 +589,19 @@ export default {
   "Link copied": "Enlace copiado",
   "Paperwork for {company}": "Documentos para {company}",
   "That file didn't come through. Try sending it again.": "Ese archivo no llegó. Intenta enviarlo de nuevo.",
+
+  // A list row's right-click menu (components/ui/ContextMenu.tsx)
+  "Open in a new tab": "Abrir en una pestaña nueva",
+  "Select": "Seleccionar",
+  "Deselect": "Quitar selección",
+
+  // A client's preview card, and a toast that waits on something (components/ui/ClientPreview.tsx, features/settings/NotificationSettings.tsx)
+  "Owes {amount}": "Debe {amount}",
+  "Nothing owed": "No debe nada",
+  "Sending a test…": "Enviando una prueba…",
+  "The test didn't send": "La prueba no se envió",
+
+  // A number box's up and down buttons (components/ui/NumberInput.tsx)
+  "Increase": "Aumentar",
+  "Decrease": "Disminuir",
 } satisfies Catalog;

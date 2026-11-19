@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Button, useJustDone } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -55,9 +56,8 @@ export function NextNumbers() {
           const row = saved.find((s) => s.kind === kind);
           return (
             <Field key={kind} label={label} error={problems[kind]} hint={highest(kind) > 0 ? `The highest used so far is #${highest(kind)}.` : "None made yet."}>
-              <input
+              <NumberInput
                 className="input"
-                type="number"
                 inputMode="numeric"
                 min={1}
                 max={HIGHEST_NUMBER}

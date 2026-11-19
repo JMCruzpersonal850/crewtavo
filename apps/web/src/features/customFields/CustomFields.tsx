@@ -9,6 +9,7 @@ import { Fragment, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
@@ -68,12 +69,12 @@ export function CustomFieldInputs({ fields, current, draft, onChange }: { fields
         return (
           <Field key={f.key} label={f.label} optional>
             {f.type === "choice" || f.type === "yes_no" ? (
-              <select className="select" value={value} onChange={set}>
+              <Select className="select" value={value} onChange={set}>
                 <option value="">{t("Not set")}</option>
                 {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                 {/* A choice since taken off the field stays until it's changed. */}
                 {value && !options.some(([v]) => v === value) && <option value={value}>{value}</option>}
-              </select>
+              </Select>
             ) : (
               <input
                 className="input"

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { supabase, unwrap } from "@/lib/api";
 import { signedUrls, uploadFile } from "@/lib/files";
@@ -168,10 +169,10 @@ function AssetDialog({ propertyId, asset, isOffice, visitId, onClose }: { proper
         </div>
         {asset && isOffice && (
           <Field label={t("Status")}>
-            <select className="select" value={f.status} onChange={set("status")}>
+            <Select className="select" value={f.status} onChange={set("status")}>
               <option value="active">{t("In use")}</option>
               <option value="retired">{t("Retired (removed or replaced)")}</option>
-            </select>
+            </Select>
           </Field>
         )}
         <Field label={t("Notes")} optional hint={t("Filter size, refrigerant, quirks.")}><textarea className="textarea" value={f.notes} onChange={set("notes")} maxLength={4000} rows={3} /></Field>

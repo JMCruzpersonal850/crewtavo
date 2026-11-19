@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Field, FormError } from "@/components/ui/Field";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -87,10 +88,10 @@ export function SalesAreaSettings() {
           />
         ))}
         <Field label="Everywhere else" hint="A request from a zip nobody covers, or with no address.">
-          <select className="select" value={elseUser} onChange={(e) => void saving.track(setElse.mutateAsync(e.target.value))}>
+          <Select className="select" value={elseUser} onChange={(e) => void saving.track(setElse.mutateAsync(e.target.value))}>
             <option value="">Nobody: leave it unassigned</option>
             {people.map((m) => <option key={m.user_id} value={m.user_id}>{nameOf(m)}</option>)}
-          </select>
+          </Select>
         </Field>
         <FormError error={setZips.error ?? setElse.error} />
       </section>

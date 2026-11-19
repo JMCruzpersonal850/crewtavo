@@ -15,6 +15,7 @@ import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { api } from "@/lib/api";
@@ -460,9 +461,9 @@ function AddChannel({ open, onClose, crews, categories, onAdded }: { open: boole
         {preset === "crew" && (
           <Field label="Crew">
             {crews.length ? (
-              <select className="select" value={crew} onChange={(e) => setCrew(e.target.value)}>
+              <Select className="select" value={crew} onChange={(e) => setCrew(e.target.value)}>
                 {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </Select>
             ) : (
               <span className="muted small">No crews yet. Add them in <Link to="/settings?tab=crews">Settings → Crews</Link>; each new crew gets its own channel.</span>
             )}

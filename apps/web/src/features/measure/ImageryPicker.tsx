@@ -10,6 +10,7 @@ import { STATE_IMAGERY, stateImageryAt } from "@crewtavo/core/imagery";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { useSession } from "@/lib/session";
 import {
   AUTO_NAME, choiceName, DEFAULT_CHOICES, googleFirst, imageryInfo, imageryUsable, mapKeys, myDefault, OVERLAYS, setMyDefault, stateId, teamDefault,
@@ -173,7 +174,7 @@ export function MeasureMapSetting() {
   return (
     <div className="card card-pad stack-sm">
       <strong id="measure-map-title">Measure map</strong>
-      <select
+      <Select
         className="select"
         aria-labelledby="measure-map-title"
         style={{ maxWidth: 280 }}
@@ -186,7 +187,7 @@ export function MeasureMapSetting() {
       >
         <option value="">Team default ({choiceName(team)})</option>
         {DEFAULT_CHOICES.filter((c) => c === "auto" || imageryUsable(c, keys)).map((c) => <option key={c} value={c}>{choiceName(c)}</option>)}
-      </select>
+      </Select>
       <span className="muted small">The imagery Measure opens on. You can still switch any time from the Imagery button. Saved on this device.</span>
     </div>
   );

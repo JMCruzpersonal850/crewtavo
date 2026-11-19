@@ -12,6 +12,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { ListPageSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -118,10 +119,10 @@ function ApplicantList() {
           ))}
         </div>
         {(positions.data?.length ?? 0) > 1 && (
-          <select className="select" style={{ width: "auto" }} value={position} onChange={(e) => setPosition(e.target.value)} aria-label="Position">
+          <Select className="select" style={{ width: "auto" }} value={position} onChange={(e) => setPosition(e.target.value)} aria-label="Position">
             <option value="">Every position</option>
             {positions.data!.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+          </Select>
         )}
       </div>
       {applicants.error && !applicants.data ? (

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { choose, confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 import { api, supabase, unwrap } from "@/lib/api";
 import { addDaysIso, formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
@@ -95,10 +97,10 @@ function BillingQuestions({ kind, value, kept, onChange }: { kind: string; value
       </fieldset>
       {value.when === "monthly" && (
         <Field label="Invoice day" hint="Each month's invoice covers the days since the last one.">
-          <select className="select" value={value.day} onChange={(e) => onChange({ ...value, day: e.target.value })}>
+          <Select className="select" value={value.day} onChange={(e) => onChange({ ...value, day: e.target.value })}>
             <option value="">The last day of the month</option>
             {Array.from({ length: 28 }, (_, i) => <option key={i + 1} value={String(i + 1)}>{invoiceDayText(i + 1).replace(/^the/, "The")}</option>)}
-          </select>
+          </Select>
         </Field>
       )}
     </>
@@ -179,10 +181,10 @@ export function NewJobDialog({ open, onClose, onCreated }: { open: boolean; onCl
         <div className="form-grid">
           <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value.trimStart())} required maxLength={200} placeholder="Weekly mowing, driveway repair…" /></Field>
           <Field label="Crew" optional>
-            <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+            <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
               <option value="">No crew yet</option>
               {crews.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="segmented" role="group" aria-label="Job type">
@@ -363,7 +365,7 @@ export function JobDetailsDialog({ job, onClose, onSaved }: { job: JobRecord; on
             <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
             <div className="form-grid">
               <Field label="Visit time" hint="Leave empty for anytime."><input className="input" type="time" value={f.visit_start_time} onChange={set("visit_start_time")} /></Field>
-              <Field label="Minutes per visit"><input className="input" type="number" inputMode="numeric" min={1} max={1440} step={1} value={f.visit_duration_min} onChange={set("visit_duration_min")} /></Field>
+              <Field label="Minutes per visit"><NumberInput className="input" inputMode="numeric" min={1} max={1440} step={1} value={f.visit_duration_min} onChange={set("visit_duration_min")} /></Field>
             </div>
             {f.visit_start_time && (
               <label className="switch-row" style={{ fontWeight: 400 }}>
@@ -375,10 +377,10 @@ export function JobDetailsDialog({ job, onClose, onSaved }: { job: JobRecord; on
         )}
         <div className="form-grid">
           <Field label="Default crew">
-            <select className="select" value={f.default_crew_id} onChange={set("default_crew_id")}>
+            <Select className="select" value={f.default_crew_id} onChange={set("default_crew_id")}>
               <option value="">None</option>
               {crews.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <BillingQuestions kind={f.kind} value={billing} kept={job.kind === f.kind ? kept : undefined} onChange={setBilling} />

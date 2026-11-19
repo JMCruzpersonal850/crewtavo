@@ -28,6 +28,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -567,7 +568,7 @@ function LineRow({ line, typed, onValue, onAmount, onPrice }: { line: CalcLine; 
       <div className="calc-line-what">
         <strong>{item.name}</strong>
         {item.choices?.length ? (
-          <select className="select input-sm" aria-label={`${item.name}: which`} value={String(value)} onChange={(e) => onValue(Number(e.target.value))}>
+          <Select className="select input-sm" aria-label={`${item.name}: which`} value={String(value)} onChange={(e) => onValue(Number(e.target.value))}>
             <option value="0">None</option>
             {item.choices.map((c) => (
               <option key={c.value} value={String(c.value)}>
@@ -576,7 +577,7 @@ function LineRow({ line, typed, onValue, onAmount, onPrice }: { line: CalcLine; 
               </option>
             ))}
             {value > 0 && !choice && <option value={String(value)}>Other: {value}</option>}
-          </select>
+          </Select>
         ) : area || item.basis === "haul" ? (
           <label className="row small" style={{ gap: 8 }}>
             <input type="checkbox" checked={value > 0} onChange={(e) => onValue(e.target.checked ? 1 : 0)} />

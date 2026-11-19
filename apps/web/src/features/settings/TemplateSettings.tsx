@@ -28,6 +28,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton, Loading, Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -231,8 +232,10 @@ function TemplateEditor({ row, rows, onSelect }: { row: TemplateRow | null; rows
         <div className={styles.tools}>
           <label className={styles.picker}>
             Style
-            <select
+            <Select
               className="select"
+              // The size .picker select gives the native one, for the list's button too.
+              style={{ width: "auto", minWidth: 200, maxWidth: "100%" }}
               value={row?.id ?? ""}
               onChange={async (e) => {
                 const next = e.target.value;
@@ -240,7 +243,7 @@ function TemplateEditor({ row, rows, onSelect }: { row: TemplateRow | null; rows
               }}
             >
               {rows.length ? rows.map((r) => <option key={r.id} value={r.id}>{r.name}{r.is_default ? " (default)" : ""}</option>) : <option value="">Standard (default)</option>}
-            </select>
+            </Select>
           </label>
           <Button icon="plus" onClick={async () => (await leave()) && setNaming("new")}>New style</Button>
           <Menu

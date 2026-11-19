@@ -162,6 +162,25 @@ a.tag:hover { border-color: var(--border-strong); color: var(--ink); }
 .tag-suggest .menu-item[aria-selected="true"] { background: var(--fill-2); }
 /* The colour only: the background shorthand would reset a select's chevron to repeat (dark mode) or drop it (light). */
 .input:disabled, .select:disabled, .textarea:disabled { background-color: var(--fill); color: var(--text-3); cursor: not-allowed; }
+/* A list whose rows a finger holds to pick (useHoldToPick): holding doesn't select their words instead. */
+@media (pointer: coarse) { tbody[data-hold] tr { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
+/*
+ * A code typed one digit to a box (CodeField): boxes like fields, the caret and focus in green. They
+ * share the width there is, up to 52px each; with no width of their own (an input's is about 150px),
+ * they never make a narrow screen's form wider than the screen.
+ */
+.code-field { display: flex; gap: 8px; min-width: 0; }
+.code-slot {
+  flex: 1 1 0; width: 0; min-width: 0; max-width: 52px; height: 56px; padding: 0; border: 1px solid var(--button-border); border-radius: var(--radius-control);
+  background: var(--surface); color: var(--ink); caret-color: var(--green); box-shadow: var(--shadow-xs);
+  text-align: center; font: inherit; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.code-slot:hover { border-color: var(--border-strong); }
+.code-slot:focus { outline: none; border-color: var(--green); box-shadow: var(--ring); }
+.code-slot[data-filled] { border-color: var(--border-strong); }
+.code-slot[aria-invalid="true"] { border-color: var(--danger); }
+.code-slot:disabled { background: var(--fill); color: var(--text-3); }
 .input-sm { height: var(--control-sm); font-size: var(--fs-13); }
 .input-group { position: relative; display: flex; align-items: center; }
 .input-group > .input { padding-left: 32px; }
@@ -373,9 +392,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .dialog .form-actions { position: sticky; bottom: -20px; margin: 4px -20px -20px; padding: 14px 20px; background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 90%, transparent), var(--surface) 30%); border-top: 1px solid var(--divider); z-index: 1; }
 @media (max-width: 900px) {
   .dialog, .dialog-lg, .dialog-xl, .dialog-sm { width: 100vw; max-width: 100vw; max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: var(--radius-card) var(--radius-card) 0 0; }
-  /* A bottom sheet: up from below, and back down. */
+  /*
+   * A bottom sheet: up from below, and back down. Its header is a handle that pulls it down
+   * (Dialog.tsx): it follows the finger by --pull, and once let go far enough it leaves from there to
+   * all the way down. The grip shows where to take hold. (@starting-style comes after the open rule,
+   * or the open rule would win and it would no longer slide up.)
+   */
   .dialog { transform: translateY(40px); }
+  /*
+   * Moved only while it's held or let go to close: at rest an open sheet has no transform, which
+   * would make it the frame for the menus, lists and tooltips put inside it (lib layer.ts) and cut
+   * them off at its edges.
+   */
+  .dialog[open][data-pulling], .dialog[open][data-pulled] { transform: translateY(var(--pull, 0px)); }
   @starting-style { .dialog[open] { transform: translateY(40px); } }
+  .dialog[data-pulling] { transition: none; }
+  .dialog[data-pulled]:not([open]) { transform: translateY(100%); }
+  .dialog-head { position: relative; padding-top: 24px; touch-action: none; }
+  .dialog-head::before { content: ""; position: absolute; top: 8px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: var(--radius-pill); background: var(--fill-3); }
   .dialog .form-actions { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
   .dialog .form-actions .btn { flex: 1; }
 }
@@ -386,9 +420,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 
 /* ---------- Toasts ---------- */
 /*
- * components/ui/Toaster.tsx places each toast with translate and scale (kept apart from the transform
- * that entering, leaving and swiping use): two or more stack with the newest in front, and fan out into
- * a list while the toaster is hovered or focused. The bottom inset clears the task island (--island-space).
+ * components/ui/Toaster.tsx (Base UI's Toast) places each toast with translate and scale (kept apart
+ * from the transform that entering, leaving and swiping use): two or more stack with the newest in
+ * front, and fan out into a list while the toaster is hovered or focused. The bottom inset clears the
+ * task island (--island-space).
  */
 .toaster { position: fixed; inset: auto max(20px, env(safe-area-inset-right)) calc(max(20px, env(safe-area-inset-bottom)) + var(--island-space, 0px)) auto; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; width: min(380px, calc(100vw - 32px)); z-index: 200; transition: bottom var(--dur) var(--ease-out); }
 .toaster:not(:popover-open):not([data-fallback]) { display: none; }
@@ -398,6 +433,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   transition: translate var(--dur-enter) var(--ease-enter), scale var(--dur-enter) var(--ease-enter), opacity var(--dur) var(--ease-out), transform var(--dur-enter) var(--ease-spring);
 }
 .toast > * { transition: opacity var(--dur) var(--ease-out); }
+.toast .toast-content { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; }
 /* Older toasts behind the front one: its height, faded, their content hidden until the stack fans out. */
 .toast[data-behind] { overflow: hidden; }
 .toast[data-behind] > * { opacity: 0; }
@@ -405,7 +441,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .toast[data-behind="2"] { opacity: 0.7; }
 .toast[data-behind="3"] { opacity: 0; pointer-events: none; }
 /* Entering and leaving are Web Animations in Toaster.tsx, since raising the toaster again would replay CSS ones. */
-.toast[data-leaving] { pointer-events: none; }
+.toast[data-ending-style] { pointer-events: none; }
 .toast[data-swiping] { transition: none; }
 @media (pointer: coarse) { .toast { touch-action: pan-y; } }
 .toast .toast-icon { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-top: 0; }
@@ -413,6 +449,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .toast[data-kind="error"] .toast-icon { background: #d9443a; }
 .toast[data-kind="info"] .toast-icon { background: #3474d4; }
 .toast[data-kind="warning"] .toast-icon { background: #b8730a; }
+/* Waiting on something (toast.promise): a spinner until it turns into how it went. */
+.toast[data-kind="loading"] .toast-icon { background: color-mix(in srgb, currentColor 16%, transparent); }
 /* A toast about a request, quote, job or invoice takes its workflow color. */
 .toast[data-tone="request"] .toast-icon { background: var(--req); }
 .toast[data-tone="quote"] .toast-icon { background: var(--quote); }
@@ -433,30 +471,56 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 @media (prefers-reduced-motion: reduce) { .toast-ring { display: none; } .toast { transition: opacity var(--dur) var(--ease-out); } .toaster { transition: none; } }
 
 /* ---------- Menus and popovers ---------- */
+/*
+ * A menu's look. Most are Base UI's (Menu.tsx, ContextMenu.tsx), placed by its positioner; a few
+ * are popovers of their own (ImageryPicker, LineItems), placed by their own code in the top layer.
+ * Either drops in and lifts away, like the dialog (see there): out quicker than in.
+ */
 .menu {
-  position: fixed; margin: 0; inset: auto; min-width: 200px; max-width: 320px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-card);
+  min-width: 200px; max-width: 320px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-card);
   background: var(--surface); box-shadow: var(--shadow-md); color: var(--ink); overflow: auto; max-height: min(420px, 70vh);
-  /* Drops in and lifts away, like the dialog (see there): out quicker than in. */
-  z-index: 50; opacity: 0; transform: translateY(-4px) scale(0.97);
-  transition-property: opacity, transform, overlay, display; transition-duration: 140ms; transition-timing-function: var(--ease-exit); transition-behavior: allow-discrete;
+  opacity: 0; transform: translateY(-4px) scale(0.97);
+  transition-property: opacity, transform; transition-duration: 140ms; transition-timing-function: var(--ease-exit);
 }
-.menu:popover-open { opacity: 1; transform: none; transition-duration: var(--dur); transition-timing-function: var(--ease-enter); }
-.menu:not(:popover-open) { pointer-events: none; }
+.menu[popover] { position: fixed; margin: 0; inset: auto; z-index: 50; transition-property: opacity, transform, overlay, display; transition-behavior: allow-discrete; }
+.menu:popover-open, .menu[data-open] { opacity: 1; transform: none; transition-duration: var(--dur); transition-timing-function: var(--ease-enter); }
+.menu[popover]:not(:popover-open), .menu[data-ending-style] { pointer-events: none; }
 @starting-style { .menu:popover-open { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+/*
+ * Base UI's: on the page, above the sticky header and the tab bar; no taller than the room it has;
+ * coming from where it's anchored (up from below for one that opens upwards, from the side for a
+ * submenu), and gone at once when something in it is chosen.
+ */
+.menu-positioner { z-index: 50; outline: 0; }
+/* Focus waits on the popup itself when a click opens it, until the arrow keys take it to a row (which shows it): no outline round the whole menu meanwhile. */
+.menu-positioner > .menu { max-height: min(420px, var(--available-height, 70vh)); transform-origin: var(--transform-origin); outline: 0; }
+.menu[data-starting-style], .menu[data-ending-style] { opacity: 0; transform: translateY(-4px) scale(0.97); }
+.menu[data-side="top"]:is([data-starting-style], [data-ending-style]) { transform: translateY(4px) scale(0.97); }
+.menu:is([data-side="left"], [data-side="right"], [data-side="inline-start"], [data-side="inline-end"]):is([data-starting-style], [data-ending-style]) { transform: scale(0.97); }
+.menu[data-instant] { transition-duration: 0s; }
 @media (prefers-reduced-motion: reduce) {
-  .menu { transform: none; }
+  .menu, .menu[data-starting-style], .menu[data-ending-style], .menu[data-side]:is([data-starting-style], [data-ending-style]) { transform: none; }
   @starting-style { .menu:popover-open { transform: none; } }
 }
 .menu-item {
   display: flex; align-items: center; gap: 10px; width: 100%; height: var(--control); padding: 0 10px; border: 0; border-radius: var(--radius-control); background: none;
   font-weight: 600; font-size: var(--fs-14); color: var(--ink); text-align: left; white-space: nowrap;
 }
+/* Base UI's rows are divs: they take a click like the buttons they replaced, and their words aren't picked up by a drag. */
+.menu-positioner .menu-item { cursor: pointer; -webkit-user-select: none; user-select: none; }
 .menu-item svg { color: var(--text-3); }
 .menu-item:hover, .menu-item:focus-visible { background: var(--fill-2); color: var(--ink); }
+/* The row the arrow keys or the pointer are on, and the one whose submenu is open. */
+.menu-item[data-highlighted], .menu-item[data-popup-open] { background: var(--fill-2); color: var(--ink); }
 .menu-item[data-danger] { color: var(--danger); }
 .menu-item[data-danger] svg { color: var(--danger); }
-.menu-item[data-danger]:hover { background: var(--danger-tint); }
-.menu-item:disabled { opacity: 0.45; cursor: not-allowed; background: none; }
+.menu-item[data-danger]:is(:hover, [data-highlighted]) { background: var(--danger-tint); }
+/* Turned off, it can still be reached with the arrow keys, to read why (its title, as a tooltip). */
+.menu-item:disabled, .menu-item[data-disabled] { opacity: 0.45; cursor: not-allowed; background: none; }
+/* A tick's place, kept when it's off so the words line up with the rows that have icons. A submenu's arrow, at the end. */
+.menu-tick { display: grid; place-items: center; flex: none; width: 16px; height: 16px; }
+.menu-tick svg { color: var(--green); }
+.menu-more { display: flex; margin-left: auto; padding-left: 12px; }
 .menu-sep { height: 1px; background: var(--divider); margin: 4px 6px; }
 .menu-label { padding: 8px 10px 4px; font-size: var(--fs-11); font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
 

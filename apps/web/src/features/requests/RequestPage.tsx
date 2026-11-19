@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, PageError } from "@/components/ui/States";
 import { EntityStatus, statusLabel } from "@/components/ui/StatusPill";
@@ -161,7 +163,7 @@ export function RequestPage() {
       <div className="page-meta">
         <span className="muted">Request #{r.number}</span>
         <EntityStatus kind="request" status={r.status} />
-        {r.client && <Link to={`/clients/${r.client.id}`} className="strong">{r.client.display_name}</Link>}
+        {r.client && <ClientPreview id={r.client.id}><Link to={`/clients/${r.client.id}`} className="strong">{r.client.display_name}</Link></ClientPreview>}
         <span className="chip">{requestSource(r)}</span>
       </div>
 
@@ -269,12 +271,12 @@ export function RequestPage() {
               <dt>Salesperson</dt>
               <dd>
                 {canSell ? (
-                  <select className="select input-sm" aria-label="Salesperson" value={r.assigned_to ?? ""} disabled={assign.isPending || team.isPending} onChange={(e) => assign.mutate(e.target.value || null)}>
+                  <Select className="select input-sm" aria-label="Salesperson" value={r.assigned_to ?? ""} disabled={assign.isPending || team.isPending} onChange={(e) => assign.mutate(e.target.value || null)}>
                     <option value="">Nobody yet</option>
                     {(team.data ?? [])
                       .filter((m) => (m.active && SALES.includes(m.role as Role)) || m.user_id === r.assigned_to)
                       .map((m) => <option key={m.user_id} value={m.user_id}>{memberName(m)}{m.user_id === session.userId ? " (you)" : ""}{m.active ? "" : " (no longer on the team)"}</option>)}
-                  </select>
+                  </Select>
                 ) : (
                   memberName(team.data?.find((m) => m.user_id === r.assigned_to)) ?? "Nobody yet"
                 )}

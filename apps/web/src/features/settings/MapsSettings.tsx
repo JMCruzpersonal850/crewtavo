@@ -16,6 +16,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
@@ -122,7 +123,7 @@ export function MapsSettings() {
           <strong id="team-map-title">What Measure opens on</strong>
         </div>
         <div className="row wrap" style={{ gap: 12 }}>
-          <select
+          <Select
             className="select"
             aria-labelledby="team-map-title"
             aria-describedby="team-map-help"
@@ -135,7 +136,7 @@ export function MapsSettings() {
               const ready = c === "auto" || imageryUsable(c, usableKeys);
               return <option key={c} value={c} disabled={!ready}>{choiceName(c)}{c === "auto" ? " (recommended)" : ready ? "" : " (add a key below)"}</option>;
             })}
-          </select>
+          </Select>
           <SaveStatus status={choosing.status} />
         </div>
         <span id="team-map-help" className="muted small">

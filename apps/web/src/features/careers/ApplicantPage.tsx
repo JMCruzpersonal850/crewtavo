@@ -17,6 +17,7 @@ import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
 import { BackLink, PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, NoAccess, PageError } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -269,9 +270,9 @@ function ApplicantDetail() {
           <div className="card card-pad stack-sm">
             <strong>Where it stands</strong>
             <Field label="Status">
-              <select className="select" value={a.status} onChange={(e) => save.mutate({ status: e.target.value as ApplicantStatus })}>
+              <Select className="select" value={a.status} onChange={(e) => save.mutate({ status: e.target.value as ApplicantStatus })}>
                 {APPLICANT_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
+              </Select>
             </Field>
             <span className="muted small">Since {formatDate(a.status_changed_at)} ({timeAgo(a.status_changed_at)})</span>
             <div className="stack-sm" style={{ gap: 4, marginTop: 6 }}>

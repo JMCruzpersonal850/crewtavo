@@ -13,6 +13,7 @@ import { Icon } from "@/components/ui/Icon";
 import { BackLink, useDocumentTitle } from "@/components/ui/PageHeader";
 import { photoQuery } from "@/components/ui/Avatar";
 import { RichTextEditor, type LinkTarget, type Pictures } from "@/components/ui/RichTextEditor";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, PageError } from "@/components/ui/States";
 import { TagInput } from "@/components/ui/TagInput";
@@ -284,10 +285,10 @@ function Editor({ pageId, initial, loadedAt, categories, titleHint }: { pageId: 
             }}
           />
           <Field label="Category">
-            <select className="select" value={draft.category_id} onChange={(ev) => set("category_id", ev.target.value)}>
+            <Select className="select" value={draft.category_id} onChange={(ev) => set("category_id", ev.target.value)}>
               <option value="">Uncategorized</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Visibility">
             <div className="segmented" role="group" aria-label="Visibility" style={{ width: "100%" }}>
@@ -321,17 +322,17 @@ function Editor({ pageId, initial, loadedAt, categories, titleHint }: { pageId: 
             <TagInput value={draft.tags} onChange={(tags) => set("tags", tags)} placeholder="e.g. safety, asphalt" />
           </Field>
           <Field label="Review schedule" hint={draft.review_months ? "Due that long after it's last saved or marked reviewed. The reviewer gets a reminder." : "Put it on a schedule to get a reminder to check it's still right."}>
-            <select className="select" value={draft.review_months} onChange={(ev) => set("review_months", ev.target.value)}>
+            <Select className="select" value={draft.review_months} onChange={(ev) => set("review_months", ev.target.value)}>
               {REVIEW_EVERY.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            </Select>
           </Field>
           {draft.review_months && (
             <Field label="Reviewed by">
-              <select className="select" value={draft.owner_id} onChange={(ev) => set("owner_id", ev.target.value)}>
+              <Select className="select" value={draft.owner_id} onChange={(ev) => set("owner_id", ev.target.value)}>
                 <option value="">Anyone who edits guides</option>
                 {reviewers.map((m) => <option key={m.user_id} value={m.user_id}>{m.profile?.full_name ?? "Team member"}</option>)}
                 {draft.owner_id && !reviewers.some((m) => m.user_id === draft.owner_id) && team.data && <option value={draft.owner_id}>Someone no longer on the team</option>}
-              </select>
+              </Select>
             </Field>
           )}
         </aside>

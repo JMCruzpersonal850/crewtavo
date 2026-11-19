@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Field } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -246,9 +247,9 @@ export function AnalyticsPanel() {
           <Button icon="copy" onClick={() => copyText(line, "Line copied")}>Copy</Button>
         </div>
         <Field label="Your website is on">
-          <select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
+          <Select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
             {BUILDERS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </select>
+          </Select>
         </Field>
         {builder.id === "developer" ? (
           <DeveloperSteps line={data.snippet} />

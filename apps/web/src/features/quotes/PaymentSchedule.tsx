@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { formatDate, formatMoneyCents, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
@@ -118,11 +119,11 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
             <div key={i} className={styles.scheduleRow}>
               <span className="small strong">Payment {i + 1}</span>
               <div className="row" style={{ gap: 6 }}>
-                <select className="select input-sm" aria-label={`Payment ${i + 1} as`} value={d.kind} onChange={(e) => set(i, { kind: e.target.value as DraftRow["kind"] })}>
+                <Select className="select input-sm" aria-label={`Payment ${i + 1} as`} value={d.kind} onChange={(e) => set(i, { kind: e.target.value as DraftRow["kind"] })}>
                   <option value="percent">%</option>
                   <option value="amount">$</option>
                   {last && <option value="rest">The rest</option>}
-                </select>
+                </Select>
                 {d.kind !== "rest" && (
                   <input className="input input-sm" style={{ width: 96, textAlign: "right" }} inputMode="decimal" aria-label={d.kind === "percent" ? `Payment ${i + 1} percent` : `Payment ${i + 1} amount`}
                     value={d.value} onChange={(e) => set(i, { value: e.target.value.replace(/[^0-9.]/g, "") })} />
@@ -130,9 +131,9 @@ export function PaymentScheduleCard({ quote, editable, onSaved }: { quote: Sched
                 <span className="muted small tabular">{formatMoneyCents(sums.rows[i]?.amount ?? 0)}</span>
               </div>
               <div className="row" style={{ gap: 6 }}>
-                <select className="select input-sm" aria-label={`Payment ${i + 1} due`} value={d.due} onChange={(e) => set(i, { due: e.target.value as DraftDue })}>
+                <Select className="select input-sm" aria-label={`Payment ${i + 1} due`} value={d.due} onChange={(e) => set(i, { due: e.target.value as DraftDue })}>
                   {DRAFT_DUE.map((due) => <option key={due} value={due}>{DUE_LABELS[due]}</option>)}
-                </select>
+                </Select>
                 {d.due === "date" && <input className="input input-sm" type="date" min={today} aria-label={`Payment ${i + 1} date`} value={d.on} onChange={(e) => set(i, { on: e.target.value })} />}
                 {d.due === "after" && (
                   <input className="input input-sm" style={{ width: 72, textAlign: "right" }} inputMode="numeric" placeholder="30" aria-label={`Payment ${i + 1} days after they approve, 1 to ${SCHEDULE_AFTER_MAX}`}

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import type { EstimateQuote } from "../estimate";
 import { useRefreshProject, useTeam } from "./data";
@@ -89,12 +90,12 @@ function MeasureOnSiteDialog({ quote, onClose }: { quote: EstimateQuote; onClose
           <textarea className={`textarea ${styles.agreedNote}`} value={note} maxLength={400} required={choice === OTHER} placeholder="Like “The back half is under the oaks”" onChange={(e) => setNote(e.target.value)} />
         </Field>
         <Field label="Who goes out to measure">
-          <select className="select" value={who} disabled={team.isPending} onChange={(e) => setWho(e.target.value)}>
+          <Select className="select" value={who} disabled={team.isPending} onChange={(e) => setWho(e.target.value)}>
             <option value="">{zip ? `Whoever covers ${zip}` : "Whoever covers the area"}</option>
             {salesPeople(team.data ?? [], quote.salesperson_id).map((p) => (
               <option key={p.id} value={p.id}>{p.name}{!p.active ? " (no longer on the team)" : ""}</option>
             ))}
-          </select>
+          </Select>
         </Field>
         <FormError error={flag.error} />
         <div className="form-actions">

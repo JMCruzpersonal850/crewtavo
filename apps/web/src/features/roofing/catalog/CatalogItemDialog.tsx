@@ -9,6 +9,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
@@ -194,14 +195,14 @@ function AddToService({ item, services, has, onBack, onAdded }: { item: CatalogI
         <span className="muted small">{[item.item_number, item.color, item.unit_price !== null ? `${formatMoneyCents(item.unit_price)} / ${(item.uoms.find((u) => u.code === item.uom)?.name ?? item.uom).toLowerCase()}` : item.note].filter(Boolean).join(" · ")}</span>
       </div>
       <Field label="Which service is it in?" requiredMessage="Pick the service it goes into." hint="Every estimate with that service is then priced with it, so you only pick it once.">
-        <select className="select" required value={serviceId} onChange={(e) => setServiceId(e.target.value)} autoFocus>
+        <Select className="select" required value={serviceId} onChange={(e) => setServiceId(e.target.value)} autoFocus>
           <option value="">Pick a service</option>
           {categories.map((c) => (
             <optgroup key={c} label={c}>
               {choices.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name} (by the {s.unit}){has.has(s.id) ? ", has it already" : ""}</option>)}
             </optgroup>
           ))}
-        </select>
+        </Select>
       </Field>
       <div className="form-actions">
         <FormChecks />

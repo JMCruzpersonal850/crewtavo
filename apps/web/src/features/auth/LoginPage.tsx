@@ -1,7 +1,7 @@
 /** Sign in (password, emailed link, Google or a sub's code by text or email), create an account, reset a password, or set a new one. */
 import { SIGN_IN_CODE_DIGITS, SIGN_IN_CODE_MINUTES } from "@crewtavo/core/subs";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
@@ -10,7 +10,7 @@ import { KEY_FILE_NAME, readKeyFile } from "@/lib/keyFile";
 import { formatPhoneTyping } from "@/lib/validate";
 import styles from "./auth.module.css";
 import { BrandLockup } from "@/components/shell/BrandMark";
-import { afterAsking, ASK_THE_OFFICE, askFor, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
+import { afterAsking, ASK_THE_OFFICE, askFor, boxedCode, codeDigits, codeProblem, emailInstead, filledAtOnce, newPhoneOffers, NOTHING_CAME, readAddress, resendIn, resendLabel, sentTo, signInWith, TEXTING_OFF, wholeCode, type CodeStep, type CodeWay } from "./textCode";
 import { getLocale, LOCALE_NAMES, msg, pickAtSignIn, showScreenLang, T, t } from "@/lib/i18n";
 import { LOCALES } from "@crewtavo/core/i18n";
 import { translateError } from "@crewtavo/core/i18n/patterns";
@@ -408,7 +408,26 @@ const WAY_WORDS = {
  * it can't. The answer never says whether the number or address has a sign-in. Once in, the app opens
  * where they were: the offer or visit link they opened, or My day (AppShell sends a sub anywhere else there).
  */
+/**
+ * The code's boxes (components/ui/CodeField) bring Base UI's OTP field with them, so they're fetched
+ * when someone starts signing in with a code, not with the sign-in page every visit downloads. Until
+ * they've arrived, or if they can't be fetched, the code goes in one plain box as before.
+ */
+type CodeBoxes = typeof import("@/components/ui/CodeField").CodeField;
+function useCodeBoxes(): CodeBoxes | null {
+  const [boxes, setBoxes] = useState<CodeBoxes | null>(null);
+  useEffect(() => {
+    let live = true;
+    import("@/components/ui/CodeField").then((m) => live && setBoxes(() => m.CodeField)).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  return boxes;
+}
+
 function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; features: AppConfig["features"] | undefined; onBack: () => void }) {
+  const CodeBoxes = useCodeBoxes();
   const [way, setWay] = useState<CodeWay>(initialWay);
   const [step, setStep] = useState<CodeStep>({ step: "address" });
   // What was typed for each way, so switching back and forth keeps it.
@@ -465,17 +484,13 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
     }
   }
 
-  // Filled in from the text, or pasted (maxLength would cut "123 456" short): sign in straight away.
+  // Filled in from the text, or pasted: sign in straight away.
   function enterCode(input: string) {
     const next = codeDigits(input);
     const all = filledAtOnce(code, next);
     setCode(next);
     setError(null);
     if (all && step.step === "code" && !busy) void signIn(step.address, next);
-  }
-  function pasteCode(e: ClipboardEvent<HTMLInputElement>) {
-    e.preventDefault();
-    enterCode(e.clipboardData.getData("text"));
   }
 
   function switchWay(next: CodeWay) {
@@ -524,18 +539,11 @@ function CodeSignIn({ initialWay, features, onBack }: { initialWay: CodeWay; fea
             <h1 className={styles.title}>{t("Enter your code")}</h1>
             <p className="muted" style={{ margin: 0, lineHeight: 1.5 }}>{sentTo(way, step.address)}</p>
             <Field label={t("Code")} hint={t("It runs out in {minutes} minutes.", { minutes: SIGN_IN_CODE_MINUTES })}>
-              <input
-                className="input"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]*"
-                maxLength={SIGN_IN_CODE_DIGITS}
-                value={code}
-                onChange={(e) => enterCode(e.target.value)}
-                onPaste={pasteCode}
-                autoFocus
-                style={{ fontSize: 24, fontVariantNumeric: "tabular-nums" }}
-              />
+              {CodeBoxes ? (
+                <CodeBoxes length={SIGN_IN_CODE_DIGITS} value={code} onChange={enterCode} normalize={boxedCode} autoFocus />
+              ) : (
+                <input className="input" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => enterCode(boxedCode(e.target.value))} autoFocus style={{ fontSize: 24, fontVariantNumeric: "tabular-nums" }} />
+              )}
             </Field>
             {alert}
             <Button type="submit" variant="primary" size="lg" loading={busy === "sign_in"} disabled={!wholeCode(code) || Boolean(busy)}>{t("Sign in")}</Button>

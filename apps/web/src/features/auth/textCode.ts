@@ -162,6 +162,18 @@ const WHOLE_CODE = new RegExp(`(?<![0-9])[0-9]{${SIGN_IN_CODE_DIGITS}}(?![0-9])`
  */
 export const codeDigits = (input: string) => WHOLE_CODE.exec(input)?.[0] ?? input.replace(/[^0-9]/g, "").slice(0, SIGN_IN_CODE_DIGITS);
 
+/**
+ * The code in the sign-in boxes (CodeField), as codeDigits takes it, except that pasting the code
+ * after a digit already typed adds it on to that digit ("1" and "123456" make "1123456"): then the
+ * last 6 digits, the code pasted, are the code rather than the first 6.
+ */
+export const boxedCode = (input: string) => {
+  const whole = WHOLE_CODE.exec(input)?.[0];
+  if (whole) return whole;
+  const digits = input.replace(/[^0-9]/g, "");
+  return digits.length > SIGN_IN_CODE_DIGITS ? digits.slice(-SIGN_IN_CODE_DIGITS) : digits;
+};
+
 export const wholeCode = (code: string) => code.length === SIGN_IN_CODE_DIGITS;
 
 /**

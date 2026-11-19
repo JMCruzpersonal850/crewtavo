@@ -13,6 +13,7 @@ import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { api, supabase, unwrap } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { useInstallHint } from "@/lib/install";
 import { disablePush, enablePush, pushState } from "@/lib/push";
 import { hasRole, isSub, keepsTime, useSession, type Session } from "@/lib/session";
@@ -98,10 +99,15 @@ export function NotificationSettings({ phone }: { phone: string | null }) {
     onSuccess: (_r, on) => toast.success(on ? t("Notifications are on for this phone") : t("Notifications are off for this phone")),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["push-state"] }),
   });
+  // One toast says it's sending and then how it went, failing included.
   const test = useMutation({
     meta: { inline: true },
-    mutationFn: () => api.post("/push/test", {}),
-    onSuccess: () => toast.success(t("Test sent"), { description: t("It should pop up in a few seconds.") }),
+    mutationFn: () =>
+      toast.promise(api.post("/push/test", {}), {
+        loading: t("Sending a test…"),
+        success: { title: t("Test sent"), description: t("It should pop up in a few seconds.") },
+        error: (e) => ({ title: t("The test didn't send"), description: errorMessage(e) }),
+      }),
   });
 
   const toggle = (channel: NotificationChannel, topic: NotificationTopic, on: boolean) => {
@@ -134,7 +140,7 @@ export function NotificationSettings({ phone }: { phone: string | null }) {
       <span className="muted small">{t("The bell shows everything. Choose what also reaches you when you're not in Crewtavo.")}</span>
 
       <PushRow state={push.data} sub={pushSub} busy={pushToggle.isPending} onToggle={(on) => pushToggle.mutate(on)} onTest={() => test.mutate()} testing={test.isPending} />
-      <FormError error={pushToggle.error ?? test.error} />
+      <FormError error={pushToggle.error} />
 
       {prefs.isPending ? (
         <Skeleton height={140} radius={8} />
