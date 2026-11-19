@@ -1,7 +1,9 @@
+<!-- GitLab ignores <source> and shows the <img>, so that one is on a white tile to read on its light and dark themes -->
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/crewtavo-logo-dark.png">
-    <img src="docs/brand/crewtavo-logo.png" alt="Crewtavo" width="300">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/crewtavo-logo.png">
+    <img src="docs/brand/crewtavo-logo-tile.png" alt="Crewtavo" width="300">
   </picture>
 </p>
 

@@ -77,9 +77,9 @@ paving takeoffs, roofing packages) plus connections to QuickBooks, Zoho, Claude 
 ## Brand Commitments
 
 - **Name and logo:** "Crewtavo" and its mark (`docs/brand/`: `crewtavo-logo.png`,
-  `crewtavo-logo-dark.png`, `crewtavo-mark.svg`, `crewtavo-mark-512.png`; app icons in
-  `apps/web/public/`). The NOTICE file reserves them: modified versions may not use them to name or
-  sell themselves.
+  `crewtavo-logo-dark.png`, `crewtavo-logo-tile.png`, `crewtavo-mark.svg`, `crewtavo-mark-512.png`;
+  app icons in `apps/web/public/`). The NOTICE file reserves them: modified versions may not use
+  them to name or sell themselves.
 - **Voice, as shipped** across the README, docs and in-app copy: plain everyday words, short
   sentences, second person, concrete outcomes. It says what happened and what to do next ("Saved on
   this phone. It sends when you have signal."), names what failed and why instead of a generic
