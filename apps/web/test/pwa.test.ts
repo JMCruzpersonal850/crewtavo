@@ -183,11 +183,11 @@ describe("the first paint", () => {
     const wide = css.slice(0, css.indexOf("@media (max-width: 900px)"));
     const rule = (selector: string) => wide.match(new RegExp(`\\n${selector.replace(".", "\\.")} \\{([^}]*)\\}`))![1]!;
     // The sidebar on the left (the notch on that side, the home indicator under its last links)...
-    expect(rule(".sidebar")).toMatch(/padding-left: max\(12px, env\(safe-area-inset-left\)\)/);
-    expect(rule(".sidebar")).toMatch(/padding-bottom: max\(16px, env\(safe-area-inset-bottom\)\)/);
+    expect(rule(".sidebar")).toMatch(/padding-left: max\(10px, env\(safe-area-inset-left\)\)/);
+    expect(rule(".sidebar")).toMatch(/padding-bottom: max\(12px, env\(safe-area-inset-bottom\)\)/);
     // ...and the top bar and the screen on the right.
-    expect(rule(".topbar")).toMatch(/padding: 10px max\(24px, env\(safe-area-inset-right\)\) /);
-    expect(rule(".content")).toMatch(/padding: 20px max\(48px, env\(safe-area-inset-right\)\) 56px 48px;/);
+    expect(rule(".topbar")).toMatch(/padding: 0 max\(14px, env\(safe-area-inset-right\)\) /);
+    expect(rule(".content")).toMatch(/padding: 22px max\(28px, env\(safe-area-inset-right\)\) 56px 28px;/);
   });
 
   it("keeps toasts clear of the notch and home indicator, sideways too, in both layouts", () => {

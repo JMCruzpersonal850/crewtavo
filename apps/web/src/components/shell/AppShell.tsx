@@ -1,24 +1,27 @@
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigation, useViewTransitionState } from "react-router-dom";
 import { supabase } from "@/lib/api";
 import { logoUrl } from "@/lib/files";
-import { usePresence } from "@/lib/motion";
+import { announceTopLayer } from "@/lib/motion";
 import { isSub, useSession } from "@/lib/session";
+import { setTheme, useTheme } from "@/lib/theme";
 import { prefetchScreens } from "@/routes";
 import { Face, initials } from "../ui/Avatar";
-import { Icon } from "../ui/Icon";
+import { Icon, type IconName } from "../ui/Icon";
 import { confirm } from "../ui/Confirm";
-import { Menu } from "../ui/Menu";
+import { Menu, type MenuEntry } from "../ui/Menu";
+import { sheetDismissed } from "../ui/menuModel";
 import { TaskIsland } from "../ui/TaskIsland";
 import { topLayerProps, useSpace, useTopLayer } from "../ui/topLayer";
 import { CommandPalette, openPalette } from "./CommandPalette";
 import { useChatBadge, useChatLive } from "@/features/chat/data";
 import { useMyJobs, waitingCount } from "@/features/field/myJobsData";
 import { signOutNote, subCodeWays } from "@/features/auth/textCode";
+import { inkOn } from "@/features/documents/words";
 import { createItems, mobileTabs, NAV_GROUP_LABELS, NAV_GROUPS, navVisible, settingsItem, subCanOpen, type NavItem } from "./nav";
-import { HelpButton } from "./Help";
+import { HelpButton, openHelp } from "./Help";
 import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
 import { RestartBanner } from "./RestartBanner";
@@ -34,27 +37,39 @@ function useVisibleNav(): { groups: Array<{ label: string | null; items: NavItem
   };
 }
 
-/** New requests waiting, shown beside Requests in the sidebar (which a sub doesn't have). */
-function useNewRequests() {
+/**
+ * The counts beside the sidebar's links: new requests waiting (which a sub doesn't have), and
+ * invoices past due for whoever sees Invoices, the one count that's red.
+ */
+function useNavCounts() {
   const session = useSession();
   const { company } = session;
+  const invoices = navVisible(session, NAV_GROUPS.flat().find((item) => item.to === "/invoices")!);
   return useQuery({
-    queryKey: ["nav-counts", company.id],
+    queryKey: ["nav-counts", company.id, invoices],
     enabled: !isSub(session),
     queryFn: async () => {
-      const { count } = await supabase().from("requests").select("id", { count: "exact", head: true }).eq("company_id", company.id).eq("status", "new");
-      return { requests: count ?? 0 };
+      const [requests, overdue] = await Promise.all([
+        supabase().from("requests").select("id", { count: "exact", head: true }).eq("company_id", company.id).eq("status", "new"),
+        invoices ? supabase().from("invoices").select("id", { count: "exact", head: true }).eq("company_id", company.id).eq("status", "overdue") : Promise.resolve({ count: 0 }),
+      ]);
+      return { requests: requests.count ?? 0, overdue: overdue.count ?? 0 };
     },
     refetchInterval: 60_000,
     meta: { silent: true },
   });
 }
 
-/** The business's logo on white, as clients see it, or its initials when it has none (or it can't load). */
+/**
+ * The business's logo on white, as clients see it, or its initials when it has none (or it can't
+ * load), on the brand color it chose for its clients (Settings, Company) with words that read on it.
+ */
 function BusinessTile({ name, settings }: { name: string; settings: Record<string, unknown> }) {
   const logo = logoUrl(settings);
   const [broken, setBroken] = useState<string | null>(null);
-  if (!logo || broken === logo) return <span className="business-tile" aria-hidden="true">{initials(name)}</span>;
+  const brand = (settings.branding as { color?: unknown } | undefined)?.color;
+  const color = typeof brand === "string" && /^#[0-9a-f]{6}$/i.test(brand) ? brand : null;
+  if (!logo || broken === logo) return <span className="business-tile" style={color ? { background: color, color: inkOn(color) } : undefined} aria-hidden="true">{initials(name)}</span>;
   return <span className="business-tile business-logo" aria-hidden="true"><img src={logo} alt="" draggable={false} onError={() => setBroken(logo)} /></span>;
 }
 
@@ -136,17 +151,15 @@ export function AppShell() {
   const navigation = useNavigation();
   const online = useOnline();
   const typing = useTyping();
-  const counts = useNewRequests();
+  const counts = useNavCounts();
   const chat = useChatBadge();
+  const theme = useTheme();
   useChatLive();
   // A sub's job offers waiting for their answer, beside My jobs.
   const offers = waitingCount(useMyJobs(session).data);
   const tabs = mobileTabs(session);
   // A sub has My day, My jobs, My paperwork and their profile: no search, Create, messages or More.
   const sub = isSub(session);
-  // The More sheet stays a moment after it closes, to slide back down.
-  const moreVisible = moreOpen && !sub;
-  const moreShown = usePresence(moreVisible);
   // A sub on a sign-in Crewtavo made for them has no password: to get back in they ask for a code by
   // text or email, or, when neither goes out or their record has nothing to send it to, a new link
   // from the office. So they're asked first, and told how. (Someone's own account has its password.)
@@ -164,6 +177,7 @@ export function AppShell() {
   };
   const settings = settingsItem(session);
   const shownEmail = isPlaceholderEmail(session.profile.email) ? null : session.profile.email;
+  const myName = session.profile.full_name || shownEmail || t("Account");
 
   useEffect(() => {
     prefetchScreens();
@@ -187,11 +201,16 @@ export function AppShell() {
     setMoreOpen(false);
   }, [location.pathname]);
 
+  /**
+   * The count beside a link: a quiet number, red only where someone's waiting on you (a mention, an
+   * invoice past due). Team chat with something unread and no mention has a small dot.
+   */
   const badge = (item: NavItem) => {
-    if (item.to === "/field/jobs" && offers) return <span className="badge badge-green nav-badge" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>;
-    if (item.to === "/requests" && counts.data?.requests) return <span className="badge badge-green nav-badge">{counts.data.requests}</span>;
-    if (item.to === "/chat" && chat.mentions) return <span className="badge badge-red nav-badge" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span>;
-    if (item.to === "/chat" && chat.unread) return <span className="nav-badge nav-dot" aria-label={t("New messages")} />;
+    if (item.to === "/field/jobs" && offers) return <span className="nav-count" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>;
+    if (item.to === "/requests" && counts.data?.requests) return <span className="nav-count">{counts.data.requests}</span>;
+    if (item.to === "/invoices" && counts.data?.overdue) return <span className="nav-count nav-count-alert" aria-label={t.plural(counts.data.overdue, { one: "{count} past due", other: "{count} past due" })}>{counts.data.overdue}</span>;
+    if (item.to === "/chat" && chat.mentions) return <span className="nav-count nav-count-alert" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span>;
+    if (item.to === "/chat" && chat.unread) return <span className="nav-dot" role="img" aria-label={t("New messages")} />;
     return null;
   };
   // A section stays highlighted on its related screens (Settings while in Automations, and so on).
@@ -201,6 +220,39 @@ export function AppShell() {
   const active = (item: NavItem, isActive: boolean) => (isActive && !under(item.except)) || within(item);
   const navClass = (item: NavItem) => ({ isActive }: { isActive: boolean }) => `nav-link${active(item, isActive) ? " active" : ""}`;
   const current = (item: NavItem) => (under(item.except) ? "false" : "page");
+  // On a phone, a screen none of the tabs is for (Invoices, Settings) is one of More's.
+  const tabPath = (item: NavItem) => item.to.split("?")[0]!;
+  const onTab = tabs.some((item) => {
+    const path = tabPath(item);
+    return (path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`)) && !under(item.except);
+  });
+
+  const themeChoices: Array<{ value: "light" | "dark" | "system"; label: string; icon: IconName }> = [
+    { value: "light", label: t("Light"), icon: "sun" },
+    { value: "dark", label: t("Dark"), icon: "moon" },
+    { value: "system", label: t("Match device"), icon: "monitor" },
+  ];
+  const accountItems: MenuEntry[] = [
+    // Who's signed in, and where (Menus.dc.html). A menu's row is something to pick, so it opens their profile too.
+    {
+      label: myName,
+      lead: <span className="avatar account-face" style={{ background: session.profile.color || "var(--avatar)" }}><Face name={session.profile.full_name || shownEmail} photo={session.profile.avatar_url} /></span>,
+      description: [session.roleName, session.company.name].filter(Boolean).join(" · "),
+      title: t("Your profile"),
+      onSelect: () => navigate("/settings?tab=profile"),
+    },
+    { separator: true },
+    { label: t("Your profile"), icon: "user", onSelect: () => navigate("/settings?tab=profile") },
+    { label: t("Settings"), icon: "settings", kbd: ",", hidden: sub, onSelect: () => navigate("/settings") },
+    {
+      label: t("Appearance"),
+      icon: theme === "dark" ? "moon" : theme === "light" ? "sun" : "monitor",
+      end: themeChoices.find((c) => c.value === theme)?.label,
+      items: themeChoices.map((c) => ({ label: c.label, icon: c.icon, checked: theme === c.value, onSelect: () => setTheme(c.value) })),
+    },
+    { separator: true },
+    { label: t("Sign out"), icon: "logout", onSelect: () => void signOut() },
+  ];
 
   return (
     <div className="shell">
@@ -210,17 +262,17 @@ export function AppShell() {
 
       <aside className="sidebar" aria-label={t("Primary")} lang={shellLang}>
         <Link to={sub ? "/field" : "/"} className="brand" aria-label={t("Crewtavo home")} viewTransition>
-          <BrandLockup size={30} />
+          <BrandLockup size={22} />
         </Link>
+        <CreateMenu />
         <nav className="nav nav-scroll">
-          <CreateMenu />
           {groups.map((group, i) => (
             <div key={i} className="nav" role={group.label ? "group" : undefined} aria-labelledby={group.label ? `nav-group-${i}` : undefined}>
               {group.label ? <span className="nav-label" id={`nav-group-${i}`}>{t(group.label)}</span> : i > 0 && <span className="nav-divider" />}
               {group.items.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
-                  <Icon name={item.icon} />
-                  {t(item.label)}
+                  <Icon name={item.icon} size={16} />
+                  <span className="nav-text">{t(item.label)}</span>
                   {badge(item)}
                 </NavLink>
               ))}
@@ -230,8 +282,8 @@ export function AppShell() {
         <nav className="nav nav-bottom" aria-label={t("Settings")}>
           {[...foot, settings].map((item) => (
             <NavLink key={item.to} to={item.to} className={navClass(item)} viewTransition>
-              <Icon name={item.icon} />
-              {t(item.label)}
+              <Icon name={item.icon} size={16} />
+              <span className="nav-text">{t(item.label)}</span>
             </NavLink>
           ))}
         </nav>
@@ -252,70 +304,62 @@ export function AppShell() {
             )}
           </div>
           {!sub && (
+            <button type="button" className="search" onClick={openPalette} aria-label={t("Search (⌘K)")}>
+              <Icon name="search" size={14} />
+              <span>{t("Search")}</span>
+              <kbd className="kbd">{navigator.platform.toLowerCase().includes("mac") ? "⌘K" : t("Ctrl K")}</kbd>
+            </button>
+          )}
+          <span className="topbar-gap" />
+          {!sub && (
             <>
-              <button type="button" className="search" onClick={openPalette} aria-label={t("Search (⌘K)")}>
-                <Icon name="search" size={16} />
-                <span>{t("Search")}</span>
-                <kbd className="kbd">{navigator.platform.toLowerCase().includes("mac") ? "⌘K" : t("Ctrl K")}</kbd>
-              </button>
               <button type="button" className="icon-btn mobile-only" onClick={openPalette} aria-label={t("Search")}><Icon name="search" size={20} /></button>
               <Link className="icon-btn hide-mobile" to="/messages" aria-label={t("Messages")} title={t("Messages")}><Icon name="messages" size={20} /></Link>
             </>
           )}
-          <HelpButton />
+          {/* On a phone the team finds Help in More; a sub, who has no More, keeps it here. */}
+          <HelpButton buttonClassName={sub ? "icon-btn" : "icon-btn hide-mobile"} />
           <NotificationsButton />
           <Menu
             label={t("Account")}
-            triggerClassName="icon-btn"
-            trigger={<span className="avatar" style={{ width: 30, height: 30, fontSize: 11, background: session.profile.color || "var(--avatar)" }}><Face name={session.profile.full_name || shownEmail} photo={session.profile.avatar_url} /></span>}
-            items={[
-              { heading: session.profile.full_name || shownEmail || t("Account") },
-              { label: t("Your profile"), icon: "user", onSelect: () => navigate("/settings?tab=profile") },
-              { label: t("Settings"), icon: "settings", hidden: sub, onSelect: () => navigate("/settings") },
-              { separator: true },
-              { label: t("Sign out"), icon: "logout", onSelect: () => void signOut() },
-            ]}
+            triggerClassName="icon-btn account-trigger"
+            trigger={<span className="avatar account-avatar" style={{ background: session.profile.color || "var(--avatar)" }}><Face name={session.profile.full_name || shownEmail} photo={session.profile.avatar_url} /></span>}
+            items={accountItems}
           />
         </header>
 
         <Screen key={location.pathname} />
       </div>
 
-      <nav className="mobile-nav" aria-label={t("Primary")} lang={shellLang} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, 1fr)` }}>
+      <nav className="mobile-nav" aria-label={t("Primary")} lang={shellLang} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, minmax(0, 1fr))` }}>
         {tabs.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => (active(item, isActive) ? "active" : "")} aria-current={current(item)} viewTransition>
             <span className="mobile-tab-icon">
-              <Icon name={item.icon} size={20} />
-              {item.to === "/field/jobs" && offers > 0 && <span className="badge badge-green mobile-tab-badge" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
-              {item.to === "/chat" && (chat.mentions ? <span className="badge badge-red mobile-tab-badge">{chat.mentions}</span> : chat.unread ? <span className="nav-dot mobile-tab-badge" /> : null)}
+              <Icon name={item.icon} size={24} />
+              {item.to === "/field/jobs" && offers > 0 && <span className="tab-count tab-count-green" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
+              {item.to === "/chat" && (chat.mentions ? <span className="tab-count" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span> : chat.unread ? <span className="tab-dot" role="img" aria-label={t("New messages")} /> : null)}
             </span>
             {t(item.label)}
           </NavLink>
         ))}
         {!sub && (
-          <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}>
-            <Icon name="menu" size={20} />
+          <button type="button" className={moreOpen || !onTab ? "active" : undefined} onClick={() => setMoreOpen(true)} aria-haspopup="dialog" aria-expanded={moreOpen}>
+            <span className="mobile-tab-icon"><Icon name="apps" size={24} /></span>
             {t("More")}
           </button>
         )}
       </nav>
 
-      {moreShown && (
-        <>
-          <div className="sheet-backdrop" data-leaving={!moreVisible || undefined} onClick={() => setMoreOpen(false)} />
-          <div className="sheet" role="dialog" aria-label={t("All sections")} data-leaving={!moreVisible || undefined}>
-            <MobileCreate onDone={() => setMoreOpen(false)} />
-            <nav className="nav">
-              {[...groups.flatMap((g) => g.items), ...foot, settings].map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} onClick={() => setMoreOpen(false)} viewTransition>
-                  <Icon name={item.icon} />
-                  {t(item.label)}
-                  {badge(item)}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-        </>
+      {!sub && (
+        <MoreSheet
+          open={moreOpen}
+          onClose={() => setMoreOpen(false)}
+          groups={groups.map((g) => ({ ...g, items: g.items.filter((item) => !tabs.some((tab) => tab.to === item.to)) })).filter((g) => g.items.length)}
+          foot={[...foot, settings]}
+          badge={badge}
+          isCurrent={active}
+          lang={shellLang}
+        />
       )}
 
       {!sub && <CommandPalette />}
@@ -350,7 +394,7 @@ function useCreateItems() {
   return createItems(useSession());
 }
 
-/** "Create" in the sidebar: the things people start most often. */
+/** "Create" in the sidebar: the things people start most often, each with the key that picks it. */
 function CreateMenu() {
   const navigate = useNavigate();
   const items = useCreateItems();
@@ -362,36 +406,152 @@ function CreateMenu() {
       triggerClassName="nav-link create-trigger"
       trigger={
         <>
-          <span className="nav-create-dot"><Icon name="plus" size={12} /></span>
-          {t("Create")}
+          <span className="nav-create-dot"><Icon name="plus" size={12} strokeWidth={2.25} /></span>
+          <span className="nav-text">{t("Create")}</span>
         </>
       }
-      items={items.map((item) => ({ label: t(item.label), icon: item.icon, onSelect: () => navigate(item.to) }))}
+      items={[{ heading: t("Create") }, ...items.map((item) => ({ label: t(item.label), icon: item.icon, kbd: item.key, onSelect: () => navigate(item.to) }))]}
     />
   );
 }
 
-function MobileCreate({ onDone }: { onDone: () => void }) {
+/**
+ * The phone's More tab: a bottom sheet with the things to start (three to a row), then every section
+ * this person can open that isn't a tab, under the sidebar's group names, and Apps, Settings and
+ * Help at the end. A modal dialog, so the screen behind is out of reach and Escape puts it away; the
+ * handle drags it down.
+ */
+function MoreSheet({
+  open,
+  onClose,
+  groups,
+  foot,
+  badge,
+  isCurrent,
+  lang,
+}: {
+  open: boolean;
+  onClose: () => void;
+  groups: Array<{ label: string | null; items: NavItem[] }>;
+  foot: NavItem[];
+  badge: (item: NavItem) => ReactNode;
+  isCurrent: (item: NavItem, isActive: boolean) => boolean;
+  lang: string | undefined;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
   const navigate = useNavigate();
-  const items = useCreateItems();
-  if (!items.length) return null;
+  const creates = useCreateItems();
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) {
+      dialog.showModal();
+      announceTopLayer();
+      // Not the first link: a sheet opened by a tap shouldn't show a focus ring on what's under the thumb.
+      dialog.focus();
+    }
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  const go = (to: string) => {
+    onClose();
+    navigate(to);
+  };
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 8, marginBottom: 12 }}>
-      {items.map((item) => (
+    <dialog
+      ref={ref}
+      className="more-sheet"
+      aria-label={t("All sections")}
+      lang={lang}
+      tabIndex={-1}
+      onClose={onClose}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onClick={(e) => e.target === ref.current && onClose()}
+    >
+      <span className="sheet-grab" aria-hidden="true" onPointerDown={(e) => dragSheet(e, ref.current, onClose)} />
+      {creates.length > 0 && (
+        <section aria-labelledby="more-create">
+          <h2 className="more-label" id="more-create">{t("Create")}</h2>
+          <div className="more-tiles">
+            {creates.map((item) => (
+              <button key={item.to} type="button" className="more-tile" aria-label={item.newLabel} onClick={() => go(item.to)}>
+                <Icon name={item.icon} size={22} />
+                {t(item.label)}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {groups.map((group, i) => (
+        <div key={group.label ?? i} className="more-group" role={group.label ? "group" : undefined} aria-labelledby={group.label ? `more-group-${i}` : undefined}>
+          {group.label && <h2 className="more-label" id={`more-group-${i}`}>{t(group.label)}</h2>}
+          {group.items.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `more-item${isCurrent(item, isActive) ? " active" : ""}`} onClick={onClose} viewTransition>
+              <Icon name={item.icon} size={22} />
+              <span className="more-text">{t(item.label)}</span>
+              <span className="more-end">
+                {badge(item)}
+                <Icon name="chevronRight" size={17} />
+              </span>
+            </NavLink>
+          ))}
+        </div>
+      ))}
+      <div className="more-group more-foot" role="group" aria-label={t("Settings")}>
+        {foot.map((item) => (
+          <NavLink key={item.to} to={item.to} className={({ isActive }) => `more-item${isCurrent(item, isActive) ? " active" : ""}`} onClick={onClose} viewTransition>
+            <Icon name={item.icon} size={22} />
+            <span className="more-text">{t(item.label)}</span>
+            <span className="more-end"><Icon name="chevronRight" size={17} /></span>
+          </NavLink>
+        ))}
         <button
-          key={item.to}
           type="button"
-          className="btn"
-          style={{ height: 64, flexDirection: "column", gap: 4, fontSize: 12 }}
+          className="more-item"
+          aria-haspopup="dialog"
           onClick={() => {
-            onDone();
-            navigate(item.to);
+            onClose();
+            openHelp();
           }}
         >
-          <Icon name={item.icon} size={20} />
-          {item.newLabel}
+          <Icon name="help" size={22} />
+          <span className="more-text">{t("Help")}</span>
         </button>
-      ))}
-    </div>
+      </div>
+    </dialog>
   );
+}
+
+/** Dragging the sheet's handle: it follows the finger down, and goes away if pulled far or flicked. */
+function dragSheet(e: ReactPointerEvent<HTMLElement>, sheet: HTMLElement | null, close: () => void) {
+  if (!sheet || e.button !== 0) return;
+  const grab = e.currentTarget;
+  const startY = e.clientY;
+  let lastY = startY;
+  let lastTime = e.timeStamp;
+  let velocity = 0;
+  grab.setPointerCapture?.(e.pointerId);
+  sheet.dataset.dragging = "";
+  const move = (ev: PointerEvent) => {
+    velocity = (ev.clientY - lastY) / Math.max(1, ev.timeStamp - lastTime);
+    lastY = ev.clientY;
+    lastTime = ev.timeStamp;
+    sheet.style.transform = `translateY(${Math.max(0, ev.clientY - startY)}px)`;
+  };
+  const end = (ev: PointerEvent) => {
+    grab.removeEventListener("pointermove", move);
+    grab.removeEventListener("pointerup", end);
+    grab.removeEventListener("pointercancel", end);
+    delete sheet.dataset.dragging;
+    sheet.style.transform = "";
+    if (ev.type === "pointerup" && sheetDismissed(Math.max(0, ev.clientY - startY), velocity)) close();
+  };
+  grab.addEventListener("pointermove", move);
+  grab.addEventListener("pointerup", end);
+  grab.addEventListener("pointercancel", end);
 }

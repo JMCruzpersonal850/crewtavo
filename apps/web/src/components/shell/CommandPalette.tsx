@@ -3,6 +3,9 @@
  * invoice, measurement, guide, campaign, automation, price list service, file, piece of equipment (the
  * company's or at a client's property), subcontractor, applicant, chat channel, promo code and app, jump to
  * any screen or section of Settings, or start something new. "/" also opens it when you're not typing in a field.
+ *
+ * Outside a field, G then a screen's key goes there and N then a Create item's key starts it (nav.ts
+ * shortcutTarget); search shows each one's keys beside it.
  */
 import { kindLabel } from "@crewtavo/core/equipment";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -17,7 +20,7 @@ import { getRecents } from "@/lib/recent";
 import { can, hasRole, useSession } from "@/lib/session";
 import { Spinner } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
-import { createItems, NAV_GROUPS, navVisible, OTHER_SCREENS } from "./nav";
+import { createItems, NAV_GROUPS, navVisible, OTHER_SCREENS, shortcutTarget } from "./nav";
 import { english, msg, t } from "@/lib/i18n";
 
 let opener: (() => void) | null = null;
@@ -30,6 +33,8 @@ interface Item {
   title: string;
   subtitle?: string;
   keywords?: string;
+  /** The keys that do it from anywhere ("G S"), shown on the right. */
+  kbd?: string;
   run: () => void;
 }
 
@@ -66,6 +71,11 @@ const KIND_LABEL: Record<string, string> = {
   applicant: msg("Applicant"), channel: msg("Team chat"), asset: msg("Property equipment"), promo: msg("Promo code"),
 };
 const SCREENS = [...NAV_GROUPS.flat(), ...OTHER_SCREENS];
+/** Screens with single-key tools of their own (Measure's, the trade apps' maps), where G and N stay theirs. */
+const OWN_KEYS = /^\/(measure|paving|roofing)(\/|$)/;
+/** How long after G or N the second key still counts. */
+const SEQUENCE_MS = 1500;
+
 /** Kinds that live in an app or area someone may not have: shown only to whoever sees that screen. */
 const KIND_SCREEN: Record<string, string> = { applicant: "/applicants", channel: "/chat", promo: "/marketing?tab=promos", campaign: "/marketing" };
 
@@ -93,9 +103,21 @@ export function CommandPalette() {
   // the plain table lookups need it without the characters their filters use.
   const typed = useDeferredValue(query.trim());
   const term = searchTerm(typed);
+  // For the shortcuts, which listen from the first render on.
+  const latest = useRef({ session, navigate });
+  latest.current = { session, navigate };
 
   useEffect(() => {
     opener = () => setOpen(true);
+    let pending: { key: string; at: number } | null = null;
+    const somethingOpen = () => {
+      try {
+        // A dialog, or a menu or panel (not a toast or banner, which are popover="manual").
+        return Boolean(document.querySelector('dialog[open], [popover="auto"]:popover-open'));
+      } catch {
+        return Boolean(document.querySelector("dialog[open]"));
+      }
+    };
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
       // Not when something on the screen already used it (⌘K adds a link in the guide editor).
@@ -105,6 +127,19 @@ export function CommandPalette() {
       } else if (e.key === "/" && !typing && !document.querySelector("dialog[open]")) {
         e.preventDefault();
         setOpen(true);
+      } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !e.defaultPrevented && e.key.length === 1 && !somethingOpen() && !OWN_KEYS.test(window.location.pathname)) {
+        // G S, N R: the second key within a moment of the first.
+        const key = e.key.toLowerCase();
+        if (pending && e.timeStamp - pending.at < SEQUENCE_MS) {
+          const to = shortcutTarget(latest.current.session, pending.key, key);
+          pending = null;
+          if (to) {
+            e.preventDefault();
+            latest.current.navigate(to);
+          }
+          return;
+        }
+        pending = key === "g" || key === "n" ? { key, at: e.timeStamp } : null;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -181,7 +216,7 @@ export function CommandPalette() {
   const items = useMemo<Item[]>(() => {
     const isOffice = hasRole(session, "admin", "office");
     // i18n-ignore: words to find it by, never shown
-    const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: msg("Create"), icon: c.icon, title: c.newLabel, keywords: `add new ${english(c.label)} ${c.keywords}`, run: () => go(c.to) }));
+    const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: msg("Create"), icon: c.icon, title: c.newLabel, keywords: `add new ${english(c.label)} ${c.keywords}`, kbd: `N ${c.key}`, run: () => go(c.to) }));
     const actions: Item[] = [
       ...creates,
       ...(isOffice && can(session, "kb_edit") ? [{ id: "new-guide", group: msg("Create"), icon: "book" as IconName, title: t("New guide"), keywords: "add knowledge base sop procedure page", run: () => go("/kb/new") }] : []),
@@ -191,7 +226,7 @@ export function CommandPalette() {
     const screens: Item[] = SCREENS
       .filter((n) => navVisible(session, n))
       // Found by its name in either language ("agenda" or "schedule").
-      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(n.label), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, run: () => go(n.to) }));
+      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(n.label), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, kbd: n.go ? `G ${n.go}` : undefined, run: () => go(n.to) }));
     screens.push({ id: "go-settings", group: msg("Go to"), icon: "settings", title: t("Settings"), keywords: "preferences options setup", run: () => go("/settings") });
     const settings: Item[] = settingsGroups(session).flatMap((g) =>
       g.items.map((s) => {
@@ -268,36 +303,37 @@ export function CommandPalette() {
       {(open || leaving) && (
         <>
           <div className="palette-input">
-            {searching ? <Spinner size={20} /> : <Icon name="search" size={20} />}
-            <input
-              ref={input}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={t("Search anything: clients, jobs, files, apps, settings… or type a command")}
-              aria-label={t("Search")}
-              role="combobox"
-              aria-expanded="true"
-              aria-controls="palette-list"
-              aria-activedescendant={items[index] ? `palette-${items[index].id}` : undefined}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <button type="button" className="kbd" onClick={() => setOpen(false)} style={{ cursor: "pointer" }}>{t("Esc")}</button>
+            <label className="palette-field">
+              {searching ? <Spinner size={16} /> : <Icon name="search" size={16} />}
+              <input
+                ref={input}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder={t("Search anything: clients, jobs, files, apps, settings… or type a command")}
+                aria-label={t("Search")}
+                role="combobox"
+                aria-expanded="true"
+                aria-controls="palette-list"
+                aria-activedescendant={items[index] ? `palette-${items[index].id}` : undefined}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <button type="button" className="kbd palette-esc" onClick={() => setOpen(false)}>{t("Esc")}</button>
+            <button type="button" className="palette-cancel" onClick={() => setOpen(false)}>{t("Cancel")}</button>
           </div>
-          <div className="palette-list" id="palette-list" role="listbox" ref={list}>
+          <div className="palette-list" id="palette-list" role="listbox" aria-label={t("Search")} ref={list}>
             {items.length === 0 && (
-              <div className="empty-state empty-state-sm">
-                <span className="empty-icon"><Icon name="search" size={20} /></span>
-                <h3>{term.length < 2 ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}</h3>
-                
+              <div className="palette-empty">
+                {term.length < 2 ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}
               </div>
             )}
             {items.map((item, i) => {
-              const header = item.group !== lastGroup ? <div className="palette-group" key={`g-${item.group}`}>{t(item.group)}</div> : null;
+              const header = item.group !== lastGroup ? <div className="palette-group" key={`g-${item.group}`} aria-hidden="true">{t(item.group)}</div> : null;
               lastGroup = item.group;
               return (
-                <div key={item.id}>
+                <div key={item.id} role="none">
                   {header}
                   <button
                     type="button"
@@ -310,20 +346,20 @@ export function CommandPalette() {
                     onClick={item.run}
                   >
                     <span className="p-icon"><Icon name={item.icon} size={16} /></span>
-                    <span style={{ minWidth: 0, flex: 1 }}>
-                      <span className="p-title ellipsis" style={{ display: "block" }}>{item.title}</span>
-                      {item.subtitle && <span className="p-sub ellipsis" style={{ display: "block" }}>{item.subtitle}</span>}
+                    <span className="p-text">
+                      <span className="p-title">{item.title}</span>
+                      {item.subtitle && <span className="p-sub">{item.subtitle}</span>}
                     </span>
-                    {i === index && <Icon name="arrowRight" size={14} />}
+                    {item.kbd && <kbd className="kbd p-kbd" aria-hidden="true">{item.kbd}</kbd>}
                   </button>
                 </div>
               );
             })}
           </div>
-          <div className="palette-foot hide-mobile">
-            <span><kbd className="kbd">↑</kbd> <kbd className="kbd">↓</kbd> {t("to move")}</span>
-            <span><kbd className="kbd">{t("Enter")}</kbd> {t("to open")}</span>
-            <span><kbd className="kbd">{t("Esc")}</kbd> {t("to close")}</span>
+          <div className="palette-foot hide-mobile" aria-hidden="true">
+            <kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd><span>{t("to move")}</span>
+            <kbd className="kbd">↵</kbd><span>{t("to open")}</span>
+            <kbd className="kbd">{t("Esc")}</kbd><span>{t("to close")}</span>
           </div>
         </>
       )}

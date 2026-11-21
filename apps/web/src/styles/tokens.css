@@ -32,8 +32,28 @@
   --divider: #ecebe6;
   --row-divider: #f1f0ec;
   --button-border: #d9d8d2;
+  --check-edge: #878680;    /* a check box's edge: 3:1 on whatever it sits on (WCAG 1.4.11), where a hairline is 1.6:1 */
   --shine: #f8f7f4;         /* skeleton shimmer highlight */
   --overlay: rgba(15, 42, 53, 0.4);
+  /*
+   * The quietest grey that still reads: counts, column heads, menu labels, kbd hints. 4.5:1 or better
+   * on everything it sits on (5.5 on white, 5.1 on the sidebar, 4.9 on a track, 4.6 on a hovered row).
+   */
+  --quiet: #5c6b72;
+
+  /* Menus and popovers: their own surface, so a menu over a card or the sidebar still lifts off it. */
+  --menu: #ffffff;
+  --menu-border: #e3e2dd;
+  --menu-hi: #f2f1ed;       /* the item under the pointer or the keyboard */
+  --menu-shadow: 0 12px 32px -8px rgba(15, 42, 53, 0.18), 0 2px 6px -2px rgba(15, 42, 53, 0.08);
+  /* The chosen item of a segmented control, raised off its track. */
+  --seg-shadow: 0 1px 2px rgba(15, 42, 53, 0.08), 0 0 0 1px rgba(15, 42, 53, 0.05);
+  /* Phones: a grouped screen's ground, the inset cards on it, and a bottom sheet. */
+  --m-group: #f2f1ed;
+  --m-card: #ffffff;
+  --m-sheet: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.42); /* behind a bottom sheet */
+  --seg-track: #f2f1ed;     /* a segmented control's track, under its raised choice */
 
   /* A solid ink fill (selected tabs, dark buttons, toasts) and the text on it. Inverts in dark mode. */
   --solid: #0f2a35;
@@ -74,8 +94,8 @@
   --note: #fff8e6;      --note-border: #f1e2b8;
 
   /*
-   * Type scale: every font size in the app is one of these eight. 400 for text, 600 for labels,
-   * 700 for headings, 800 for the page title only.
+   * Type scale: every font size in the app is one of these nine. 400 for text, 500 for quiet labels,
+   * 600 for labels and actions, 700 for headings; 30 is a phone's large page title.
    */
   --fs-11: 11px;
   --fs-12: 12px;
@@ -84,6 +104,7 @@
   --fs-16: 16px;
   --fs-20: 20px;
   --fs-24: 24px;
+  --fs-30: 30px;
   --fs-32: 32px;
   --tracking-tight: -0.01em;    /* headings from 16px up */
   --tracking-display: -0.025em; /* the page title and big figures */
@@ -95,9 +116,9 @@
   --radius-control: 8px;
   --radius-pill: 999px;
 
-  /* Control heights: small, default, and crew screens (thumbs and gloves). */
+  /* Control heights: small, default, and crew screens (thumbs and gloves). A phone's default is a 44px target (below). */
   --control-sm: 32px;
-  --control: 38px;
+  --control: 36px;
   --control-lg: 48px;
 
   --shadow-xs: 0 1px 2px rgba(15, 42, 53, 0.05);
@@ -127,6 +148,11 @@
   --mobile-nav-height: 64px;
 }
 
+/* A phone: buttons and fields are a thumb's 44px, so a row of them still lines up. */
+@media (max-width: 900px) {
+  :root { --control: 44px; }
+}
+
 /*
  * Dark mode: the same tokens mapped onto Radix scales, following Radix's step guide (1–2 app and
  * subtle backgrounds, 3–5 component fills, 6–8 borders, 9–10 solid colors, 11–12 text). The class is
@@ -154,8 +180,21 @@
   --divider: var(--sand-5);
   --row-divider: var(--sand-4);
   --button-border: var(--sand-7);
+  --check-edge: var(--sand-10);
   --shine: var(--sand-5);
   --overlay: rgba(0, 0, 0, 0.6);
+  --quiet: #9a9891;         /* between sand-10 and sand-11: 4.5:1 or better up to a highlighted menu row (sand-5) */
+
+  --menu: var(--sand-3);
+  --menu-border: var(--sand-6);
+  --menu-hi: var(--sand-5);
+  --menu-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --m-group: #0c0c0b;
+  --m-card: #1b1b1a;
+  --m-sheet: #1f1f1d;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --seg-track: var(--sand-3);
 
   --solid: var(--sand-12);
   --solid-hover: var(--sand-11);
@@ -184,7 +223,8 @@
   --chat-green: #71d083;   --chat-green-tint: rgba(113, 208, 131, 0.14);
   --chat-mentioned: rgba(255, 197, 61, 0.09);
 
-  --danger: var(--red-10);  --danger-dark: var(--red-11);  --danger-tint: var(--red-3);
+  /* Red words read on every dark fill up to a highlighted menu row (red-10 was 3.9:1 there); solid buttons use --danger-solid. */
+  --danger: var(--red-11);  --danger-dark: var(--red-12);  --danger-tint: var(--red-3);
   --danger-solid: var(--red-8);
   --danger-solid-hover: var(--red-7);
   --warning: var(--amber-11); --warning-tint: var(--amber-3);
