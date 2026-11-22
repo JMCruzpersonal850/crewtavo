@@ -257,7 +257,7 @@ a.jobCard:hover { border-color: var(--border-strong); background: var(--fill); c
 .roleButton:hover { background: var(--fill-2); color: var(--ink); }
 .roleButton[aria-current="true"] { background: var(--fill-2); color: var(--ink); font-weight: 600; }
 .roleCount { color: var(--quiet); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
-.roleMain { display: grid; gap: 24px; min-width: 0; }
+.roleMain { display: grid; gap: 24px; min-width: 0; max-width: 880px; }
 .roleHead { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .roleHeadDot { flex: none; width: 12px; height: 12px; border-radius: 50%; }
 .roleTitle { margin: 0; font-size: var(--fs-20); font-weight: 700; letter-spacing: -0.01em; }

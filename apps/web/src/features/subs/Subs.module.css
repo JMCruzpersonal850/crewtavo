@@ -35,7 +35,7 @@
 .settings :global(.switch-row) { font-size: var(--fs-13); font-weight: 500; }
 .hint { display: block; margin-top: 4px; font-size: var(--fs-12); line-height: 1.5; color: var(--text-3); }
 .countries { display: grid; gap: 10px; }
-.countries > .hint { margin-top: 0; }
+.countries > .hint { margin-top: 0; max-width: 72ch; }
 
 @media (max-width: 900px) {
   .owedAll { min-height: 44px; font-size: var(--fs-14); }

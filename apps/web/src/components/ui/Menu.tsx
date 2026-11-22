@@ -13,8 +13,8 @@
  *
  * On a desktop a sub menu flies out beside its item: hover, a click, ArrowRight, Enter or Space opens
  * it, and ArrowLeft or Escape closes it. On a phone (900px or narrower, SHEET_QUERY) the whole
- * menu is a bottom sheet over a scrim, with a handle to drag it away, and a sub menu takes the sheet's
- * place under a heading with a back button.
+ * menu is a bottom sheet over a scrim, with a handle to drag it away and a close button by its title,
+ * and a sub menu takes the sheet's place under a heading with a back button.
  */
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Icon } from "./Icon";
@@ -183,6 +183,8 @@ export function Menu({
   if (!hasActions(items) && !search) return null;
   const level = sheetLevel(items, path);
   const top = level.path.length === 0;
+  // A sub menu's sheet names where it came from under its own title: the record, or the sub menu it's in.
+  const above = top ? undefined : (sheetLevel(items, level.path.slice(0, -1)).title ?? title);
 
   const pick = (entry: MenuAction) => {
     if (entry.disabled) return;
@@ -238,18 +240,21 @@ export function Menu({
       >
         <div className="menu-top" role="none">
           <span className="menu-grab" aria-hidden="true" onPointerDown={(e) => drag(e, menu.current)} />
-          {level.path.length > 0 ? (
-            <div className="menu-sheet-head" role="none">
+          {/* The level's title, a sub menu's with the level above's under it, and a way to close the sheet that isn't dragging it. */}
+          <div className="menu-sheet-head" role="none">
+            {!top && (
               <button type="button" role="menuitem" className="menu-back" aria-label={t("Back")} onClick={back}>
                 <Icon name="chevronLeft" size={20} />
               </button>
-              <span className="menu-sheet-title" aria-hidden="true">{level.title}</span>
-            </div>
-          ) : title ? (
-            <div className="menu-sheet-head" role="none">
-              <span className="menu-sheet-title" aria-hidden="true">{title}</span>
-            </div>
-          ) : null}
+            )}
+            <span className="menu-sheet-titles" aria-hidden="true">
+              <span className="menu-sheet-title">{top ? title : level.title}</span>
+              {above && <span className="menu-sheet-sub">{above}</span>}
+            </span>
+            <button type="button" role="menuitem" className="menu-back" aria-label={t("Close")} onClick={() => { menu.current?.hidePopover(); button.current?.focus(); }}>
+              <Icon name="x" size={20} />
+            </button>
+          </div>
         </div>
         {search && top && (
           <div className="menu-search" role="none">
@@ -332,7 +337,7 @@ function ActionItem({ entry, index, onPick }: { entry: MenuAction; index: number
       {(entry.end || entry.kbd || (role === "menuitemradio" && entry.checked)) && (
         <span className="menu-trail">
           {entry.end && <span className="menu-end">{entry.end}</span>}
-          {entry.kbd && <kbd className="menu-kbd" aria-hidden="true">{entry.kbd}</kbd>}
+          {entry.kbd && <kbd className="menu-kbd" aria-hidden="true">{entry.kbdLabel ?? entry.kbd}</kbd>}
           {role === "menuitemradio" && entry.checked && <span className="menu-check" aria-hidden="true"><Icon name="check" size={14} bold /></span>}
         </span>
       )}

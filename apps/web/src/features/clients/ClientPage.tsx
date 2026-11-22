@@ -1,6 +1,6 @@
 import { autopaySettings } from "@crewtavo/core/autopay";
 import { shownCustomFields } from "@crewtavo/core/customFields";
-import { askChannels, askRefusal, creditMoney, marketingOn, notAsked, reachOf, referralAskRefusal, referralsReady, RESUBSCRIBE_HINT, textConsentLine, textsOff, type AskChannel } from "@crewtavo/core/marketing";
+import { creditMoney, marketingOn, reachOf, referralsReady, RESUBSCRIBE_HINT, textConsentLine, textsOff, type AskChannel } from "@crewtavo/core/marketing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -35,7 +35,8 @@ import styles from "./clients.module.css";
 import { AddContact, ContactsCard, useClientContacts } from "./ContactsCard";
 import { PropertyDialog, type AccessRow, type PropertyRow } from "./PropertyDialog";
 import { PropertyEquipment } from "./PropertyEquipment";
-import { RESET_LINKS_BODY, RESET_LINKS_LABEL, resetLinksPath } from "./resetLinks";
+import { RESET_LINKS_BODY, RESET_LINKS_LABEL, RESET_LINKS_NOTE, resetLinksPath } from "./resetLinks";
+import { askedNot, sendWay } from "./sendWays";
 import { MergeClientsDialog } from "./MergeClientsDialog";
 import { TextsSwitch, useTextStops } from "./TextsSwitch";
 import { Timeline } from "./Timeline";
@@ -198,6 +199,19 @@ export function ClientPage() {
   });
   // Review asks and referrals are Marketing's: while it's uninstalled they aren't offered here.
   const marketing = marketingOn(session.company.settings);
+  // Where asking them stands, for the menu's Ask for a review and Referrals: when they were last asked, and how many friends they've referred.
+  const lastAsk = useQuery({
+    queryKey: ["review-ask", id, "last"],
+    enabled: marketing && canSell,
+    meta: { silent: true },
+    queryFn: async () => unwrap(await supabase().rpc("last_review_ask", { p_company: session.company.id, p_client: id })) ?? null,
+  });
+  const referred = useQuery({
+    queryKey: ["referrals", session.company.id, "from", id],
+    enabled: marketing && canSell,
+    meta: { silent: true },
+    queryFn: async () => (await supabase().from("referrals").select("id", { count: "exact", head: true }).eq("company_id", session.company.id).eq("referrer_client_id", id)).count ?? 0,
+  });
 
   if (client.isPending) return <DetailSkeleton />;
   if (client.error || !c) return <PageError error={client.error} onRetry={() => client.refetch()} back={<BackLink to="/clients">Clients</BackLink>} />;
@@ -207,8 +221,9 @@ export function ClientPage() {
   // The review asks offered are the ones that can go: not to a client who opted out or is archived,
   // nor by a way this Crewtavo can't send or the client can't get.
   const ready = { email: session.config.features.email, sms: session.config.features.sms };
-  const cannotAsk = (channel: AskChannel) => Boolean(askRefusal(c, channel, ready));
-  const bothWays = !notAsked(c) && askChannels("both", reachOf(c, ready), false).send.length === 2;
+  // Texts are off when they asked, and when their number texted STOP.
+  const reach = { ...reachOf(c, ready), textsOff: stopped };
+  const reviewWay = (way: AskChannel) => sendWay(c, reach, way, askedNot(c));
   const owed = unpaid.reduce((sum, i) => sum + Number(i.balance_due), 0);
   const pastDue = unpaid.reduce((sum, i) => sum + (i.status === "overdue" ? Number(i.balance_due) : 0), 0);
   // Never paid, and taken as a loss: worth knowing before taking on more work for them.
@@ -270,39 +285,46 @@ export function ClientPage() {
     document.getElementById("work-tab-invoices")?.focus({ preventScroll: true });
   };
 
-  // Everything else they can do, grouped (Menus.dc.html): the record, then asking them for things, then archiving, merging and deleting.
+  // Everything else they can do, grouped (ClientMenu.dc.html): the record, then asking them for things, then
+  // the ones that can't be taken back lightly (archiving, merging, resetting their links, deleting). Each way
+  // to send says where it goes, or why it can't, and the sub menus say where asking stands.
   const more: MenuEntry[] = [
     { label: "Edit client", icon: "edit", kbd: "E", onSelect: () => setDialog("edit") },
     { label: "Copy Client Hub link", icon: "link", onSelect: () => hubLink.mutate() },
-    { label: RESET_LINKS_LABEL, icon: "refresh", onSelect: resetClientLinks, hidden: !isOffice },
     { separator: true },
-    {
-      label: "Send autopay invite", icon: "card", hidden: !seesMoney || !autopayOn,
-      items: [
-        { label: "By email", icon: "mail", onSelect: () => autopayInvite.mutate("email"), disabled: !c.email, title: c.email ? undefined : "No email on file", hidden: !session.config.features.email },
-        { label: "By text", icon: "messages", onSelect: () => autopayInvite.mutate("sms"), disabled: !c.phone || textsOff(c), title: !c.phone ? "No phone on file" : textsOff(c) ? "Texts are off for them" : undefined, hidden: !session.config.features.sms },
-      ],
-    },
     // A client who already left a Google review isn't asked again: the one line says so.
     { label: "Already left a Google review", icon: "star", onSelect: () => undefined, disabled: true, hidden: !marketing || !c.reviewed_at },
     {
       label: "Ask for a review", icon: "star", hidden: !marketing || Boolean(c.reviewed_at),
+      end: lastAsk.data === undefined ? undefined : lastAsk.data ? `Asked ${formatDate(lastAsk.data)}` : "Not asked yet",
       items: [
-        { label: "By email", icon: "mail", onSelect: () => review.mutate("email"), disabled: cannotAsk("email") },
-        { label: "By text", icon: "messages", onSelect: () => review.mutate("sms"), disabled: cannotAsk("sms") },
-        { label: "By text and email", icon: "send", onSelect: () => review.mutate("both"), disabled: !bothWays },
+        { label: "By email", icon: "mail", onSelect: () => review.mutate("email"), ...reviewWay("email") },
+        { label: "By text", icon: "messages", onSelect: () => review.mutate("sms"), ...reviewWay("sms") },
+        { label: "By text and email", icon: "send", onSelect: () => review.mutate("both"), ...reviewWay("both") },
       ],
     },
     {
       label: "Referrals", icon: "gift", hidden: !marketing,
+      end: referred.data ? `${referred.data} referred` : undefined,
       items: [
-        { label: "Ask for referrals by email", icon: "mail", onSelect: () => referralAsk.mutate(), disabled: !referralsReady(session.company.settings) || Boolean(referralAskRefusal(c, session.config.features.email)) },
+        {
+          label: "Ask for referrals by email", icon: "mail", onSelect: () => referralAsk.mutate(),
+          ...sendWay(c, reach, "email", referralsReady(session.company.settings) ? askedNot({ marketing_opt_out: c.marketing_opt_out, status: c.status }) : "Add a credit or an offer first"),
+        },
         { label: "Copy referral link", icon: "link", onSelect: () => referralLink.mutate() },
+      ],
+    },
+    {
+      label: "Send autopay invite", icon: "card", hidden: !seesMoney || !autopayOn,
+      items: [
+        { label: "By email", icon: "mail", onSelect: () => autopayInvite.mutate("email"), ...sendWay(c, reach, "email"), hidden: !session.config.features.email },
+        { label: "By text", icon: "messages", onSelect: () => autopayInvite.mutate("sms"), ...sendWay(c, reach, "sms"), hidden: !session.config.features.sms },
       ],
     },
     { separator: true, hidden: !isOffice },
     { label: c.status === "archived" ? "Restore client" : "Archive client", icon: c.status === "archived" ? "undo" : "archive", onSelect: () => update.mutate({ status: c.status === "archived" ? "active" : "archived" }), hidden: !isOffice },
     { label: "Merge into another client", icon: "users", onSelect: () => setDialog("merge"), hidden: !seesMoney },
+    { label: RESET_LINKS_LABEL, description: RESET_LINKS_NOTE, icon: "refresh", onSelect: resetClientLinks, hidden: !isOffice },
     { label: "Delete client", icon: "trash", danger: true, onSelect: deleteClient, hidden: !isOffice },
   ];
 

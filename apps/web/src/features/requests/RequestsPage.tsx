@@ -184,6 +184,7 @@ export function RequestsPage() {
       ) : (
         <InboxList
           label="Requests"
+          className="il-plain"
           stale={requests.isPlaceholderData}
           foot={
             <ListFoot more={rows.length < total ? { onClick: () => setLimit((l) => l + PAGE), loading: requests.isFetching } : undefined}>

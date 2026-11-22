@@ -67,6 +67,20 @@ import.meta.hot?.dispose((data) => Object.assign(data, { configPromise, client, 
 
 const CONFIG_KEY = "crewtavo.config";
 
+const LOOPBACK = ["localhost", "127.0.0.1", "[::1]"];
+
+/**
+ * In development Supabase runs on the same computer as the dev server, at a loopback address. A phone
+ * opening the dev server by its network address (Tailscale, Wi-Fi) would look for Supabase on itself,
+ * so it gets the same computer's network address instead.
+ */
+export function reachableSupabaseUrl(supabaseUrl: string, pageHost: string): string {
+  const url = new URL(supabaseUrl);
+  if (!LOOPBACK.includes(url.hostname) || LOOPBACK.includes(pageHost)) return supabaseUrl;
+  url.hostname = pageHost;
+  return url.href.replace(/\/$/, "");
+}
+
 export function loadConfig(): Promise<AppConfig> {
   configPromise ??= fetch("/api/config")
     .then(async (res) => {
@@ -98,6 +112,7 @@ export function loadConfig(): Promise<AppConfig> {
     .then((config) => {
       // A Crewtavo instance serves Supabase from its own address (apps/api/src/lib/stack.ts).
       config.supabaseUrl ||= window.location.origin;
+      if (typeof window !== "undefined") config.supabaseUrl = reachableSupabaseUrl(config.supabaseUrl, window.location.hostname);
       startMonitoring(config.sentry);
       client ??= createClient<Database>(config.supabaseUrl, config.supabaseKey, { global: { fetch: signedInFetch(config) } });
       return config;

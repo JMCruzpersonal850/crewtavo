@@ -126,7 +126,7 @@ a.takeoffPicture:focus-visible { outline: 2px solid var(--green); outline-offset
  * The bid's sections on hairlines on the left, the estimate beside them (sticky on a desktop). On a
  * phone the estimate follows the sections, and its total and way forward are pinned over the tab bar.
  */
-.calc { display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 24vw, 320px); gap: 36px; align-items: start; }
+.calc { max-width: 1440px; display: grid; grid-template-columns: minmax(0, 1fr) clamp(280px, 24vw, 320px); gap: 36px; align-items: start; }
 .calcMain { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; min-width: 0; }
 .unit { font-size: var(--fs-13); color: var(--text-3); white-space: nowrap; }
 .grow { flex: 1; min-width: 0; }

@@ -1,6 +1,6 @@
 /**
- * Settings, grouped the way people look for things (sections.ts): you, the business, talking to
- * clients, the team, what it connects to, and where it's hosted. Automations, online booking and apps
+ * Settings, grouped the way people look for things (sections.ts): you, the business, quotes and
+ * invoices, scheduling, talking to clients, the team, what it connects to, and about. Automations, online booking and apps
  * have their own screens and open from here.
  *
  * Desktop (Page-Settings.dc.html): a quiet list of the sections on the left, the chosen one on the
@@ -68,8 +68,9 @@ const LEDES: Partial<Record<SettingsTab, string>> = {
   license: msg("The Crewtavo Terms, the license, and who agreed to them."),
 };
 
-/** Sections whose lists or previews need more room than a form. */
-const WIDE = new Set<SettingsTab>(["prices", "templates", "contracts", "checklists", "storage", "hosting"]);
+/** Sections whose lists or previews need more room than a form; the price list and people tables fill the page. */
+const WIDE = new Set<SettingsTab>(["templates", "contracts", "checklists", "storage", "hosting"]);
+const FILL = new Set<SettingsTab>(["prices", "team"]);
 
 function SettingsBody({ tab }: { tab: SettingsTab }) {
   switch (tab) {
@@ -169,19 +170,22 @@ export function SettingsPage() {
               {g.items.map((it) =>
                 "tab" in it ? (
                   <Link key={it.tab} to={`?tab=${it.tab}`} replace className="settings-link" aria-current={tab === it.tab ? "page" : undefined}>
+                    <Icon name={it.icon} size={14} />
                     {t(it.label)}
                   </Link>
                 ) : (
+                  // No ›: in menus › opens a submenu.
                   <Link key={it.to} to={it.to} className="settings-link">
+                    <Icon name={it.icon} size={14} />
                     {t(it.label)}
-                    <span className="settings-out"><Icon name="chevronRight" size={13} /><span className="sr-only">{t("Opens its own screen")}</span></span>
+                    <span className="sr-only">{t("Opens its own screen")}</span>
                   </Link>
                 ),
               )}
             </div>
           ))}
         </nav>
-        <div className="settings-main" data-wide={WIDE.has(tab) || undefined}>
+        <div className="settings-main" data-wide={FILL.has(tab) ? "fill" : WIDE.has(tab) || undefined}>
           <div className="settings-head">
             <div className="settings-head-text">
               <h2 className="settings-title">{label}</h2>

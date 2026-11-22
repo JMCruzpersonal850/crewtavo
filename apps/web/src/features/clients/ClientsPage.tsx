@@ -374,7 +374,7 @@ export function ClientsPage() {
             )}
             <InboxList
               label="Clients"
-              className={sort === "name" ? `${styles.list} ${styles.byLetter}` : styles.list}
+              className={sort === "name" ? `il-plain ${styles.list} ${styles.byLetter}` : `il-plain ${styles.list}`}
               stale={clients.isPlaceholderData}
               foot={
                 <ListFoot more={data.rows.length < data.total ? { onClick: () => setLimit((l) => l + PAGE), loading: clients.isFetching } : undefined}>

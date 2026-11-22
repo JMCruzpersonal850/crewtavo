@@ -20,7 +20,7 @@ import { useChatBadge, useChatLive } from "@/features/chat/data";
 import { useMyJobs, waitingCount } from "@/features/field/myJobsData";
 import { signOutNote, subCodeWays } from "@/features/auth/textCode";
 import { inkOn } from "@/features/documents/words";
-import { createItems, mobileTabs, NAV_GROUP_LABELS, NAV_GROUPS, navVisible, settingsItem, subCanOpen, type NavItem } from "./nav";
+import { createItems, foldedGroups, mobileTabs, NAV_GROUP_LABELS, NAV_GROUPS, navVisible, saveFoldedGroups, settingsItem, subCanOpen, type NavItem } from "./nav";
 import { HelpButton, openHelp } from "./Help";
 import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
@@ -176,6 +176,14 @@ export function AppShell() {
     await session.signOut();
   };
   const settings = settingsItem(session);
+  // The sidebar's groups this person folded (all open until they fold one), remembered per person.
+  const [folded, setFolded] = useState(() => foldedGroups(session.userId));
+  const toggleGroup = (label: string) =>
+    setFolded((was) => {
+      const next = was.includes(label) ? was.filter((g) => g !== label) : [...was, label];
+      saveFoldedGroups(session.userId, next);
+      return next;
+    });
   const shownEmail = isPlaceholderEmail(session.profile.email) ? null : session.profile.email;
   const myName = session.profile.full_name || shownEmail || t("Account");
 
@@ -235,10 +243,11 @@ export function AppShell() {
   const current = (item: NavItem) => (under(item.except) ? "false" : "page");
   // On a phone, a screen none of the tabs is for (Invoices, Settings) is one of More's.
   const tabPath = (item: NavItem) => item.to.split("?")[0]!;
-  const onTab = tabs.some((item) => {
+  const here = (item: NavItem) => {
     const path = tabPath(item);
-    return (path === "/" ? location.pathname === "/" : location.pathname === path || location.pathname.startsWith(`${path}/`)) && !under(item.except);
-  });
+    return active(item, path === "/" ? location.pathname === "/" : under([path]));
+  };
+  const onTab = tabs.some(here);
 
   const themeChoices: Array<{ value: "light" | "dark" | "system"; label: string; icon: IconName }> = [
     { value: "light", label: t("Light"), icon: "sun" },
@@ -282,18 +291,28 @@ export function AppShell() {
           <span className="nav-pill" aria-hidden="true" />
           {groups.map((group, i) => (
             <div key={i} className="nav" role={group.label ? "group" : undefined} aria-labelledby={group.label ? `nav-group-${i}` : undefined}>
-              {group.label ? <span className="nav-label" id={`nav-group-${i}`}>{t(group.label)}</span> : i > 0 && <span className="nav-divider" />}
-              {group.items.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
-                  {({ isActive }) => (
-                    <>
-                      <Icon name={item.icon} size={18} filled={active(item, isActive)} />
-                      <span className="nav-text">{t(item.label)}</span>
-                      {badge(item)}
-                    </>
-                  )}
-                </NavLink>
-              ))}
+              {group.label ? (
+                <button type="button" className="nav-label" id={`nav-group-${i}`} aria-expanded={!folded.includes(group.label)} aria-controls={`nav-rows-${i}`} onClick={() => toggleGroup(group.label!)}>
+                  {t(group.label)}
+                  <Icon name={folded.includes(group.label) ? "chevronRight" : "chevronDown"} size={12} />
+                </button>
+              ) : (
+                i > 0 && <span className="nav-divider" />
+              )}
+              <div className="nav" id={`nav-rows-${i}`}>
+                {/* A folded group still shows the page you're on, so you can see where you are. */}
+                {group.items.filter((item) => !group.label || !folded.includes(group.label) || here(item)).map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
+                    {({ isActive }) => (
+                      <>
+                        <Icon name={item.icon} size={18} filled={active(item, isActive)} />
+                        <span className="nav-text">{t(item.label)}</span>
+                        {badge(item)}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
             </div>
           ))}
         </nav>
@@ -420,11 +439,15 @@ function useCreateItems() {
   return createItems(useSession());
 }
 
-/** "Create" in the sidebar: the things people start most often, each with the key that picks it. */
+/**
+ * "Create" in the sidebar: the things people start most often, the tools below a line. Each shows the
+ * shortcut that works from anywhere (N, then its letter); in the open menu the letter alone picks it.
+ */
 function CreateMenu() {
   const navigate = useNavigate();
   const items = useCreateItems();
   if (!items.length) return null;
+  const entry = (item: (typeof items)[number]): MenuEntry => ({ label: t(item.label), icon: item.icon, kbd: item.key, kbdLabel: `N ${item.key}`, onSelect: () => navigate(item.to) });
   return (
     <Menu
       label={t("Create")}
@@ -436,7 +459,7 @@ function CreateMenu() {
           <span className="nav-text">{t("Create")}</span>
         </>
       }
-      items={[{ heading: t("Create") }, ...items.map((item) => ({ label: t(item.label), icon: item.icon, kbd: item.key, onSelect: () => navigate(item.to) }))]}
+      items={[...items.filter((item) => !item.tool).map(entry), { separator: true }, ...items.filter((item) => item.tool).map(entry)]}
     />
   );
 }

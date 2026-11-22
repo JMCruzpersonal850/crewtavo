@@ -29,14 +29,16 @@
 .metaLink:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 /* ---------- The measured roof ---------- */
-.roof { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; max-width: 560px; }
-.roof[data-picture] { grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); max-width: none; }
+.roof { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.roof[data-picture] { grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); }
 .roofPicture { display: block; overflow: hidden; border: 1px solid var(--divider); border-radius: 10px; background: var(--fill-2); }
 .roofPicture img { display: block; width: 100%; height: auto; }
 .roofPicture:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .roofInfo { display: grid; gap: 12px; min-width: 0; }
 /* What's measured as hairline rows: the words quiet, the figures in ink, each edge with its color from the map. */
 .quantities { display: grid; margin: -9px 0 0; font-size: var(--fs-13); }
+/* With no picture beside them, the rows sit in columns across the page instead of one narrow list. */
+.roof:not([data-picture]) .quantities { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); column-gap: 40px; }
 .quantities > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 38px; padding: 9px 0; border-bottom: 1px solid var(--row-divider); }
 .quantities dt { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--text-2); }
 .quantities dd { margin: 0; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }

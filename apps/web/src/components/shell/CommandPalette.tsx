@@ -6,6 +6,10 @@
  *
  * Outside a field, G then a screen's key goes there and N then a Create item's key starts it (nav.ts
  * shortcutTarget); search shows each one's keys beside it.
+ *
+ * Opened empty, it starts on what you opened recently (lib/recent.ts), then a few things to start and
+ * screens. Typing groups what it finds by kind, with the letters that matched in bold and, for a row
+ * found by its hidden keywords, the words that found it (paletteMatch.ts).
  */
 import { kindLabel } from "@crewtavo/core/equipment";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -21,7 +25,8 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { Spinner } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
 import { createItems, NAV_GROUPS, navVisible, OTHER_SCREENS, shortcutTarget } from "./nav";
-import { english, msg, t } from "@/lib/i18n";
+import { keywordHint, marks } from "./paletteMatch";
+import { english, getLocale, msg, t } from "@/lib/i18n";
 
 let opener: (() => void) | null = null;
 export const openPalette = () => opener?.();
@@ -33,7 +38,7 @@ interface Item {
   title: string;
   subtitle?: string;
   keywords?: string;
-  /** The keys that do it from anywhere ("G S"), shown on the right. */
+  /** The keys that do it from anywhere ("G then S"), shown on the right. */
   kbd?: string;
   run: () => void;
 }
@@ -65,11 +70,14 @@ const KIND_PATH: Record<string, (r: { id: string; client_id: string | null; titl
   asset: (r) => `/clients/${r.client_id}`,
   promo: () => "/marketing?tab=promos",
 };
-const KIND_LABEL: Record<string, string> = {
-  client: msg("Client"), property: msg("Property"), request: msg("Request"), quote: msg("Quote"), job: msg("Job"), invoice: msg("Invoice"), equipment: msg("Equipment"),
-  measurement: msg("Measurement"), kb: msg("Guide"), campaign: msg("Campaign"), rule: msg("Automation"), service: msg("Price list"), sub: msg("Subcontractor"), file: msg("File"),
-  applicant: msg("Applicant"), channel: msg("Team chat"), asset: msg("Property equipment"), promo: msg("Promo code"),
+/** The group each kind of record is listed under. */
+const KIND_GROUP: Record<string, string> = {
+  client: msg("Clients"), property: msg("Properties"), request: msg("Requests"), quote: msg("Quotes"), job: msg("Jobs"), invoice: msg("Invoices"), equipment: msg("Equipment"),
+  measurement: msg("Measurements"), kb: msg("Guides"), campaign: msg("Campaigns"), rule: msg("Automations"), service: msg("Price list"), sub: msg("Subcontractors"), file: msg("Files"),
+  applicant: msg("Applicants"), channel: msg("Team chat"), asset: msg("Property equipment"), promo: msg("Promo codes"),
 };
+/** A two-key shortcut as it reads: "G then S". */
+const keys = (first: string, second: string) => t("{first} then {second}", { first, second });
 const SCREENS = [...NAV_GROUPS.flat(), ...OTHER_SCREENS];
 /** Screens with single-key tools of their own (Measure's, the trade apps' maps), where G and N stay theirs. */
 const OWN_KEYS = /^\/(measure|paving|roofing)(\/|$)/;
@@ -213,10 +221,13 @@ export function CommandPalette() {
     navigate(path);
   };
 
+  const q = query.trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+
   const items = useMemo<Item[]>(() => {
     const isOffice = hasRole(session, "admin", "office");
     // i18n-ignore: words to find it by, never shown
-    const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: msg("Create"), icon: c.icon, title: c.newLabel, keywords: `add new ${english(c.label)} ${c.keywords}`, kbd: `N ${c.key}`, run: () => go(c.to) }));
+    const creates: Item[] = createItems(session).map((c) => ({ id: `new-${c.to}`, group: msg("Create"), icon: c.icon, title: c.newLabel, keywords: `add new ${english(c.label)} ${c.keywords}`, kbd: keys("N", c.key), run: () => go(c.to) }));
     const actions: Item[] = [
       ...creates,
       ...(isOffice && can(session, "kb_edit") ? [{ id: "new-guide", group: msg("Create"), icon: "book" as IconName, title: t("New guide"), keywords: "add knowledge base sop procedure page", run: () => go("/kb/new") }] : []),
@@ -226,41 +237,44 @@ export function CommandPalette() {
     const screens: Item[] = SCREENS
       .filter((n) => navVisible(session, n))
       // Found by its name in either language ("agenda" or "schedule").
-      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(n.label), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, kbd: n.go ? `G ${n.go}` : undefined, run: () => go(n.to) }));
+      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(n.label), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, kbd: n.go ? keys("G", n.go) : undefined, run: () => go(n.to) }));
     screens.push({ id: "go-settings", group: msg("Go to"), icon: "settings", title: t("Settings"), keywords: "preferences options setup", run: () => go("/settings") });
+    // Their section's name and "Settings" go last, after commas, so the words that found a row are its own (paletteMatch.ts).
     const settings: Item[] = settingsGroups(session).flatMap((g) =>
       g.items.map((s) => {
         const to = "tab" in s ? `/settings?tab=${s.tab}` : s.to;
-        return { id: `go-${to}`, group: msg("Go to"), icon: s.icon, title: t(s.label), subtitle: t("Settings"), keywords: `${g.title} ${s.keywords}`, run: () => go(to) };
+        return { id: `go-${to}`, group: msg("Settings"), icon: s.icon, title: t(s.label), keywords: `${s.keywords}, ${g.title}, ${t("Settings")}`, run: () => go(to) };
       }),
     );
     const appItems: Item[] = (apps.data?.apps ?? []).map((a) => ({
-      id: `app-${a.id}`, group: msg("Go to"), icon: "apps", title: a.name, subtitle: `Apps · ${categoryName(a.category)}`,
+      id: `app-${a.id}`, group: msg("Apps"), icon: "apps", title: a.name, subtitle: categoryName(a.category),
       // i18n-ignore: words to find it by, never shown
-      keywords: `app integration ${a.id.replace(/_/g, " ")} ${infoFor(a).tagline}`, run: () => go(`/apps/${a.id}`),
+      keywords: `app integration ${a.id.replace(/_/g, " ")} ${infoFor(a).tagline}, ${t("Apps")}`, run: () => go(`/apps/${a.id}`),
     }));
 
-    const q = query.trim().toLowerCase();
     if (!q) {
+      // What you opened lately first (up to 8, lib/recent.ts), then a few to start: the Create menu has them all.
       const recents: Item[] = getRecents(session.company.id).map((r) => ({
         id: `recent-${r.kind}-${r.id}`, group: msg("Recent"), icon: KIND_ICON[r.kind] ?? "file", title: r.title, subtitle: r.subtitle, run: () => go(r.path),
       }));
-      return [...creates, ...recents, ...screens.slice(0, 6)];
+      return [...recents, ...creates.slice(0, 2), ...screens.slice(0, 3)];
     }
     // Every word has to appear somewhere; a screen or action whose name starts with what was typed
     // comes first, so "measure" or "price" opens the screen before records that mention it.
-    const words = q.split(/\s+/);
     const local = [...actions, ...screens, ...settings, ...appItems].filter((i) => {
       const text = `${i.title} ${i.subtitle ?? ""} ${i.keywords ?? ""}`.toLowerCase();
       return words.every((w) => text.includes(w));
     });
-    const best = local.filter((i) => i.title.toLowerCase().startsWith(q)).map((i) => ({ ...i, group: msg("Best match") }));
-    const records: Item[] = (results.data ?? []).map((r) => ({
+    // Out of its group, a section of Settings says so.
+    const best = local.filter((i) => i.title.toLowerCase().startsWith(q)).map((i) => ({ ...i, group: msg("Best match"), subtitle: i.subtitle ?? (i.group === msg("Settings") ? t("Settings") : undefined) }));
+    // Grouped by kind, the kinds in the order they were found.
+    const found = results.data ?? [];
+    const records: Item[] = [...new Set(found.map((r) => r.kind))].flatMap((kind) => found.filter((r) => r.kind === kind)).map((r) => ({
       id: `${r.kind}-${r.id}`,
-      group: msg("Results"),
+      group: KIND_GROUP[r.kind],
       icon: KIND_ICON[r.kind] ?? "file",
       title: r.number ? `${r.title} · #${r.number}` : r.title,
-      subtitle: [KIND_LABEL[r.kind] && t(KIND_LABEL[r.kind]), r.subtitle].filter(Boolean).join(" · "),
+      subtitle: r.subtitle,
       run: () => go(KIND_PATH[r.kind](r)),
     }));
     return [...best, ...records, ...local.filter((i) => !best.some((b) => b.id === i.id))];
@@ -287,6 +301,9 @@ export function CommandPalette() {
 
   let lastGroup = "";
   const searching = term.length >= 2 && results.isFetching;
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(item.group, (counts.get(item.group) ?? 0) + 1);
+  const bold = (text: string) => marks(text, words).map(([part, hit], k) => (hit ? <b key={k}>{part}</b> : part));
 
   return (
     <dialog
@@ -330,8 +347,15 @@ export function CommandPalette() {
               </div>
             )}
             {items.map((item, i) => {
-              const header = item.group !== lastGroup ? <div className="palette-group" key={`g-${item.group}`} aria-hidden="true">{t(item.group)}</div> : null;
+              const header = item.group !== lastGroup ? (
+                <div className="palette-group" key={`g-${item.group}`} aria-hidden="true">
+                  {t(item.group)}
+                  {q && item.group !== msg("Best match") && item.group !== msg("Create") && <span className="p-count">{counts.get(item.group)}</span>}
+                </div>
+              ) : null;
               lastGroup = item.group;
+              // The hidden search words are English, so the hint only shows in English.
+              const hint = getLocale() === "en" ? keywordHint(`${item.title} ${item.subtitle ?? ""}`, item.keywords, words) : undefined;
               return (
                 <div key={item.id} role="none">
                   {header}
@@ -347,10 +371,10 @@ export function CommandPalette() {
                   >
                     <span className="p-icon"><Icon name={item.icon} size={16} /></span>
                     <span className="p-text">
-                      <span className="p-title">{item.title}</span>
-                      {item.subtitle && <span className="p-sub">{item.subtitle}</span>}
+                      <span className="p-title">{bold(item.title)}</span>
+                      {hint ? <span className="p-sub">{bold(hint)}</span> : item.subtitle && <span className="p-sub">{item.subtitle}</span>}
                     </span>
-                    {item.kbd && <kbd className="kbd p-kbd" aria-hidden="true">{item.kbd}</kbd>}
+                    {item.kbd && <span className="p-keys" aria-hidden="true">{item.kbd}</span>}
                   </button>
                 </div>
               );

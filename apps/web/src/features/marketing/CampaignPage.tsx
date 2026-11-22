@@ -309,7 +309,7 @@ function CampaignPageScreen() {
               </>
             }
           >
-            <div className="stack">
+            <div className={cx("stack", styles.editor)}>
               <SubjectField value={draft.subject} onChange={(subject) => set({ subject })} placeholder="Spring cleanup spots are filling up" />
               <MessageField
                 value={draft.body}

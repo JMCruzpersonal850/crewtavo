@@ -45,6 +45,7 @@ import { VisitDialog, type VisitInput } from "./VisitDialog";
 import { usePendingChanges } from "./changeRequests";
 import { useSchedulingRights } from "./myCrews";
 import { eventOnRow, movePeople, onRow, peopleRows } from "./people";
+import { filterLine } from "./filterLine";
 import { spanDays, stepMonth, weekStart, type Span } from "./range";
 import { intlLocale, msg, t } from "@/lib/i18n";
 
@@ -669,6 +670,7 @@ export function SchedulePage() {
     ...crewItems.filter((e) => !("separator" in e)).map((e) => ({ ...e, hidden: crews.length < 2 })),
   ];
   const filtered = Boolean(shownPerson || crewId);
+  const shownLine = filterLine(shownPerson, session.userId, personName, crews.find((c) => c.id === crewId)?.name);
   const shownCount = view === "map" || view === "day" || oneDay ? byDay(anchor).length : scheduled.length;
 
   /** A visit as a row in the List and beside the Map: its time (or stop) first, then what, for whom, who's on it. */
@@ -747,8 +749,8 @@ export function SchedulePage() {
           <h2 className="sched-range" aria-live="polite">{heading}</h2>
           {schedule.isFetching && !schedule.isPending && <span className="spinner sched-spinner" aria-label={t("Refreshing")} />}
         </div>
-        {canPickPerson && <PickMenu label={t("Person")} value={personName} items={personItems} search={personSearch} />}
-        {crews.length > 1 && <PickMenu label={t("Crew")} value={crewName} items={crewItems} />}
+        {canPickPerson && <PickMenu label={t("Person")} value={personName} items={personItems} search={personSearch} clear={shownPerson ? { label: t("Show everyone"), onClick: () => setPerson("") } : undefined} />}
+        {crews.length > 1 && <PickMenu label={t("Crew")} value={crewName} items={crewItems} clear={crewId ? { label: t("Show all crews"), onClick: () => setCrewId("") } : undefined} />}
         {view === "list" && <PickMenu label={t("Range")} value={t(VIEW_LABELS[listSpan])} items={rangeItems} />}
         <span className="grow" />
         {canSeeUnscheduled && (
@@ -788,6 +790,15 @@ export function SchedulePage() {
           </div>
         )}
       </div>
+
+      {/* Under the bar, so a phone's header and strip stay put: whose visits these are, and the way back. */}
+      {shownLine && (
+        <p className="sched-filter-line">
+          {shownLine.text}
+          {/* The line goes once it's clicked, so focus lands on the bar's first filter, not the page. */}
+          <button type="button" className="link-btn" onClick={() => { document.querySelector<HTMLElement>(".sched-bar .sched-pick")?.focus(); setPerson(""); setCrewId(""); }}>{shownLine.clear}</button>
+        </p>
+      )}
 
       {!merged && ((crews.length > 0 && view !== "list" && view !== "map") || (showCalendars && calendarsShown.length > 0)) && (
         <div className="crew-legend">
@@ -1034,24 +1045,33 @@ function patchFor(visit: Visit, date: string, tz: string) {
 /**
  * A filter that says what it filters, "Person Everyone ⌄" (Page-Schedule.dc.html): a quiet name and the
  * choice, opening a menu of the choices with a check by the one shown. Heard as "Person: Everyone".
+ * With `clear` it's on (ScheduleFilter.dc.html): a green tint, and an × at its end that sets it back.
  */
-function PickMenu({ label, value, items, search }: { label: string; value: string; items: MenuEntry[]; search?: MenuSearch }) {
+function PickMenu({ label, value, items, search, clear }: { label: string; value: string; items: MenuEntry[]; search?: MenuSearch; clear?: { label: string; onClick: () => void } }) {
+  // Always the one wrapper, so turning it on or off doesn't remount the trigger and drop its focus.
   return (
-    <Menu
-      items={items}
-      align="start"
-      label={`${label}: ${value}`}
-      title={label}
-      search={search}
-      triggerClassName="btn btn-sm sched-pick"
-      trigger={
-        <>
-          <span className="sched-pick-label">{label}</span>
-          <span className="sched-pick-value">{value}</span>
-          <Icon name="chevronDown" size={14} />
-        </>
-      }
-    />
+    <span className={clear ? "sched-pick-on" : "sched-pick-off"}>
+      <Menu
+        items={items}
+        align="start"
+        label={`${label}: ${value}`}
+        title={label}
+        search={search}
+        triggerClassName="btn btn-sm sched-pick"
+        trigger={
+          <>
+            <span className="sched-pick-label">{label}</span>
+            <span className="sched-pick-value">{value}</span>
+            {!clear && <Icon name="chevronDown" size={14} />}
+          </>
+        }
+      />
+      {clear && (
+        <button type="button" className="sched-pick-clear" aria-label={clear.label} title={clear.label} onClick={(e) => { (e.currentTarget.parentElement?.firstElementChild as HTMLElement | null)?.focus(); clear.onClick(); }}>
+          <Icon name="x" size={14} />
+        </button>
+      )}
+    </span>
   );
 }
 

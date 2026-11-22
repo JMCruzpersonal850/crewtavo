@@ -16,6 +16,8 @@ export type MenuAction = {
   description?: string;
   /** A key hint on the right ("E", "⌘K"). A single character also picks the item while the menu is open. */
   kbd?: string;
+  /** Shown in kbd's place when the hint to show differs from the key that picks it: "N C", which works from anywhere. */
+  kbdLabel?: string;
   /** Quiet words on the right: a count, a role, the current setting. */
   end?: string;
   /**

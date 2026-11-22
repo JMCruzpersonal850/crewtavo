@@ -44,7 +44,7 @@
 .inline :global(.pill) { font-size: inherit; }
 
 /* The rule under the figures it explains: 12px, quiet. */
-.rule { color: var(--text-3); font-size: var(--fs-12); line-height: 1.5; }
+.rule { max-width: 80ch; color: var(--text-3); font-size: var(--fs-12); line-height: 1.5; }
 
 /* ---------- Dialogs ---------- */
 
@@ -115,7 +115,7 @@
 .drop > svg { flex: none; color: var(--quiet); }
 .drop:hover > svg, .drop[data-over] > svg { color: currentColor; }
 .dropText { display: grid; gap: 2px; min-width: 0; font-size: var(--fs-13); font-weight: 600; }
-.dropText small { color: var(--text-3); font-size: var(--fs-12); font-weight: 400; line-height: 1.45; }
+.dropText small { max-width: 80ch; color: var(--text-3); font-size: var(--fs-12); font-weight: 400; line-height: 1.45; }
 
 /* Promo code discounts under a job's line items: a quiet tag, the rule in words, the switch on the right. */
 .discounts { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }

@@ -613,6 +613,17 @@ export default {
   "No map location yet": "Sin ubicación en el mapa todavía",
   "Filter by person or crew": "Filtrar por persona o cuadrilla",
   "{count} visits": { one: "{count} visita", other: "{count} visitas" },
+  // The schedule's filters while one is on (features/schedule/filterLine.ts)
+  "Show everyone": "Mostrar a todos",
+  "Show all crews": "Mostrar todas las cuadrillas",
+  "Show all visits": "Mostrar todas las visitas",
+  "Showing {crew}'s visits": "Mostrando las visitas de {crew}",
+  "Showing {crew}'s visits with nobody assigned": "Mostrando las visitas de {crew} sin nadie asignado",
+  "Showing visits with nobody assigned": "Mostrando las visitas sin nadie asignado",
+  "Showing your visits on {crew}": "Mostrando tus visitas en {crew}",
+  "Showing your visits": "Mostrando tus visitas",
+  "Showing {name}'s visits on {crew}": "Mostrando las visitas de {name} en {crew}",
+  "Showing {name}'s visits": "Mostrando las visitas de {name}",
 
   // Settings: the list, its search and your profile (features/settings)
   "More for your calendar link": "Más opciones para tu enlace de calendario",

@@ -199,7 +199,8 @@ describe("Marketing's code", () => {
   it("offers review asks on the job and client pages only the ways they can go, as Ask a client now does", () => {
     for (const page of ["../src/features/jobs/JobPage.tsx", "../src/features/clients/ClientPage.tsx", "../src/features/marketing/Reviews.tsx"]) {
       const text = source(page);
-      expect(text, page).toContain("askRefusal(");
+      // The client page's menu says why a way can't go (sendWays.ts, held to askRefusal in clientMenu.test.ts).
+      expect(text, page).toContain(page.includes("ClientPage") ? "sendWay(c, reach, way, askedNot(c))" : "askRefusal(");
       expect(text, page).toContain("sms: session.config.features.sms");
     }
     expect(source("../src/features/jobs/JobPage.tsx")).toContain("review_opt_out, marketing_opt_out, sms_opt_out_at");

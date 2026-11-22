@@ -834,7 +834,7 @@ function NotesSection({ value, editable, onEdit, onUnchanged, onSave }: { value:
   if (!editable) return value ? <Section title="Note to client"><p className={`pre-wrap ${styles.note}`}>{value}</p></Section> : null;
   return (
     <Section title="Note to client" flush>
-      <textarea className="textarea" aria-label="Note to client" value={draft} maxLength={4000} onChange={(e) => { setDraft(e.target.value); onEdit(); }} onBlur={() => (draft.trim() !== (value ?? "") ? onSave(draft.trim() || null) : onUnchanged())} placeholder="Thank you for your business. Checks payable to…" />
+      <textarea className={`textarea ${styles.noteInput}`} aria-label="Note to client" value={draft} maxLength={4000} onChange={(e) => { setDraft(e.target.value); onEdit(); }} onBlur={() => (draft.trim() !== (value ?? "") ? onSave(draft.trim() || null) : onUnchanged())} placeholder="Thank you for your business. Checks payable to…" />
     </Section>
   );
 }

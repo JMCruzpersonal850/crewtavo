@@ -65,7 +65,9 @@
 .sample li { display: flex; gap: 6px; min-width: 0; padding: 6px 0; border-bottom: 1px solid var(--row-divider); font-size: var(--fs-13); }
 .sample li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sample li > span + span { color: var(--quiet); }
-.fine { margin: 0; font-size: var(--fs-12); color: var(--text-3); line-height: 1.5; }
+/* The email's subject and message keep a writing width on a wide screen. */
+.editor { max-width: 880px; }
+.fine { max-width: 80ch; margin: 0; font-size: var(--fs-12); color: var(--text-3); line-height: 1.5; }
 .problems { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .problems li { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-13); font-weight: 600; color: var(--ink); }
 .problems li svg { flex: none; margin-top: 2px; color: var(--warning); }

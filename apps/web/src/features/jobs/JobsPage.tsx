@@ -331,6 +331,7 @@ export function JobsPage() {
           )}
           <InboxList
             label="Jobs"
+            className="il-plain"
             stale={jobs.isPlaceholderData}
             foot={
               <ListFoot more={rows.length < total ? { onClick: () => setLimit((l) => l + PAGE), loading: jobs.isFetching } : undefined}>

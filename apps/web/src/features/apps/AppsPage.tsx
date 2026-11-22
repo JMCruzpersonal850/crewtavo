@@ -224,7 +224,7 @@ function Discover({ apps, isInstalled, onCollection, card }: { apps: AppRow[]; i
 
       {own.length > 0 && (
         <section className="app-shelf" aria-labelledby="app-own">
-          <div className="app-shelf-head"><h2 id="app-own">Built into Crewtavo</h2><span className="app-shelf-note">Turn on, nothing to connect</span></div>
+          <div className="app-shelf-head"><h2 id="app-own">Built by Crewtavo</h2><span className="app-shelf-note">Turn on, nothing to connect</span></div>
           <ul className="app-grid">{own.map(card)}</ul>
         </section>
       )}
@@ -245,7 +245,7 @@ function Featured({ app, installed }: { app: AppRow; installed: boolean }) {
   return (
     <Link to={`/apps/${app.id}`} className="app-feature">
       <span className="app-feature-text">
-        <span className="app-feature-eyebrow">{app.category === "Team" ? "Built into Crewtavo" : `Featured · ${CATEGORY_LABELS[app.category]}`}</span>
+        <span className="app-feature-eyebrow">{app.category === "Team" ? "Built by Crewtavo" : `Featured · ${CATEGORY_LABELS[app.category]}`}</span>
         <span className="app-feature-name">
           <AppIcon id={app.id} name={app.name} size="lg" />
           <span className="app-feature-title">{shortName(app)}</span>

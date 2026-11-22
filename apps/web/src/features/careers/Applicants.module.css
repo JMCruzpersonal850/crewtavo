@@ -22,7 +22,7 @@ span.interview svg { color: currentColor; }
 .interviewFact { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .interviewFact :global(.link-btn) { font-size: var(--fs-13); }
 .words { margin: 0; font-size: var(--fs-14); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.notes { display: grid; gap: 10px; }
+.notes { display: grid; gap: 10px; max-width: 880px; }
 .hint { font-size: var(--fs-12); color: var(--text-3); }
 @media (max-width: 900px) {
   .status:global(.select) { height: var(--control); font-size: var(--fs-15); }

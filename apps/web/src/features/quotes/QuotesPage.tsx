@@ -269,6 +269,7 @@ export function QuotesPage() {
       ) : templates ? (
         <InboxList
           label="Quote templates"
+          className="il-plain"
           stale={quotes.isPlaceholderData}
           foot={<ListFoot more={more ? { onClick: () => setLimit((l) => l + PAGE), loading: quotes.isFetching } : undefined}>{more ? `Showing ${rows.length} of ${count}` : plural(rows.length, "quote template")}</ListFoot>}
         >
@@ -296,6 +297,7 @@ export function QuotesPage() {
           )}
           <InboxList
             label="Quotes"
+            className="il-plain"
             stale={quotes.isPlaceholderData}
             foot={
               <ListFoot

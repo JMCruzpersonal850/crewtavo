@@ -114,7 +114,10 @@ img, svg { flex-shrink: 0; }
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
 }
 .nav-scroll > * { flex: none; }
-.nav-label { padding: 16px 12px 4px; font-size: var(--fs-11); font-weight: 600; color: var(--quiet); }
+/* A group's name folds its links; its caret points down while open, right while folded. */
+.nav-label { display: flex; align-items: center; gap: 4px; padding: 16px 12px 4px; border: 0; border-radius: var(--radius-sm); background: none; font-size: var(--fs-11); font-weight: 600; color: var(--quiet); text-align: left; }
+.nav-label:hover { color: var(--text-2); }
+.nav-label svg { flex: none; }
 .nav-bottom { padding-top: 8px; border-top: 1px solid var(--ground-border); }
 /*
  * A count is a plain number; new requests sit in a request-amber pill, and a red pill only where
@@ -192,8 +195,7 @@ select.business-name:hover { background: var(--fill-2); }
 .menu .menu-item:has(.account-face) { font-weight: 600; }
 .menu[data-sheet] .account-face { width: 40px; height: 40px; font-size: 14px; }
 
-.content { padding: 20px max(48px, env(safe-area-inset-right)) 56px 48px; display: flex; flex-direction: column; gap: 24px; max-width: 1320px; width: 100%; animation: page-in var(--dur-slow) var(--ease-out); }
-.content-narrow { max-width: 880px; }
+.content { padding: 20px max(48px, env(safe-area-inset-right)) 56px 48px; display: flex; flex-direction: column; gap: 24px; width: 100%; animation: page-in var(--dur-slow) var(--ease-out); }
 /* A screen that fills the space under the top bar itself (team chat). */
 .content.content-flush { padding: 0; gap: 0; max-width: none; animation: none; }
 .mobile-tab-icon { position: relative; display: inline-grid; place-items: center; }
@@ -284,8 +286,11 @@ select.business-name:hover { background: var(--fill-2); }
 .palette .p-text { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; white-space: nowrap; }
 .palette .p-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .palette .p-sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-13); font-weight: 400; color: var(--quiet); }
-.palette .p-kbd { flex: none; margin-left: auto; }
-.palette .palette-item[aria-selected="true"] .p-kbd { border-color: var(--border); }
+/* The typed letters bold in ink; each group's count and a row's keys ("G then I") quiet. */
+.palette .p-title b { font-weight: 700; color: var(--ink); }
+.palette .p-sub b { font-weight: 600; color: var(--ink); }
+.palette .p-count { margin-left: 6px; font-weight: 500; }
+.palette .p-keys { flex: none; margin-left: auto; padding-left: 6px; font-size: var(--fs-12); color: var(--quiet); white-space: nowrap; }
 .palette-empty { padding: 22px 12px; text-align: center; font-size: var(--fs-13); color: var(--text-3); }
 .palette .palette-foot { gap: 6px; }
 .palette .palette-foot span + .kbd { margin-left: 8px; }
@@ -404,7 +409,7 @@ select.business-name:hover { background: var(--fill-2); }
   .palette .p-text { display: grid; gap: 1px; white-space: nowrap; }
   .palette .p-title { font-size: var(--fs-16); font-weight: 600; }
   .palette .p-sub { font-size: 15px; color: var(--text-2); }
-  .palette .p-kbd { display: none; }
+  .palette .p-keys { display: none; }
 
   /* Notifications is a screen of its own, over the page and under nothing but the tab bar. */
   .topbar .notif-panel {
@@ -497,7 +502,11 @@ select.business-name:hover { background: var(--fill-2); }
 .sheet-grab::before { content: ""; display: block; width: 38px; height: 5px; margin: 0 auto; border-radius: var(--radius-pill); background: var(--border-strong); }
 .more-sheet .sheet-grab { display: block; }
 .more-label { margin: 0; padding: 6px 20px 4px; font-size: var(--fs-13); font-weight: 600; letter-spacing: normal; color: var(--text-3); }
-.more-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 2px 16px 0; }
+.more-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 2px 16px 0; }
+/* Three to a row; a last row of one or two tiles shares the width instead of leaving a gap. */
+.more-tiles > .more-tile { grid-column: span 2; }
+.more-tiles > .more-tile:nth-last-child(2):nth-child(3n + 1), .more-tiles > .more-tile:last-child:nth-child(3n + 2) { grid-column: span 3; }
+.more-tiles > .more-tile:last-child:nth-child(3n + 1) { grid-column: span 6; flex-direction: row; gap: 10px; height: 56px; }
 .more-tile {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 76px; padding: 0 6px; border: 0; border-radius: 14px;
   background: var(--fill-2); color: var(--ink); font: inherit; font-size: var(--fs-12); font-weight: 600; line-height: 1.2; text-align: center; -webkit-tap-highlight-color: transparent; transition: background var(--dur-fast), transform var(--dur-fast);

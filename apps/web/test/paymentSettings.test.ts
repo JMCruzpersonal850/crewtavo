@@ -110,9 +110,11 @@ describe("Settings → Payments in the menu", () => {
 
   it("sits right after Company, and Contract terms still follows the document style", () => {
     as("owner", []);
-    const business = settingsGroups(session.current as never).find((g) => g.title === "Business")!.items.map((i) => i.label);
-    expect(business.indexOf("Payments")).toBe(business.indexOf("Company") + 1);
-    expect(business.indexOf("Contract terms")).toBe(business.indexOf("Document style") + 1);
+    const groups = settingsGroups(session.current as never);
+    const labels = (title: string) => groups.find((g) => g.title === title)!.items.map((i) => i.label);
+    expect(labels("Business")).toEqual(["Company", "Payments", "Your data"]);
+    const quotes = labels("Quotes and invoices");
+    expect(quotes.indexOf("Contract terms")).toBe(quotes.indexOf("Document style") + 1);
   });
 
   it("is found by searching for autopay, tips, a saved card or refunds", () => {
@@ -432,10 +434,10 @@ describe("the client's Autopay card", () => {
     const code = read("features/clients/ClientPage.tsx");
     expect(code).toContain("const seesMoney = isOffice && can(session, \"invoices\");");
     expect(code).toContain("{seesMoney && autopayOn && <AutopayCard client={c} />}");
-    // The menu's Send autopay invite sub menu: by email or by text, each when it can go.
+    // The menu's Send autopay invite sub menu: by email or by text, each saying where it goes or why it can't.
     expect(code).toMatch(/label: "Send autopay invite", icon: "card", hidden: !seesMoney \|\| !autopayOn,/);
-    expect(code).toMatch(/label: "By email".*autopayInvite\.mutate\("email"\), disabled: !c\.email,/);
-    expect(code).toMatch(/label: "By text".*autopayInvite\.mutate\("sms"\), disabled: !c\.phone \|\| textsOff\(c\),/);
+    expect(code).toMatch(/label: "By email".*autopayInvite\.mutate\("email"\), \.\.\.sendWay\(c, reach, "email"\),/);
+    expect(code).toMatch(/label: "By text".*autopayInvite\.mutate\("sms"\), \.\.\.sendWay\(c, reach, "sms"\),/);
   });
 });
 

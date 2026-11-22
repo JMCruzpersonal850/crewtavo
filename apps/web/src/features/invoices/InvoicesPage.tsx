@@ -383,6 +383,7 @@ function InvoicesPageScreen() {
           )}
           <InboxList
             label="Invoices"
+            className="il-plain"
             stale={invoices.isPlaceholderData}
             foot={
               <ListFoot

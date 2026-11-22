@@ -3,8 +3,8 @@
  * start something from anywhere (G S, N R), and how a notification reads at a glance (its tone and
  * its short time).
  */
-import { describe, expect, it } from "vitest";
-import { CHAT_OFF_TAB, createItems, MOBILE_TABS, mobileTabs, NAV_GROUPS, shortcutTarget } from "../src/components/shell/nav";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CHAT_OFF_TAB, createItems, foldedGroups, MOBILE_TABS, mobileTabs, NAV_GROUPS, saveFoldedGroups, shortcutTarget } from "../src/components/shell/nav";
 import { noticeTone, shortWhen } from "../src/components/shell/Notifications";
 
 const chatOn = { team_chat: { enabled: true } };
@@ -41,6 +41,8 @@ describe("keyboard shortcuts", () => {
     const owner = person("owner");
     expect(shortcutTarget(owner, "n", "r")).toBe("/requests?new=1");
     expect(shortcutTarget(owner, "n", "c")).toBe("/clients?new=1");
+    expect(shortcutTarget(owner, "n", "j")).toBe("/jobs?new=1");
+    expect(shortcutTarget(person("estimator", []), "n", "j")).toBeNull();
     expect(shortcutTarget(person("field_crew"), "n", "q")).toBeNull();
     expect(shortcutTarget(owner, "x", "r")).toBeNull();
   });
@@ -49,7 +51,40 @@ describe("keyboard shortcuts", () => {
     const go = NAV_GROUPS.flat().flatMap((item) => (item.go ? [item.go] : []));
     expect(new Set(go).size).toBe(go.length);
     const keys = createItems({ role: "owner", permissions: [] }).map((item) => item.key);
-    expect(keys).toEqual(["C", "R", "Q", "M", "I", "V"]);
+    expect(keys).toEqual(["C", "R", "Q", "J", "I", "M", "V"]);
+  });
+});
+
+describe("the Create menu", () => {
+  it("lists the work in the order of its stages, then the tools", () => {
+    const items = createItems({ role: "owner", permissions: [] });
+    expect(items.map((item) => item.label)).toEqual(["Client", "Request", "Quote", "Job", "Invoice", "Measurement", "Visit or task"]);
+    expect(items.filter((item) => item.tool).map((item) => item.label)).toEqual(["Measurement", "Visit or task"]);
+  });
+});
+
+describe("folded sidebar groups", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const memory = () => {
+    const kept = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) });
+  };
+
+  it("are none until someone folds one, and are remembered for that person only", () => {
+    memory();
+    expect(foldedGroups("ana")).toEqual([]);
+    saveFoldedGroups("ana", ["Trades"]);
+    expect(foldedGroups("ana")).toEqual(["Trades"]);
+    expect(foldedGroups("ben")).toEqual([]);
+  });
+
+  it("fall back to all open when storage is off or holds something else", () => {
+    vi.stubGlobal("localStorage", { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } });
+    expect(foldedGroups("ana")).toEqual([]);
+    expect(() => saveFoldedGroups("ana", ["Work"])).not.toThrow();
+    memory();
+    localStorage.setItem("crewtavo.nav-folded.ana", "{oops");
+    expect(foldedGroups("ana")).toEqual([]);
   });
 });
 

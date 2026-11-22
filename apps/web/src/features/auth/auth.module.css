@@ -89,7 +89,8 @@
 .codeInput { font-size: var(--fs-24) !important; font-variant-numeric: tabular-nums; letter-spacing: 0.3em; }
 .reveal { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font-size: var(--fs-13); font-weight: 600; color: var(--green); cursor: pointer; }
 .reveal:hover { background: var(--fill-2); }
-.password :global(.input) { padding-right: 64px; }
+/* No icon on the left, so not the input group's 32px for one: the words start where the email's do. */
+.password:global(.input-group) > :global(.input) { padding-left: 12px; padding-right: 64px; }
 .labelRow { position: relative; }
 .forgot { position: absolute; top: 0; right: 0; z-index: 1; font-size: var(--fs-13); }
 
@@ -275,7 +276,7 @@
 /* ---------- Phones ---------- */
 @media (max-width: 900px) {
   .page, .page[data-aside="wide"] { grid-template-columns: minmax(0, 1fr); background: var(--m-group); }
-  .aside { display: none; }
+  .aside, .aside[data-panel] { display: none; }
   .left { padding: max(8px, env(safe-area-inset-top)) 16px 0; }
   .top { min-height: 44px; }
   .topEnd { font-size: var(--fs-15); }
