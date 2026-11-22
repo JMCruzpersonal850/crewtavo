@@ -4,7 +4,9 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { initials } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
+import { Menu, type MenuEntry } from "@/components/ui/Menu";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { statusText } from "@/components/ui/StatusPill";
 import { TagInput } from "@/components/ui/TagInput";
@@ -14,6 +16,7 @@ import { addressLine } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { CustomFieldInputs, customFieldsToSave, useCustomFields } from "../customFields/CustomFields";
+import styles from "./clients.module.css";
 
 export interface ClientFields {
   display_name: string;
@@ -282,16 +285,18 @@ export function EditClientDialog({
 
 export type PickedClient = { id: string; display_name: string } | null;
 
-/** Search-as-you-type client chooser, with "create new" when nothing matches. */
+/**
+ * Search-as-you-type client chooser, with "create new" when nothing matches. A field that opens a
+ * small menu (search on top, 13px rows with a face and the client's address, the picked one ticked);
+ * on a phone the menu is a bottom sheet (Menu.tsx). Enter in the search picks the first client.
+ */
 export function ClientPicker({ value, onChange, allowCreate = true }: { value: PickedClient; onChange: (c: PickedClient) => void; allowCreate?: boolean }) {
   const { company } = useSession();
   const queryClient = useQueryClient();
   const [term, setTerm] = useState("");
-  const [index, setIndex] = useState(0);
   const query = useDeferredValue(term.trim());
   const results = useQuery({
     queryKey: ["clients", company.id, "picker", query],
-    enabled: !value,
     placeholderData: keepPreviousData,
     queryFn: async () => {
       let q = supabase().from("clients").select("id, display_name, company_name, email, properties(line1)").eq("company_id", company.id).neq("status", "archived").order("display_name").limit(8);
@@ -308,61 +313,68 @@ export function ClientPicker({ value, onChange, allowCreate = true }: { value: P
       onChange(c);
     },
   });
-  useEffect(() => setIndex(0), [query]);
-  // After a pick, start fresh if the picker is shown again.
-  useEffect(() => {
-    if (value) setTerm("");
-  }, [value]);
 
-  if (value) {
-    return (
-      <div className="row card" style={{ padding: "8px 8px 8px 12px", boxShadow: "none", background: "var(--fill)" }}>
-        <Icon name="clients" size={16} />
-        <strong className="grow ellipsis">{value.display_name}</strong>
-        <Button size="sm" variant="ghost" onClick={() => onChange(null)}>Change</Button>
-      </div>
-    );
-  }
   const rows = results.data ?? [];
-  const canCreate = allowCreate && term.trim().length >= 2 && !rows.some((r) => r.display_name.toLowerCase() === term.trim().toLowerCase());
-  const total = rows.length + (canCreate ? 1 : 0);
-  const choose = (i: number) => {
-    if (i < rows.length) onChange({ id: rows[i].id, display_name: rows[i].display_name });
-    else if (canCreate) create.mutate(term.trim());
+  const typed = term.trim();
+  const canCreate = allowCreate && typed.length >= 2 && !rows.some((r) => r.display_name.toLowerCase() === typed.toLowerCase());
+  const pick = (c: { id: string; display_name: string }) => {
+    setTerm("");
+    if (c.id !== value?.id) onChange({ id: c.id, display_name: c.display_name });
   };
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") { e.preventDefault(); setIndex((i) => Math.min(total - 1, i + 1)); }
-    if (e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => Math.max(0, i - 1)); }
-    if (e.key === "Enter") { e.preventDefault(); if (total) choose(index); }
+  const add = () => {
+    setTerm("");
+    create.mutate(typed);
   };
+  const items: MenuEntry[] = [
+    ...rows.map((c) => ({
+      label: c.display_name,
+      description: [c.company_name && c.company_name !== c.display_name ? c.company_name : null, c.properties[0]?.line1 ?? c.email ?? "No address yet"].filter(Boolean).join(" · "),
+      lead: <span className={styles.pickerFace}>{initials(c.display_name)}</span>,
+      checked: value ? c.id === value.id : undefined,
+      onSelect: () => pick(c),
+    })),
+    { separator: true, hidden: !canCreate || !rows.length },
+    { label: `Add “${typed}” as a new client`, icon: "plus", hidden: !canCreate, onSelect: add },
+  ];
+  const foot = results.isPending ? "Loading clients…" : !rows.length && !typed ? (allowCreate ? "No clients yet. Type a name to add one." : "No clients yet.") : null;
+  // Enter in the search takes the first client (or adds the new one), as the old list did.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const field = e.target as HTMLElement;
+    if (e.key !== "Enter" || !field.classList.contains("menu-search-input")) return;
+    e.preventDefault();
+    const first = rows[0];
+    if (!first && !canCreate) return;
+    field.closest<HTMLElement>(".menu")?.hidePopover();
+    (e.currentTarget.querySelector(`.${styles.pickerField}`) as HTMLElement | null)?.focus();
+    if (first) pick(first);
+    else add();
+  };
+  const shown = create.isPending ? { display_name: `Adding ${create.variables}…` } : value;
+
   return (
-    <div className="stack-sm">
-      <div className="input-group">
-        <span className="addon"><Icon name="search" size={16} /></span>
-        <input className="input" placeholder="Search by name, email or phone" value={term} onChange={(e) => setTerm(e.target.value)} onKeyDown={onKeyDown} aria-label="Search clients" autoComplete="off" />
-      </div>
-      <div className="card" style={{ maxHeight: 248, overflowY: "auto", boxShadow: "none" }} role="listbox" aria-label="Clients">
-        {results.isPending &&
-          [0, 1, 2].map((i) => (
-            <div key={i} className="card-row" style={{ padding: "10px 12px" }}><Skeleton width={`${60 - i * 12}%`} height={12} /></div>
-          ))}
-        {rows.map((c, i) => (
-          <button key={c.id} type="button" role="option" aria-selected={i === index} className="card-row" onMouseMove={() => setIndex(i)} onClick={() => choose(i)} style={{ padding: "9px 12px", background: i === index ? "var(--fill-2)" : "var(--surface)" }}>
-            <span className="grow">
-              <strong>{c.display_name}</strong>
-              {c.company_name && c.company_name !== c.display_name && <span className="muted"> · {c.company_name}</span>}
-              <span className="muted small ellipsis" style={{ display: "block" }}>{c.properties[0]?.line1 ?? c.email ?? "No address yet"}</span>
-            </span>
-          </button>
-        ))}
-        {canCreate && (
-          <button type="button" role="option" aria-selected={index === rows.length} className="card-row" onMouseMove={() => setIndex(rows.length)} onClick={() => choose(rows.length)} disabled={create.isPending} style={{ padding: "10px 12px", background: index === rows.length ? "var(--fill-2)" : "var(--surface)", color: "var(--green-dark)", fontWeight: 600 }}>
-            <Icon name="plus" size={16} />
-            {create.isPending ? "Creating…" : `Create “${term.trim()}” as a new client`}
-          </button>
-        )}
-        {!results.isPending && total === 0 && <div className="empty" style={{ padding: 16 }}>{term ? "No matching clients" : "No clients yet. Type a name to add one."}</div>}
-      </div>
+    <div className={styles.picker} onKeyDown={onKeyDown}>
+      <Menu
+        align="start"
+        label={value ? `Client: ${value.display_name}. Choose another` : "Choose a client"}
+        title="Choose a client"
+        triggerClassName={`select ${styles.pickerField}`}
+        trigger={
+          shown ? (
+            <>
+              <span className={styles.pickerFace} aria-hidden="true">{initials(shown.display_name)}</span>
+              <span className={styles.pickerName}>{shown.display_name}</span>
+            </>
+          ) : (
+            <>
+              <Icon name="search" size={15} />
+              <span className={styles.pickerPlaceholder}>Choose a client</span>
+            </>
+          )
+        }
+        search={{ value: term, onChange: setTerm, placeholder: "Search by name, email or phone", label: "Search clients" }}
+        footer={foot ? { text: foot } : undefined}
+        items={items}
+      />
     </div>
   );
 }

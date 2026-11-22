@@ -15,6 +15,7 @@ import { chosenTotals, countsOn, optionBaseTotal, optionTotals, scheduleRows, ty
 import { isPackagePicturePath, packagePictureSrc } from "@crewtavo/core/presets";
 import { privacyUrl } from "@crewtavo/core/privacyPolicy";
 import { quotePromoRule } from "@crewtavo/core/promos";
+import { brandColor } from "@crewtavo/core/social";
 import { changeableOnline, openSlots, SLOT_DAYS, SLOT_LEAD_DAYS, slotStep, workdays, type OpenSlot } from "@crewtavo/core/slots";
 import { addDays, arrivalWindowMin, localDate, zonedTimeToUtc } from "@crewtavo/core/time";
 import { visitPeople } from "@crewtavo/core/visitPeople";
@@ -1096,7 +1097,11 @@ publicRoutes.get("/public/forms/:company/:form", async (c) => {
   const { company, form } = await findForm(c);
   return c.json({
     // `texts`: the business can text, so the phone box says what giving a number agrees to.
-    company: { name: company.name, phone: company.phone, texts: await smsReady(c.env, company.id), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null) },
+    // `logo` and `color`: the page wears the business's own logo and brand color (null without them).
+    company: {
+      name: company.name, phone: company.phone, logo: logoImage("", company.id, company.settings)?.src ?? null, color: brandColor(company.settings),
+      texts: await smsReady(c.env, company.id), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null),
+    },
     form: { name: form.name, kind: form.kind, questions: form.questions },
     // With "Let clients pick a time" on: what the page needs to offer times (the openings themselves come from /openings).
     ...(form.pick_time && { booking: bookingView(company, form as BookingForm, (form.service_area_zips ?? []) as string[]) }),
@@ -1878,7 +1883,11 @@ publicRoutes.get("/public/unsubscribe/:token", async (c) => {
     admin.from("clients").select("marketing_opt_out").eq("company_id", l.c).eq("id", l.id).maybeSingle(),
   ]);
   if (!company.data || !client.data) throw new HttpError(404, "This link isn't valid anymore.");
-  return c.json({ company: company.data.name, unsubscribed: client.data.marketing_opt_out, privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null) });
+  // `logo` and `color`: the page wears the business's own logo and brand color (null without them).
+  return c.json({
+    company: company.data.name, logo: logoImage("", l.c, company.data.settings)?.src ?? null, color: brandColor(company.data.settings),
+    unsubscribed: client.data.marketing_opt_out, privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null),
+  });
 });
 
 publicRoutes.post("/public/unsubscribe/:token", async (c) => {
@@ -2004,7 +2013,7 @@ publicRoutes.get("/public/refer/:token", async (c) => {
   if (!company.data || !client.data) throw new HttpError(404, "This referral link isn't valid anymore.");
   const referrals = referralSettings(company.data.settings as Record<string, unknown> | null);
   return c.json({
-    company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null, texts: await smsReady(c.env, l.c), privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null) },
+    company: { name: company.data.name, phone: company.data.phone, website: company.data.website, logo: logoImage("", l.c, company.data.settings)?.src ?? null, color: brandColor(company.data.settings), texts: await smsReady(c.env, l.c), privacy_url: privacyUrl(company.data.settings as Record<string, unknown> | null) },
     referrer: firstName(client.data.display_name),
     offer: referrals.offer,
     // That the person recommending gets a credit, for the friend to know (core referrerDisclosure). Null when none is set.

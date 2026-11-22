@@ -1,12 +1,12 @@
 /**
- * Icons used across the app: Lucide's, plus six of Crewtavo's own for the things it's built around,
+ * Icons used across the app: Lucide's, plus seven of Crewtavo's own for the things it's built around,
  * drawn on the same 24px grid so they take the same props, and one of Tabler's (salt, below).
  * Decorative unless given a label.
  */
 import {
-  Archive, ArchiveRestore, ArrowLeft, AtSign, ArrowRight, Banknote, Bell, Bold, BookOpen, Calculator, Calendar, CalendarCheck, Camera, ChartColumn, ChartLine, Check, ChevronDown, ChevronLeft,
+  Archive, ArchiveRestore, ArrowDownUp, ArrowLeft, AtSign, ArrowRight, ArrowUp, Banknote, Bell, Bold, BookOpen, Calculator, Calendar, CalendarCheck, Camera, ChartColumn, ChartLine, Check, ChevronDown, ChevronLeft,
   ChevronRight, ChevronUp, Circle, CircleCheck, CircleQuestionMark, ClipboardCheck, Clock, Cloud, CloudSnow, CodeXml, Command, Copy, CreditCard, DollarSign, Download, Ellipsis, ExternalLink, Eye, File, FileImage,
-  FileSpreadsheet, Folder, FolderInput, FolderOpen, FolderPlus, Funnel, Gauge, Gift, Globe, GripVertical, HardDrive, Hash, Heading, Hexagon, Highlighter, History, House, Image,
+  FileSpreadsheet, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Funnel, Gauge, Gift, Globe, GripVertical, HardDrive, Hash, Heading, Hexagon, Highlighter, History, House, Image,
   Inbox, Info, Italic, Kanban, Landmark, Layers, LayoutGrid, Link, List, ListChecks, ListOrdered, Lock, LogOut, Mail, Map, MapPin, Maximize, Megaphone, Menu, Minimize, MessageSquareText,
   MessageSquareWarning, MessagesSquare, Minus, Monitor, Moon, MoveUpRight, Package, Palette, Paperclip, PenLine, Signature, Tablet, Type, MousePointer2, Navigation,
   Pause, Pencil, Percent, Phone, Pin, PinOff, Play, Plus, Printer, Quote,  ReceiptText, Redo2, RefreshCw, Reply, Ruler, Scissors, Search, Send, SeparatorHorizontal,
@@ -67,6 +67,15 @@ const Road = createLucideIcon("CrewtavoPaving", [
   ["path", { d: "M12 7.5V11M12 15v5", key: "dashes" }],
 ]);
 
+/** A mower (equipment, lawn work): a push mower from the side, its handle back over the deck. Lucide has none. */
+const Mower = createLucideIcon("CrewtavoMower", [
+  ["path", { d: "M2.5 3H6l3.5 8", key: "handle" }],
+  ["path", { d: "M4.5 16.5V13a2 2 0 0 1 2-2H16a5 5 0 0 1 5 5v.5", key: "deck" }],
+  ["circle", { cx: 7, cy: 18, r: 2.5, key: "rear" }],
+  ["circle", { cx: 17.5, cy: 18, r: 2.5, key: "front" }],
+  ["path", { d: "M9.5 18H15", key: "skirt" }],
+]);
+
 /** Roofing: a gabled roof with two rows of shingles under the ridge. */
 const Roof = createLucideIcon("CrewtavoRoofing", [
   ["path", { d: "M2 15.5 12 6.5l10 9", key: "ridge" }],
@@ -92,6 +101,7 @@ const ICONS = {
   clock: Clock,
   bolt: Zap,
   truck: Truck,
+  mower: Mower,
   gauge: Gauge,
   globe: Globe,
   book: BookOpen,
@@ -116,6 +126,8 @@ const ICONS = {
   check: Check,
   arrowLeft: ArrowLeft,
   arrowRight: ArrowRight,
+  /** Send, on a phone's round send button. */
+  arrowUp: ArrowUp,
   phone: Phone,
   mail: Mail,
   logout: LogOut,
@@ -154,6 +166,8 @@ const ICONS = {
   list: List,
   map: Map,
   file: File,
+  /** A document of words: Word, text, a rich-text file. */
+  fileText: FileText,
   link: Link,
   code: CodeXml,
   lock: Lock,
@@ -230,6 +244,8 @@ const ICONS = {
   arrowUpRight: MoveUpRight,
   /** A repair or a tool (equipment); a job is the hard hat. */
   wrench: Wrench,
+  /** A list's order (the sort menu beside its filters). */
+  sort: ArrowDownUp,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
@@ -243,9 +259,12 @@ export const iconSize = (size: number) => (size <= 12 ? 12 : size <= 15 ? 14 : s
 /** The stroke in screen pixels, so every size has the same weight: 1.5 up to 14px, 1.75 above, and 2 on the grid's scale for illustrations. */
 const strokeFor = (size: number) => (size <= 14 ? 1.5 : size <= 26 ? 1.75 : size / 12);
 
-/** `size` snaps to the set above (18, the default, draws at 20). `strokeWidth` is in pixels: about 2 makes a small check or cross bold. */
-export function Icon({ name, size = 18, label, strokeWidth }: { name: IconName; size?: number; label?: string; strokeWidth?: number }) {
+/**
+ * `size` snaps to the set above (18, the default, draws at 20). `strokeWidth` is in pixels: about 2 makes a small check or cross bold.
+ * `className` goes on the <svg> (lucide's own "lucide" classes stay), for a screen's rule that places or colors it.
+ */
+export function Icon({ name, size = 18, label, strokeWidth, className }: { name: IconName; size?: number; label?: string; strokeWidth?: number; className?: string }) {
   const Glyph = ICONS[name];
   const px = iconSize(size);
-  return <Glyph size={px} strokeWidth={strokeWidth ?? strokeFor(px)} absoluteStrokeWidth role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true} />;
+  return <Glyph size={px} strokeWidth={strokeWidth ?? strokeFor(px)} absoluteStrokeWidth className={className} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true} />;
 }

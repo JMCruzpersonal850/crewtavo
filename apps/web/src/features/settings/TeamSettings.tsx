@@ -10,7 +10,10 @@ import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
-import { TableSkeleton } from "@/components/ui/Skeleton";
+import { MetaLine } from "@/components/ui/InboxList";
+import { Menu, type MenuEntry } from "@/components/ui/Menu";
+import { Section } from "@/components/ui/Section";
+import { SectionSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
@@ -26,6 +29,8 @@ import { accessFor, choiceFor, givesAdmin, patchFor, roleChoices, roleName, useC
 import { limitable, setsAllowances, useStorageOverview, type StoragePerson } from "./storage";
 import { AllowanceDialog } from "./StorageSettings";
 import { PASSWORD_HINT } from "../apps/catalog";
+import { SettingsActions } from "./SettingsKit";
+import styles from "./settings.module.css";
 
 export interface Member { user_id: string; role: Role; role_id: string | null; active: boolean; labor_rate: number | null; profile: { full_name: string; email: string | null; color: string | null; avatar_url: string | null; locale?: string | null } | null }
 /** Someone invited who hasn't set up their account yet, and when their latest link went out. */
@@ -96,102 +101,110 @@ export function TeamSettings() {
   // Your own photo, and for those who manage the team, anyone's (an owner's only by an owner).
   const canSetPhoto = (m: Member) => m.user_id === session.userId || (ADMINS.includes(session.role) && can(session, "team") && (isOwner || m.role !== "owner"));
   const photoMember = members.find((m) => m.user_id === photoFor);
-  const rows = useListAnimation<HTMLTableSectionElement>();
+  const rows = useListAnimation<HTMLUListElement>();
+  const active = members.filter((m) => m.active);
+  const removed = members.filter((m) => !m.active);
+  const joining = active.filter((m) => pending.has(m.user_id)).length;
+  const paySeen = seesPayRates(session.role, session.permissions);
+
+  const person = (m: Member) => {
+    const me = m.user_id === session.userId;
+    const locked = me || (m.role === "owner" && !isOwner);
+    const name = m.profile?.full_name || "Invited user";
+    const sentAt = m.active ? pending.get(m.user_id) : undefined;
+    const usage = storageOf.get(m.user_id);
+    const rates = rateCounts.data?.[m.user_id];
+    const resets = !sentAt && m.active && !me && can(session, "team") && canMakeResetLink(session.role, m.role);
+    const limits = isOwner && Boolean(storage.data) && m.active && limitable(m);
+    const more: MenuEntry[] = [
+      { label: m.profile?.avatar_url ? "Change photo" : "Add a photo", icon: "camera", hidden: !canSetPhoto(m), onSelect: () => setPhotoFor(m.user_id) },
+      { label: "Resend invite", icon: "send", hidden: !sentAt || locked, onSelect: () => setResending(m) },
+      { label: "Reset password", icon: "lock", hidden: !resets, onSelect: () => setResetting(m) },
+      { label: "Piece rates", icon: "dollar", end: rates ? String(rates) : undefined, hidden: !pieceRates, onSelect: () => setRatesFor(m) },
+      { label: "Storage limit", icon: "hardDrive", end: usage?.limit_bytes ? formatBytes(usage.limit_bytes) : undefined, hidden: !limits, onSelect: () => setStorageFor({ member: m, usage }) },
+      { label: "Restore access", icon: "undo", hidden: locked || m.active, onSelect: () => update.mutate({ userId: m.user_id, patch: { active: true } }) },
+      { separator: true },
+      {
+        label: "Remove access",
+        icon: "x",
+        danger: true,
+        hidden: locked || !m.active,
+        onSelect: async () => {
+          if (await confirm({ title: `Remove ${name}'s access?`, body: "They're signed out of this company right away. Their visits, time and notes stay on record, and you can restore access later.", confirmLabel: "Remove access", danger: true })) update.mutate({ userId: m.user_id, patch: { active: false } });
+        },
+      },
+    ];
+    const face = <Face name={name} photo={m.profile?.avatar_url} />;
+    return (
+      <li key={m.user_id} className={styles.person} data-removed={m.active ? undefined : true}>
+        {canSetPhoto(m) ? (
+          <button type="button" className={`avatar avatar-edit ${styles.face}`} style={{ background: m.profile?.color || "var(--avatar)" }} onClick={() => setPhotoFor(m.user_id)} aria-label={me ? "Your photo" : `${name}'s photo`} title={m.profile?.avatar_url ? "Change photo" : "Add a photo"}>
+            {face}
+          </button>
+        ) : (
+          <span className={`avatar ${styles.face}`} style={{ background: m.profile?.color || "var(--avatar)" }}>{face}</span>
+        )}
+        <div className={styles.who}>
+          <div className={styles.name}>
+            <strong>{name}</strong>
+            {me && <span className="chip">You</span>}
+            {/* Their own choice of language (Settings → Profile → Language): their screens and notices are in it. */}
+            {m.profile?.locale === "es" && <span className="chip" title="Uses Crewtavo in Spanish">Español</span>}
+          </div>
+          <MetaLine
+            className={styles.meta}
+            parts={[
+              m.profile?.email,
+              !m.active && "No access",
+              pieceRates && rates ? `${rates} piece ${rates === 1 ? "rate" : "rates"}` : null,
+              limits && usage?.limit_bytes ? storageLink(usage) : null,
+            ]}
+          />
+          {/* On a line of its own, so it never wraps away from a dangling dot. */}
+          {sentAt && <div className={styles.status}><StatusPill label={`Invite pending, sent ${timeAgo(sentAt)}`} tone="pending" /></div>}
+        </div>
+        <div className={styles.role}>
+          {locked || !m.active ? <span className={styles.roleText}>{roleName(m, roles.data)}</span> : (
+            <RolePicker value={choiceFor(m)} roles={roles.data} viewerIsOwner={isOwner || m.role === "owner"} label={`Role for ${name}`} onChange={(choice) => changeRole(m, choice)} />
+          )}
+        </div>
+        <div className={styles.cost}>
+          {/* Someone who isn't given pay rates has none to show here, and $0 would be a lie. */}
+          {!paySeen ? <span className="muted small" title="Pay rates are for people who manage the team or have Job costs and profit.">Hidden</span> : m.active && (
+            <>
+              <MoneyInput value={Number(m.labor_rate ?? 0)} max={1000} width={92} label={`Labor cost for ${name}`} onSave={(v) => void saving.track(rate.mutateAsync({ userId: m.user_id, labor_rate: v || null }))} />
+              <span className={styles.per} aria-hidden="true">/ hr</span>
+            </>
+          )}
+        </div>
+        <div className={styles.more}>
+          {more.some((e) => "label" in e && !e.hidden) && <Menu items={more} label={`More for ${name}`} title={name} triggerClassName="btn btn-sm btn-ghost btn-icon" />}
+        </div>
+      </li>
+    );
+  };
 
   return (
-    <div className="stack">
-      <div className="row-between">
-        <span className="muted">
-          {members.filter((m) => m.active).length} people with access{pending.size ? ` · ${pending.size} ${pending.size === 1 ? "hasn't" : "haven't"} joined yet` : ""}
-        </span>
-        <SaveStatus status={saving.status} />
-        <span className="grow" />
-        <Button variant="primary" icon="plus" onClick={() => setInviting(true)}>Invite someone</Button>
-      </div>
-      {team.isPending ? <TableSkeleton columns={4} rows={4} /> : team.error ? <div className="card"><ErrorState error={team.error} onRetry={() => team.refetch()} /></div> : (
-        <div className="card">
-          <table className="table table-stack">
-            <thead><tr><th>Person</th><th>Role</th><th className="num">Labor cost / hr</th><th>Access</th></tr></thead>
-            <tbody ref={rows}>
-              {members.map((m) => {
-                const me = m.user_id === session.userId;
-                const locked = me || (m.role === "owner" && !isOwner);
-                const name = m.profile?.full_name || "Invited user";
-                const sentAt = m.active ? pending.get(m.user_id) : undefined;
-                return (
-                  <tr key={m.user_id} style={m.active ? undefined : { opacity: 0.6 }}>
-                    <td>
-                      <div className="row">
-                        {canSetPhoto(m) ? (
-                          <button type="button" className="avatar avatar-edit" style={{ width: 32, height: 32, fontSize: 12, background: m.profile?.color || "var(--text-3)" }} onClick={() => setPhotoFor(m.user_id)} aria-label={me ? "Your photo" : `${name}'s photo`} title={m.profile?.avatar_url ? "Change photo" : "Add a photo"}>
-                            <Face name={name} photo={m.profile?.avatar_url} />
-                            <span className="avatar-edit-badge" aria-hidden="true"><Icon name="camera" size={12} /></span>
-                          </button>
-                        ) : (
-                          <span className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: m.profile?.color || "var(--text-3)" }}><Face name={name} photo={m.profile?.avatar_url} /></span>
-                        )}
-                        <span>
-                          <strong>{name}</strong>{me && <span className="chip" style={{ marginLeft: 6 }}>You</span>}
-                          {/* Their own choice of language (Settings → Profile → Language): their screens and notices are in it. */}
-                          {m.profile?.locale === "es" && <span className="chip" style={{ marginLeft: 6 }} title="Uses Crewtavo in Spanish">Español</span>}
-                          <div className="muted small">{m.profile?.email}</div>
-                          {sentAt && (
-                            <div className="row" style={{ gap: 6, marginTop: 2 }}>
-                              <StatusPill label="Invite pending" tone="warning" />
-                              <span className="muted small">sent {timeAgo(sentAt)}</span>
-                            </div>
-                          )}
-                          {sentAt ? !locked && (
-                            <button type="button" className="link-btn small" onClick={() => setResending(m)}>Resend invite</button>
-                          ) : m.active && !me && can(session, "team") && canMakeResetLink(session.role, m.role) && (
-                            <button type="button" className="link-btn small" onClick={() => setResetting(m)}>Reset password</button>
-                          )}
-                          {isOwner && storage.data && m.active && limitable(m) && (
-                            <div>
-                              <button type="button" className="link-btn small" style={{ textAlign: "left" }} onClick={() => setStorageFor({ member: m, usage: storageOf.get(m.user_id) })} aria-label={`Storage limit for ${name}`}>
-                                {storageLink(storageOf.get(m.user_id))}
-                              </button>
-                            </div>
-                          )}
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      {locked ? <span>{roleName(m, roles.data)}</span> : (
-                        <RolePicker value={choiceFor(m)} roles={roles.data} viewerIsOwner={isOwner || m.role === "owner"} disabled={!m.active} label={`Role for ${name}`} onChange={(choice) => changeRole(m, choice)} />
-                      )}
-                    </td>
-                    <td className="num">
-                      {/* Someone who isn't given pay rates has none to show here, and $0 would be a lie. */}
-                      {!seesPayRates(session.role, session.permissions) ? <span className="muted small" title="Pay rates are for people who manage the team or have Job costs and profit.">Hidden</span> : <MoneyInput value={Number(m.labor_rate ?? 0)} max={1000} width={110} label={`Labor cost for ${name}`} onSave={(v) => void saving.track(rate.mutateAsync({ userId: m.user_id, labor_rate: v || null }))} />}
-                      {pieceRates && (
-                        <div>
-                          <button type="button" className="link-btn small" onClick={() => setRatesFor(m)}>
-                            {rateCounts.data?.[m.user_id] ? `${rateCounts.data[m.user_id]} piece ${rateCounts.data[m.user_id] === 1 ? "rate" : "rates"}` : "Piece rates"}
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {locked ? <StatusPill label={m.active ? "Active" : "Removed"} tone={m.active ? "good" : "muted"} /> : (
-                        <Button
-                          size="sm"
-                          variant={m.active ? "danger" : "secondary"}
-                          onClick={async () => {
-                            if (!m.active) return update.mutate({ userId: m.user_id, patch: { active: true } });
-                            if (await confirm({ title: `Remove ${name}'s access?`, body: "They're signed out of this company right away. Their visits, time and notes stay on record, and you can restore access later.", confirmLabel: "Remove access", danger: true })) update.mutate({ userId: m.user_id, patch: { active: false } });
-                          }}
-                        >
-                          {m.active ? "Remove" : "Restore"}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+    <>
+      <SettingsActions><Button variant="primary" icon="plus" onClick={() => setInviting(true)}>Invite someone</Button></SettingsActions>
+      {team.isPending ? <SectionSkeleton rows={4} /> : team.error ? <ErrorState error={team.error} onRetry={() => team.refetch()} /> : (
+        <>
+          <Section level={3} title="With access" count={active.length} action={<SaveStatus status={saving.status} />}>
+            {joining > 0 && <p className="set-note">{joining === 1 ? "1 person hasn't joined yet." : `${joining} people haven't joined yet.`} Their invite works once and expires in a day; resend it from their menu.</p>}
+            <div className={styles.head} aria-hidden="true">
+              <span>Person</span>
+              <span>Role</span>
+              <span>Labor cost</span>
+            </div>
+            <ul className={styles.people} role="list" ref={rows}>{active.map(person)}</ul>
+          </Section>
+          {removed.length > 0 && (
+            <Section level={3} title="No access" count={removed.length}>
+              <p className="set-note">Signed out of this company. Their visits, time and notes stay on record.</p>
+              <ul className={styles.people} role="list">{removed.map(person)}</ul>
+            </Section>
+          )}
+        </>
       )}
       {inviting && <InviteDialog prefill={handed} onClose={stopInviting} />}
       {resetting && <ResetPasswordDialog member={resetting} onClose={() => setResetting(null)} />}
@@ -227,7 +240,7 @@ export function TeamSettings() {
           </div>
         </Dialog>
       )}
-    </div>
+    </>
   );
 }
 
@@ -282,7 +295,7 @@ function PhotoDialog({ member, onClose }: { member: Member; onClose: () => void 
     <Dialog open onClose={onClose} title={me ? "Your photo" : `${first}'s photo`} size="sm">
       <div className="dialog-body">
         <div className="stack-sm" style={{ justifyItems: "center", textAlign: "center" }}>
-          <span className="avatar" style={{ width: 96, height: 96, fontSize: 32, background: member.profile?.color || "var(--text-3)" }}><Face name={name} photo={member.profile?.avatar_url} /></span>
+          <span className="avatar" style={{ width: 96, height: 96, fontSize: 32, background: member.profile?.color || "var(--avatar)" }}><Face name={name} photo={member.profile?.avatar_url} /></span>
           <PhotoButtons userId={member.user_id} photo={member.profile?.avatar_url} />
           <p className="muted small" style={{ margin: 0 }}>
             {me

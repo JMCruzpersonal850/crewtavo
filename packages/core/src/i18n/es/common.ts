@@ -120,14 +120,12 @@ export default {
   "Searching…": "Buscando…",
   "No results for “{query}”": "No hay resultados para “{query}”",
   "to move": "para moverte",
-  "Enter": "Enter",
   "to open": "para abrir",
   "to close": "para cerrar",
 
   // Help (components/shell/Help.tsx)
   "Help": "Ayuda",
   "Ask AI about Crewtavo": "Pregúntale a la IA sobre Crewtavo",
-  "How do I send invoices in a batch?": "¿Cómo envío varias facturas a la vez?",
   "Ask Claude": "Preguntarle a Claude",
   "Ask ChatGPT": "Preguntarle a ChatGPT",
   "It reads Crewtavo's docs to answer. Leave out client names.": "Lee la documentación de Crewtavo para responder. No pongas nombres de clientes.",
@@ -135,7 +133,6 @@ export default {
   "Crewtavo docs": "Documentación de Crewtavo",
   "Your company's guides": "Las guías de tu empresa",
   "Connect Claude or ChatGPT": "Conectar Claude o ChatGPT",
-  "Have it do the work in Crewtavo": "Que haga el trabajo en Crewtavo",
   "Report a problem": "Reportar un problema",
   "Public on GitHub, with no promise of a reply. Leave out client details.": "Es público en GitHub y no se promete respuesta. No pongas datos de clientes.",
   "Stuck on something else? Ask someone at {company}.": "¿Atorado con otra cosa? Pregúntale a alguien de {company}.",
@@ -588,4 +585,57 @@ export default {
   "Link copied": "Enlace copiado",
   "Paperwork for {company}": "Documentos para {company}",
   "That file didn't come through. Try sending it again.": "Ese archivo no llegó. Intenta enviarlo de nuevo.",
+
+  // The app's frame and notifications (components/shell/AppShell.tsx, Notifications.tsx)
+  "{count} past due": { one: "{count} vencida", other: "{count} vencidas" },
+  "Match device": "Igual que el dispositivo",
+  "Earlier": "Anteriores",
+  "Mark all read": "Marcar todo como leído",
+
+  // The text editor's insert menu (components/ui/RichTextEditor.tsx)
+  "Text and lists": "Texto y listas",
+  "Callouts": "Recuadros",
+  "Blocks": "Bloques",
+  "Media and links": "Imágenes, videos y enlaces",
+  "A faster or better way to do it": "Una forma más rápida o mejor de hacerlo",
+  "Something nobody can skip": "Algo que nadie se puede saltar",
+  "Could hurt someone or damage property": "Podría lastimar a alguien o dañar la propiedad",
+  "or drop one in": "o arrastra una aquí",
+  "Video": "Video",
+  "YouTube or Vimeo": "YouTube o Vimeo",
+  "Insert": "Insertar",
+  "to insert": "para insertar",
+
+  // Lists, toolbars, menus and record pages (components/ui/InboxList.tsx, Toolbar.tsx, Menu.tsx, DetailPage.tsx)
+  "Actions": "Acciones",
+  "Unread": "Sin leer",
+  "Select": "Seleccionar",
+  "Load more": "Cargar más",
+  "Not assigned": "Sin asignar",
+  "Back": "Atrás",
+  "Sort: {order}": "Ordenar: {order}",
+  "Sort": "Ordenar",
+  "{filter}, {count} selected": "{filter}, {count} seleccionados",
+
+  // The sign-in page's picture of the app, and waiting for the link (features/auth/LoginPage.tsx)
+  "Weekly mowing": "Corte de pasto semanal",
+  "Leaf cleanup": "Limpieza de hojas",
+  "Holiday lights": "Luces navideñas",
+  "{done} of {total} done": "{done} de {total} terminadas",
+  "Quote #{number} approved": "Cotización #{number} aprobada",
+  "Requests, quotes, the schedule, invoices and your crews in one place.": "Solicitudes, cotizaciones, la agenda, facturas y tus cuadrillas en un solo lugar.",
+  "Hide": "Ocultar",
+  "Waiting for you to open the link": "Esperando a que abras el enlace",
+  "Not there after a minute? Check your spam folder.": "¿No llega en un minuto? Revisa la carpeta de spam.",
+  "Next you'll set up your business, then invite your team.": "Después vas a configurar tu empresa y luego invitar a tu equipo.",
+
+  // Picking tags (features/clients/ClientsPage.tsx)
+  "Tags": "Etiquetas",
+  "Any tag": "Cualquier etiqueta",
+  "Find a tag": "Busca una etiqueta",
+  "{count} tags": { one: "{count} etiqueta", other: "{count} etiquetas" },
+  "None picked": "Ninguna seleccionada",
+
+  // A client's pages (features/public/ClientKit.tsx)
+  "Call {name} at": "Llamar a {name} al",
 } satisfies Catalog;

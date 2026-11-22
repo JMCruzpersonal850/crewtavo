@@ -54,6 +54,7 @@
   --m-sheet: #ffffff;
   --scrim: rgba(0, 0, 0, 0.42); /* behind a bottom sheet */
   --seg-track: #f2f1ed;     /* a segmented control's track, under its raised choice */
+  --seg-track-inset: #f2f1ed; /* the track inside a dialog, a menu or a panel: white there, so the same warm grey */
 
   /* A solid ink fill (selected tabs, dark buttons, toasts) and the text on it. Inverts in dark mode. */
   --solid: #0f2a35;
@@ -94,15 +95,19 @@
   --note: #fff8e6;      --note-border: #f1e2b8;
 
   /*
-   * Type scale: every font size in the app is one of these nine. 400 for text, 500 for quiet labels,
-   * 600 for labels and actions, 700 for headings; 30 is a phone's large page title.
+   * Type scale: every font size in the app is one of these eleven. 400 for text, 500 for quiet labels,
+   * 600 for labels and actions, 650 for a section's heading, 700 for headings; 15 is a section's
+   * heading (and a phone list's second line), 22 a figure in a stats strip, 30 a phone's page title.
    */
   --fs-11: 11px;
   --fs-12: 12px;
   --fs-13: 13px;
   --fs-14: 14px;
+  --fs-15: 15px;
   --fs-16: 16px;
+  --fs-18: 18px;
   --fs-20: 20px;
+  --fs-22: 22px;
   --fs-24: 24px;
   --fs-30: 30px;
   --fs-32: 32px;
@@ -148,9 +153,9 @@
   --mobile-nav-height: 64px;
 }
 
-/* A phone: buttons and fields are a thumb's 44px, so a row of them still lines up. */
+/* A phone: buttons and fields are a thumb's 44px, the small ones too, so a row of them still lines up. */
 @media (max-width: 900px) {
-  :root { --control: 44px; }
+  :root { --control: 44px; --control-sm: 44px; }
 }
 
 /*
@@ -195,6 +200,7 @@
   --m-sheet: #1f1f1d;
   --scrim: rgba(0, 0, 0, 0.6);
   --seg-track: var(--sand-3);
+  --seg-track-inset: var(--sand-1); /* a dialog, a menu and a panel are sand-3 themselves: a darker well */
 
   --solid: var(--sand-12);
   --solid-hover: var(--sand-11);

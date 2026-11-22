@@ -121,17 +121,23 @@ export function Menu({
   // What to focus once the sheet has changed level: the first item, or the item a back step returned to.
   const focusAfter = useRef<"first" | number | null>(null);
 
-  // Under its button (above, when there's no room below), lined up with its start or end.
+  // Under its button, or above it when it doesn't fit below and there's more room above, lined up
+  // with its start or end. Never taller than the room it opens into, so a long one (the price list)
+  // scrolls inside the window rather than losing its search field off the top.
   const place = () => {
     const b = button.current!.getBoundingClientRect();
     const m = menu.current!;
     const width = Math.max(m.offsetWidth, 220);
     const left = align === "end" ? Math.max(8, b.right - width) : Math.min(b.left, window.innerWidth - width - 8);
     const below = b.bottom + 6;
-    const fitsBelow = below + m.offsetHeight < window.innerHeight - 8;
+    m.style.maxHeight = "";
+    const spaceBelow = window.innerHeight - 8 - below, spaceAbove = b.top - 14;
+    const down = m.offsetHeight <= spaceBelow || spaceBelow >= spaceAbove;
+    const room = down ? spaceBelow : spaceAbove;
+    if (m.offsetHeight > room) m.style.maxHeight = `${room}px`;
     m.style.left = `${left}px`;
-    m.style.top = fitsBelow ? `${below}px` : "auto";
-    m.style.bottom = fitsBelow ? "auto" : `${window.innerHeight - b.top + 6}px`;
+    m.style.top = down ? `${below}px` : "auto";
+    m.style.bottom = down ? "auto" : `${window.innerHeight - b.top + 6}px`;
   };
 
   useEffect(() => {
@@ -142,7 +148,7 @@ export function Menu({
       // Decided as it opens, so a window resized since gets the right one.
       if (isPhone()) {
         m.dataset.sheet = "";
-        m.style.left = m.style.top = m.style.bottom = "";
+        m.style.left = m.style.top = m.style.bottom = m.style.maxHeight = "";
       } else {
         delete m.dataset.sheet;
       }

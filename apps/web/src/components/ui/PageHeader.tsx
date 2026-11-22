@@ -35,11 +35,21 @@ export function PageHeader({ title, actions, lede, children, documentTitle }: { 
   );
 }
 
-export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+/**
+ * The way back to the list a record is in: quiet words with a chevron, over the title. On a phone, a
+ * round back button whose name is still the list's ("Clients"). DetailHeader's crumb is this.
+ */
+export function Crumb({ to, children, state, className }: { to: string; children: ReactNode; state?: unknown; className?: string }) {
   return (
-    <Link to={to} className="back-link no-print">
-      <Icon name="arrowLeft" size={14} />
-      {children}
+    <Link to={to} state={state} className={className ? `crumb no-print ${className}` : "crumb no-print"}>
+      <Icon name="chevronLeft" size={20} />
+      <span className="crumb-text">{children}</span>
+      <Icon name="chevronRight" size={14} />
     </Link>
   );
+}
+
+/** A crumb on its own over a page's header, for a page that doesn't use DetailHeader. */
+export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+  return <Crumb to={to} className="back-link">{children}</Crumb>;
 }

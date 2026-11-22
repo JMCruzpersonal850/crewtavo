@@ -24,6 +24,7 @@ import { followProfile, forgetLanguageAtSignOut } from "./i18n";
 import { forgetOfflineCache, keepQueuedFieldActions, keepsDayOffline, pendingFieldActions, signOutWarning, startOfflineCache } from "./offline";
 import { photosNotSent } from "./offlinePhotos";
 import { setRecentsPerson } from "./recent";
+import { useThemeForPage } from "./theme";
 import { setSessionExpiredHandler } from "./queryClient";
 import { toast } from "./toast";
 import { flushUndos } from "./undo";
@@ -171,6 +172,8 @@ function redeemEmailLink(): Promise<string | null> {
 const signOutElsewhere = () => supabase().auth.signOut({ scope: "others" }).then(() => undefined, () => undefined);
 
 export function SessionProvider({ children, requireCompany = true }: { children: ReactNode; requireCompany?: boolean }) {
+  // Every signed-in screen is under one: the roofing visit's homeowner screens go light as they open.
+  useThemeForPage();
   const queryClient = useQueryClient();
   // Runs with no signal too: loadConfig falls back to the settings saved last time.
   const config = useQuery({ queryKey: ["config"], queryFn: loadConfig, staleTime: Infinity, retry: 2, networkMode: "always", meta: { silent: true } });

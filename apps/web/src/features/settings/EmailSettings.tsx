@@ -19,7 +19,8 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { Section } from "@/components/ui/Section";
+import { Loading, SectionSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
@@ -28,6 +29,7 @@ import { useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { PASSWORD_HINT } from "../apps/catalog";
 import styles from "./EmailSettings.module.css";
+import { SaveBar } from "./SettingsKit";
 
 interface Mailbox {
   preset: MailPreset["id"];
@@ -96,54 +98,49 @@ export function EmailSettings() {
     },
   });
 
-  if (state.error) return <div className="card"><ErrorState error={state.error} onRetry={() => state.refetch()} /></div>;
-  if (state.isPending) return <div className="card card-pad stack"><Skeleton width="40%" /><Skeleton height={120} radius={8} /></div>;
+  if (state.error) return <ErrorState error={state.error} onRetry={() => state.refetch()} />;
+  if (state.isPending) return <Loading label="Loading email settings"><div className="settings-body"><Skeleton width="70%" height={12} /><SectionSkeleton rows={2} /></div></Loading>;
   const { mailbox, fallback, on_railway: onRailway = false } = state.data;
   const preset = mailPreset(mailbox?.preset);
 
   return (
-    <div className="stack">
-      <div className="card card-pad stack-sm">
-        <strong style={{ fontSize: 16 }}>Send email from your own address</strong>
-        <span className="muted">
-          Quotes, invoices, reminders, team invites and notifications go out from your business address, so clients see your name and replies land in your inbox. Resend is free for up to 100 emails a day, or you can use the email account you already have; there's nothing to buy.
-        </span>
-      </div>
+    <>
+      <p className="set-note">
+        Resend is free for up to 100 emails a day, or you can use the email account you already have; there's nothing to buy.
+      </p>
 
       {mailbox && !editing ? (
-        <div className="card card-pad stack">
+        <Section level={3} title="Sending from">
           <div className={styles.status}>
             <ProviderMark preset={mailbox.preset} />
-            <div className="grow">
+            <div className={styles.statusText}>
               <div className={styles.address}>{mailbox.from_email}</div>
-              <span className="muted small">{preset?.label ?? "Email"}{mailbox.kind === "smtp" ? ` · ${mailbox.host}` : ""}{mailbox.connected_at ? ` · connected ${timeAgo(mailbox.connected_at)}` : ""}</span>
+              <span className={styles.statusMeta}>{preset?.label ?? "Email"}{mailbox.kind === "smtp" ? ` · ${mailbox.host}` : ""}{mailbox.connected_at ? ` · connected ${timeAgo(mailbox.connected_at)}` : ""}</span>
             </div>
             <StatusPill label={mailbox.status === "connected" ? "Connected" : "Needs attention"} tone={mailbox.status === "connected" ? "good" : "danger"} />
           </div>
           {mailbox.status === "error" && (
-            <div className="callout callout-danger">
-              <Icon name="alert" size={20} />
+            <div className={`callout callout-danger ${styles.gap}`}>
+              <Icon name="alert" size={16} />
               <div className="grow">
                 <div>Emails aren't going out</div>
-                <div className="small" style={{ fontWeight: 400 }}>
-                  {mailbox.kind === "resend"
-                    ? `${mailbox.last_error ?? "Resend stopped accepting the API key."} Once it's fixed in Resend, connect again with the new key.`
-                    : `${mailbox.last_error ?? "The mail server stopped accepting the sign-in."} If you changed the account's password or deleted the app password, connect it again.`}
-                </div>
+                {mailbox.kind === "resend"
+                  ? `${mailbox.last_error ?? "Resend stopped accepting the API key."} Once it's fixed in Resend, connect again with the new key.`
+                  : `${mailbox.last_error ?? "The mail server stopped accepting the sign-in."} If you changed the account's password or deleted the app password, connect it again.`}
               </div>
             </div>
           )}
           {preset?.dailyLimit && (
-            <span className="muted small">
+            <p className={`set-note ${styles.gap}`}>
               {preset.kind === "resend" ? `Resend sends ${preset.dailyLimit}.` : `${preset.label} lets one mailbox send ${preset.dailyLimit}. For big email campaigns, Resend handles more.`}
-            </span>
+            </p>
           )}
           <FormError error={test.error} />
-          <div className="row wrap" style={{ gap: 8 }}>
+          <div className={styles.actions}>
             <Button icon="send" loading={test.isPending} onClick={() => test.mutate()}>Send me a test</Button>
-            <Button icon="edit" onClick={() => setEditing(true)}>{mailbox.status === "error" ? "Connect again" : "Change"}</Button>
-            <span style={{ flex: 1 }} />
-            <Button variant="ghost" loading={disconnect.isPending} onClick={() => setAskDisconnect(true)}>Disconnect</Button>
+            <Button variant="ghost" icon="edit" onClick={() => setEditing(true)}>{mailbox.status === "error" ? "Connect again" : "Change"}</Button>
+            <span className="grow" />
+            <Button variant="ghost" className={styles.disconnect} loading={disconnect.isPending} onClick={() => setAskDisconnect(true)}>Disconnect</Button>
           </div>
           {askDisconnect && (
             <DisconnectWithPassword
@@ -157,20 +154,20 @@ export function EmailSettings() {
               }}
             />
           )}
-        </div>
+        </Section>
       ) : (
         <ConnectForm existing={mailbox} onRailway={onRailway} onCancel={mailbox ? () => setEditing(false) : undefined} onSaved={() => { setEditing(false); refresh(); }} />
       )}
 
       {!mailbox && fallback && (
         <div className="callout callout-info">
-          <Icon name="info" size={20} />
-          <div className="grow small" style={{ fontWeight: 400 }}>
+          <Icon name="info" size={16} />
+          <div className="grow">
             {fallback === "dev" ? "Test mode: until you connect a mailbox, emails go to the local Mailpit inbox (http://localhost:56324)." : "Until you connect a mailbox, emails go out from the address whoever installed Crewtavo set up."}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -187,7 +184,7 @@ function DisconnectWithPassword({ body, busy, error, onDisconnect, onClose }: { 
           setPassword("");
         }}
       >
-        <div className="muted" style={{ marginTop: -6 }}>{body}</div>
+        <p className="set-note">{body}</p>
         <Field label="Your Crewtavo password" hint={PASSWORD_HINT}>
           <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" maxLength={200} required autoFocus />
         </Field>
@@ -272,29 +269,31 @@ function ConnectForm({ existing, onRailway, onSaved, onCancel }: { existing: Mai
   const fromProblem = resend && isPersonalMailDomain(fromDomain) ? `Resend can't send from a ${fromDomain} address. Use one on the domain you added in Resend, like office@yourcompany.com.` : null;
 
   return (
-    <form className="card card-pad stack" onSubmit={(e: FormEvent) => { e.preventDefault(); if (!keyProblem && !fromProblem) save.mutate(); }}>
-      <div className="stack-sm" role="group" aria-labelledby="provider-label">
-        <strong id="provider-label">How do you want to send email?</strong>
-        {MAIL_PRESETS.filter((p) => p.recommended).map((p) => <ProviderButton key={p.id} preset={p} pressed={presetId === p.id} onChoose={choose} />)}
-        <span className={styles.or}>Or send from a mailbox you already have</span>
-        <div className={styles.providers}>
-          {MAIL_PRESETS.filter((p) => !p.recommended).map((p) => <ProviderButton key={p.id} preset={p} pressed={presetId === p.id} onChoose={choose} />)}
+    <form className="settings-body" onSubmit={(e: FormEvent) => { e.preventDefault(); if (!keyProblem && !fromProblem) save.mutate(); }}>
+      <Section level={3} title="How do you want to send email?">
+        <div className={styles.choose} role="group" aria-label="How do you want to send email?">
+          {MAIL_PRESETS.filter((p) => p.recommended).map((p) => <ProviderButton key={p.id} preset={p} pressed={presetId === p.id} onChoose={choose} />)}
+          <span className={styles.or}>Or send from a mailbox you already have</span>
+          <div className={styles.providers}>
+            {MAIL_PRESETS.filter((p) => !p.recommended).map((p) => <ProviderButton key={p.id} preset={p} pressed={presetId === p.id} onChoose={choose} />)}
+          </div>
+          {onRailway && <p className="set-note">Crewtavo is running on Railway. Railway's trial and Hobby plans block sending from a mailbox, so choose Resend unless you're on Railway Pro.</p>}
         </div>
-        {onRailway && <span className="muted small">Crewtavo is running on Railway. Railway's trial and Hobby plans block sending from a mailbox, so choose Resend unless you're on Railway Pro.</span>}
-      </div>
+      </Section>
 
       {preset && (
-        <>
+        <Section level={3} title={`Connect ${preset.label}`}>
+          <div className={styles.form}>
           {preset.steps.some((s) => typeof s !== "string") ? (
             <ol className={styles.guide} aria-label={`Set up ${preset.label}`}>
               {(preset.steps as MailStep[]).map((s, i) => (
                 <li key={s.title}>
                   <span className={styles.stepNumber} aria-hidden="true">{i + 1}</span>
-                  <div className="stack-sm" style={{ gap: 4 }}>
+                  <div className={styles.stepText}>
                     <strong>{s.title}</strong>
-                    <span className="muted">{s.text}</span>
+                    <span>{s.text}</span>
                     {s.url && (
-                      <a className="btn btn-sm" style={{ justifySelf: "start", marginTop: 4 }} href={s.url} target="_blank" rel="noreferrer">
+                      <a className="btn btn-sm" href={s.url} target="_blank" rel="noreferrer">
                         <Icon name="external" size={14} />{s.urlLabel ?? "Open"}
                       </a>
                     )}
@@ -303,22 +302,19 @@ function ConnectForm({ existing, onRailway, onSaved, onCancel }: { existing: Mai
               ))}
             </ol>
           ) : (
-            <div className="callout">
-              <Icon name="info" size={20} />
-              <div className="grow stack-sm" style={{ fontWeight: 400 }}>
-                <ol className={styles.steps}>{preset.steps.map((s) => <li key={String(s)}>{String(s)}</li>)}</ol>
-                {preset.helpUrl && (
-                  <a className="btn btn-sm" style={{ justifySelf: "start" }} href={preset.helpUrl} target="_blank" rel="noreferrer">
-                    <Icon name="external" size={14} />{preset.helpLabel ?? "Open help"}
-                  </a>
-                )}
-                {preset.note && <span className="muted small">{preset.note}</span>}
-              </div>
+            <div className={styles.simple}>
+              <ol className={styles.steps}>{preset.steps.map((s) => <li key={String(s)}>{String(s)}</li>)}</ol>
+              {preset.helpUrl && (
+                <a className="btn btn-sm" style={{ justifySelf: "start" }} href={preset.helpUrl} target="_blank" rel="noreferrer">
+                  <Icon name="external" size={14} />{preset.helpLabel ?? "Open help"}
+                </a>
+              )}
+              {preset.note && <p className="set-note">{preset.note}</p>}
             </div>
           )}
 
           {resend ? (
-            <div className="form-grid">
+            <div className="set-grid">
               <Field label="API key" error={keyProblem} hint={keepsPassword ? "Leave blank to keep the saved one." : "From step 3. It starts with re_."}>
                 <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required={!keepsPassword} maxLength={500} autoComplete="off" spellCheck={false} placeholder="re_…" />
               </Field>
@@ -327,7 +323,7 @@ function ConnectForm({ existing, onRailway, onSaved, onCancel }: { existing: Mai
               </Field>
             </div>
           ) : (
-            <div className="form-grid">
+            <div className="set-grid">
               <Field label="Email address" hint="The mailbox you're connecting. Emails come from this address.">
                 <input className="input" type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} required maxLength={200} autoComplete="email" />
               </Field>
@@ -343,12 +339,12 @@ function ConnectForm({ existing, onRailway, onSaved, onCancel }: { existing: Mai
           {preset.kind === "smtp" && (
             <>
               {preset.id !== "other" && (
-                <button type="button" className="link-btn row" style={{ justifySelf: "start", gap: 4 }} onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>
+                <button type="button" className={styles.more} onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>
                   <Icon name={advanced ? "chevronDown" : "chevronRight"} size={14} />Server settings
                 </button>
               )}
               {advanced && (
-                <div className="form-grid">
+                <div className="set-grid">
                   <Field label="Outgoing mail (SMTP) server"><input className="input" value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.example.com" required maxLength={200} spellCheck={false} /></Field>
                   <Field label="Port"><input className="input" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} placeholder="465" required maxLength={5} /></Field>
                   <Field label="Security">
@@ -367,13 +363,21 @@ function ConnectForm({ existing, onRailway, onSaved, onCancel }: { existing: Mai
             <input className="input" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required maxLength={200} autoComplete="current-password" />
           </Field>
 
-          <FormError error={save.error} />
-          <div className="form-actions">
-            <FormChecks />
-            {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-            <Button type="submit" variant="primary" icon="check" loading={save.isPending}>{save.isPending ? "Connecting and sending a test…" : "Connect"}</Button>
           </div>
+        </Section>
+      )}
+      {preset && (
+        <>
+          <FormError error={save.error} />
+          <SaveBar>
+            <Button type="submit" variant="primary" icon="check" loading={save.isPending}>{save.isPending ? "Connecting and sending a test…" : "Connect"}</Button>
+            {onCancel && <Button variant="ghost" onClick={onCancel}>Cancel</Button>}
+            <FormChecks />
+          </SaveBar>
         </>
+      )}
+      {!preset && onCancel && (
+        <div><Button variant="ghost" onClick={onCancel}>Cancel</Button></div>
       )}
     </form>
   );

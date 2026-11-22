@@ -134,7 +134,7 @@ describe("a sub's paperwork page", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({
-      company: { name: "Uniform Roofing", logo: `/api/public/logo/${CO}/00000000-0000-4000-8000-0000000000c1.png` },
+      company: { name: "Uniform Roofing", logo: `/api/public/logo/${CO}/00000000-0000-4000-8000-0000000000c1.png`, color: null },
       sub: { name: "Apex Roofing LLC" },
       needed: [
         { requirement: "w9", label: "W-9", state: "missing", expires_on: null },

@@ -150,8 +150,8 @@ function RouteChooser({ route, apps, onClose }: { route: Route; apps: RouteApp[]
 export function MapsAppSetting() {
   const [app, setApp] = useState<MapsApp | "">(() => rememberedApp() ?? "");
   return (
-    <div className="card card-pad stack-sm">
-      <strong id="maps-app-title">{t("Directions")}</strong>
+    <div className="set-item">
+      <span className="set-item-label" id="maps-app-title">{t("Directions")}</span>
       <select
         className="select"
         aria-labelledby="maps-app-title"

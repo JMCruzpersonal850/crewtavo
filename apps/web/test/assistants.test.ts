@@ -215,8 +215,9 @@ describe("Settings → AI assistants", () => {
   it("shows the owner everyone's connected assistants, with who connected each, what they let it change and Disconnect", () => {
     const html = tabWithTeam("owner", team);
     expect(html).toContain("Your team&#x27;s connected assistants");
-    expect(html).toContain("<strong>Ola Office</strong> · Claude");
-    expect(html).toContain("<strong>Cal Crew</strong> · Shop helper");
+    // Who connected it, then the assistant, quieter.
+    expect(html).toMatch(/>Ola Office<span class="[^"]+"> · Claude<\/span>/);
+    expect(html).toMatch(/>Cal Crew<span class="[^"]+"> · Shop helper<\/span>/);
     expect(html).toContain("Full access");
     expect(html).toContain("Can change: Price list");
     expect(html).toContain('aria-label="Disconnect Claude from Ola Office&#x27;s sign-in"');

@@ -179,7 +179,9 @@ describe("words and numbers on the page", () => {
     expect(hub).toContain('import { inkOn } from "@/features/documents/words";');
     // The Hub's own rule put white on colors as light as mid-grey (2.1:1).
     expect(hub).not.toContain("function inkOn(");
-    expect(readFileSync(new URL("../src/features/public/ShowcasePage.tsx", import.meta.url), "utf8")).toContain('["--on-brand" as string]: inkOn(brand)');
+    // The showcase (and every page in the client kit) takes its brand colors from brandStyle.
+    expect(readFileSync(new URL("../src/features/public/ShowcasePage.tsx", import.meta.url), "utf8")).toContain("<ClientPage color={d?.company.color}>");
+    expect(readFileSync(new URL("../src/features/public/ClientKit.tsx", import.meta.url), "utf8")).toContain('["--on-brand" as string]: inkOn(brand)');
   });
 
   it("keeps words readable on the template's color", () => {

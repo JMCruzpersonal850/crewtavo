@@ -16,12 +16,15 @@ import { confirm } from "@/components/ui/Confirm";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { SaveStatus, useSaveStatus } from "@/components/ui/SaveStatus";
-import { CardSkeleton } from "@/components/ui/Skeleton";
+import { Section } from "@/components/ui/Section";
+import { SectionSkeleton } from "@/components/ui/Skeleton";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { useSession } from "@/lib/session";
 import { checkGooglePlaces } from "../measure/googlePlaces";
+import { SwitchRow } from "./SettingsKit";
 import { AUTO_NAME, checkEsriKey, checkGoogleKey, choiceName, DEFAULT_CHOICES, googleFirst, imageryUsable, mapKeys, teamDefault, type ImageryChoice } from "../measure/imagery";
 
 type Provider = "esri" | "google";
@@ -92,41 +95,34 @@ export function MapsSettings() {
     onSuccess: saved,
   });
 
-  if (settings.isPending) return <CardSkeleton lines={6} />;
-  if (settings.error) return <div className="card"><ErrorState error={settings.error} onRetry={() => settings.refetch()} /></div>;
+  if (settings.isPending) return <SectionSkeleton rows={6} />;
+  if (settings.error) return <ErrorState error={settings.error} onRetry={() => settings.refetch()} />;
   const deploymentGoogle = Boolean(session.config.mapsBrowserKey);
   const usableKeys = mapKeys(settings.data ?? {}, session.config.mapsBrowserKey);
   const opening = saveDefault.isPending ? saveDefault.variables : teamDefault(settings.data ?? {}, usableKeys) ?? "auto";
 
   return (
-    <div className="stack" style={{ maxWidth: 860 }}>
-      <div className="card card-pad stack-sm">
-        <div className="row" style={{ gap: 10 }}>
-          <span className="maps-settings-icon" aria-hidden="true"><Icon name="map" size={20} /></span>
-          <strong>Free imagery, nothing to set up</strong>
-        </div>
-        <p className="muted" style={{ margin: 0 }}>
+    <>
+      <Section level={3} title="Free imagery, nothing to set up">
+        <div className="set-stack">
+        <p className="set-note">
           <strong>{AUTO_NAME}</strong> picks the sharpest free imagery for wherever the map is: the state's own imagery where it publishes some
           ({STATE_IMAGERY.filter((s) => s.state !== "DC").length} states and Washington, DC today, 3 in to 1 ft per pixel: {STATE_IMAGERY.map((s) => s.name).join(", ")}),
           else US aerial imagery (NAIP, every lower-48 state, about 2 ft), else USGS. None of it needs an account.
         </p>
-        <p className="muted" style={{ margin: 0 }}>
+        <p className="set-note">
           Terrain, slope and 2 ft contour lines come free from USGS lidar across most of the US. Anywhere in the world you can also draw on the street map, which
           shows streets and building outlines.
         </p>
-      </div>
-
-      <div className="card card-pad stack-sm">
-        <div className="row" style={{ gap: 10 }}>
-          <span className="maps-settings-icon" aria-hidden="true"><Icon name="layers" size={20} /></span>
-          <strong id="team-map-title">What Measure opens on</strong>
         </div>
-        <div className="row wrap" style={{ gap: 12 }}>
+      </Section>
+
+      <Section level={3} title={<span id="team-map-title">What Measure opens on</span>} action={<SaveStatus status={choosing.status} />}>
+        <div className="set-stack">
           <select
-            className="select"
+            className="select set-narrow"
             aria-labelledby="team-map-title"
             aria-describedby="team-map-help"
-            style={{ maxWidth: 320 }}
             value={opening}
             disabled={saveDefault.isPending}
             onChange={(e) => void choosing.track(saveDefault.mutateAsync(e.target.value as ImageryChoice))}
@@ -136,16 +132,15 @@ export function MapsSettings() {
               return <option key={c} value={c} disabled={!ready}>{choiceName(c)}{c === "auto" ? " (recommended)" : ready ? "" : " (add a key below)"}</option>;
             })}
           </select>
-          <SaveStatus status={choosing.status} />
-        </div>
-        <span id="team-map-help" className="muted small">
+        <p id="team-map-help" className="set-note">
           For everyone on the team. Anyone can still switch from the Imagery button on Measure, and each person can pick their own in Settings › Profile.
           {googleFirst(usableKeys)
             ? ` With your Google key below, ${AUTO_NAME} starts on Google satellite (the picture saved with a drawing still uses free imagery, as Google's terms ask).`
             : ` Add your own Google key below and ${AUTO_NAME} starts on Google satellite.`}
-        </span>
+        </p>
         <FormError error={saveDefault.error} />
-      </div>
+        </div>
+      </Section>
 
       <KeyCard
         provider="esri"
@@ -190,33 +185,27 @@ export function MapsSettings() {
         }
       >
         {maps.google_key && (
-          <div className="stack-sm maps-places">
-            <label className="switch-row">
-              <input
-                type="checkbox"
-                className="switch"
-                checked={places.isPending ? Boolean(places.variables) : Boolean(maps.google_places)}
-                disabled={places.isPending}
-                onChange={(e) => places.mutate(e.target.checked)}
-                aria-describedby="google-places-help"
-              />
-              Suggest addresses from Google
-            </label>
-            <span id="google-places-help" className="muted small">
-              {places.isPending && places.variables
+          <div className="set-rows">
+            <SwitchRow
+              label="Suggest addresses from Google"
+              hint={places.isPending && places.variables
                 ? "Checking the key with Google…"
                 : "As anyone types an address, in calendar entries and on Measure while it shows Google satellite, the places suggested come from Google Maps instead of OpenStreetMap. Your clients' own addresses still come first. Needs Places API (New) on this key; Google includes 10,000 lookups a month at no charge."}
-            </span>
-            <FormError error={places.error} />
+              checked={places.isPending ? Boolean(places.variables) : Boolean(maps.google_places)}
+              disabled={places.isPending}
+              onChange={(on) => places.mutate(on)}
+            >
+              <FormError error={places.error} />
+            </SwitchRow>
           </div>
         )}
       </KeyCard>
 
-      <p className="muted small" style={{ margin: 0 }}>
+      <p className="set-note">
         These keys are used in your team's browsers when they measure, the same way any website shows a map. That's why each one should be limited to your web
         address in Esri or Google.
       </p>
-    </div>
+    </>
   );
 }
 
@@ -258,26 +247,17 @@ function KeyCard({
   }, [current]);
 
   return (
-    <div className="card card-pad stack">
-      <div className="row-between wrap" style={{ gap: 8 }}>
-        <div className="row" style={{ gap: 10 }}>
-          <span className="maps-settings-icon" aria-hidden="true"><Icon name="globe" size={20} /></span>
-          <strong>{title}</strong>
-          <span className="chip">{badge}</span>
-        </div>
-        {set ? (
-          <span className="chip chip-green"><Icon name="check" size={14} /> Working · key ending {current!.slice(-4)}</span>
-        ) : inherited ? (
-          <span className="chip chip-green"><Icon name="check" size={14} /> Set up by whoever installed Crewtavo</span>
-        ) : (
-          <span className="chip">Not set up</span>
-        )}
-      </div>
-      <p className="muted" style={{ margin: 0 }}>{intro}</p>
+    <Section
+      level={3}
+      title={<>{title} <span className="set-tag">{badge}</span></>}
+      action={set ? <StatusPill tone="good" label={`Working · key ending ${current!.slice(-4)}`} /> : inherited ? <StatusPill tone="good" label="Set up by whoever installed Crewtavo" /> : <StatusPill tone="muted" label="Not set up" />}
+    >
+      <div className="set-stack">
+      <p className="set-note">{intro}</p>
       {open ? (
         <>
           <ol className="maps-steps">{steps.map((step, i) => <li key={i}>{step}</li>)}</ol>
-          <form className="stack-sm" onSubmit={submit}>
+          <form className="set-stack" onSubmit={submit}>
             <Field label={`${title} key`}>
               <div className="row" style={{ gap: 6 }}>
                 <input
@@ -295,7 +275,7 @@ function KeyCard({
                 <button type="button" className="btn btn-icon" onClick={() => setShown(!shown)} aria-label={shown ? "Hide key" : "Show key"} aria-pressed={shown}><Icon name="eye" size={16} /></button>
               </div>
             </Field>
-            <span id={`${provider}-key-help`} className="muted small">We try the key with {provider === "esri" ? "Esri" : "Google"} before saving it, and tell you what to fix if it doesn't work.</span>
+            <span id={`${provider}-key-help`} className="set-note">We try the key with {provider === "esri" ? "Esri" : "Google"} before saving it, and tell you what to fix if it doesn't work.</span>
             <FormError error={error} />
             <div className="row" style={{ gap: 8 }}>
               <Button type="submit" loading={saving}>{saving ? "Checking the key…" : "Check and save"}</Button>
@@ -319,7 +299,8 @@ function KeyCard({
         </div>
       )}
       {set && children}
-      {footnote && <span className="muted small">{footnote}</span>}
-    </div>
+      {footnote && <p className="set-note">{footnote}</p>}
+      </div>
+    </Section>
   );
 }

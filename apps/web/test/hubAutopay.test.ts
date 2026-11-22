@@ -107,7 +107,7 @@ describe("tips on an invoice page", () => {
     const invoiceHub = source.slice(source.indexOf("function InvoiceHub("), source.indexOf("function HubDiscount("));
     // Pay's tip block, and the tip after an automatic charge.
     expect(invoiceHub.match(/<TipChoices/g)).toHaveLength(2);
-    expect(invoiceHub).toMatch(/\{data\.tips && \(\s*<section className="card card-pad stack-sm">\s*<strong>Add a tip for the crew\?<\/strong>\s*<TipChoices/);
+    expect(invoiceHub).toMatch(/\{data\.tips && \(\s*<section className="hub-card hub-pad hub-tip-card no-print"[^>]*>\s*<h2[^>]*>Add a tip for the crew\?<\/h2>\s*<TipChoices/);
     expect(invoiceHub).toContain("const tipAfter = balance <= 0 && data.tips && Boolean(data.tip_after)");
     expect(invoiceHub).toMatch(/\{tipAfter && \(\s*<section ref=\{tipSection\}/);
     expect(invoiceHub.match(/hubTip\(\{ tips: data\.tips,/g)).toHaveLength(2);

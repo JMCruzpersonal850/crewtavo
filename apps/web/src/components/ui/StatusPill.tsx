@@ -108,10 +108,12 @@ export const visitTone = (status: string): Tone => VISIT_TONES[status] ?? "muted
 const ENTITY_TONES: Record<StatusKind, Record<string, Tone>> = {
   // Only what someone has to act on is amber or red words: a lead, a partly paid invoice, a referral's new lead and a credit earned are on their way, a dot of their own color.
   client: { lead: "pending", active: "good", archived: "muted" },
-  request: { new: "warning", assessment_scheduled: "info", assessment_complete: "info", quoted: "good", converted: "good", archived: "muted" },
-  quote: { draft: "muted", sent: "info", changes_requested: "warning", approved: "good", converted: "good", lost: "muted", archived: "muted" },
+  request: { new: "pending", assessment_scheduled: "info", assessment_complete: "info", quoted: "good", converted: "good", archived: "muted" },
+  // A quote the client asked to change is on its way too: the office answers it, but nothing is late (Page-Quote.dc.html: an amber dot, plain words).
+  quote: { draft: "muted", sent: "info", changes_requested: "pending", approved: "good", converted: "good", lost: "muted", archived: "muted" },
   // An active job's states read like its visits': late in red, today under way, upcoming waiting, unscheduled to see to, paused at rest.
-  job: { active: "info", requires_invoicing: "warning", completed: "good", archived: "muted", late: "danger", today: "info", upcoming: "muted", unscheduled: "warning", paused: "muted" },
+  // Requires invoicing is work done and ready to bill: green, as the jobs list groups it ("ready", like an approved quote), not an amber warning.
+  job: { active: "info", requires_invoicing: "good", completed: "good", archived: "muted", late: "danger", today: "info", upcoming: "muted", unscheduled: "warning", paused: "muted" },
   invoice: { draft: "muted", sent: "info", partially_paid: "pending", paid: "good", overdue: "danger", void: "muted", written_off: "muted" },
   visit: VISIT_TONES,
   referral: { new: "pending", quoted: "info", won: "good", lost: "danger" },

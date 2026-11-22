@@ -4,7 +4,9 @@
  * didn't, and what the address is for when someone opens it. The pages are plain HTML from the
  * server, so they work whatever the website is built with, without the web app.
  */
+import { documentColor } from "@crewtavo/core/documents";
 import { PRIVACY_LINK_LABEL } from "@crewtavo/core/privacyPolicy";
+import { cardColors } from "@crewtavo/core/social";
 import { messageEmail, type PromoResult, type Submission } from "@crewtavo/core/websiteForms";
 import type { Env } from "../env";
 import { renderEmail } from "../lib/email";
@@ -50,15 +52,25 @@ export interface FormPage {
   title: string;
   heading: string;
   text: string;
-  /** The business, when the address is one of its forms: its logo, or its name, and its privacy policy link when it set one. */
-  company?: { name: string; logo: { src: string; width: number; height: number } | null; privacy_url?: string | null } | null;
+  /**
+   * The business, when the address is one of its forms: its logo, or its name, its privacy policy link
+   * when it set one, and its brand color (brandColor(settings)) for the check and the button.
+   */
+  company?: { name: string; logo: { src: string; width: number; height: number } | null; privacy_url?: string | null; color?: string | null } | null;
   /** A button back to the page people came from (shown only when there is one). */
   back?: string;
   tone?: "good" | "problem";
 }
 
-/** One of the form address's own pages, light or dark with the device. */
+/**
+ * One of the form address's own pages. Always light, as every page a business's clients see is, in the
+ * business's brand color; without one, the navy its quotes and invoices print in (as the Client Hub).
+ */
 export function formPage({ title, heading, text, company, back, tone = "good" }: FormPage): string {
+  const color = /^#[0-9a-f]{6}$/i.test(company?.color ?? "") ? company!.color! : documentColor({ color: null }, null);
+  // White or ink on the button, whichever reads; a light brand color's check is drawn in that ink too.
+  const onColor = cardColors(color).text;
+  const good = onColor === "#ffffff" ? color : onColor;
   const brand = company
     ? company.logo
       ? `<img src="${escape(company.logo.src)}" width="${company.logo.width}" height="${company.logo.height}" alt="${escape(company.name)}">`
@@ -71,8 +83,7 @@ export function formPage({ title, heading, text, company, back, tone = "good" }:
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
 <title>${escape(title)}</title>
 <style>
-:root{color-scheme:light dark;--bg:#f6f5f1;--card:#fff;--text:#0f2a35;--muted:#5f6f76;--line:#e3e2dd;--good:#3b7d23;--good-bg:#e6f1e0;--problem:#a3461b;--problem-bg:#f8e7dc}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1a1e;--card:#162428;--text:#e8eef0;--muted:#9fb0b6;--line:#26383d;--good:#7cc35d;--good-bg:#1d3318;--problem:#f0a073;--problem-bg:#3a2216}}
+:root{color-scheme:light;--bg:#f6f5f1;--card:#fff;--text:#0f2a35;--muted:#5f6f76;--line:#e3e2dd;--brand:${color};--on-brand:${onColor};--good:${good};--good-bg:color-mix(in srgb,${color} 12%,#fff);--problem:#a3461b;--problem-bg:#f8e7dc}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
 main{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px 24px;text-align:center}
@@ -83,8 +94,8 @@ h1{font-size:21px;line-height:1.3;margin:0 0 8px}
 p{margin:0;color:var(--muted)}
 .foot{margin-top:20px;font-size:13px}
 .foot a{color:inherit}
-button{margin-top:22px;font:inherit;font-weight:700;color:#fff;background:#3b7d23;border:0;border-radius:8px;padding:11px 20px;cursor:pointer}
-button:focus-visible{outline:3px solid #9fd389;outline-offset:2px}
+button{margin-top:22px;font:inherit;font-weight:700;color:var(--on-brand);background:var(--brand);border:0;border-radius:8px;padding:11px 20px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--good);outline-offset:3px}
 </style></head>
 <body><main>
 ${brand}

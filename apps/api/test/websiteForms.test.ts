@@ -310,6 +310,11 @@ describe("the address's own pages", () => {
     expect((await app.request("/api/health", {}, env)).headers.get("x-frame-options")).toBe("SAMEORIGIN");
   });
 
+  it("thank people in the business's brand color", async () => {
+    withForm({ company: { id: COMPANY, name: "Green Lawn", settings: { website_forms: { enabled: true }, branding: { color: "#2f6f6a" } } } });
+    expect(await (await app.request(`/f/${KEY}/thanks`, {}, env)).text()).toContain("--brand:#2f6f6a;");
+  });
+
   it("say what the address is for when someone opens it", async () => {
     withForm();
     expect(await (await app.request(`/f/${KEY}`, {}, env)).text()).toContain("takes messages from a form on Green Lawn's website");
@@ -320,6 +325,16 @@ describe("the address's own pages", () => {
     expect(html).not.toContain("<script>alert");
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("A &amp; B");
+  });
+
+  it("are light, in the business's brand color with words that read on it, and navy without one", () => {
+    const page = (color?: string | null) => formPage({ title: "Thanks!", heading: "Thanks!", text: "Sent.", company: { name: "Green Lawn", logo: null, color }, back: "Back" });
+    expect(page("#2f6f6a")).toContain("--brand:#2f6f6a;--on-brand:#ffffff;--good:#2f6f6a;");
+    // A light brand color: ink on the button, and the check drawn in ink rather than a pale yellow.
+    expect(page("#f5d90a")).toContain("--brand:#f5d90a;--on-brand:#182430;--good:#182430;");
+    for (const html of [page(null), page("red;}body{display:none"), formPage({ title: "x", heading: "x", text: "x" })]) expect(html).toContain("--brand:#1f4e79;");
+    expect(page("#2f6f6a")).not.toMatch(/#3b7d23|prefers-color-scheme:dark/);
+    expect(page("#2f6f6a")).toContain("color-scheme:light;");
   });
 });
 

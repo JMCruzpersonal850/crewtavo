@@ -1,6 +1,12 @@
 /* Reset, app shell and page layout. Components live in components.css, feature screens in features.css. */
 
 *, *::before, *::after { box-sizing: border-box; }
+/*
+ * Hidden means hidden: a component's own display (a check box's inline-grid, a row's flex) would
+ * otherwise beat the browser's [hidden] rule, which has no weight against an author's. The one way
+ * to show a [hidden] element is to drop the attribute. hidden="until-found" keeps the browser's own.
+ */
+[hidden]:not([hidden="until-found"]) { display: none !important; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 html, body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--font); font-size: var(--fs-14); line-height: 1.45; }
 body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
@@ -27,6 +33,7 @@ a:where(:not([class], nav a, [role="tablist"] a, .underline-tabs a, li > a):hove
 }
 /* A file picker or a choice drawn by its label (the input itself is out of sight): the label shows the focus. */
 label:is(.btn, .hub-choice):has(input:focus-visible) { outline: 2px solid var(--focus-ring, var(--green)); outline-offset: 2px; }
+.sec-action > label:has(> input[type="file"]:focus-visible) { outline: 2px solid var(--focus-ring, var(--green)); outline-offset: 2px; border-radius: var(--radius-sm); }
 /* On a dark panel of the app's own, the outline is the panel's text colour; on a dark one that isn't themed, white. */
 .toast, .restart-banner, .task-island-pill, .task-island-list { --focus-ring: var(--on-solid); }
 .photo-editor, .hub-refer { --focus-ring: #fff; }
@@ -198,8 +205,6 @@ select.business-name:hover { background: var(--fill-2); }
 .two-col { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
 .two-col > .wide { flex: 2 1 560px; min-width: 0; }
 .two-col > .narrow { flex: 1 1 320px; min-width: 0; }
-/* A rail with nothing in it for this person (Home, for a crew) takes no room, so the other column has the width. */
-.two-col > .narrow:empty { display: none; }
 .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
 .stack-sm { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; }
 .stack-lg { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-content: start; }
@@ -305,6 +310,10 @@ select.business-name:hover { background: var(--fill-2); }
     background: color-mix(in srgb, var(--page) 92%, transparent); transition: border-color var(--dur);
   }
   .topbar[data-scrolled] { border-bottom-color: var(--divider); }
+  /* An open chat conversation is a screen of its own with its own head and back button (Mobile-Team.dc.html): no business bar over it. Chat's height counts on this. */
+  .main:has(> .content-flush [data-view="channel"]) > .topbar { display: none; }
+  /* The same for a conversation open in Messages: its thread head has the back button. */
+  .main:has(> .content .messages-page[data-open]) > .topbar { display: none; }
   .business { gap: 10px; }
   .business-tile { width: 30px; height: 30px; border-radius: 8px; font-size: var(--fs-11); }
   .business-logo img { height: 22px; }
@@ -502,7 +511,7 @@ section + .more-group { margin-top: 14px; }
   /* Nothing shrinks as it's pressed or lifts as it's hovered. */
   :is(button, a, label, summary, [role="button"], [role="tab"]):active, .mobile-nav :active svg, .app-tile:active .app-icon, .more-tile:active,
   .card-link:hover, .stat-button:hover, .thumb:hover img, .back-link:hover svg, .nav-link:hover .nav-create-dot, .create-trigger[aria-expanded="true"] .nav-create-dot,
-  .deal:hover, .category-card:hover, .guide-card:hover, .hub-actions button:hover { transform: none !important; }
+  .hub-actions button:hover { transform: none !important; }
   .switch::after { transition-duration: 1ms; }
   /* The sheets fade in and out where they are. */
   .more-sheet, .more-sheet[open], .topbar .help-panel, .topbar .notif-panel { transform: none !important; }

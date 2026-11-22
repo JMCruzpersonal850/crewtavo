@@ -46,6 +46,7 @@ import { readApplication } from "@crewtavo/core/careers";
 import { BOT_CHECKS, cleanFields, readSubmission, siteAllowed, siteHost, webAddress, type BotCheck } from "@crewtavo/core/websiteForms";
 import { emailKey } from "@crewtavo/core/email";
 import { privacyUrl } from "@crewtavo/core/privacyPolicy";
+import { brandColor } from "@crewtavo/core/social";
 import { Hono, type Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
@@ -111,7 +112,7 @@ async function findForm(c: Ctx, key = c.req.param("key") ?? ""): Promise<FoundFo
   return { ...data, kind, bot_check: botCheck, bot_check_armed_at: data.bot_check_armed_at ?? null, company };
 }
 
-const branding = (c: Ctx, company: FormCompany) => ({ name: company.name, logo: logoImage(appUrl(c), company.id, company.settings), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null) });
+const branding = (c: Ctx, company: FormCompany) => ({ name: company.name, logo: logoImage(appUrl(c), company.id, company.settings), privacy_url: privacyUrl(company.settings as Record<string, unknown> | null), color: brandColor(company.settings) });
 
 /** Formspree's rule: a form that asks for JSON (fetch with Accept: application/json, or a JSON body) gets JSON back. */
 const wantsJson = (c: Ctx) => /application\/json/i.test(c.req.header("accept") ?? "") || /application\/json/i.test(c.req.header("content-type") ?? "");

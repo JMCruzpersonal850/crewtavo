@@ -12,22 +12,38 @@ import { undoable } from "@/lib/undo";
 import { Button, cx } from "./Button";
 import { t } from "@/lib/i18n";
 
-/** What's picked among `pageIds`. A new `reset` (another filter, a search) starts with nothing picked. */
+/**
+ * What's picked among `pageIds`. A new `reset` (another filter, a search) starts with nothing picked.
+ * A phone picks in a mode of its own, as its mail app does: the boxes show once Select is pressed
+ * (`start`) or something is picked (`active`), and Cancel, Escape or clearing the picks ends it. A
+ * desktop's boxes show under the pointer or the keyboard, and on every row once something is picked.
+ */
 export function useSelection(pageIds: readonly string[], reset: string) {
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
+  const [picking, setPicking] = useState(false);
   const [shown, setShown] = useState(reset);
   if (shown !== reset) {
     setShown(reset);
     setPicked(new Set());
+    setPicking(false);
   }
+  const ids = pickedOnPage(picked, pageIds);
   return {
     /** Picked and on the page, in its order. */
-    ids: pickedOnPage(picked, pageIds),
+    ids,
     state: pageState(picked, pageIds),
+    /** Picking (a phone's Select mode), or something is picked. */
+    active: picking || ids.length > 0,
     has: (id: string) => picked.has(id),
     toggle: (id: string) => setPicked((p) => toggleOne(p, id)),
     toggleAll: () => setPicked((p) => toggleAll(p, pageIds)),
-    clear: () => setPicked(new Set()),
+    /** A phone's Select: the boxes show. */
+    start: () => setPicking(true),
+    /** Nothing picked, and a phone's boxes put away (Cancel, Escape, or done with an action on them). */
+    clear: () => {
+      setPicked(new Set());
+      setPicking(false);
+    },
   };
 }
 export type Selection = ReturnType<typeof useSelection>;
@@ -58,13 +74,32 @@ export function SelectCell({ selection, id, label }: { selection: Selection; id:
 /**
  * Above the list, in view as it scrolls: how many are picked, the actions, and Clear. On a phone,
  * where the table's headings are hidden, it's where Select all is too, so it shows before any are.
+ * Over an InboxList (which has no heading row for a Select all box) pass `always`, so a desktop
+ * has it too: out of sight until something is picked or the keyboard reaches its box (components.css).
+ *
+ * On a phone (components.css) the rows keep their room until someone means to pick: the bar is just
+ * a quiet Select on the right, which turns the boxes on and becomes Cancel (one button, so the focus
+ * stays on it). Picking, it's one line: the count, the actions (scrolling sideways if they must) and
+ * Cancel. Escape cancels too.
  */
-export function SelectionBar({ selection, noun, children }: { selection: Selection; noun: string; children: ReactNode }) {
+export function SelectionBar({ selection, noun, children, always }: { selection: Selection; noun: string; children: ReactNode; always?: boolean }) {
   const count = selection.ids.length;
+  const { active, clear } = selection;
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // A dialog or a menu open over the list takes its own Escape.
+      if (document.querySelector("dialog[open]") || popoverOpen()) return;
+      clear();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [active, clear]);
   return (
     <>
       <span className="sr-only" role="status">{count ? t("{count} selected", { count }) : ""}</span>
-      <div className={cx("select-bar", !count && "mobile-only")}>
+      <div className={cx("select-bar", !count && !always && "mobile-only")} data-picked={count || undefined} data-mode={active ? "on" : "off"}>
         <label className="select-bar-all">
           <SelectAllBox selection={selection} label={t("Select all {noun} on this page", { noun })} />
           <span aria-hidden="true">{count ? t("{count} selected", { count }) : t("Select all")}</span>
@@ -72,12 +107,22 @@ export function SelectionBar({ selection, noun, children }: { selection: Selecti
         {count > 0 && (
           <>
             <div className="select-bar-actions">{children}</div>
-            <Button size="sm" variant="ghost" onClick={selection.clear}>{t("Clear")}</Button>
+            <Button size="sm" variant="ghost" className="select-bar-clear" onClick={selection.clear}>{t("Clear")}</Button>
           </>
         )}
+        <button type="button" className="select-bar-mode" onClick={active ? selection.clear : selection.start}>{active ? t("Cancel") : t("Select")}</button>
       </div>
     </>
   );
+}
+
+/** Whether a menu or a panel (a popover) is open. */
+function popoverOpen(): boolean {
+  try {
+    return Boolean(document.querySelector(".menu:popover-open, .panel:popover-open"));
+  } catch {
+    return false;
+  }
 }
 
 /**

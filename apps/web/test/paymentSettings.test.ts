@@ -123,7 +123,7 @@ describe("Settings → Payments in the menu", () => {
   });
 
   it("opens from the Settings page", () => {
-    expect(read("features/settings/SettingsPage.tsx")).toContain('{tab === "payments" && <PaymentSettings />}');
+    expect(read("features/settings/SettingsPage.tsx")).toContain('case "payments": return <PaymentSettings />;');
   });
 });
 
@@ -167,7 +167,8 @@ describe("Settings → Payments", () => {
     const html = render(createElement(PaymentSettings), (client) => client.setQueryData(["company", COMPANY, "payments"], { ...STATUS, own: false, can_autopay: false, can_refund: false }));
     expect(text(html)).toContain("Connect your own Stripe account on the Apps page to use autopay.");
     expect(html).toContain('href="/apps/stripe"');
-    expect(html).toMatch(/<input type="checkbox" class="switch" disabled=""/);
+    // The switch (SettingsKit's SwitchRow) comes first in its row, with an id its words point at.
+    expect(html).toMatch(/<input id="[^"]+" type="checkbox" class="switch" disabled=""/);
   });
 
   it("sends a key made before autopay to the Apps page to be updated", () => {
@@ -181,7 +182,7 @@ describe("Settings → Payments", () => {
     as("owner", []);
     const html = render(createElement(PaymentSettings), (client) => client.setQueryData(["company", COMPANY, "payments"], { ...STATUS, can_autopay: false, settings: { ...SETTINGS, enabled: true } }));
     expect(text(html)).toContain("Your Stripe key can't charge saved cards anymore");
-    expect(html).not.toMatch(/<input type="checkbox" class="switch" disabled=""/);
+    expect(html).not.toMatch(/<input id="[^"]+" type="checkbox" class="switch" disabled=""/);
   });
 
   it("shows the terms, when clients are charged in the words they agree to, the cap and the switches", () => {
@@ -431,8 +432,10 @@ describe("the client's Autopay card", () => {
     const code = read("features/clients/ClientPage.tsx");
     expect(code).toContain("const seesMoney = isOffice && can(session, \"invoices\");");
     expect(code).toContain("{seesMoney && autopayOn && <AutopayCard client={c} />}");
-    expect(code).toMatch(/Send autopay invite by email.*disabled: !c\.email, hidden: !seesMoney \|\| !autopayOn/);
-    expect(code).toMatch(/Send autopay invite by text.*disabled: !c\.phone \|\| textsOff\(c\), hidden: !seesMoney \|\| !autopayOn/);
+    // The menu's Send autopay invite sub menu: by email or by text, each when it can go.
+    expect(code).toMatch(/label: "Send autopay invite", icon: "card", hidden: !seesMoney \|\| !autopayOn,/);
+    expect(code).toMatch(/label: "By email".*autopayInvite\.mutate\("email"\), disabled: !c\.email,/);
+    expect(code).toMatch(/label: "By text".*autopayInvite\.mutate\("sms"\), disabled: !c\.phone \|\| textsOff\(c\),/);
   });
 });
 

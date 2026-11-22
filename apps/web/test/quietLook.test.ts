@@ -40,18 +40,22 @@ describe("a record's status", () => {
   const tone = (kind: Parameters<typeof EntityStatus>[0]["kind"], status: string) => /data-tone="([a-z]+)"/.exec(renderToStaticMarkup(createElement(EntityStatus, { kind, status })))![1];
 
   it("is colored words only for a state someone has to act on", () => {
-    expect(tone("request", "new")).toBe("warning");
-    expect(tone("quote", "changes_requested")).toBe("warning");
-    expect(tone("job", "requires_invoicing")).toBe("warning");
+    expect(tone("review", "needs_reply")).toBe("warning");
     expect(tone("invoice", "overdue")).toBe("danger");
   });
 
-  it("is an amber dot and plain words for one on its way (a lead, partly paid), and plain for a lost quote", () => {
+  it("is an amber dot and plain words for one on its way (a lead, a new request, partly paid, changes asked for), and plain for a lost quote", () => {
     expect(tone("client", "lead")).toBe("pending");
+    // As the request page shows it: nobody is late on a new request until it has waited (the list's own group says that).
+    expect(tone("request", "new")).toBe("pending");
+    expect(tone("quote", "changes_requested")).toBe("pending");
     expect(tone("invoice", "partially_paid")).toBe("pending");
     expect(tone("referral", "new")).toBe("pending");
     expect(tone("credit", "earned")).toBe("pending");
     expect(tone("quote", "lost")).toBe("muted");
+    // A job waiting to be invoiced is ready to bill, as the jobs list groups it: green, like an approved quote.
+    expect(tone("job", "requires_invoicing")).toBe(tone("quote", "approved"));
+    expect(tone("job", "requires_invoicing")).toBe("good");
     const pending = css.split("\n").find((line) => line.startsWith('.pill[data-tone="pending"] {'))!;
     expect(pending).toContain("--tone: var(--req)");
     expect(pending).not.toContain("color:");
@@ -108,5 +112,59 @@ describe("the shared pieces", () => {
 
   it("keep the photo editor's buttons light on its dark bar in the light theme", () => {
     expect(css).toContain(".photo-editor .btn:not(.btn-primary, .btn-danger-solid) { border-color: rgba(255, 255, 255, 0.28); color: #f2f2f2; }");
+  });
+});
+
+describe("the last shared touches", () => {
+  const base = read("styles/base.css");
+  const phone = (rule: string) => {
+    const at = css.indexOf(rule);
+    return at > 0 && css.lastIndexOf("@media (max-width: 900px)", at) > css.lastIndexOf("}\n}", at);
+  };
+
+  it("draw a disabled button as a quiet ghost, and a disabled primary as its own fill faded, which the Hub's brand color keeps", () => {
+    expect(css).toContain('.btn[aria-disabled="true"]:not(.btn-primary, .btn-dark, .btn-danger-solid):hover { background: transparent; border-color: var(--divider); color: var(--text-3);');
+    expect(css).toContain('.btn:is(.btn-primary, .btn-dark, .btn-danger-solid):is(:disabled, [aria-disabled="true"]):not(.is-loading, .is-done) { box-shadow: none; opacity: 0.5;');
+    expect(css).not.toMatch(/\.btn:disabled[^{]*\{ background: var\(--fill-2\)/);
+    expect(css).toContain('.btn-primary:hover:where(:not(:disabled, [aria-disabled="true"])) {');
+  });
+
+  it("step the phone's bottom bar and floating primary aside while the keyboard is up", () => {
+    expect(css).toContain(":root:has(.mobile-nav[data-typing]) :is(.action-bar, .page-header > .page-actions:not(:has(> .btn-primary ~ .btn-primary)) > .btn-primary) { display: none; }");
+    expect(phone(":root:has(.mobile-nav[data-typing])")).toBe(true);
+  });
+
+  it("show skeletons on a grouped phone page's grey ground, reduced motion too", () => {
+    expect(css).toContain(".content:has(.m-grouped) .skeleton { --fill-2: var(--fill-3); }");
+    expect(base).toContain(".skeleton { animation: none !important; background: var(--fill-2) !important; }");
+    expect(light).toMatch(/--fill-2: #f2f1ed;[\s\S]*--m-group: #f2f1ed;/);
+  });
+
+  it("say a missing record quietly, as a status rather than a red alert", () => {
+    const states = read("components/ui/States.tsx");
+    expect(states).toContain('${notFound ? "" : " error-state"}`} role={notFound ? "status" : "alert"}');
+  });
+
+  it("keep dark callouts as faint washes, not filled boxes", () => {
+    for (const tone of ["good", "warning", "danger", "info"]) expect(css).toMatch(new RegExp(`:root\\.dark \\.callout-${tone} \\{ background: color-mix\\(in srgb, var\\(--[a-z-]+\\) 10%, transparent\\); \\}`));
+  });
+
+  it("give a phone's segmented choices, a tag's × and a removable tag a finger's target, and TagInput its sizes from classes", () => {
+    expect(phone(".segmented > button::after")).toBe(true);
+    expect(phone(".tag > button::after")).toBe(true);
+    expect(css).toContain(".tag button { display: grid; place-items: center; width: 16px; height: 16px; margin-right: -4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-3);");
+    expect(read("components/ui/TagInput.tsx")).not.toContain("style=");
+  });
+
+  it("pad a related list straight in a dialog, and let a file picker's label be a section's quiet action", () => {
+    expect(css).toContain(".dialog-content > .rel { display: block; padding: 16px 20px 20px; }");
+    expect(css).toContain('.sec-action > label:has(> input[type="file"]) { display: inline-flex;');
+    expect(css).toContain(".sec-action > button:not(.btn-primary, .btn-icon):disabled { border-color: transparent; color: var(--text-4); }");
+    expect(css).toContain(".il-meta > span:has(> .pill + .pill) { flex: 0 1 auto; flex-wrap: wrap;");
+    expect(phone(".rel-row:has(> .rel-end):has(> .rel-actions) { flex-wrap: wrap;")).toBe(true);
+  });
+
+  it("set a switch's words at 500 with the hint quiet, as Page-Settings does", () => {
+    expect(css).toContain(".switch-row { display: flex; align-items: center; gap: 10px; font-weight: 500; cursor: pointer; }");
   });
 });

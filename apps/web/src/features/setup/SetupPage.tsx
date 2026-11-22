@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { ShellSkeleton } from "@/components/ui/Skeleton";
-import { AuthLayout, authMessage } from "@/features/auth/LoginPage";
+import { AuthLayout, authMessage, PasswordInput } from "@/features/auth/LoginPage";
 import { SpareKeysSheet } from "@/features/auth/SpareKeys";
 import styles from "@/features/auth/auth.module.css";
 import { api, ApiError, supabase } from "@/lib/api";
@@ -82,7 +82,30 @@ export function FirstRun({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-const Code = ({ children }: { children: ReactNode }) => <code style={{ fontSize: 13, padding: "1px 5px", borderRadius: "var(--radius-sm)", background: "var(--fill)" }}>{children}</code>;
+const Code = ({ children }: { children: ReactNode }) => <code className={styles.code}>{children}</code>;
+
+/** What went wrong, in a few words, for the note beside the steps; and what to know about the data, where it's sure. */
+function cause(s: SetupStatus): { title: string; detail?: string } {
+  if (s.database === "migration_failed") {
+    switch (s.migration?.problem) {
+      case "services_not_ready": return { title: "A service didn't start in time" };
+      case "wrong_password": return { title: "Database password changed", detail: "Your data is safe. Crewtavo only needs its original password to reach it." };
+      case "unreachable": return { title: "Can't reach the database" };
+      case "bad_url": return { title: "The database address isn't valid" };
+      // The summary already says it keeps trying.
+      case "busy": return { title: "The database is busy" };
+      case "newer_database": return { title: "The database is newer than this Crewtavo" };
+      // The steps already say the data is safe.
+      default: return { title: "Updating the database failed" };
+    }
+  }
+  if (s.database === "not_connected") return { title: "No database" };
+  if (s.database === "empty") return { title: "The database isn't set up yet" };
+  if (s.database === "wrong_keys") return { title: "The keys don't match" };
+  return { title: "Can't reach sign-in and data" };
+}
+
+const PLATFORM = { railway: "Railway", compose: "Docker Compose", server: "Your server" } as const;
 
 function steps(s: SetupStatus): { title: string; summary: string; steps: ReactNode[] } {
   const railway = s.platform === "railway";
@@ -147,25 +170,53 @@ function steps(s: SetupStatus): { title: string; summary: string; steps: ReactNo
 
 export function SetupPage({ status, onCheck, checking }: { status: SetupStatus; onCheck: () => void; checking: boolean }) {
   const { title, summary, steps: list } = steps(status);
-  const starting = status.database === "starting";
+  const foot = PLATFORM[status.platform] ?? PLATFORM.server;
+  if (status.database === "starting")
+    return (
+      <AuthLayout center foot={foot}>
+        <h1 className={styles.title}>{title}</h1>
+        <p className={styles.sub} style={{ maxWidth: 440 }}>{summary}</p>
+        <span className={styles.status} role="status" style={{ marginTop: 22 }}>Checking every few seconds</span>
+      </AuthLayout>
+    );
+  const why = cause(status);
+  // Beside the steps on a computer; in the column on a phone, where the side isn't shown.
+  const note = (inline?: boolean) => (
+    <div className={inline ? `${styles.cause} ${styles.causeInline}` : styles.cause}>
+      <Icon name="alert" size={20} />
+      <span><b>{why.title}</b>{why.detail}</span>
+    </div>
+  );
   return (
-    <AuthLayout>
-      <div className={`card card-pad ${styles.card} ${styles.wide}`} style={{ padding: 28, gap: 18 }}>
-        <div style={{ display: "grid", gap: 6 }}>
-          <h1 className={styles.title}>{title}</h1>
-          <p className="muted" style={{ margin: 0 }}>{summary}{list.length > 0 && " Whoever installed it can fix this in a few minutes:"}</p>
-        </div>
-        {list.length > 0 && (
-          <ol style={{ margin: 0, paddingLeft: 22, display: "grid", gap: 12, lineHeight: 1.5 }}>
-            {list.map((step, i) => <li key={i}>{step}</li>)}
-          </ol>
-        )}
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span className="muted small">{starting ? "Checking every few seconds…" : "This page goes away by itself once everything is running."}</span>
-          {!starting && <Button variant="primary" icon="refresh" loading={checking} onClick={onCheck}>Check again</Button>}
+    <AuthLayout foot={foot} top={<span className={styles.status} role="status">Checking every 15 seconds</span>} aside={note()}>
+      <div className={styles.flow}>
+        <h1 className={styles.title}>{title}</h1>
+        <p className={styles.sub}>{summary}{list.length > 0 && " Whoever installed it can fix this in a few minutes:"}</p>
+        {note(true)}
+        {list.length > 0 && <ol className={styles.steps}>{list.map((step, i) => <li key={i}><span>{step}</span></li>)}</ol>}
+        <p className={styles.note} style={{ marginTop: 20 }}>This page goes away by itself once everything is running.</p>
+        <div className={styles.acts}>
+          <Button variant="primary" icon="refresh" loading={checking} onClick={onCheck}>Check again</Button>
         </div>
       </div>
     </AuthLayout>
+  );
+}
+
+/** Setting up a new server, in four steps: the owner, the key file, the business, the team. */
+const OWNER_STEPS = [
+  { title: "Your owner account", text: "You can do everything, and invite others." },
+  { title: "Save a key file", text: "Gets you back in if you lose your password." },
+  { title: "Set up your business", text: "Name, trade and the terms." },
+  { title: "Invite your team", text: "From Home, whenever you're ready." },
+];
+
+function OwnerSteps({ step }: { step: number }) {
+  return (
+    <span className={styles.prog}>
+      {OWNER_STEPS.map((_, i) => <i key={i} data-on={i < step || undefined} aria-hidden="true" />)}
+      <span>Step {step} of {OWNER_STEPS.length}</span>
+    </span>
   );
 }
 
@@ -174,7 +225,6 @@ export function OwnerSetupPage({ onTaken }: { onTaken: () => void }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Shown once, right after the account is made, before signing in.
@@ -212,32 +262,55 @@ export function OwnerSetupPage({ onTaken }: { onTaken: () => void }) {
 
   if (spareKeys)
     return (
-      <AuthLayout>
-        <div className={`card card-pad ${styles.card}`} style={{ padding: 28 }}>
+      <AuthLayout
+        top={<OwnerSteps step={2} />}
+        asideAlign="top"
+        aside={
+          <div>
+            <p className={styles.asideLabel} style={{ fontSize: "var(--fs-14)", marginBottom: 14 }}>Keep it somewhere you'll find it</p>
+            <ul className={styles.list}>
+              <li><Icon name="check" size={16} />A password manager or a safe folder on your computer</li>
+              <li><Icon name="check" size={16} />Printed, in the office filing cabinet</li>
+              <li><Icon name="check" size={16} />Not in an email to yourself</li>
+            </ul>
+          </div>
+        }
+      >
+        <div className={styles.flow}>
           <h1 className={styles.title}>Save your key file</h1>
-          <SpareKeysSheet keys={spareKeys} email={email.trim()} doneLabel="Continue" busy={busy} onDone={signIn} />
-          {error && <div className="callout callout-warning" role="alert" style={{ padding: "10px 12px" }}><Icon name="alert" size={16} /><span className="grow small" style={{ fontWeight: 600 }}>{error}</span></div>}
+          {error && <div className="callout callout-warning" role="alert" style={{ marginTop: 16 }}><Icon name="alert" size={16} /><span className="grow" style={{ fontWeight: 600 }}>{error}</span></div>}
+          <SpareKeysSheet keys={spareKeys} email={email.trim()} doneLabel="Continue" busy={busy} onDone={signIn} bar />
         </div>
       </AuthLayout>
     );
 
   return (
-    <AuthLayout>
-      <form className={`card card-pad ${styles.card}`} style={{ padding: 28 }} onSubmit={submit}>
-        <div style={{ display: "grid", gap: 6 }}>
-          <h1 className={styles.title}>Welcome to Crewtavo</h1>
-          <p className="muted" style={{ margin: 0 }}>Create your owner account. Next you'll set up your business, then invite your team.</p>
+    <AuthLayout
+      top={<OwnerSteps step={1} />}
+      asideAlign="top"
+      aside={
+        <div>
+          <p className={styles.asideLabel} style={{ fontSize: "var(--fs-14)", marginBottom: 14 }}>What happens next</p>
+          <ol className={styles.whatNext}>
+            {OWNER_STEPS.map((step, i) => <li key={step.title} data-on={i === 0 || undefined}><span aria-hidden="true">{i + 1}</span><span><b>{step.title}</b>{step.text}</span></li>)}
+          </ol>
         </div>
-        <Field label="Your name"><input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} maxLength={120} autoFocus /></Field>
-        <Field label="Email"><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" inputMode="email" required /></Field>
-        <Field label="Password" hint="At least 8 characters. You'll sign in with this.">
-          <div className="input-group">
-            <input className="input" type={show ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required style={{ paddingLeft: 12, paddingRight: 40 }} />
-            <button type="button" className="icon-btn" style={{ position: "absolute", right: 3 }} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}><Icon name={show ? "eye" : "lock"} size={16} /></button>
-          </div>
-        </Field>
-        {error && <div className="callout callout-warning" role="alert" style={{ padding: "10px 12px" }}><Icon name="alert" size={16} /><span className="grow small" style={{ fontWeight: 600 }}>{error}</span></div>}
-        <Button type="submit" variant="primary" size="lg" loading={busy}>Create owner account</Button>
+      }
+    >
+      <form className={styles.flow} onSubmit={submit}>
+        <h1 className={styles.title}>Welcome to Crewtavo</h1>
+        <p className={styles.sub}>Create your owner account. Next you'll set up your business, then invite your team.</p>
+        <div className={styles.form}>
+          <Field label="Your name"><input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} autoComplete="name" required minLength={2} maxLength={120} autoFocus /></Field>
+          <Field label="Email"><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" inputMode="email" required /></Field>
+          <Field label="Password" hint="At least 8 characters. You'll sign in with this.">
+            <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" minLength={8} />
+          </Field>
+          {error && <div className="callout callout-warning" role="alert"><Icon name="alert" size={16} /><span className="grow" style={{ fontWeight: 600 }}>{error}</span></div>}
+        </div>
+        <div className={styles.acts} data-stack="">
+          <Button type="submit" variant="primary" loading={busy}>Create owner account</Button>
+        </div>
       </form>
     </AuthLayout>
   );

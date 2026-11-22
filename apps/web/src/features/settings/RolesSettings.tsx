@@ -7,13 +7,14 @@ import { adminLevel, LEVEL_PERMISSIONS, LEVEL_SUMMARY, PERMISSIONS, ROLE_LABELS,
 import { formatBytes } from "@crewtavo/core/storage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
-import { Icon } from "@/components/ui/Icon";
-import { CardSkeleton, Loading } from "@/components/ui/Skeleton";
+import { Menu } from "@/components/ui/Menu";
+import { RelatedRow, Section } from "@/components/ui/Section";
+import { InboxSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
 import { useListAnimation } from "@/lib/motion";
@@ -22,16 +23,21 @@ import { useSopIndex } from "../kb/kbData";
 import { useCompanyRoles, type CompanyRole } from "./roles";
 import { gbField, parseGb, refreshStorage, setAllowance, setsAllowances, useStorageOverview } from "./storage";
 import { AllowanceDialog, GbInput } from "./StorageSettings";
+import { SettingsActions } from "./SettingsKit";
+import styles from "./settings.module.css";
 import { YourPassword } from "./TeamSettings";
 
 // The team's levels. A custom role is never a sub's (the database refuses it).
 const LEVELS = STAFF.filter((r) => r !== "owner");
 const label = (p: Permission) => PERMISSIONS.find((x) => x.key === p)?.label ?? p;
+/** A role's areas in a quiet line: the first few by name, then how many more. */
+const areas = (list: Permission[]) => (list.length <= 3 ? list.map(label).join(", ") : `${list.slice(0, 3).map(label).join(", ")} and ${list.length - 3} more`);
 
 export function RolesSettings() {
   const session = useSession();
   const queryClient = useQueryClient();
   const roles = useCompanyRoles();
+  const navigate = useNavigate();
   const guides = useSopIndex();
   const team = useQuery({ queryKey: ["team", session.company.id], queryFn: () => api.get<Array<{ role_id: string | null; active: boolean }>>("/team") });
   const [editing, setEditing] = useState<CompanyRole | "new" | null>(null);
@@ -49,69 +55,75 @@ export function RolesSettings() {
     },
   });
   const count = (id: string) => team.data?.filter((m) => m.active && m.role_id === id).length ?? 0;
-  const cards = useListAnimation<HTMLDivElement>();
+  const rows = useListAnimation<HTMLUListElement>();
+  const askDelete = async (r: CompanyRole) => {
+    const n = count(r.id);
+    if (await confirm({ title: `Delete “${r.name}”?`, body: n ? `${n} ${n === 1 ? "person has" : "people have"} this role. They keep ${ROLE_LABELS[r.base_role]} access.` : undefined, confirmLabel: "Delete role", danger: true })) remove.mutate(r.id);
+  };
 
   return (
-    <div className="stack">
-      <div className="row-between">
-        <span />
-        <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>New role</Button>
-      </div>
-      {roles.error ? (
-        <div className="card"><ErrorState error={roles.error} onRetry={() => roles.refetch()} /></div>
-      ) : roles.isPending ? (
-        <Loading label="Loading roles"><div className="grid-cards">{[0, 1, 2].map((i) => <CardSkeleton key={i} lines={3} />)}</div></Loading>
-      ) : roles.data.length === 0 ? (
-        <div className="card"><EmptyState inline title="No custom roles yet" action={<Button onClick={() => setEditing("new")}>Add a role</Button>} /></div>
-      ) : (
-        <div className="grid-cards" ref={cards}>
-          {roles.data.map((r) => (
-            <div key={r.id} className="card card-pad stack-sm role-card">
-              <div className="row-between" style={{ alignItems: "flex-start" }}>
-                <div className="stack-sm" style={{ gap: 2 }}>
-                  <strong style={{ fontSize: 16 }}>{r.name}</strong>
-                  <span className="muted small">{ROLE_LABELS[r.base_role]} access · {count(r.id)} {count(r.id) === 1 ? "person" : "people"}</span>
-                </div>
-                <div className="row" style={{ gap: 2 }}>
-                  <button type="button" className="icon-btn" aria-label={`Edit ${r.name}`} onClick={() => setEditing(r)}><Icon name="edit" size={16} /></button>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    aria-label={`Delete ${r.name}`}
-                    onClick={async () => {
-                      const n = count(r.id);
-                      if (await confirm({ title: `Delete “${r.name}”?`, body: n ? `${n} ${n === 1 ? "person has" : "people have"} this role. They keep ${ROLE_LABELS[r.base_role]} access.` : undefined, confirmLabel: "Delete role", danger: true })) remove.mutate(r.id);
-                    }}
-                  >
-                    <Icon name="trash" size={16} />
-                  </button>
-                </div>
-              </div>
-              <div className="row wrap" style={{ gap: 6 }}>
-                {r.permissions.length ? r.permissions.map((p) => <span key={p} className="chip">{label(p)}</span>) : <span className="muted small">Their own work only</span>}
-              </div>
-              {r.guide_id && <Link to={`/kb/${r.guide_id}`} className="small">Job description: {guides.data?.pages.find((g) => g.id === r.guide_id)?.title ?? "open the guide"}</Link>}
-              {owner && storageLimit(r.id) && <span className="muted small">Storage: {formatBytes(storageLimit(r.id)!)} each</span>}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="card">
-        <div className="card-head"><strong>Built-in roles</strong></div>
-        {STAFF.map((r) => (
-          <div key={r} className="card-row" style={{ alignItems: "flex-start" }}>
-            <strong style={{ width: 110, flex: "none" }}>{ROLE_LABELS[r]}</strong>
-            <span className="stack-sm" style={{ gap: 4 }}>
-              <span className="muted small">{LEVEL_SUMMARY[r]}</span>
-              {owner && storage.data && r !== "owner" && (
-                <button type="button" className="link-btn small" style={{ justifySelf: "start" }} onClick={() => setLimitFor({ key: r, name: ROLE_LABELS[r] })} aria-label={`Storage limit for ${ROLE_LABELS[r]}`}>
+    <>
+      <SettingsActions><Button variant="primary" icon="plus" onClick={() => setEditing("new")}>New role</Button></SettingsActions>
+      <Section level={3} title="Your roles" count={roles.data?.length || undefined}>
+        {roles.error ? (
+          <ErrorState compact error={roles.error} onRetry={() => roles.refetch()} />
+        ) : roles.isPending ? (
+          <InboxSkeleton rows={3} />
+        ) : roles.data.length === 0 ? (
+          <EmptyState inline title="No custom roles yet" action={<Button onClick={() => setEditing("new")}>Add a role</Button>} />
+        ) : (
+          <ul className="rel" role="list" ref={rows}>
+            {roles.data.map((r) => {
+              const guide = r.guide_id ? guides.data?.pages.find((g) => g.id === r.guide_id)?.title ?? "open the guide" : null;
+              const n = count(r.id);
+              return (
+                <RelatedRow
+                  key={r.id}
+                  onClick={() => setEditing(r)}
+                  title={r.name}
+                  detail={`${ROLE_LABELS[r.base_role]} access`}
+                  sub={[
+                    // Who has it and what it includes as one run of words, so a long line wraps as words, not around a dot.
+                    `${n} ${n === 1 ? "person" : "people"} · ${r.permissions.length ? areas(r.permissions) : "Their own work only"}`,
+                    owner && storageLimit(r.id) ? `Storage: ${formatBytes(storageLimit(r.id)!)} each` : null,
+                    r.guide_id && <Link key="guide" to={`/kb/${r.guide_id}`} className={styles.inlineLink}>Job description: {guide}</Link>,
+                  ]}
+                  actions={
+                    <Menu
+                      label={`More for ${r.name}`}
+                      title={r.name}
+                      triggerClassName="btn btn-sm btn-ghost btn-icon"
+                      items={[
+                        { label: "Edit role", icon: "edit", kbd: "E", onSelect: () => setEditing(r) },
+                        { label: "Open the job description", icon: "book", hidden: !r.guide_id, onSelect: () => navigate(`/kb/${r.guide_id}`) },
+                        { separator: true },
+                        { label: "Delete role", icon: "trash", danger: true, onSelect: () => void askDelete(r) },
+                      ]}
+                    />
+                  }
+                />
+              );
+            })}
+          </ul>
+        )}
+      </Section>
+      <Section level={3} title="Built-in roles">
+        <p className="set-note">Every business has these. A role of your own starts from one of them.</p>
+        <ul className="rel" role="list">
+          {STAFF.map((r) => (
+            <RelatedRow
+              key={r}
+              title={ROLE_LABELS[r]}
+              sub={LEVEL_SUMMARY[r]}
+              actions={owner && storage.data && r !== "owner" ? (
+                <button type="button" className="btn btn-sm" onClick={() => setLimitFor({ key: r, name: ROLE_LABELS[r] })} aria-label={`Storage limit for ${ROLE_LABELS[r]}`}>
                   {storageLimit(r) ? `Storage: ${formatBytes(storageLimit(r)!)} each` : "Storage limit"}
                 </button>
-              )}
-            </span>
-          </div>
-        ))}
-      </div>
+              ) : undefined}
+            />
+          ))}
+        </ul>
+      </Section>
       {editing && (
         <RoleDialog
           role={editing === "new" ? null : editing}
@@ -121,7 +133,7 @@ export function RolesSettings() {
         />
       )}
       {limitFor && <AllowanceDialog target={{ role: limitFor.key }} name={limitFor.name} current={storageLimit(limitFor.key)} onClose={() => setLimitFor(null)} />}
-    </div>
+    </>
   );
 }
 
