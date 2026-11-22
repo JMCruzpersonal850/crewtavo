@@ -57,7 +57,7 @@ export function TagInput({ value, onChange, suggestions = [], options, placehold
       {value.map((tag) => (
         <span key={tag} className="tag">
           {tag}
-          <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => onChange(value.filter((x) => x !== tag))}><Icon name="x" size={12} strokeWidth={2} /></button>
+          <button type="button" aria-label={t("Remove {tag}", { tag })} onClick={() => onChange(value.filter((x) => x !== tag))}><Icon name="x" size={12} bold /></button>
         </span>
       ))}
       <input

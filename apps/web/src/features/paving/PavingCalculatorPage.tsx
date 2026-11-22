@@ -324,7 +324,7 @@ export function PavingCalculatorPage() {
                     <button key={j.id} type="button" className={styles.job} aria-pressed={input.job === j.id} onClick={() => update(applyJob(setup, input, j.id))}>
                       <span className={styles.jobPicture}>
                         {JOB_PHOTOS[j.id] ? <img src={JOB_PHOTOS[j.id]} alt="" loading="lazy" decoding="async" /> : <Icon name="paving" size={24} />}
-                        {input.job === j.id && <span className={styles.jobCheck}><Icon name="check" size={12} strokeWidth={2.5} /></span>}
+                        {input.job === j.id && <span className={styles.jobCheck}><Icon name="check" size={12} bold /></span>}
                       </span>
                       <span className={styles.jobName}>{j.name}</span>
                     </button>

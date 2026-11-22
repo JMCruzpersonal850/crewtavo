@@ -23,6 +23,7 @@ import {
   type HexColor,
 } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
+import { PHOSPHOR } from "@/components/ui/phosphor";
 import { googleAttribution, type GoogleAttribution } from "./googleAttribution";
 import { googleViewport, KeyError, OVERLAYS, overlaySource, rasterSource, type ImageryId, type OverlayId } from "./imagery";
 import { fromMercator, toMercator, type Corners, type LngLat } from "./planAlign";
@@ -154,8 +155,8 @@ const PALETTE = ["#22c55e", "#f59e0b", "#38bdf8", "#f472b6", "#a78bfa", "#facc15
 const OPENFREEMAP = "https://tiles.openfreemap.org/styles/liberty";
 const GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
 const LABEL_FONT = ["Noto Sans Bold"];
-/** The sparkle icon (lucide's, as the Icon component draws it) for the button under a box. */
-const SPARKLE = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>';
+/** The sparkle icon, as the Icon component draws it at 14px, for the button under a box. */
+const SPARKLE = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">${PHOSPHOR.sparkle.bold}</svg>`;
 const CUT_COLOR = "#ef4444";
 
 const kindOf = (mode: string, type: string): Shape["kind"] => (mode === "cutout" ? "Cutout" : type === "Polygon" ? "Area" : type === "LineString" ? "Length" : "Count");

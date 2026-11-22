@@ -239,7 +239,7 @@ export function Field({ label, hint, error, optional, requiredMessage, children,
       >
         {label}
         {optional && <span className="optional"> {t("(optional)")}</span>}
-        {fine && !note && <span className="field-ok"><Icon name="check" size={14} strokeWidth={2} /></span>}
+        {fine && !note && <span className="field-ok"><Icon name="check" size={14} bold /></span>}
       </span>
       {children}
       {/* Only a server's answer interrupts; a check of what was typed is read with the field it describes. */}

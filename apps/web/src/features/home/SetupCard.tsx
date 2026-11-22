@@ -209,7 +209,7 @@ export function SetupChecklist({ steps, done, full }: { steps: SetupStep[]; done
           {order.done.map((s) => (
             <li key={s.key}>
               <Link to={s.to} className={styles.step} data-done>
-                <span className={styles.ring} aria-hidden="true"><Icon name="check" size={12} strokeWidth={3} /></span>
+                <span className={styles.ring} aria-hidden="true"><Icon name="check" size={12} bold /></span>
                 <span className={styles.stepText}>
                   <span className={styles.stepTitle}>{s.title}<span className="sr-only"> (done)</span></span>
                 </span>

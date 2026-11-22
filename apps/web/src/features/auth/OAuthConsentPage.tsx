@@ -149,7 +149,7 @@ export function OAuthConsentPage() {
           <dt>It will be able to read</dt>
           <dd>
             <ul className={styles.scopes} aria-label="It will be able to read">
-              <li><Icon name="check" size={14} strokeWidth={2} />{CAN_READ}</li>
+              <li><Icon name="check" size={14} bold />{CAN_READ}</li>
             </ul>
           </dd>
         </div>

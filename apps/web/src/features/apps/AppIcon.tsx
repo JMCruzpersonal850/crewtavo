@@ -1,11 +1,11 @@
 /**
- * App icons and the directory's rows (App-Directory.dc.html). Another company's app shows its own logo
+ * App icons and the directory's cards (App-Directory.dc.html). Another company's app shows its own logo
  * on a white tile, like a phone's home screen (see assets/apps/README.md). An app built into Crewtavo
- * shows the icon its screen has in the menu, in Crewtavo's green on a pale green tile, so the nine of
- * them can be told apart at a glance. Flat: a hairline, no shadow.
+ * is one of a family in the logo's colors: its menu icon, filled, in the logo's amber on its navy, so
+ * the nine read as Crewtavo's and can still be told apart at a glance. Flat: a hairline, no shadow.
  */
+import { Link } from "react-router-dom";
 import { Icon, type IconName } from "@/components/ui/Icon";
-import { InboxRow } from "@/components/ui/InboxList";
 import abcSupplyLogo from "@/assets/apps/abc-supply.svg";
 import chatgptLogo from "@/assets/apps/chatgpt.svg";
 import claudeLogo from "@/assets/apps/claude.svg";
@@ -21,7 +21,7 @@ import stripeLogo from "@/assets/apps/stripe.svg";
 import sveltiaLogo from "@/assets/apps/sveltia.svg";
 import twilioLogo from "@/assets/apps/twilio.svg";
 import zohoLogo from "@/assets/apps/zoho.svg";
-import { APP_INFO, infoFor, type AppRow } from "./catalog";
+import { APP_INFO, categoryName, infoFor, type AppRow } from "./catalog";
 
 /** The apps built into Crewtavo, each with the icon its screen has in the menu (components/shell/nav.ts). */
 export const OWN_ICONS: Record<string, IconName> = {
@@ -59,15 +59,16 @@ const WIDE = new Set(["zoho_calendar", "zoho_books", "abc_supply"]);
 /** Logos that are already a whole app icon fill the tile. */
 const FULL = new Set(["sveltia", "open_meteo"]);
 
-/** sm: a row's 36px (40px on a phone); md: 48px; lg: an app's own page, 64px (56px on a phone). */
-export type IconSize = "sm" | "md" | "lg";
+/** sm: 36px (a collection's icons); md: a card's 48px; lg: 64px; xl: the top of an app's own page, 88px (64px on a phone). */
+export type IconSize = "sm" | "md" | "lg" | "xl";
 
 export function AppIcon({ id, name, size = "md" }: { id: string; name: string; size?: IconSize }) {
   const own = OWN_ICONS[id];
   if (own) {
     return (
       <span className="app-icon app-icon-own" data-size={size} aria-hidden="true">
-        <Icon name={own} size={20} />
+        {/* Snow's filled glyph is a solid disc; its bold line sits evenly with the others. */}
+        <Icon name={own} size={20} filled={own !== "snow"} bold={own === "snow"} />
       </span>
     );
   }
@@ -107,38 +108,29 @@ export function appState(app: AppRow, installed: boolean): { tone: "good" | "dan
 }
 
 /**
- * One app in a list (the directory, and More apps on an app's page): its icon, name, one line on what
- * it does, and on the right whether it's installed. The whole row opens the app's page; its link says
- * the state too, for a screen reader.
+ * One app on a card, as an app store shows it (the directory, and More apps on an app's page): its icon,
+ * name and who it's from, one line on what it does, and on the right Get, or whether it's installed. The
+ * whole card opens the app's page, where it's installed and set up; the state is said for a screen reader.
  */
-export function AppListRow({ app, installed }: { app: AppRow; installed: boolean }) {
+export function AppCard({ app, installed }: { app: AppRow; installed: boolean }) {
   const state = appState(app, installed);
   // Not proven everywhere yet (catalog.ts): said after the name, and on its page.
   const beta = Boolean(APP_INFO[app.id]?.beta);
-  const tagline = infoFor(app).tagline;
   return (
-    <InboxRow
-      to={`/apps/${app.id}`}
-      title={shortName(app)}
-      badge={
-        <>
+    <Link to={`/apps/${app.id}`} className="app-card">
+      <AppIcon id={app.id} name={app.name} size="md" />
+      <span className="app-card-head">
+        <span className="app-card-name">
+          {shortName(app)}
           {beta && <span className="app-beta">Beta</span>}
-          {state && <span className="sr-only">, {state.label}</span>}
-        </>
-      }
-      meta={[<span key="tagline" title={tagline}>{tagline}</span>]}
-      avatar={<AppIcon id={app.id} name={app.name} size="sm" />}
-      square
-      aside={
-        state && (
-          <span className="app-state" data-tone={state.tone} aria-hidden="true">
-            <Icon name={state.tone === "good" ? "check" : "alert"} size={14} strokeWidth={2} />
-            <span className="app-state-long">{state.label}</span>
-            {/* A phone's row is narrow: "On", as a phone's settings say. */}
-            <span className="app-state-short">{state.tone === "good" ? "On" : state.label}</span>
-          </span>
-        )
-      }
-    />
+        </span>
+        <span className="app-card-from">{categoryName(app.category)}</span>
+      </span>
+      <span className="app-get" data-tone={state?.tone}>
+        {state && <Icon name={state.tone === "good" ? "check" : "alert"} size={12} bold />}
+        {state ? state.label : "Get"}
+      </span>
+      <span className="app-card-tag">{infoFor(app).tagline}</span>
+    </Link>
   );
 }

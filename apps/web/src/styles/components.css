@@ -347,6 +347,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 :where(input[type="checkbox"]:not(.switch, [role="switch"])):checked { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 8.2 2.6 2.6L12 5.4'/%3E%3C/svg%3E"); }
 :where(input[type="checkbox"]:not(.switch, [role="switch"])):indeterminate { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4.5 8h7'/%3E%3C/svg%3E"); }
 :where(input[type="checkbox"]:not(.switch, [role="switch"])):disabled { opacity: 0.5; cursor: not-allowed; }
+/* The box you just checked pops once as its check lands; a page of boxes already ticked stays still. */
+:where(input[type="checkbox"]:not(.switch, [role="switch"])):checked:focus { animation: check-pop 280ms var(--ease-spring); }
+@keyframes check-pop { from { transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { @keyframes check-pop { to { transform: none; } } }
 @media (forced-colors: active), print {
   :where(input[type="checkbox"]:not(.switch, [role="switch"])) { appearance: auto; -webkit-appearance: auto; }
 }
@@ -760,7 +764,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 6px 0 8px; border: 0; border-radius: 6px; background: none;
   font-size: var(--fs-13); font-weight: 500; color: var(--ink); text-align: left; white-space: nowrap; -webkit-tap-highlight-color: transparent;
 }
-.menu-item svg { color: var(--text-3); }
+.menu-item svg { color: var(--stage, var(--text-3)); }
 .menu-item > svg:first-child, .menu-item > .menu-icon { width: 15px; height: 15px; flex: none; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--menu-hi); color: var(--ink); }
 .menu-item[aria-expanded="true"] { background: var(--menu-hi); }
@@ -1107,12 +1111,20 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .rel-lead { flex: none; min-width: 36px; color: var(--quiet); font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
 .rel-lead:has(.il-person, .avatar, .rel-icon) { min-width: 0; }
 /* A round quiet icon as a row's lead (Home's Needs attention): its tone colors the icon, never a tile. */
+/*
+ * A round icon on a tint: a stage's own color (a quote is ruby wherever it's listed), else its tone's;
+ * red, for money that's late or something that failed, wins over both.
+ */
 .rel-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-pill); background: var(--fill-2); color: var(--text-3); }
 .rel-icon svg { width: 15px; height: 15px; }
-.rel-icon[data-tone="danger"] { color: var(--danger); }
-.rel-icon[data-tone="warning"] { color: var(--warning); }
-.rel-icon[data-tone="good"] { color: var(--green-dark); }
-.rel-icon[data-tone="info"] { color: var(--info); }
+.rel-icon[data-tone="warning"] { background: var(--warning-tint); color: var(--warning); }
+.rel-icon[data-tone="good"] { background: var(--green-tint); color: var(--green-dark); }
+.rel-icon[data-tone="info"] { background: var(--info-tint); color: var(--info); }
+.rel-icon:has(> [data-icon="requests"]) { background: var(--req-tint); color: var(--req-text); }
+.rel-icon:has(> [data-icon="quote"]) { background: var(--quote-tint); color: var(--quote-text); }
+.rel-icon:has(> [data-icon="job"]) { background: var(--job-tint); color: var(--job-text); }
+.rel-icon:has(> [data-icon="invoice"]) { background: var(--invoice-tint); color: var(--invoice-text); }
+.rel-icon[data-tone="danger"] { background: var(--danger-tint); color: var(--danger); }
 .rel-body { flex: 1; min-width: 0; }
 .rel-link, .rel-head { display: block; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rel-link { --focus-ring: transparent; }
@@ -1272,10 +1284,22 @@ a.strip-link:hover, button.strip-link:hover { color: inherit; text-decoration: n
 /* The crumb: quiet words and a chevron over the title. On a phone, a round back button. */
 .crumb { position: relative; display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; color: var(--text-3); font-size: var(--fs-13); font-weight: 500; text-decoration: none; }
 .crumb:hover { color: var(--ink); text-decoration: none; }
-.crumb > svg { color: var(--quiet); }
-.crumb > svg:first-child { display: none; }
+/* The chevron points back, toward the list, and leans that way as it's pointed at. */
+.crumb > svg { flex: none; width: 16px; height: 16px; margin-left: -3px; color: var(--quiet); transition: transform var(--dur-fast); }
+.crumb:hover > svg { transform: translateX(-2px); }
 .crumb.back-link { margin-bottom: -16px; }
 .detail-crumb { display: flex; flex-basis: 100%; margin-bottom: -4px; }
+/*
+ * A request, quote, job or invoice: its stage's rule along the top of the header, as on Home's
+ * workflow strip, and the way back to its list in the stage's color with its icon.
+ */
+.detail-head[data-stage="requests"] { --c: var(--req); --c-text: var(--req-text); }
+.detail-head[data-stage="quote"] { --c: var(--quote); --c-text: var(--quote-text); }
+.detail-head[data-stage="job"] { --c: var(--job); --c-text: var(--job-text); }
+.detail-head[data-stage="invoice"] { --c: var(--invoice); --c-text: var(--invoice-text); }
+.detail-head[data-stage] .crumb { color: var(--c-text); font-weight: 600; }
+.detail-head[data-stage] .crumb-text > svg { margin-right: 6px; vertical-align: -3px; color: var(--c); }
+@media (min-width: 901px) { .detail-head[data-stage] { border-top: 3px solid var(--c); padding-top: 14px; } }
 .detail-head > .page-title { flex: 1 1 360px; }
 /* The quiet line under the title: the status as a dot and words, then a contact, tags, a date. */
 .detail-meta { display: flex; flex-basis: 100%; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: -4px; font-size: var(--fs-13); color: var(--text-2); }
@@ -1295,8 +1319,8 @@ a.strip-link:hover, button.strip-link:hover { color: inherit; text-decoration: n
   .crumb { justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-pill); background: var(--fill-2); color: var(--ink); }
   .crumb::after { content: ""; position: absolute; inset: -2px; }
   .crumb:hover { background: var(--fill-3); }
-  .crumb > svg:first-child { display: block; width: 20px; height: 20px; color: var(--ink); }
-  .crumb > svg:last-child { display: none; }
+  .crumb > svg { width: 20px; height: 20px; margin: 0; color: var(--ink); }
+  .crumb:hover > svg { transform: none; }
   .crumb-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .crumb.back-link { margin-bottom: -8px; }
   .detail-crumb { flex-basis: auto; order: 0; margin: 0; }
@@ -1495,7 +1519,7 @@ a.strip-link:hover, button.strip-link:hover { color: inherit; text-decoration: n
 .palette-item[aria-selected="true"] { background: var(--menu-hi); }
 .palette-item > svg { color: var(--quiet); }
 .palette-item .p-icon { width: 16px; height: 16px; display: grid; place-items: center; flex: none; background: none; color: var(--text-3); }
-.palette-item .p-icon svg { width: 15px; height: 15px; }
+.palette-item .p-icon svg { width: 15px; height: 15px; color: var(--stage, currentColor); }
 .palette-item[aria-selected="true"] .p-icon { background: none; color: var(--ink); }
 .palette-item .p-title { font-weight: 500; }
 .palette-item .p-sub { font-size: var(--fs-12); color: var(--quiet); }

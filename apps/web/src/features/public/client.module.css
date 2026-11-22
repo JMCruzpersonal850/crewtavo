@@ -166,7 +166,7 @@
 .done { display: grid; justify-items: center; gap: 8px; text-align: center; }
 .doneMark { display: grid; place-items: center; width: 72px; height: 72px; margin-bottom: 8px; border-radius: var(--radius-pill); background: var(--brand-tint); color: var(--brand-text); }
 .doneMark[data-tone="quiet"] { background: var(--fill-2); color: var(--text-3); }
-.doneMark[data-tone="draw"] svg { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 0.5s 0.15s var(--ease-out) forwards; }
+.doneMark[data-tone="draw"] svg { clip-path: inset(0 100% 0 0); animation: draw 0.5s 0.15s var(--ease-out) forwards; }
 .doneTitle { margin: 0; font-size: var(--fs-24); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
 .doneText { margin: 0; max-width: 440px; color: var(--text-2); text-wrap: pretty; }
 .done > .cta, .done > .soft, .done > :global(.btn) { margin-top: 8px; }
@@ -199,7 +199,8 @@
 }
 
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@keyframes draw { to { stroke-dashoffset: 0; } }
+/* The check wipes in from the left, as if drawn (Phosphor's icons are filled shapes, not strokes). */
+@keyframes draw { to { clip-path: inset(0); } }
 
 @media (max-width: 900px) {
   /* The phone kit: the business on the grey ground, round buttons, the main action in thumb reach. */
@@ -247,7 +248,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .body { animation: none; }
-  .doneMark[data-tone="draw"] svg { animation: none; stroke-dashoffset: 0; }
+  .doneMark[data-tone="draw"] svg { animation: none; clip-path: none; }
 }
 @media print {
   .page { min-height: 0; background: #fff; }

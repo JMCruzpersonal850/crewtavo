@@ -1,12 +1,13 @@
 /**
  * Home's workflow (Page-Home.dc.html): requests, quotes, jobs and invoices left to right as a flat
  * strip of figures between hairlines, a quiet chevron between them, each with what's under it in
- * small rows. Words turn amber or red only when someone must act (requests waiting over 2 days, past
- * due). On a phone (Mobile-Work.dc.html) the strip is two across in a rounded block and each figure
+ * small rows. Each stage wears its own color: a rule along its top, its icon and its name (the old
+ * Home's, without the box). Words turn amber or red only when someone must act (requests waiting over
+ * 2 days, past due). On a phone (Mobile-Work.dc.html) the strip is two across in a rounded block and each figure
  * keeps one short note in place of its rows. Each figure opens its list.
  */
 import { AnimatedNumber, MONEY } from "@/components/ui/AnimatedNumber";
-import { Icon } from "@/components/ui/Icon";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import { Stat, StatStrip } from "@/components/ui/StatStrip";
 import { statusText } from "@/components/ui/StatusPill";
 import { formatMoney } from "@/lib/format";
@@ -22,6 +23,8 @@ interface Row {
 interface Column {
   key: string;
   label: string;
+  /** The stage's own icon, which also gives the column its color (WorkflowStrip.module.css). */
+  icon: IconName;
   to: string;
   /** The figure, and the word after it ("open", "awaiting"). */
   value: number;
@@ -39,7 +42,7 @@ export function workflowColumns(workflow: Dashboard["workflow"], showInvoices = 
   const openQuotes = quotes.awaiting + (quotes.approved ?? 0) + quotes.draft;
   const columns: Column[] = [
     {
-      key: "requests", label: "Requests", to: "/requests",
+      key: "requests", label: "Requests", icon: "requests", to: "/requests",
       value: requests.new + requests.assessment_complete, unit: "open",
       rows: [
         { label: statusText("request", "new"), value: String(requests.new) },
@@ -51,7 +54,7 @@ export function workflowColumns(workflow: Dashboard["workflow"], showInvoices = 
       noteTone: requests.overdue > 0 ? "warning" : undefined,
     },
     {
-      key: "quotes", label: "Quotes", to: "/quotes",
+      key: "quotes", label: "Quotes", icon: "quote", to: "/quotes",
       value: quotes.awaiting_value + (quotes.approved_value ?? 0) + quotes.draft_value, money: true, unit: `${openQuotes} open`,
       rows: [
         { label: `${statusText("quote", "sent")}, ${quotes.awaiting}`, value: formatMoney(quotes.awaiting_value) },
@@ -61,13 +64,13 @@ export function workflowColumns(workflow: Dashboard["workflow"], showInvoices = 
       note: `${openQuotes} open`,
     },
     {
-      key: "jobs", label: "Jobs", to: "/jobs",
+      key: "jobs", label: "Jobs", icon: "job", to: "/jobs",
       value: jobs.active, unit: "active",
       rows: [{ label: `${statusText("job", "requires_invoicing")}, ${jobs.to_invoice}`, value: formatMoney(jobs.to_invoice_value) }],
       note: `${jobs.to_invoice} to invoice`,
     },
     {
-      key: "invoices", label: "Invoices", to: "/invoices",
+      key: "invoices", label: "Invoices", icon: "invoice", to: "/invoices",
       value: invoices.awaiting_value, money: true, unit: "awaiting",
       rows: [
         { label: statusText("invoice", "sent"), value: String(invoices.awaiting) },
@@ -94,6 +97,7 @@ export function WorkflowStrip({ workflow, showInvoices = true }: { workflow: Das
           label={
             <>
               {i > 0 && <span className={styles.chevron} aria-hidden="true"><Icon name="chevronRight" size={14} /></span>}
+              <Icon name={col.icon} size={16} />
               {col.label}
             </>
           }

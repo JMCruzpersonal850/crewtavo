@@ -54,34 +54,55 @@ img, svg { flex-shrink: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 
+/*
+ * The four stages keep their color wherever their own icon stands for the thing: the current page
+ * in the sidebar, menus, search, the More sheet, a row's round icon. --stage is set on the icon
+ * itself; each of those places opts in with color: var(--stage, its usual color).
+ */
+[data-icon="requests"] { --stage: var(--req); }
+[data-icon="quote"] { --stage: var(--quote); }
+[data-icon="job"] { --stage: var(--job); }
+[data-icon="invoice"] { --stage: var(--invoice); }
+
 /* ---------- App shell ---------- */
 /*
- * Side.dc.html and Topbar.dc.html: a 216px sidebar on the ground colour, 32px links in the quiet text
- * colour with the current one filled and its icon green, sentence-case group names, plain counts; a
- * 52px top bar on a hairline with the business, a search pill, and quiet 30px buttons. The measures
- * here are the shell's own and win over tokens.css's first values.
+ * A 232px sidebar on the ground colour, 36px links in the quiet text colour with the current one on a
+ * raised pill (it slides to the page you pick) and its icon in that page's colour, sentence-case group
+ * names, plain counts; a 60px top bar with the business on the left, then search and quiet 38px
+ * buttons on the right, its hairline showing once the page scrolls under it. The sidebar's and top
+ * bar's measures and the 30px logo are the live app's. They're the shell's own and win over tokens.css's.
  */
-:root { --sidebar-width: 216px; --topbar-height: 52px; --mobile-nav-height: 56px; }
+:root { --sidebar-width: 228px; --topbar-height: 60px; --mobile-nav-height: 56px; }
 .shell { min-height: 100vh; display: flex; }
 .sidebar {
   width: var(--sidebar-width); flex: none; background: var(--ground); border-right: 1px solid var(--ground-border);
-  padding: 14px 10px 12px; display: flex; flex-direction: column; gap: 1px; position: sticky; top: 0; height: 100vh;
+  padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh;
   /* Clear of a phone's notch and home indicator, sideways (a big phone is wider than 900px then). */
-  padding-left: max(10px, env(safe-area-inset-left)); padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left)); padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
-.brand { display: flex; align-items: center; gap: 9px; align-self: flex-start; margin: 2px 0 12px 8px; border-radius: 6px; color: var(--brand-ink); font-weight: 800; font-size: 17px; letter-spacing: -0.03em; }
+.brand { display: flex; align-items: center; gap: 10px; align-self: flex-start; margin: 2px 0 14px 8px; border-radius: 6px; color: var(--brand-ink); font-weight: 800; font-size: 19px; letter-spacing: -0.03em; }
 .brand:hover { color: var(--brand-ink); }
 .brand svg { flex: none; }
 .brand-name { line-height: 1; }
-.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-link {
-  position: relative; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 6px;
+  position: relative; display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 12px; border-radius: 8px;
   color: var(--text-2); font-size: var(--fs-14); font-weight: 500; white-space: nowrap; transition: background var(--dur-fast), color var(--dur-fast);
 }
-.nav-link svg { color: var(--quiet); transition: color var(--dur-fast); }
+.nav-link svg { color: var(--text-2); transition: color var(--dur); }
 .nav-link:hover { background: var(--ground-hover); color: var(--ink); }
-.nav-link[aria-current="page"], .nav-link.active { background: var(--ground-hover); color: var(--ink); font-weight: 600; }
-.nav-link[aria-current="page"] svg, .nav-link.active svg { color: var(--green); }
+.nav-link[aria-current="page"], .nav-link.active { background: var(--raised); box-shadow: var(--nav-pill-edge); color: var(--ink); font-weight: 600; }
+.nav-link[aria-current="page"] svg, .nav-link.active svg { color: var(--stage, var(--green)); }
+/*
+ * In the scrolling links one raised pill (AppShell's NavPill) stands behind the current page and
+ * slides to the next one, so the link itself stays clear; until it's placed, the link wears its own.
+ */
+:root { --nav-pill-edge: 0 0 0 1px var(--ground-border), 0 1px 2px rgba(15, 42, 53, 0.06); }
+:root.dark { --nav-pill-edge: 0 0 0 1px var(--sand-6); }
+.nav-pill { position: absolute; left: 4px; right: 12px; top: 0; height: 38px; border-radius: 8px; background: var(--raised); box-shadow: var(--nav-pill-edge); pointer-events: none; }
+.nav-pill:not([data-placed]) { display: none; }
+.nav-pill[data-moving] { transition: transform 260ms var(--ease-out); }
+.nav-scroll:has(.nav-pill[data-placed]) .nav-link.active { background: none; box-shadow: none; }
 .nav-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /*
  * The links scroll between Create and the foot, so Apps and Settings stay in view however long the
@@ -89,23 +110,34 @@ img, svg { flex-shrink: 0; }
  * ring, and its scrollbar sits on the sidebar's own edge.
  */
 .nav-scroll {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: 0 -10px 0 -4px; padding: 0 10px 28px 4px;
+  position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: -4px -12px 0 -4px; padding: 4px 12px 28px 4px;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
 }
 .nav-scroll > * { flex: none; }
-.nav-label { padding: 14px 10px 4px; font-size: var(--fs-11); font-weight: 600; color: var(--quiet); }
+.nav-label { padding: 16px 12px 4px; font-size: var(--fs-11); font-weight: 600; color: var(--quiet); }
 .nav-bottom { padding-top: 8px; border-top: 1px solid var(--ground-border); }
-/* A count is a plain number; red only where someone's waiting on you (a mention, an invoice past due). */
-.nav-count { flex: none; margin-left: auto; font-size: var(--fs-12); font-weight: 500; color: var(--quiet); font-variant-numeric: tabular-nums; }
-.nav-count-alert { color: var(--danger); font-weight: 600; }
+/*
+ * A count is a plain number; new requests sit in a request-amber pill, and a red pill only where
+ * someone's waiting on you (a mention, an invoice past due). Each pops once when its number changes.
+ */
+.nav-count { flex: none; margin-left: auto; font-size: var(--fs-12); font-weight: 500; color: var(--quiet); font-variant-numeric: tabular-nums; animation: count-pop 380ms var(--ease-spring); }
+.nav-count:is(.nav-count-new, .nav-count-alert) { min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-pill); display: grid; place-items: center; font-weight: 650; }
+.nav-count-new { background: var(--req-tint); color: var(--req-text); }
+.nav-count-alert { background: var(--danger-tint); color: var(--danger); }
+@keyframes count-pop { 40% { transform: scale(1.2); } }
 .nav-dot { flex: none; display: inline-block; width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: var(--green); }
-/* Create: a small green circle where the other links have their icon. */
+/*
+ * Create: a small green circle where the other links have their icon. Pointing at it does nothing;
+ * while its menu is out the + turns into a dark x, and turns back when the menu closes.
+ */
 .create-trigger { width: 100%; border: 0; background: none; text-align: left; font: inherit; font-size: var(--fs-14); font-weight: 500; }
-.nav-create-dot { width: 18px; height: 18px; margin: 0 -1px; border-radius: var(--radius-pill); background: var(--green-solid); color: #fff; display: grid; place-items: center; flex: none; transition: transform var(--dur) var(--ease-out); }
-.nav-link .nav-create-dot svg { width: 12px; height: 12px; color: #fff; }
-.nav-link:hover .nav-create-dot, .create-trigger[aria-expanded="true"] .nav-create-dot { transform: rotate(90deg); }
-.create-trigger[aria-expanded="true"] { background: var(--ground-hover); color: var(--ink); }
-.nav-divider { height: 1px; background: var(--ground-border); margin: 8px 10px; }
+.create-trigger:hover { background: none; color: var(--text-2); }
+.nav-create-dot { width: 20px; height: 20px; border-radius: var(--radius-pill); background: var(--green-solid); color: #fff; display: grid; place-items: center; flex: none; transition: transform var(--dur-enter) var(--ease-out), background var(--dur-enter) var(--ease-out); }
+.nav-link .nav-create-dot svg { width: 13px; height: 13px; color: #fff; transition: color var(--dur-enter) var(--ease-out); }
+.create-trigger[aria-expanded="true"] .nav-create-dot { transform: rotate(45deg); background: var(--solid); }
+.create-trigger[aria-expanded="true"] .nav-create-dot svg { color: var(--on-solid); }
+.create-trigger[aria-expanded="true"] { background: none; color: var(--ink); }
+.nav-divider { height: 1px; background: var(--ground-border); margin: 8px 12px; }
 .mobile-only { display: none !important; }
 /* A word that labels a value in a stacked table row on a phone, where the column heads are hidden. */
 .mobile-inline { display: none !important; }
@@ -113,23 +145,26 @@ img, svg { flex-shrink: 0; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar {
   position: sticky; top: 0; z-index: 15; display: flex; align-items: center; gap: 6px; min-height: var(--topbar-height);
-  padding: 0 max(14px, env(safe-area-inset-right)) 0 20px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: saturate(1.6) blur(10px);
-  -webkit-backdrop-filter: saturate(1.6) blur(10px); border-bottom: 1px solid var(--divider);
+  padding: 10px max(24px, env(safe-area-inset-right)) 10px 40px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: saturate(1.6) blur(10px);
+  -webkit-backdrop-filter: saturate(1.6) blur(10px); border-bottom: 1px solid transparent; transition: border-color var(--dur);
 }
-.business { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.business-tile { width: 24px; height: 24px; border-radius: 6px; background: var(--avatar); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.02em; display: grid; place-items: center; flex: none; }
-.business-logo { width: auto; min-width: 24px; padding: 2px 5px; background: #fff; border: 1px solid var(--border); }
+/* No line between the top bar and the page until the page scrolls under it, as in the live app. */
+.topbar[data-scrolled] { border-bottom-color: var(--divider); }
+.business { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.business-tile { width: 30px; height: 30px; border-radius: 8px; background: var(--avatar); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.02em; display: grid; place-items: center; flex: none; }
+.business-logo { width: auto; min-width: 30px; padding: 2px 5px; background: #fff; border: 1px solid var(--border); }
 /* A dark brand color still has an edge on the dark theme's page. */
 :root.dark .business-tile:not(.business-logo) { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); }
-.business-logo img { display: block; height: 18px; width: auto; max-width: 88px; object-fit: contain; }
-.business-name { font-size: var(--fs-13); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-select.business-name { border: 0; background: transparent; font: inherit; font-size: var(--fs-13); font-weight: 600; padding: 4px 2px; border-radius: 6px; max-width: 260px; }
+.business-logo img { display: block; height: 22px; width: auto; max-width: 88px; object-fit: contain; }
+.business-name { font-size: var(--fs-14); font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+select.business-name { border: 0; background: transparent; font: inherit; font-size: var(--fs-14); font-weight: 650; padding: 4px 2px; border-radius: 6px; max-width: 260px; }
 select.business-name:hover { background: var(--fill-2); }
 .search {
-  flex: 0 1 300px; min-width: 180px; display: flex; align-items: center; gap: 8px; height: 32px; margin-left: 16px; padding: 0 6px 0 10px;
-  border: 0; border-radius: 8px; background: var(--seg-track); color: var(--quiet); font-size: var(--fs-13); text-align: left; transition: background var(--dur-fast), color var(--dur-fast);
+  flex: 0 1 300px; min-width: 180px; display: flex; align-items: center; gap: 8px; height: 38px; margin: 0 8px 0 16px; padding: 0 8px 0 11px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--ground); color: var(--quiet); font-size: var(--fs-13); text-align: left;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
-.search:hover { background: var(--fill-3); color: var(--text-3); }
+.search:hover { background: var(--page); border-color: var(--border-strong); color: var(--text-3); }
 .search span { flex: 1; }
 .topbar-gap { flex: 1; }
 /* A key, as the menus and search show one: a hairline box, quiet. */
@@ -144,12 +179,12 @@ select.business-name:hover { background: var(--fill-2); }
 .icon-btn:hover { background: var(--fill-2); color: var(--ink); }
 .icon-btn:active { transform: scale(0.94); }
 .icon-btn[aria-expanded="true"] { background: var(--fill-2); }
-/* The top bar's own buttons are quieter and smaller: 30px, a 16px icon in the third text colour. */
-.topbar .icon-btn { width: 30px; height: 30px; border-radius: 7px; color: var(--text-3); }
-.topbar .icon-btn svg { width: 16px; height: 16px; }
+/* The top bar's own buttons are quiet: 38px, a 20px icon in the third text colour. */
+.topbar .icon-btn { width: 38px; height: 38px; border-radius: 8px; color: var(--text-3); }
+.topbar .icon-btn svg { width: 20px; height: 20px; }
 .topbar .icon-btn:hover, .topbar .icon-btn[aria-expanded="true"] { background: var(--fill-3); color: var(--ink); }
-.notif-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 2px var(--page); animation: pop-in var(--dur) var(--ease-spring); }
-.account-avatar { width: 24px; height: 24px; font-size: 10px; letter-spacing: 0.02em; overflow: hidden; }
+.notif-dot { position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 2px var(--page); animation: pop-in var(--dur) var(--ease-spring); }
+.account-avatar { width: 28px; height: 28px; font-size: 11px; letter-spacing: 0.02em; overflow: hidden; }
 .topbar .account-trigger:hover, .topbar .account-trigger[aria-expanded="true"] { background: none; }
 .topbar .account-trigger:hover .account-avatar, .topbar .account-trigger[aria-expanded="true"] .account-avatar { box-shadow: 0 0 0 2px var(--fill-3); }
 /* Who's signed in, at the top of the account menu. */
@@ -157,7 +192,7 @@ select.business-name:hover { background: var(--fill-2); }
 .menu .menu-item:has(.account-face) { font-weight: 600; }
 .menu[data-sheet] .account-face { width: 40px; height: 40px; font-size: 14px; }
 
-.content { padding: 22px max(28px, env(safe-area-inset-right)) 56px 28px; display: flex; flex-direction: column; gap: 24px; max-width: 1320px; width: 100%; animation: page-in var(--dur-slow) var(--ease-out); }
+.content { padding: 20px max(48px, env(safe-area-inset-right)) 56px 48px; display: flex; flex-direction: column; gap: 24px; max-width: 1320px; width: 100%; animation: page-in var(--dur-slow) var(--ease-out); }
 .content-narrow { max-width: 880px; }
 /* A screen that fills the space under the top bar itself (team chat). */
 .content.content-flush { padding: 0; gap: 0; max-width: none; animation: none; }
@@ -467,7 +502,7 @@ select.business-name:hover { background: var(--fill-2); }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 76px; padding: 0 6px; border: 0; border-radius: 14px;
   background: var(--fill-2); color: var(--ink); font: inherit; font-size: var(--fs-12); font-weight: 600; line-height: 1.2; text-align: center; -webkit-tap-highlight-color: transparent; transition: background var(--dur-fast), transform var(--dur-fast);
 }
-.more-tile svg { width: 21px; height: 21px; color: var(--green); }
+.more-tile svg { width: 21px; height: 21px; color: var(--stage, var(--green)); }
 .more-tile:active { background: var(--fill-3); transform: scale(0.97); }
 .more-group { margin-top: 6px; }
 section + .more-group { margin-top: 14px; }
@@ -510,8 +545,11 @@ section + .more-group { margin-top: 14px; }
   * { scroll-behavior: auto !important; }
   /* Nothing shrinks as it's pressed or lifts as it's hovered. */
   :is(button, a, label, summary, [role="button"], [role="tab"]):active, .mobile-nav :active svg, .app-tile:active .app-icon, .more-tile:active,
-  .card-link:hover, .stat-button:hover, .thumb:hover img, .back-link:hover svg, .nav-link:hover .nav-create-dot, .create-trigger[aria-expanded="true"] .nav-create-dot,
+  .card-link:hover, .stat-button:hover, .thumb:hover img, .back-link:hover svg, .crumb:hover > svg,
   .hub-actions button:hover { transform: none !important; }
+  /* Create's x and the current page's pill change at once; a count doesn't pop. */
+  .nav-create-dot, .nav-create-dot svg, .nav-pill[data-moving] { transition: none; }
+  @keyframes count-pop { to { transform: none; } }
   .switch::after { transition-duration: 1ms; }
   /* The sheets fade in and out where they are. */
   .more-sheet, .more-sheet[open], .topbar .help-panel, .topbar .notif-panel { transform: none !important; }

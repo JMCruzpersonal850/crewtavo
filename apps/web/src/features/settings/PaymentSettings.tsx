@@ -279,7 +279,7 @@ function Check({ ok, title, children }: { ok: boolean | null; title: string; chi
   return (
     <li className={p.check}>
       <span className={p.checkMark} data-state={ok ? "done" : ok === false ? "todo" : "info"}>
-        <Icon name={ok ? "check" : ok === false ? "x" : "info"} size={14} strokeWidth={2} label={ok ? "Done" : ok === false ? "Not yet" : "In Stripe"} />
+        <Icon name={ok ? "check" : ok === false ? "x" : "info"} size={14} bold label={ok ? "Done" : ok === false ? "Not yet" : "In Stripe"} />
       </span>
       <span className={p.rowText}>
         {title}

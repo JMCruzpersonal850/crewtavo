@@ -36,15 +36,14 @@ export function PageHeader({ title, actions, lede, children, documentTitle }: { 
 }
 
 /**
- * The way back to the list a record is in: quiet words with a chevron, over the title. On a phone, a
- * round back button whose name is still the list's ("Clients"). DetailHeader's crumb is this.
+ * The way back to the list a record is in: quiet words after a chevron pointing back, over the title.
+ * On a phone, a round back button whose name is still the list's ("Clients"). DetailHeader's crumb is this.
  */
 export function Crumb({ to, children, state, className }: { to: string; children: ReactNode; state?: unknown; className?: string }) {
   return (
     <Link to={to} state={state} className={className ? `crumb no-print ${className}` : "crumb no-print"}>
       <Icon name="chevronLeft" size={20} />
       <span className="crumb-text">{children}</span>
-      <Icon name="chevronRight" size={14} />
     </Link>
   );
 }

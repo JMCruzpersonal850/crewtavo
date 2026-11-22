@@ -456,7 +456,7 @@ export function SchedulePage() {
       <span className="tg-stop"><span aria-hidden="true">{v.route_order}</span><span className="sr-only">{t("Stop {number}", { number: v.route_order })} </span></span>
     ) : null;
   /** Done: a green check at the end of its first row, its words quieter. On the way or started: a blue dot. */
-  const doneMark = (v: Visit) => v.status === "completed" && <span className="tg-done" title={statusText("visit", "completed")}><Icon name="check" size={12} strokeWidth={2.25} /><span className="sr-only">{statusText("visit", "completed")}</span></span>;
+  const doneMark = (v: Visit) => v.status === "completed" && <span className="tg-done" title={statusText("visit", "completed")}><Icon name="check" size={12} bold /><span className="sr-only">{statusText("visit", "completed")}</span></span>;
   const liveMark = (v: Visit) => (v.status === "in_progress" || v.status === "en_route") && <span className="tg-live" title={statusText("visit", v.status)}><span className="sr-only">{statusText("visit", v.status)} </span></span>;
 
   /**
@@ -468,7 +468,7 @@ export function SchedulePage() {
     const who = v.job?.client?.display_name ?? v.property?.line1 ?? v.address;
     const day = v.series_total && v.series_total > 1 ? ` · ${t("Day {day} of {days}", { day: v.series_day, days: v.series_total })}` : "";
     const changed = changes.has(v.id);
-    const asked = changed && <span className="tg-ask" title={t("Change requested")}><Icon name="refresh" size={11} strokeWidth={2.25} /><span className="sr-only">{t("Change requested:")} </span></span>;
+    const asked = changed && <span className="tg-ask" title={t("Change requested")}><Icon name="refresh" size={11} bold /><span className="sr-only">{t("Change requested:")} </span></span>;
     if (height === undefined) return <span className="tg-line">{stopOf(v)}{liveMark(v)}<span className="tg-n" style={{ WebkitLineClamp: 1 }}>{asked}{v.title}{day}</span>{doneMark(v)}{faces(v)}</span>;
     // A change requested takes the weather hold's row: it's what to see to first.
     const fit = fitBlock(height, { time: Boolean(v.starts_at), people: v.assignees.length > 0, hold: Boolean(v.hold_reason) || changed, client: Boolean(who) });
@@ -488,7 +488,7 @@ export function SchedulePage() {
         {fit.people === "inline" ? <span className="tg-line">{title}{!time && doneMark(v)}{faces(v)}</span> : title}
         {fit.client && <span className="tg-m">{who}</span>}
         {fit.people === "row" && <span className="tg-line tg-who">{faces(v)}<span className="tg-m" aria-hidden="true">{firstNames(v)}</span></span>}
-        {fit.hold && (changed ? <span className="tg-w"><Icon name="refresh" size={12} strokeWidth={2.25} />{t("Change requested")}</span> : <span className="tg-w" title={v.hold_reason ?? undefined}><Icon name="cloud" size={12} strokeWidth={2.25} />{v.hold_reason?.split(";")[0]}</span>)}
+        {fit.hold && (changed ? <span className="tg-w"><Icon name="refresh" size={12} bold />{t("Change requested")}</span> : <span className="tg-w" title={v.hold_reason ?? undefined}><Icon name="cloud" size={12} bold />{v.hold_reason?.split(";")[0]}</span>)}
         {!fit.people && v.assignees.length > 0 && <span className="sr-only">{t("With {names}", { names: namesOn(v).replace(/^You\b/, "you") })}</span>}
         {!time && fit.people !== "inline" && v.status === "completed" && <span className="sr-only">{statusText("visit", "completed")}</span>}
       </>

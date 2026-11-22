@@ -111,7 +111,7 @@ export function VisitFrame({ title, subtitle, back, me = true, pageTitle, brand,
             <ol className={styles.steps} aria-label={`Step ${step} of ${STEPS.length}`}>
               {STEPS.map((label, i) => (
                 <li key={label} className={styles.stepItem} data-state={i + 1 < step ? "done" : i + 1 === step ? "on" : undefined} aria-current={i + 1 === step ? "step" : undefined}>
-                  <span className={styles.stepNumber} aria-hidden="true">{i + 1 < step ? <Icon name="check" size={13} strokeWidth={3} /> : i + 1}</span>
+                  <span className={styles.stepNumber} aria-hidden="true">{i + 1 < step ? <Icon name="check" size={13} bold /> : i + 1}</span>
                   {label}
                 </li>
               ))}

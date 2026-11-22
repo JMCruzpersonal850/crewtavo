@@ -6,7 +6,6 @@
  */
 import type { TradePreset } from "@crewtavo/core/presets";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Bug, Droplet, Sprout, TreePine, Waves, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { initials } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -74,15 +73,12 @@ const currencyLabel = (code: string) => {
 };
 
 /** A trade's own picture, on its tile. */
-const TRADE_ICONS: Record<string, IconName | LucideIcon> = {
-  general: "apps", cleaning: "sparkle", electrical: "bolt", handyman: "wrench", hvac: "thermometer", landscaping: TreePine,
-  lawn_exterior: Sprout, paving: "paving", pest_control: Bug, plumbing: Droplet, pool_service: Waves, roofing_exteriors: "roofing",
+const TRADE_ICONS: Record<string, IconName> = {
+  general: "apps", cleaning: "sparkle", electrical: "bolt", handyman: "wrench", hvac: "thermometer", landscaping: "tree",
+  lawn_exterior: "plant", paving: "paving", pest_control: "bug", plumbing: "drop", pool_service: "waves", roofing_exteriors: "roofing",
 };
 function TradeIcon({ id }: { id: string }) {
-  const glyph = TRADE_ICONS[id] ?? "apps";
-  if (typeof glyph === "string") return <Icon name={glyph} size={18} />;
-  const Glyph = glyph;
-  return <Glyph size={20} strokeWidth={1.75} absoluteStrokeWidth aria-hidden="true" />;
+  return <Icon name={TRADE_ICONS[id] ?? "apps"} size={18} />;
 }
 
 /** "Weekly mow, Bi-weekly mow, Fertilizer application and 14 more": names as the business will see them. */
@@ -209,7 +205,7 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
             const state = i < built ? "done" : i === built ? "doing" : "waiting";
             return (
               <li key={part.done} data-state={state}>
-                <span className={styles.buildMark} aria-hidden="true">{state === "done" && <Icon name="check" size={14} strokeWidth={2.5} />}</span>
+                <span className={styles.buildMark} aria-hidden="true">{state === "done" && <Icon name="check" size={14} bold />}</span>
                 {state === "done" ? part.done : part.doing}
               </li>
             );

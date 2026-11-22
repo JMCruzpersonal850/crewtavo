@@ -324,7 +324,7 @@ export function FlowProgress<Id extends string>({ steps, step }: { steps: Readon
         return (
           <li key={s.id} data-state={done ? "done" : s.id === step ? "current" : "todo"}>
             <a href={`#${s.id}`} aria-current={s.id === step ? "step" : undefined} onClick={(e) => { e.preventDefault(); scrollToStep(s.id); }}>
-              <span className="paving-progress-dot" data-done={done || undefined}>{done ? <Icon name="check" size={12} strokeWidth={2.5} /> : i + 1}</span>
+              <span className="paving-progress-dot" data-done={done || undefined}>{done ? <Icon name="check" size={12} bold /> : i + 1}</span>
               <span className="paving-progress-label">{s.label}{done && <span className="sr-only"> (done)</span>}</span>
             </a>
             {i < steps.length - 1 && <span className="paving-progress-chevron" aria-hidden="true"><Icon name="chevronRight" size={14} /></span>}
@@ -396,7 +396,7 @@ export function StepCard({ id, n, title, status, done, current, action, children
       className={cx("paving-step-card", current && !done && "is-current")}
       title={
         <span className="paving-step-title">
-          <span className="paving-progress-dot" data-done={done || undefined} data-current={(current && !done) || undefined} aria-hidden="true">{done ? <Icon name="check" size={12} strokeWidth={2.5} /> : n}</span>
+          <span className="paving-progress-dot" data-done={done || undefined} data-current={(current && !done) || undefined} aria-hidden="true">{done ? <Icon name="check" size={12} bold /> : n}</span>
           {title}
         </span>
       }

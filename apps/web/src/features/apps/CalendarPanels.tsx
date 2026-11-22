@@ -205,7 +205,7 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (col
     <div className="color-swatches" role="radiogroup" aria-label="Color">
       {COLORS.map((c) => (
         <button key={c} type="button" role="radio" aria-checked={value === c} aria-label={COLOR_NAMES[c] ?? c} title={COLOR_NAMES[c]} className="color-swatch" style={{ "--c": c } as CSSProperties} onClick={() => onChange(c)}>
-          {value === c && <Icon name="check" size={12} strokeWidth={2.5} />}
+          {value === c && <Icon name="check" size={12} bold />}
         </button>
       ))}
     </div>

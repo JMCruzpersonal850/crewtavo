@@ -22,7 +22,6 @@ import { Dialog } from "@/components/ui/Dialog";
 import { DetailColumns } from "@/components/ui/DetailPage";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
-import { InboxGroup, InboxList, MetaLine } from "@/components/ui/InboxList";
 import { Menu, type MenuEntry } from "@/components/ui/Menu";
 import { BackLink, Crumb, useDocumentTitle } from "@/components/ui/PageHeader";
 import { Fact, Facts, Section } from "@/components/ui/Section";
@@ -40,7 +39,7 @@ import { CalendarFeedCard } from "../settings/CalendarFeedCard";
 import { AbcSupplyPanel } from "./AbcSupplyPanel";
 import { AiServiceChoice, OpenAiModelCard } from "./AiPanels";
 import { AnalyticsPanel, useAnalyticsSwitch } from "./AnalyticsPanel";
-import { AppIcon, AppListRow, shortName } from "./AppIcon";
+import { AppCard, AppIcon, shortName } from "./AppIcon";
 import { AppKeysCard } from "./AppKeysCard";
 import { ChatGptPlanCard, TeamPlansSwitch, useChatGptPlan } from "./ChatGptPlan";
 import { CalendarList, GoogleCalendarPanel, LinkCalendarsPanel, AddCalendarForm, useCalendars, type CalendarSource } from "./CalendarPanels";
@@ -53,7 +52,7 @@ import { LobPanel } from "./LobPanel";
 import { MarketingPanel } from "./MarketingPanel";
 import { MetaPanel } from "./MetaPanel";
 import { Fold, Step, Steps, kit } from "./PanelKit";
-import { SCREENSHOTS } from "./screenshots";
+import { SCREENSHOTS, type Screenshot } from "./screenshots";
 import { StripePanel } from "./StripePanel";
 import { TeamChatPanel, useTeamChatSwitch } from "./TeamChatPanel";
 import { TwilioPanel } from "./TwilioPanel";
@@ -342,7 +341,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
 
       <header className="page-header app-head">
         <div className="app-head-crumb"><Crumb to="/apps">Apps</Crumb></div>
-        <AppIcon id={app.id} name={app.name} size="lg" />
+        <AppIcon id={app.id} name={app.name} size="xl" />
         <h1 className="page-title">{name}</h1>
         {(actions || showMore) && (
           <div className="page-actions">
@@ -351,16 +350,17 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
           </div>
         )}
         <p className="page-lede">{info.tagline}</p>
-        <MetaLine
-          className="detail-meta app-head-meta"
-          parts={[
-            !phase && <StatusPill label={status.label} tone={status.tone} />,
-            installed && ((app.id === "stripe" && !app.stripe?.own) || (app.id === "twilio" && !app.twilio?.own)) && "Set up for this server",
-            `Made by ${info.developer}`,
-            app.category !== "Team" && categoryName(app.category),
-          ]}
-        />
+        {/* The App Store's row of facts under the name: each a quiet label over its value, between hairlines. */}
+        <dl className="app-stats">
+          {!phase && <div><dt>Status</dt><dd><StatusPill label={status.label} tone={status.tone} /></dd></div>}
+          <div><dt>Made by</dt><dd>{info.developer}</dd></div>
+          {app.category !== "Team" && <div><dt>Category</dt><dd>{categoryName(app.category)}</dd></div>}
+          {installed && ((app.id === "stripe" && !app.stripe?.own) || (app.id === "twilio" && !app.twilio?.own)) && <div><dt>Account</dt><dd>Set up for this server</dd></div>}
+        </dl>
       </header>
+
+      {/* Not installed yet: what it looks like comes first, as an app store shows it. */}
+      {!installed && shots.length > 0 && <Screenshots shots={shots} />}
 
       {info.beta && (
         <div className="callout callout-info" role="note">
@@ -422,13 +422,6 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
                 <Fact label="Help"><a href={app.docs} target="_blank" rel="noreferrer">Setup guide <Icon name="external" size={12} /></a></Fact>
               </Facts>
             </Section>
-            {others.length > 0 && (
-              <Section title={MORE_LABELS[app.category] ?? "More apps"} count={others.length} flush>
-                <InboxList label={MORE_LABELS[app.category] ?? "More apps"} className="app-list" inset>
-                  <InboxGroup>{others.map((a) => <AppListRow key={a.id} app={a} installed={isInstalled(a)} />)}</InboxGroup>
-                </InboxList>
-              </Section>
-            )}
           </>
         }
       >
@@ -511,16 +504,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
           </div>
         )}
 
-        {shots.length > 0 && (
-          <section aria-label="Screenshots" className="app-shots">
-            {shots.map((shot) => (
-              <figure key={shot.light}>
-                <img className="app-shot-light" src={shot.light} alt={shot.alt} loading="lazy" />
-                <img className="app-shot-dark" src={shot.dark} alt={shot.alt} loading="lazy" />
-              </figure>
-            ))}
-          </section>
-        )}
+        {installed && shots.length > 0 && <Screenshots shots={shots} />}
 
         {/* ---- What it does ---- */}
         {info.highlights.length > 0 && (
@@ -541,7 +525,34 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
           <p className="app-about">{info.about}</p>
         </Section>
       </DetailColumns>
+
+      {/* "You might also like": the rest of its category, as the directory's cards. */}
+      {others.length > 0 && (
+        <section className="app-shelf app-more" aria-labelledby="app-more-title">
+          <div className="app-shelf-head">
+            <h2 id="app-more-title">{MORE_LABELS[app.category] ?? "More apps"}</h2>
+            <Link className="link-btn" to={`/apps?cat=${encodeURIComponent(app.category)}`}>See all</Link>
+          </div>
+          <ul className="app-grid">{others.slice(0, 6).map((a) => <li key={a.id}><AppCard app={a} installed={isInstalled(a)} /></li>)}</ul>
+        </section>
+      )}
     </>
+  );
+}
+
+/** Screenshots, side by side like an app store's, in the app's light and dark looks, scrolling sideways when there are more. */
+function Screenshots({ shots }: { shots: Screenshot[] }) {
+  return (
+    <section aria-label="Screenshots" className="app-shots">
+      {shots.map((shot) => (
+        <figure key={shot.light}>
+          {/* The caption says what each shows, for everyone, so the pictures themselves are left unnamed. */}
+          <img className="app-shot-light" src={shot.light} alt="" loading="lazy" />
+          <img className="app-shot-dark" src={shot.dark} alt="" loading="lazy" />
+          <figcaption>{shot.alt}</figcaption>
+        </figure>
+      ))}
+    </section>
   );
 }
 

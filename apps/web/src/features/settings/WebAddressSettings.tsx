@@ -209,7 +209,7 @@ export function AddressSteps({ overview, returnTo, choosing, onChoosing, checkin
           const state = i === current ? "current" : done[i] ? "done" : "todo";
           return (
             <li key={step.title} data-state={state} aria-current={state === "current" ? "step" : undefined}>
-              <span className={styles.dot} aria-hidden="true">{state === "done" ? <Icon name="check" size={14} strokeWidth={2} /> : i + 1}</span>
+              <span className={styles.dot} aria-hidden="true">{state === "done" ? <Icon name="check" size={14} bold /> : i + 1}</span>
               <div className="stack-sm" style={{ gap: 2, minWidth: 0 }}>
                 <strong className={styles.stepTitle}>{step.title}{state === "done" && <span className="sr-only">: done</span>}</strong>
                 {state === "current" ? <div className={styles.stepNow}>{now(i)}</div> : <span className={styles.stepAhead}>{state === "done" ? summaries[i] : step.ahead}</span>}
@@ -672,7 +672,7 @@ function Progress({ overview, change }: { overview: AddressOverview; change: Add
         const state = item.done ? "done" : item.failed ? "failed" : i === current ? "current" : "todo";
         return (
           <li key={item.label} data-state={state}>
-            <span className={styles.mark} aria-hidden="true">{item.done ? <Icon name="check" size={14} strokeWidth={2} /> : item.failed ? <Icon name="x" size={14} strokeWidth={2} /> : null}</span>
+            <span className={styles.mark} aria-hidden="true">{item.done ? <Icon name="check" size={14} bold /> : item.failed ? <Icon name="x" size={14} bold /> : null}</span>
             {item.label}
             <span className="sr-only">{item.done ? ": done" : item.failed ? ": failed" : ": not yet"}</span>
           </li>
@@ -1042,7 +1042,7 @@ export function Done({ overview, change, onChange }: { overview: AddressOverview
   return (
     <>
       <section className={styles.state}>
-        <span className={styles.stateIcon} data-tone="good"><Icon name="check" size={16} strokeWidth={2.5} /></span>
+        <span className={styles.stateIcon} data-tone="good"><Icon name="check" size={16} bold /></span>
         <div className={styles.body}>
           <h3 className={styles.title}>Crewtavo is now at <a href={url}>{url}</a></h3>
           <div className={styles.actions}>

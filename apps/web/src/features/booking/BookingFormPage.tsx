@@ -505,7 +505,7 @@ export function QuestionField({ q, value, invalid, onChange }: { q: Question; va
               const on = q.type === "multi_choice" ? list.includes(o) : value === o;
               return (
                 <button key={o} type="button" className={k.choice} aria-pressed={on} onClick={() => onChange(q.type === "multi_choice" ? (on ? list.filter((x) => x !== o) : [...list, o]) : o)}>
-                  {on && <Icon name="check" size={16} strokeWidth={2.5} />}{o}
+                  {on && <Icon name="check" size={16} bold />}{o}
                 </button>
               );
             })}

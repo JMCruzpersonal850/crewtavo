@@ -17,7 +17,6 @@
  */
 import { videoFromPaste } from "@crewtavo/core/video";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
-import { CircleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { isAppPath, sanitizeContractHtml, sanitizeHtml } from "@/lib/html";
 import { markdownPaste } from "@/lib/markdownPaste";
@@ -68,7 +67,7 @@ const PAGE_SCROLL_MARGIN = { top: 184, right: 0, bottom: 48, left: 0 };
 function CalloutIcon({ tone }: { tone: CalloutTone }) {
   return (
     <span className="rte-tone" data-tone={tone}>
-      {tone === "important" ? <CircleAlert size={16} strokeWidth={1.75} absoluteStrokeWidth aria-hidden="true" /> : <Icon name={tone === "warning" ? "alert" : "info"} size={16} />}
+      <Icon name={tone === "important" ? "alertCircle" : tone === "warning" ? "alert" : "info"} size={16} />
     </span>
   );
 }
@@ -421,7 +420,7 @@ export function RichTextEditor({
 
   const tool = (icon: IconName, title: string, onClick: () => void, pressed?: boolean, disabled?: boolean, className?: string) => (
     <button type="button" className={className ? `rte-btn ${className}` : "rte-btn"} title={title} aria-label={title} aria-pressed={pressed} disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
-      <Icon name={icon} size={16} strokeWidth={pressed ? 2 : undefined} />
+      <Icon name={icon} size={16} bold={pressed} />
     </button>
   );
   // A guide's headings sit under its title (h2, h3); a contract section's under the section's own title (h3, h4).

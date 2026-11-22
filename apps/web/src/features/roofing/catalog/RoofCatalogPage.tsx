@@ -295,7 +295,7 @@ function Card({ item, eyebrow, price, unit, note, used, icon, onOpen }: {
         ) : (
           <span className={styles.noPrice}>{note ?? "No price"}</span>
         )}
-        {used && <span className={styles.used}><Icon name="check" size={12} strokeWidth={2.5} />In your price list</span>}
+        {used && <span className={styles.used}><Icon name="check" size={12} bold />In your price list</span>}
       </span>
     </button>
   );

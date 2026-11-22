@@ -65,7 +65,7 @@ export function ShareToggle({ photo, clientOptOut = false, onShown }: { photo: S
       title={photo.shareable ? "OK to share: the office can post it" : "Mark OK to share"}
       onClick={() => toggle.mutate({ attachmentId: photo.id, shareable: !photo.shareable, companyId: session.company.id })}
     >
-      <span className="thumb-share-badge">{photo.shareable ? <Icon name="check" size={12} strokeWidth={3} /> : <Icon name="share" size={11} />}</span>
+      <span className="thumb-share-badge">{photo.shareable ? <Icon name="check" size={12} bold /> : <Icon name="share" size={11} />}</span>
     </button>
   );
 }

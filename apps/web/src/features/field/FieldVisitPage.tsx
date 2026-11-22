@@ -947,7 +947,7 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
         {photos.photos.map((p) => (
           <div key={p.id} className="thumb">
             {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.caption ?? p.file_name} loading="lazy" /></a> : <span className="muted small">{t("Unavailable")}</span>}
-            {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={() => photos.remove(p)}><Icon name="x" size={12} strokeWidth={2} /></button>}
+            {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={() => photos.remove(p)}><Icon name="x" size={12} bold /></button>}
             <ShareToggle photo={p} clientOptOut={clientOptOut} onShown={(shareable) => photos.showShareable(p.id, shareable)} />
             {/* Drawn on: shown with the drawing, the photo as taken a tap away. */}
             {p.marked_path && <OriginalLink url={p.originalUrl} label={p.caption ?? p.file_name} />}
@@ -980,7 +980,7 @@ function WaitingPhoto({ photo, onRemove }: { photo: PhonePhoto; onRemove: () => 
   return (
     <div className="thumb">
       {url && <img src={url} alt={photo.fileName} />}
-      {!photo.sending && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={onRemove}><Icon name="x" size={12} strokeWidth={2} /></button>}
+      {!photo.sending && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={onRemove}><Icon name="x" size={12} bold /></button>}
       <span className="thumb-note">{photo.problem ? t("Didn't upload") : photo.sending ? t("Uploading…") : photo.kept ? t("Waiting to send") : t("Not saved")}</span>
     </div>
   );

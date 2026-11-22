@@ -244,13 +244,13 @@ function ServicesPicker({ value, services, onChange, work, calculator, onWork }:
           {chosen.map((s) => (
             <span key={s.id} className="tag">
               {s.name}
-              <button type="button" aria-label={`Remove ${s.name}`} onClick={() => onChange(value.filter((id) => id !== s.id))}><Icon name="x" size={12} strokeWidth={2} /></button>
+              <button type="button" aria-label={`Remove ${s.name}`} onClick={() => onChange(value.filter((id) => id !== s.id))}><Icon name="x" size={12} bold /></button>
             </span>
           ))}
           {work.map((w) => (
             <span key={w} className="tag">
               {pavingWorkLabel(w)}
-              <button type="button" aria-label={`Remove ${pavingWorkLabel(w)}`} onClick={() => onWork(work.filter((x) => x !== w))}><Icon name="x" size={12} strokeWidth={2} /></button>
+              <button type="button" aria-label={`Remove ${pavingWorkLabel(w)}`} onClick={() => onWork(work.filter((x) => x !== w))}><Icon name="x" size={12} bold /></button>
             </span>
           ))}
         </div>

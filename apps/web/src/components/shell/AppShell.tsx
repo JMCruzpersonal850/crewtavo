@@ -1,6 +1,6 @@
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useNavigation, useViewTransitionState } from "react-router-dom";
 import { supabase } from "@/lib/api";
 import { logoUrl } from "@/lib/files";
@@ -195,6 +195,18 @@ export function AppShell() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // The raised pill behind the current page slides to the next one; the first placing doesn't move.
+  const navRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const pill = navRef.current?.querySelector<HTMLElement>(".nav-pill");
+    const link = navRef.current?.querySelector<HTMLElement>(".nav-link.active");
+    if (!pill) return;
+    if (!link) return void pill.removeAttribute("data-placed");
+    pill.toggleAttribute("data-moving", pill.hasAttribute("data-placed"));
+    pill.style.transform = `translateY(${link.offsetTop}px)`;
+    pill.setAttribute("data-placed", "");
+  });
+
   // New screen: start at the top and close the phone menu.
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -202,14 +214,15 @@ export function AppShell() {
   }, [location.pathname]);
 
   /**
-   * The count beside a link: a quiet number, red only where someone's waiting on you (a mention, an
-   * invoice past due). Team chat with something unread and no mention has a small dot.
+   * The count beside a link: a quiet number; new requests in a request-amber pill; a red pill only
+   * where someone's waiting on you (a mention, an invoice past due). Team chat with something unread
+   * and no mention has a small dot. Keyed on the number, so a count pops once when it changes.
    */
   const badge = (item: NavItem) => {
-    if (item.to === "/field/jobs" && offers) return <span className="nav-count" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>;
-    if (item.to === "/requests" && counts.data?.requests) return <span className="nav-count">{counts.data.requests}</span>;
-    if (item.to === "/invoices" && counts.data?.overdue) return <span className="nav-count nav-count-alert" aria-label={t.plural(counts.data.overdue, { one: "{count} past due", other: "{count} past due" })}>{counts.data.overdue}</span>;
-    if (item.to === "/chat" && chat.mentions) return <span className="nav-count nav-count-alert" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span>;
+    if (item.to === "/field/jobs" && offers) return <span key={offers} className="nav-count" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>;
+    if (item.to === "/requests" && counts.data?.requests) return <span key={counts.data.requests} className="nav-count nav-count-new">{counts.data.requests}</span>;
+    if (item.to === "/invoices" && counts.data?.overdue) return <span key={counts.data.overdue} className="nav-count nav-count-alert" aria-label={t.plural(counts.data.overdue, { one: "{count} past due", other: "{count} past due" })}>{counts.data.overdue}</span>;
+    if (item.to === "/chat" && chat.mentions) return <span key={chat.mentions} className="nav-count nav-count-alert" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span>;
     if (item.to === "/chat" && chat.unread) return <span className="nav-dot" role="img" aria-label={t("New messages")} />;
     return null;
   };
@@ -262,18 +275,23 @@ export function AppShell() {
 
       <aside className="sidebar" aria-label={t("Primary")} lang={shellLang}>
         <Link to={sub ? "/field" : "/"} className="brand" aria-label={t("Crewtavo home")} viewTransition>
-          <BrandLockup size={22} />
+          <BrandLockup size={30} />
         </Link>
         <CreateMenu />
-        <nav className="nav nav-scroll">
+        <nav className="nav nav-scroll" ref={navRef}>
+          <span className="nav-pill" aria-hidden="true" />
           {groups.map((group, i) => (
             <div key={i} className="nav" role={group.label ? "group" : undefined} aria-labelledby={group.label ? `nav-group-${i}` : undefined}>
               {group.label ? <span className="nav-label" id={`nav-group-${i}`}>{t(group.label)}</span> : i > 0 && <span className="nav-divider" />}
               {group.items.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navClass(item)} aria-current={current(item)} viewTransition>
-                  <Icon name={item.icon} size={16} />
-                  <span className="nav-text">{t(item.label)}</span>
-                  {badge(item)}
+                  {({ isActive }) => (
+                    <>
+                      <Icon name={item.icon} size={18} filled={active(item, isActive)} />
+                      <span className="nav-text">{t(item.label)}</span>
+                      {badge(item)}
+                    </>
+                  )}
                 </NavLink>
               ))}
             </div>
@@ -282,8 +300,12 @@ export function AppShell() {
         <nav className="nav nav-bottom" aria-label={t("Settings")}>
           {[...foot, settings].map((item) => (
             <NavLink key={item.to} to={item.to} className={navClass(item)} viewTransition>
-              <Icon name={item.icon} size={16} />
-              <span className="nav-text">{t(item.label)}</span>
+              {({ isActive }) => (
+                <>
+                  <Icon name={item.icon} size={18} filled={active(item, isActive)} />
+                  <span className="nav-text">{t(item.label)}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -303,14 +325,14 @@ export function AppShell() {
               <span className="business-name">{session.company.name}</span>
             )}
           </div>
+          <span className="topbar-gap" />
           {!sub && (
             <button type="button" className="search" onClick={openPalette} aria-label={t("Search (⌘K)")}>
-              <Icon name="search" size={14} />
+              <Icon name="search" size={16} />
               <span>{t("Search")}</span>
               <kbd className="kbd">{navigator.platform.toLowerCase().includes("mac") ? "⌘K" : t("Ctrl K")}</kbd>
             </button>
           )}
-          <span className="topbar-gap" />
           {!sub && (
             <>
               <button type="button" className="icon-btn mobile-only" onClick={openPalette} aria-label={t("Search")}><Icon name="search" size={20} /></button>
@@ -334,12 +356,16 @@ export function AppShell() {
       <nav className="mobile-nav" aria-label={t("Primary")} lang={shellLang} data-typing={typing || undefined} style={{ gridTemplateColumns: `repeat(${tabs.length + (sub ? 0 : 1)}, minmax(0, 1fr))` }}>
         {tabs.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => (active(item, isActive) ? "active" : "")} aria-current={current(item)} viewTransition>
-            <span className="mobile-tab-icon">
-              <Icon name={item.icon} size={24} />
-              {item.to === "/field/jobs" && offers > 0 && <span className="tab-count tab-count-green" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
-              {item.to === "/chat" && (chat.mentions ? <span className="tab-count" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span> : chat.unread ? <span className="tab-dot" role="img" aria-label={t("New messages")} /> : null)}
-            </span>
-            {t(item.label)}
+            {({ isActive }) => (
+              <>
+                <span className="mobile-tab-icon">
+                  <Icon name={item.icon} size={24} filled={active(item, isActive)} />
+                  {item.to === "/field/jobs" && offers > 0 && <span className="tab-count tab-count-green" aria-label={t.plural(offers, { one: "{count} waiting for your answer", other: "{count} waiting for your answer" })}>{offers}</span>}
+                  {item.to === "/chat" && (chat.mentions ? <span className="tab-count" aria-label={t.plural(chat.mentions, { one: "{count} mention", other: "{count} mentions" })}>{chat.mentions}</span> : chat.unread ? <span className="tab-dot" role="img" aria-label={t("New messages")} /> : null)}
+                </span>
+                {t(item.label)}
+              </>
+            )}
           </NavLink>
         ))}
         {!sub && (
@@ -406,7 +432,7 @@ function CreateMenu() {
       triggerClassName="nav-link create-trigger"
       trigger={
         <>
-          <span className="nav-create-dot"><Icon name="plus" size={12} strokeWidth={2.25} /></span>
+          <span className="nav-create-dot"><Icon name="plus" size={12} bold /></span>
           <span className="nav-text">{t("Create")}</span>
         </>
       }
@@ -492,12 +518,16 @@ function MoreSheet({
           {group.label && <h2 className="more-label" id={`more-group-${i}`}>{t(group.label)}</h2>}
           {group.items.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.to === "/"} className={({ isActive }) => `more-item${isCurrent(item, isActive) ? " active" : ""}`} onClick={onClose} viewTransition>
-              <Icon name={item.icon} size={22} />
-              <span className="more-text">{t(item.label)}</span>
-              <span className="more-end">
-                {badge(item)}
-                <Icon name="chevronRight" size={17} />
-              </span>
+              {({ isActive }) => (
+                <>
+                  <Icon name={item.icon} size={22} filled={isCurrent(item, isActive)} />
+                  <span className="more-text">{t(item.label)}</span>
+                  <span className="more-end">
+                    {badge(item)}
+                    <Icon name="chevronRight" size={17} />
+                  </span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>
@@ -505,9 +535,13 @@ function MoreSheet({
       <div className="more-group more-foot" role="group" aria-label={t("Settings")}>
         {foot.map((item) => (
           <NavLink key={item.to} to={item.to} className={({ isActive }) => `more-item${isCurrent(item, isActive) ? " active" : ""}`} onClick={onClose} viewTransition>
-            <Icon name={item.icon} size={22} />
-            <span className="more-text">{t(item.label)}</span>
-            <span className="more-end"><Icon name="chevronRight" size={17} /></span>
+            {({ isActive }) => (
+              <>
+                <Icon name={item.icon} size={22} filled={isCurrent(item, isActive)} />
+                <span className="more-text">{t(item.label)}</span>
+                <span className="more-end"><Icon name="chevronRight" size={17} /></span>
+              </>
+            )}
           </NavLink>
         ))}
         <button

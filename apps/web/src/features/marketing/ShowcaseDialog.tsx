@@ -207,7 +207,7 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
                       <div className="thumb">
                         {p.url ? <img src={(pick && !pick.use_marked ? p.originalUrl : p.url) ?? ""} alt="" loading="lazy" /> : <Skeleton height={130} radius={8} />}
                         <button type="button" className="thumb-pick" aria-pressed={Boolean(pick)} disabled={published || blocked || (!pick && picks.length >= MAX_SHOWCASE_PHOTOS)} aria-label={`Photo from ${formatDate(p.visit_on ?? p.created_at)}`} onClick={() => toggle(p)}>
-                          <span className="thumb-pick-badge"><Icon name="check" size={13} strokeWidth={3} /></span>
+                          <span className="thumb-pick-badge"><Icon name="check" size={13} bold /></span>
                         </button>
                       </div>
                       {pick ? (

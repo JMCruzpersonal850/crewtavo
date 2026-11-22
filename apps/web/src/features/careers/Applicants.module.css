@@ -2,7 +2,6 @@
 .stars button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-3); cursor: pointer; }
 .stars button:hover { background: var(--fill); color: var(--warning); }
 .stars .on { color: var(--warning); }
-.stars .on svg { fill: currentColor; }
 
 /* The list (Page-Applicants.dc.html): an interview's time, blue like a booked assessment. */
 .interview { color: var(--info); font-weight: 500; }

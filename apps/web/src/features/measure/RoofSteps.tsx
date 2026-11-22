@@ -107,5 +107,5 @@ export function RoofSteps({
 }
 
 function Dot({ n, done, current }: { n: number; done: boolean; current: boolean }) {
-  return <span className="roof-step-dot" data-done={done || undefined} data-current={(current && !done) || undefined} aria-hidden="true">{done ? <Icon name="check" size={12} strokeWidth={2.5} /> : n}</span>;
+  return <span className="roof-step-dot" data-done={done || undefined} data-current={(current && !done) || undefined} aria-hidden="true">{done ? <Icon name="check" size={12} bold /> : n}</span>;
 }

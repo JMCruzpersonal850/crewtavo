@@ -374,7 +374,7 @@ function HubSkeleton() {
 function Done({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="hub-card hub-done">
-      <span className="hub-done-mark"><Icon name="check" size={30} strokeWidth={2.5} /></span>
+      <span className="hub-done-mark"><Icon name="check" size={30} bold /></span>
       <h2>{title}</h2>
       {children && <p>{children}</p>}
       {action && <div className="hub-done-actions no-print">{action}</div>}
@@ -446,7 +446,7 @@ function OptionCard({ option, price, picked, onPick, words, disabled = false }: 
         {option.highlights.length > 0 && (
           <ul className={styles.highlights}>
             {option.highlights.map((h, i) => (
-              <li key={i}><Icon name="check" size={16} strokeWidth={2.25} /><span>{h}</span></li>
+              <li key={i}><Icon name="check" size={16} bold /><span>{h}</span></li>
             ))}
           </ul>
         )}
@@ -636,7 +636,7 @@ function RangeHub({ token, data, onChanged, onAsk, onPrint, children }: { token:
                     <h2>{shown ? `What's included with ${shown.name}` : "What's included"}</h2>
                     <ul className={styles.checks}>
                       {range.included.map((item) => (
-                        <li key={item}><span className={styles.tick}><Icon name="check" size={14} strokeWidth={2.25} /></span><span>{item}</span></li>
+                        <li key={item}><span className={styles.tick}><Icon name="check" size={14} bold /></span><span>{item}</span></li>
                       ))}
                     </ul>
                     {notIn && <p className={styles.sub}>{notIn}</p>}
@@ -674,7 +674,7 @@ function RangeHub({ token, data, onChanged, onAsk, onPrint, children }: { token:
               <div className={cx(styles.card, styles.next, !accepted && "no-print")} data-done={accepted || undefined}>
                 {accepted ? (
                   <div ref={thanks} tabIndex={-1} className={styles.thanks}>
-                    <span className={styles.thanksMark}><Icon name="check" size={20} strokeWidth={2.5} /></span>
+                    <span className={styles.thanksMark}><Icon name="check" size={20} bold /></span>
                     <strong>{first ? `Thanks, ${first}. We'll call you soon.` : "Thanks. We'll call you soon."}</strong>
                     <p>{words.thanks}</p>
                     {!data.preview && <button type="button" className={cx(styles.noteBtn, "no-print")} onClick={onAsk}>Send {company.name} a note</button>}
@@ -773,23 +773,14 @@ function RoofMeasured({ token, roof, included, timeZone, today }: { token: strin
   );
 }
 
-/** A warranty's shield, drawn here (the app's icons have none). */
+/** A warranty's shield. */
 function Shield() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
+  return <Icon name="shieldCheck" size={14} />;
 }
 
-/** A shield (licensed) or a house (insured), each with a check. */
+/** A certificate (licensed) or a shield with a check (insured). */
 function BadgeIcon({ kind, size = 22 }: { kind: TrustBadge["kind"]; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {kind === "license" ? <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /> : <><path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" /></>}
-      <path d={kind === "license" ? "m9 12 2 2 4-4" : "m9 15 2 2 4-4"} />
-    </svg>
-  );
+  return <Icon name={kind === "license" ? "certificate" : "shieldCheck"} size={size} />;
 }
 
 /**
@@ -1108,7 +1099,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
                     <li key={s} aria-current={s === current ? "step" : undefined} data-done={i < at || undefined}>
                       {i < at ? (
                         <button type="button" onClick={() => goTo(s)}>
-                          <span className="hub-step-n"><Icon name="check" size={13} strokeWidth={2.5} /></span>
+                          <span className="hub-step-n"><Icon name="check" size={13} bold /></span>
                           {STEP_LABELS[s]}
                           <span className="sr-only"> (done, go back)</span>
                         </button>

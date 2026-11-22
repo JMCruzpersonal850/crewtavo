@@ -17,12 +17,16 @@
  */
 import type { ReactNode } from "react";
 import { cx } from "./Button";
+import { Icon, type IconName } from "./Icon";
 import { MetaLine } from "./InboxList";
 import { Menu, type MenuEntry } from "./Menu";
 import { Crumb, useDocumentTitle } from "./PageHeader";
 import { t } from "@/lib/i18n";
 
 export { Crumb };
+
+/** The four stages' lists: a record in one wears its stage's color and icon (components.css .detail-head[data-stage]). */
+const STAGES: Record<string, IconName> = { "/requests": "requests", "/quotes": "quote", "/jobs": "job", "/invoices": "invoice" };
 
 export function DetailHeader({ crumb, title, status, meta, actions, more, moreLabel, moreTitle, documentTitle, children }: {
   /** The list it belongs to. */
@@ -47,9 +51,10 @@ export function DetailHeader({ crumb, title, status, meta, actions, more, moreLa
   useDocumentTitle(documentTitle ?? (typeof title === "string" ? title : null));
   const metaParts = [status, ...(Array.isArray(meta) ? meta : [meta])];
   const hasMeta = metaParts.some((p) => p !== null && p !== undefined && p !== false && p !== "");
+  const stage = crumb ? STAGES[crumb.to.split(/[?#]/)[0]!] : undefined;
   return (
-    <div className="page-header detail-head">
-      {crumb && <div className="detail-crumb"><Crumb to={crumb.to} state={crumb.state}>{crumb.label}</Crumb></div>}
+    <div className="page-header detail-head" data-stage={stage}>
+      {crumb && <div className="detail-crumb"><Crumb to={crumb.to} state={crumb.state}>{stage && <Icon name={stage} size={16} />}{crumb.label}</Crumb></div>}
       {typeof title === "string" ? <h1 className="page-title">{title}</h1> : title}
       {(actions || more) && (
         <div className="page-actions">

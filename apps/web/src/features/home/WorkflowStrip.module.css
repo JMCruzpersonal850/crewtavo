@@ -3,24 +3,34 @@
  * word after each figure, and each column's rows under it (Page-Home.dc.html .flow). On a phone the
  * rows give way to one short note (Mobile-Work.dc.html).
  */
-.flow :global(.strip-item) { position: relative; padding-top: 14px; padding-bottom: 16px; }
-.flow :global(.strip-value) { display: flex; align-items: baseline; gap: 8px; }
-.flow :global(.strip-note) { align-self: stretch; }
-.unit { font-size: var(--fs-13); font-weight: 500; letter-spacing: 0; color: var(--text-3); white-space: nowrap; }
-.chevron { position: absolute; left: -10px; top: 15px; z-index: 1; display: grid; place-items: center; width: 20px; height: 20px; color: var(--quiet); }
-.rows { display: grid; gap: 4px; margin-top: 10px; }
+/* Each column's color comes from its stage's icon (base.css sets --stage on it). */
+.flow :global(.strip-item):has(:global([data-icon="requests"])) { --c: var(--req); --c-text: var(--req-text); --c-tint: var(--req-tint); }
+.flow :global(.strip-item):has(:global([data-icon="quote"])) { --c: var(--quote); --c-text: var(--quote-text); --c-tint: var(--quote-tint); }
+.flow :global(.strip-item):has(:global([data-icon="job"])) { --c: var(--job); --c-text: var(--job-text); --c-tint: var(--job-tint); }
+.flow :global(.strip-item):has(:global([data-icon="invoice"])) { --c: var(--invoice); --c-text: var(--invoice-text); --c-tint: var(--invoice-tint); }
+.flow :global(.strip-item) { position: relative; padding-top: 16px; padding-bottom: 18px; }
+.flow :global(.strip-label) { display: flex; align-items: center; gap: 8px; font-size: var(--fs-14); font-weight: 650; color: var(--c-text); }
+.flow :global(.strip-label) > svg { color: var(--c); }
+.flow :global(.strip-link):hover { background: color-mix(in srgb, var(--c-tint) 55%, transparent); }
+.flow :global(.strip-link):hover :global(.strip-label) { color: var(--c-text); }
+.flow :global(.strip-value) { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; font-size: var(--fs-30); letter-spacing: var(--tracking-display); }
+.flow :global(.strip-note) { align-self: stretch; font-size: var(--fs-13); }
+.unit { font-size: var(--fs-14); font-weight: 500; letter-spacing: 0; color: var(--text-3); white-space: nowrap; }
+.chevron { position: absolute; left: -11px; top: calc(50% - 11px); z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--page); box-shadow: 0 0 0 1px var(--divider); color: var(--quiet); }
+.rows { display: grid; gap: 6px; margin-top: 12px; }
 .row { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row > b { flex: none; font-weight: 600; color: var(--ink); white-space: nowrap; }
 .row[data-tone="warning"], .row[data-tone="warning"] > b { color: var(--warning); }
 .row[data-tone="danger"], .row[data-tone="danger"] > b { color: var(--danger); }
 .note { display: none; }
-/* The hairline between figures stops around the chevron (no patch of page color over a hovered
-   figure's fill). Two by two under 1100px (components.css): no chevrons, the plain hairlines. */
-@media (min-width: 1101px) {
-  .flow :global(.strip-item) { border-left-color: transparent; }
-  .flow :global(.strip-item)::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 1px; background: linear-gradient(var(--divider) 0 13px, transparent 13px 37px, var(--divider) 37px); }
+/* A computer: the stage's rule runs along the top of its column in place of the strip's hairline. */
+@media (min-width: 901px) {
+  .flow { border-top: 0; }
+  .flow :global(.strip-grid) { margin-top: 0; }
+  .flow :global(.strip-item) { border-top: 3px solid var(--c); }
 }
+/* Two by two under 1100px (components.css): no chevrons, the plain hairlines. */
 @media (max-width: 1100px) { .chevron { display: none; } }
 @media (max-width: 900px) {
   .flow :global(.strip-item) { padding: 14px 16px; }

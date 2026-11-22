@@ -295,7 +295,7 @@ export function SendLinkDialog({ sub, paperwork, onClose }: { sub: Sub; paperwor
         <div className="dialog-body">
           {sent.length > 0 && (
             <div className="stack-sm" style={{ justifyItems: "center", textAlign: "center", padding: "8px 0" }}>
-              <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+              <span className="success-mark"><Icon name="check" size={30} bold /></span>
               {sent.map((o) => <strong key={o.label}>{o.label}</strong>)}
               {config.features.devMail && done.email?.sent && <span className="muted small">Development mode: it's in the local Mailpit inbox.</span>}
             </div>

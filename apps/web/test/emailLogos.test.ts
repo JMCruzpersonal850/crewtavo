@@ -3,6 +3,7 @@ import { MAIL_PRESETS, type MailPreset } from "@crewtavo/core/email";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { PHOSPHOR } from "../src/components/ui/phosphor";
 import { ProviderMark } from "../src/features/settings/EmailSettings";
 
 const ASSETS = new URL("../src/assets/apps/", import.meta.url);
@@ -27,7 +28,7 @@ describe("email provider logos", () => {
       const src = html.match(/<img src="([^"]+)" alt=""\/>/)?.[1];
       expect(src, preset.label).toBeTruthy();
       expect(html, preset.label).toContain('aria-hidden="true"');
-      expect(html, preset.label).not.toContain("lucide");
+      expect(html, preset.label).not.toContain("<svg");
       const file = logoFile(src!);
       expect(file, preset.label).toBeDefined();
       expect(file!.svg, file!.name).toMatch(/^<svg [^>]*viewBox="[^"]+"/);
@@ -48,7 +49,7 @@ describe("email provider logos", () => {
 
   it("keeps the mail icon for any other server", () => {
     const html = mark("other");
-    expect(html).toContain("lucide-mail");
+    expect(html).toContain(PHOSPHOR["envelope-simple"].bold);
     expect(html).not.toContain("<img");
     expect(html).toContain('aria-hidden="true"');
   });

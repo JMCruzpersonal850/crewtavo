@@ -434,7 +434,7 @@ function RequestWork({ token, data, hubFetch, back }: { token: string; data: Cli
       <>
         <button type="button" className="hub-back" onClick={back}><Icon name="chevronLeft" size={16} />Your account</button>
         <div className="hub-card hub-done" role="status">
-          <span className="hub-done-mark"><Icon name="check" size={30} strokeWidth={2.5} /></span>
+          <span className="hub-done-mark"><Icon name="check" size={30} bold /></span>
           <h2>Request sent</h2>
           <p>{data.company.name} will get back to you with a quote or a time to come look. Your reference is #{send.data.reference}.</p>
           <div className="hub-done-actions"><button type="button" className="hub-btn hub-btn-ghost" onClick={back}>Back to your account</button></div>

@@ -279,7 +279,7 @@ export function SopPage() {
               {editor && reviewDue && <Button icon="calendarCheck" loading={review.isPending} onClick={() => review.mutate()}>{t("Mark reviewed")}</Button>}
               {editor && <Link className="btn" to={`/kb/${sop.id}/edit`}><Icon name="edit" size={16} />{t("Edit")}</Link>}
               {askToRead && (acknowledged ? (
-                <span className={s.readOk}><Icon name="check" size={16} strokeWidth={2} />{t("You've read this")}</span>
+                <span className={s.readOk}><Icon name="check" size={16} bold />{t("You've read this")}</span>
               ) : (
                 <Button icon="check" className={cx("hide-mobile", s.readBtn)} loading={confirming} disabled={notReady} onClick={confirmRead}>{t("I've read this")}</Button>
               ))}
@@ -345,7 +345,7 @@ export function SopPage() {
             <section className={cx(s.done, "no-print")} aria-labelledby="guide-done-title">
               {acknowledged ? (
                 <>
-                  <span className={s.doneIcon} data-ok=""><Icon name="check" size={18} strokeWidth={2} /></span>
+                  <span className={s.doneIcon} data-ok=""><Icon name="check" size={18} bold /></span>
                   <div>
                     <h2 id="guide-done-title" className={s.doneTitle}>{t("You've read this revision")}</h2>
                     <p className={s.doneSub}>{t("The office can see you confirmed revision {number}.", { number: sop.revision })}</p>

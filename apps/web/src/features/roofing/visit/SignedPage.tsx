@@ -130,7 +130,7 @@ function SignedScreen({ quote }: { quote: EstimateQuote }) {
     <VisitFrame title={quote.title} subtitle={whoAndWhere(quote)} pageTitle={`Signed · ${quote.title}`} brand={documentColor(template, session.company.settings)} step={3}>
       <main className={styles.done}>
         <div className={styles.doneHead}>
-          <span className={styles.bigCheck} aria-hidden="true"><Icon name="check" size={34} strokeWidth={3} /></span>
+          <span className={styles.bigCheck} aria-hidden="true"><Icon name="check" size={34} bold /></span>
           <h1>{heading}</h1>
           <p>
             {sentence.lead} <strong>{sentence.amount}</strong>
@@ -187,7 +187,7 @@ function SignedScreen({ quote }: { quote: EstimateQuote }) {
           <Link className={`btn ${styles.doneButton} ${styles.ghostButton}`} to={`/roofing/${quote.id}`}>Open the project</Link>
           <Link className={`btn btn-primary ${styles.doneButton}`} to="/roofing">
             Back to Roofing
-            <Icon name="arrowRight" size={20} strokeWidth={2} />
+            <Icon name="arrowRight" size={20} bold />
           </Link>
         </div>
       </main>
@@ -221,7 +221,7 @@ function DoneCard({ icon, title, text }: { icon: IconName; title: string; text: 
           <strong className={styles.actTitle}>{title}</strong>
           <span className={styles.actText}>{text}</span>
         </span>
-        <span className={styles.actEnd} aria-hidden="true"><Icon name="check" size={20} strokeWidth={2.5} /></span>
+        <span className={styles.actEnd} aria-hidden="true"><Icon name="check" size={20} bold /></span>
       </div>
     </div>
   );

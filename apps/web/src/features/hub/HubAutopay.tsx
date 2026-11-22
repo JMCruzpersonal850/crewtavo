@@ -180,7 +180,7 @@ export function AutopayView({ token, data, hubFetch, back, onChanged }: { token:
       <>
         {top}
         <div className="hub-card hub-done" role="status">
-          <span className="hub-done-mark" data-tone={turnedOff ? "quiet" : undefined}><Icon name={turnedOff ? "card" : "check"} size={30} strokeWidth={turnedOff ? 2 : 2.5} /></span>
+          <span className="hub-done-mark" data-tone={turnedOff ? "quiet" : undefined}><Icon name={turnedOff ? "card" : "check"} size={30} bold /></span>
           <h2>{title}</h2>
           <p>{text}</p>
           <div className="hub-done-actions"><button type="button" className="hub-btn hub-btn-ghost" onClick={back}>Back to your account</button></div>
@@ -287,7 +287,7 @@ export function AutopayView({ token, data, hubFetch, back, onChanged }: { token:
           <li key={s.step} aria-current={s.step === current ? "step" : undefined} data-done={i < at || undefined}>
             {i < at ? (
               <button type="button" onClick={() => goTo(s.step)}>
-                <span className="hub-step-n"><Icon name="check" size={13} strokeWidth={2.5} /></span>
+                <span className="hub-step-n"><Icon name="check" size={13} bold /></span>
                 {s.label}
                 <span className="sr-only"> (done, go back)</span>
               </button>

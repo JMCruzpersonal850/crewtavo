@@ -159,6 +159,14 @@
 }
 
 /*
+ * A computer: every size up to 16 reads a pixel larger than its name, so lists, menus and labels sit
+ * near the sizes the app had before. The names are a phone's sizes, which follow iPhone's and stay.
+ */
+@media (min-width: 901px) {
+  :root { --fs-11: 12px; --fs-12: 13px; --fs-13: 14px; --fs-14: 15px; --fs-15: 16px; --fs-16: 17px; }
+}
+
+/*
  * Dark mode: the same tokens mapped onto Radix scales, following Radix's step guide (1–2 app and
  * subtle backgrounds, 3–5 component fills, 6–8 borders, 9–10 solid colors, 11–12 text). The class is
  * set on <html> from the person's choice in Settings → Profile (lib/theme.ts).

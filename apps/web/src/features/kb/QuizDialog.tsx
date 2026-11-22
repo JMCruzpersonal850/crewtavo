@@ -100,7 +100,7 @@ export function QuizDialog({ pageId, title, revision, questions, next, onClose }
     return (
       <Dialog open onClose={onClose} title={t("You've read this revision")} description={t("{title} · Revision {number} · confirmed. The office can see it.", { title, number: revision })}>
         <div className={s.quizDone} role="status">
-          <span className={s.doneIcon} data-ok=""><Icon name="check" size={18} strokeWidth={2} /></span>
+          <span className={s.doneIcon} data-ok=""><Icon name="check" size={18} bold /></span>
           <p>{next ? t.plural(next.more, { one: "{count} more required guide", other: "{count} more required guides" }) : t("Nothing else is waiting for you to read.")}</p>
           {next && <Link to={`/kb/${next.id}`} className={s.quizNext} onClick={onClose}><Icon name="book" size={16} /><span>{next.title}</span><Icon name="chevronRight" size={16} /></Link>}
         </div>

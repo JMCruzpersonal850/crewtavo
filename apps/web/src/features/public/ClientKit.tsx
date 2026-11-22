@@ -94,7 +94,7 @@ export function Done({ title, children, icon = "check", tone = "draw", className
   const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
     <section className={cx(k.card, k.done, className)} role={role}>
-      <span className={k.doneMark} data-tone={tone}><Icon name={icon} size={34} strokeWidth={icon === "check" ? 2.5 : 2} /></span>
+      <span className={k.doneMark} data-tone={tone}><Icon name={icon} size={34} bold /></span>
       <Heading className={k.doneTitle}>{title}</Heading>
       {children}
     </section>

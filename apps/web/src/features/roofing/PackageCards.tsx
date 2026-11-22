@@ -138,7 +138,7 @@ export function PackagePicker(props: PackagePickerProps) {
                   (numbered ? (
                     <span className={styles.pickNumber}><span className="sr-only">Option </span>{order + 1}</span>
                   ) : (
-                    <span className={styles.pickCheck} aria-hidden="true"><Icon name="check" size={14} strokeWidth={2} /></span>
+                    <span className={styles.pickCheck} aria-hidden="true"><Icon name="check" size={14} bold /></span>
                   ))}
               </button>
               {fixed ? (

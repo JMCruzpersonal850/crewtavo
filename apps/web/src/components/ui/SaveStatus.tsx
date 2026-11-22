@@ -86,7 +86,7 @@ export function SaveStatus({ status }: { status: SaveState }) {
       )}
       {shown === "saved" && (
         <>
-          <Icon name="check" size={14} strokeWidth={2} />
+          <Icon name="check" size={14} bold />
           {t("Saved")}
         </>
       )}

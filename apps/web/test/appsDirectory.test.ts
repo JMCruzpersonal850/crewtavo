@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { appState, OWN_ICONS, shortName } from "../src/features/apps/AppIcon";
-import { appMatches } from "../src/features/apps/AppsPage";
+import { appMatches, featuredApp } from "../src/features/apps/AppsPage";
 import type { AppRow } from "../src/features/apps/catalog";
 
 const app = (over: Partial<AppRow> = {}): AppRow => ({
@@ -46,5 +46,16 @@ describe("an app's row in the directory", () => {
     expect(appMatches(app(), "deposits")).toBe(true); // its tagline
     expect(appMatches(app(), "payments")).toBe(true);
     expect(appMatches(app(), "calendar")).toBe(false);
+  });
+});
+
+describe("Discover's featured app", () => {
+  it("is the first featured app this business doesn't have yet, or the first when it has them all", () => {
+    const stripe = app();
+    const twilio = app({ id: "twilio", name: "Twilio", category: "Messaging" });
+    expect(featuredApp([twilio, stripe], (a) => a.id === "stripe")?.id).toBe("twilio");
+    expect(featuredApp([twilio, stripe], () => false)?.id).toBe("stripe");
+    expect(featuredApp([twilio, stripe], () => true)?.id).toBe("stripe");
+    expect(featuredApp([app({ available: false })], () => false)).toBeUndefined();
   });
 });

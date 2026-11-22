@@ -162,7 +162,7 @@ function SendForm({ quote, mode, startWith, onClose, onSent, words }: SendProps 
         <div className="dialog-body">
           {done.sent ? (
             <div className="stack-sm" style={{ justifyItems: "center", textAlign: "center", padding: "8px 0" }}>
-              <span className="success-mark"><Icon name="check" size={30} strokeWidth={3} /></span>
+              <span className="success-mark"><Icon name="check" size={30} bold /></span>
               <strong style={{ fontSize: 16 }}>{channel === "email" ? `Emailed to ${to}` : `Texted to ${to}`}</strong>
               {config.features.devMail && <span className="muted small">Development mode: it's in the local Mailpit inbox.</span>}
             </div>

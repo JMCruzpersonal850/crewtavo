@@ -120,7 +120,7 @@ export function EstimateList({ quote, changes, size = "regular", editable, edito
                 const only = onlyHere(s, "quick");
                 return (
                   <button key={s.id} type="button" className={styles.chip} disabled={adding} aria-busy={adding || undefined} aria-label={`Add ${s.name}, ${price}${only ? `, ${only.toLowerCase()}` : ""}`} onClick={() => editor.addService(s, s.quantity, whereTo(s, "quick"))}>
-                    {adding ? <Spinner size={size === "large" ? 16 : 14} /> : <Icon name="plus" size={size === "large" ? 16 : 14} strokeWidth={2} />}
+                    {adding ? <Spinner size={size === "large" ? 16 : 14} /> : <Icon name="plus" size={size === "large" ? 16 : 14} bold />}
                     {s.name}
                     <small>{only ? `${price} · ${only}` : price}</small>
                   </button>

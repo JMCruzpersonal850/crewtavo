@@ -326,7 +326,7 @@ function Stars({ value, onChange }: { value: number | null; onChange: (value: nu
     <div className={styles.stars} role="group" aria-label="Rating">
       {[1, 2, 3, 4, 5].map((n) => (
         <button key={n} type="button" className={value !== null && n <= value ? styles.on : undefined} aria-pressed={value === n} aria-label={`${n} ${n === 1 ? "star" : "stars"}`} onClick={() => onChange(value === n ? null : n)}>
-          <Icon name="star" size={20} />
+          <Icon name="star" size={20} filled={value !== null && n <= value} />
         </button>
       ))}
     </div>

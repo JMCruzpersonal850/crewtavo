@@ -365,8 +365,10 @@
 .public-foot { text-align: center; font-size: var(--fs-12); color: var(--text-3); }
 .option-line { display: flex; gap: 10px; align-items: flex-start; }
 .success-mark { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--green-tint); color: var(--green); margin: 0 auto; animation: pop-in var(--dur-slow) var(--ease-spring); }
-.success-mark svg { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 0.5s 0.15s var(--ease-out) forwards; }
-@keyframes draw { to { stroke-dashoffset: 0; } }
+/* The check wipes in from the left, as if drawn. */
+.success-mark svg { clip-path: inset(0 100% 0 0); animation: draw 0.5s 0.15s var(--ease-out) forwards; }
+@keyframes draw { to { clip-path: inset(0); } }
+@media (prefers-reduced-motion: reduce) { @keyframes draw { from, to { clip-path: inset(0); } } }
 
 /* ---------- Field app ---------- */
 /*
@@ -1021,12 +1023,15 @@ a.who-name:hover { color: var(--ink); text-decoration: underline; text-underline
 .app-icon { --size: 48px; position: relative; width: var(--size); height: var(--size); flex: none; border-radius: calc(var(--size) * 0.25); display: grid; place-items: center; background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); overflow: hidden; }
 .app-icon[data-size="sm"] { --size: 36px; }
 .app-icon[data-size="lg"] { --size: 64px; }
+.app-icon[data-size="xl"] { --size: 88px; }
 .app-icon img { width: 58%; height: 58%; object-fit: contain; display: block; }
 .app-icon[data-wide] img { width: 84%; height: 84%; } /* wordmark-shaped logos (Zoho) */
 .app-icon[data-full] { border-color: transparent; background: none; }
 .app-icon[data-full] img { width: 100%; height: 100%; } /* logos that are already an app icon (Sveltia) */
 .app-icon-letter { font-weight: 700; font-size: calc(var(--size) * 0.42); color: #1f2421; }
-.app-icon-own { border-color: transparent; background: var(--green-tint); color: var(--green-dark); }
+/* Built into Crewtavo: the logo's navy and amber (BrandMark.tsx), the same in both themes like any app's logo. */
+.app-icon-own { border-color: transparent; background: #182430; color: #f4b143; }
+:root.dark .app-icon-own { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); }
 .app-icon-generic { color: #2563eb; } /* any calendar by its link: a plain glyph on the white tile, flat like the logos */
 .app-icon > svg { width: calc(var(--size) * 0.5); height: calc(var(--size) * 0.5); color: inherit; }
 .app-icon-date { align-content: center; gap: 0; line-height: 1; color: #111; }
@@ -1034,60 +1039,149 @@ a.who-name:hover { color: var(--ink); text-decoration: underline; text-underline
 .app-icon-date strong { font-size: calc(var(--size) * 0.5); font-weight: 400; letter-spacing: var(--tracking-display); margin-top: calc(var(--size) * 0.02); }
 
 /*
- * An app's row (AppListRow, an InboxRow): the 36px icon, the name in 13px with Beta quiet after it,
- * one quiet line on what it does, and "✓ Installed" or a red "Needs attention" on the right. In the
- * directory (.app-dir) each category's rows go three across, two on a tablet. On a phone (Mobile-Apps)
- * they are the kit's rows: a 40px icon, 16px names, "✓ On" in green.
+ * The directory, as an app store (AppsPage.tsx; Mobbin: Canva's and Typeform's directories, the App
+ * Store): a rail of views and categories beside Discover's featured app, collections and card shelves.
+ * A card is the app's icon, name and where it's from, Get (or ✓ Installed, or a red Needs attention)
+ * on the right, and one line on what it does. On a phone the rail is a row of chips and the cards are
+ * rows on the grouped ground.
  */
-.app-list .il-avatar:not(.skeleton) { width: auto; height: auto; overflow: visible; border-radius: 0; background: none; }
-.app-list .il-avatar.skeleton { width: 36px; height: 36px; border-radius: 9px; }
-.app-list .il-l1 { gap: 6px; }
-.app-beta { flex: none; font-size: var(--fs-11); font-weight: 600; color: var(--quiet); }
-.app-state { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-12); font-weight: 500; color: var(--text-3); }
-.app-state svg { color: var(--green); }
-.app-state[data-tone="danger"], .app-state[data-tone="danger"] svg { color: var(--danger); }
-.app-state-short { display: none; }
-@media (min-width: 901px) {
-  .app-list .il-row { grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; padding: 10px 0; }
-  .app-list .il-row:hover { background: none; }
-  .app-list .il-row:hover .il-title { color: var(--green); }
-  .app-list .il-row:has(.il-link:focus-visible) { outline-offset: 3px; }
-  .app-list .il-l1 { font-size: var(--fs-13); }
-  .app-list .il-meta { margin-top: 2px; }
-  .app-dir .il-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 28px; }
+.app-store { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 36px; align-items: start; }
+.app-store-main { display: flex; flex-direction: column; gap: 40px; min-width: 0; }
+.app-rail { position: sticky; top: calc(var(--topbar-height) + 20px); display: flex; flex-direction: column; gap: 2px; }
+.app-rail-label { padding: 18px 10px 6px; font-size: var(--fs-12); font-weight: 600; color: var(--quiet); }
+.app-rail-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font-size: var(--fs-14); font-weight: 500; color: var(--text-2); text-align: left; transition: background var(--dur-fast), color var(--dur-fast); }
+.app-rail-item:hover { background: var(--fill-2); color: var(--ink); }
+.app-rail-item[aria-current="page"] { background: var(--fill-2); color: var(--ink); font-weight: 600; }
+.app-rail-count { font-size: var(--fs-12); font-weight: 500; color: var(--quiet); font-variant-numeric: tabular-nums; }
+.app-rail-count[data-tone="danger"] { color: var(--danger); font-weight: 600; }
+
+.app-shelf { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.app-shelf-head { display: flex; align-items: baseline; gap: 12px; }
+.app-shelf-head h2 { margin: 0; font-size: var(--fs-18); font-weight: 700; letter-spacing: var(--tracking-tight); }
+.app-shelf-head .link-btn { margin-left: auto; font-size: var(--fs-13); }
+.app-shelf-note { font-size: var(--fs-13); color: var(--quiet); }
+.app-shelf-lede { margin: -6px 0 4px; max-width: 64ch; font-size: var(--fs-14); color: var(--text-2); }
+
+.app-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.app-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto 1fr; column-gap: 12px; row-gap: 10px; height: 100%; padding: 16px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none;
+  transition: border-color var(--dur-fast), box-shadow var(--dur), transform var(--dur) var(--ease-out);
 }
-@media (min-width: 901px) and (max-width: 1240px) { .app-dir .il-rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.app-card:hover { border-color: var(--border-strong); box-shadow: 0 6px 20px -10px rgb(15 42 53 / 0.25); transform: translateY(-1px); text-decoration: none; color: var(--ink); }
+.app-card:active { transform: none; }
+.app-card > .app-icon { grid-row: 1; }
+.app-card-head { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
+/* A long name ("Facebook & Instagram") takes a second line rather than being cut. */
+.app-card-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; font-size: var(--fs-15); font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+.app-card-name .app-beta { margin-left: 6px; }
+.app-card-from { font-size: var(--fs-12); color: var(--quiet); }
+.app-card-tag { grid-column: 1 / -1; font-size: var(--fs-13); line-height: 1.45; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.app-beta { flex: none; font-size: var(--fs-11); font-weight: 600; color: var(--quiet); }
+/* Get, as an app store says it: a grey pill in green words; installed, a quiet check; red when it needs attention. */
+.app-get { align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 14px; border-radius: var(--radius-pill); background: var(--fill-2); font-size: var(--fs-13); font-weight: 700; color: var(--green); white-space: nowrap; transition: background var(--dur-fast); }
+.app-card:hover .app-get:not([data-tone]) { background: var(--green-tint); }
+.app-get[data-tone] { padding: 0 2px; background: none; font-weight: 500; color: var(--text-3); }
+.app-get[data-tone="good"] svg { color: var(--green); }
+.app-get[data-tone="danger"], .app-get[data-tone="danger"] svg { color: var(--danger); font-weight: 600; }
+.app-get-lg { align-self: flex-start; height: 36px; padding: 0 22px; font-size: var(--fs-14); background: var(--green-solid); color: #fff; }
+.app-get-lg[data-tone] { padding: 0; }
+
+/* The featured app: its words on the left, its first screenshot running off the card's right and bottom edges. */
+.app-feature {
+  display: grid; grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr); gap: 32px; min-height: 280px; overflow: hidden;
+  padding: 32px 0 0 32px; border-radius: 18px; background: var(--ground); border: 1px solid var(--ground-border); color: var(--ink); text-decoration: none;
+}
+.app-feature:hover { text-decoration: none; color: var(--ink); border-color: var(--border-strong); }
+.app-feature-text { display: flex; flex-direction: column; gap: 12px; padding-bottom: 32px; min-width: 0; }
+.app-feature-eyebrow { font-size: var(--fs-12); font-weight: 600; color: var(--green-dark); }
+.app-feature-name { display: flex; align-items: center; gap: 14px; }
+.app-feature-title { font-size: var(--fs-30); font-weight: 750; letter-spacing: var(--tracking-display); line-height: 1.1; }
+.app-feature-tag { max-width: 42ch; font-size: var(--fs-15); line-height: 1.5; color: var(--text-2); }
+.app-feature-text .app-get-lg { margin-top: auto; }
+.app-feature-shot { align-self: end; overflow: hidden; border-radius: 12px 0 0 0; border: 1px solid var(--border); border-right: 0; border-bottom: 0; box-shadow: 0 20px 50px -24px rgb(15 42 53 / 0.45); transition: transform var(--dur-slow) var(--ease-out); }
+.app-feature:hover .app-feature-shot { transform: translateY(-3px); }
+.app-feature-shot img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; }
+
+/* Collections: three tinted cards in the stages' colors, each with its apps' icons overlapping. */
+.app-collections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.app-collection {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; height: 100%; padding: 18px 18px 16px; border: 0; border-radius: 14px; text-align: left;
+  background: color-mix(in srgb, var(--c-tint) 80%, transparent); color: var(--ink); transition: background var(--dur-fast), transform var(--dur) var(--ease-out);
+}
+.app-collection:hover { background: var(--c-tint); transform: translateY(-1px); }
+.app-collection[data-tone="invoice"] { --c-tint: var(--invoice-tint); --c-text: var(--invoice-text); }
+.app-collection[data-tone="job"] { --c-tint: var(--job-tint); --c-text: var(--job-text); }
+.app-collection[data-tone="req"] { --c-tint: var(--req-tint); --c-text: var(--req-text); }
+.app-collection-title { font-size: var(--fs-16); font-weight: 700; color: var(--c-text); letter-spacing: var(--tracking-tight); }
+.app-collection-text { font-size: var(--fs-13); line-height: 1.45; color: var(--text-2); }
+.app-collection-icons { display: flex; margin-top: auto; padding-top: 12px; }
+.app-collection-icons .app-icon { box-shadow: 0 0 0 2px var(--c-tint); }
+.app-collection-icons .app-icon + .app-icon { margin-left: -8px; }
+@media (prefers-reduced-motion: reduce) { .app-card, .app-collection, .app-feature-shot { transform: none !important; } }
+
+@media (max-width: 1240px) {
+  .app-store { grid-template-columns: 168px minmax(0, 1fr); gap: 28px; }
+  .app-grid, .app-collections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-feature { grid-template-columns: minmax(0, 1fr); padding-right: 32px; }
+  .app-feature-shot { margin-right: -32px; }
+}
 @media (max-width: 900px) {
-  .app-list .app-icon[data-size="sm"] { --size: 40px; border-radius: 11px; }
-  .app-state { font-size: var(--fs-13); font-weight: 600; color: var(--green-dark); }
-  .app-state-long { display: none; }
-  .app-state-short { display: inline; }
   /* Mobile-Apps: the large title, then the search and the chips, with no lede between (loading and with no match too). */
   .page-lede:has(> .app-dir-lede) { display: none; }
+  .app-store { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .app-rail { position: static; flex-direction: row; gap: 8px; margin: 0 -16px; padding: 0 16px 2px; overflow-x: auto; scrollbar-width: none; }
+  .app-rail::-webkit-scrollbar { display: none; }
+  .app-rail-label { display: none; }
+  .app-rail-item { flex: none; height: 36px; padding: 0 14px; border-radius: var(--radius-pill); background: var(--m-card); font-size: var(--fs-14); }
+  .app-rail-item[aria-current="page"] { background: var(--solid); color: var(--on-solid); }
+  .app-rail-item[aria-current="page"] .app-rail-count { color: inherit; opacity: 0.7; }
+  .app-store-main { gap: 28px; }
+  .app-feature { padding: 20px 20px 0; gap: 18px; border-radius: 16px; background: var(--m-card); border: 0; }
+  .app-feature-title { font-size: var(--fs-24); }
+  .app-feature-shot { margin-right: -20px; }
+  .app-collections { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  /* The cards are rows on one rounded card, like a phone's App Store list. */
+  .app-grid { grid-template-columns: minmax(0, 1fr); gap: 0; border-radius: 16px; background: var(--m-card); overflow: hidden; }
+  .app-grid > li + li .app-card { border-top: 1px solid var(--row-divider); }
+  .app-card { grid-template-rows: auto auto; row-gap: 2px; padding: 12px 16px; border: 0; border-radius: 0; background: none; }
+  .app-card:hover { box-shadow: none; transform: none; }
+  .app-card > .app-icon { grid-row: 1 / span 2; align-self: center; }
+  .app-card-head { grid-column: 2; }
+  .app-card-tag { grid-column: 2; -webkit-line-clamp: 1; }
+  .app-get { grid-column: 3; grid-row: 1 / span 2; }
+  .app-card-from, .app-shelf-note { display: none; }
 }
 
 /*
- * An app's page (AppDetailPage.tsx): the crumb, then the 64px icon beside the 24px name, its tagline
- * and a quiet line of facts, with Install (or Open and More) on the right. On a phone the crumb and the
- * actions are the round buttons on the top row, Install floats as the green pill (its ring floats in
- * the same place), and the 56px icon sits beside the large title.
+ * An app's page (AppDetailPage.tsx), as an app store's product page: the crumb, then the 88px icon
+ * beside the 30px name and its tagline, Install as a pill on the right (or Open and More), and under
+ * them the App Store's row of facts between hairlines. On a phone the crumb and the actions are the
+ * round buttons on the top row, Install floats as the green pill (its ring floats in the same place),
+ * and the 64px icon sits beside the large title.
  */
-.page-header.app-head { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; column-gap: 16px; row-gap: 0; align-items: center; }
-.app-head-crumb { grid-column: 1 / -1; display: flex; margin-bottom: 14px; }
-.app-head > .app-icon { grid-column: 1; grid-row: 2 / span 3; align-self: start; }
-.app-head > .page-title { grid-column: 2; grid-row: 2; min-width: 0; }
-.app-head > .page-actions { grid-column: 3; grid-row: 2 / span 2; align-self: start; }
-.app-head > .page-lede { grid-column: 2 / -1; grid-row: 3; margin: 2px 0 0; }
-.app-head > .app-head-meta { grid-column: 2 / -1; grid-row: 4; margin-top: 8px; }
-.app-install { min-width: 96px; justify-content: center; }
+.page-header.app-head { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; column-gap: 20px; row-gap: 0; align-items: center; }
+.app-head-crumb { grid-column: 1 / -1; display: flex; margin-bottom: 18px; }
+.app-head > .app-icon { grid-column: 1; grid-row: 2 / span 2; align-self: center; box-shadow: 0 8px 24px -12px rgb(15 42 53 / 0.35); }
+.app-head > .page-title { grid-column: 2; grid-row: 2; min-width: 0; align-self: end; font-size: var(--fs-30); letter-spacing: var(--tracking-display); }
+.app-head > .page-actions { grid-column: 3; grid-row: 2 / span 2; align-self: center; }
+.app-head > .page-lede { grid-column: 2 / -1; grid-row: 3; align-self: start; margin: 4px 0 0; font-size: var(--fs-15); }
+.app-install, .app-head .page-actions > .btn:first-child { min-width: 112px; height: 40px; justify-content: center; border-radius: var(--radius-pill); }
+.app-stats { grid-column: 1 / -1; grid-row: 4; display: flex; margin: 22px 0 0; padding: 14px 0; border-block: 1px solid var(--divider); }
+.app-stats > div { display: grid; gap: 4px; min-width: 0; padding: 0 28px; }
+.app-stats > div:first-child { padding-left: 0; }
+.app-stats > div + div { border-left: 1px solid var(--divider); }
+.app-stats dt { font-size: var(--fs-12); font-weight: 500; color: var(--quiet); }
+.app-stats dd { margin: 0; font-size: var(--fs-14); font-weight: 600; color: var(--ink); }
 @media (max-width: 900px) {
-  .page-header.app-head { grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 14px; }
+  .page-header.app-head { grid-template-columns: 64px minmax(0, 1fr) auto; column-gap: 14px; }
   .app-head-crumb { grid-column: 1 / 3; grid-row: 1; margin: 0; }
   .app-head > .page-actions { grid-column: 3; grid-row: 1; align-self: center; }
-  .app-head > .app-icon { --size: 56px; grid-row: 2 / span 2; margin-top: 16px; }
-  .app-head > .page-title { grid-column: 2 / -1; grid-row: 2; margin-top: 16px; }
+  .app-head > .app-icon { --size: 64px; grid-row: 2 / span 2; margin-top: 16px; }
+  .app-head > .page-title { grid-column: 2 / -1; grid-row: 2; margin-top: 16px; font-size: var(--fs-24); }
   .app-head > .page-lede { grid-column: 2 / -1; grid-row: 3; margin: 0; }
-  .app-head > .app-head-meta { grid-column: 1 / -1; grid-row: 4; margin-top: 14px; }
+  .app-stats { margin-top: 16px; padding: 12px 0; overflow-x: auto; scrollbar-width: none; }
+  .app-stats > div { flex: none; padding: 0 18px; }
   /* The ring takes the floating pill's place while installing. */
   .app-head .install-ring-slot { position: fixed; z-index: 15; right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--mobile-nav-height) + 16px + env(safe-area-inset-bottom)); width: 52px; min-width: 0; height: 52px; border-radius: var(--radius-pill); background: var(--menu); box-shadow: 0 12px 26px -10px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.18); }
 }
@@ -1106,9 +1200,12 @@ button.install-ring:focus-visible { outline: none; box-shadow: var(--ring); }
 @keyframes install-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
 @media (prefers-reduced-motion: reduce) { .install-ring[data-phase="waiting"] svg { animation-duration: 3s; } }
 /* Screenshots, side by side like an app store's, scrolling sideways when there are more. */
-.app-shots { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(min(420px, 86%), 1fr); gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: thin; }
-.app-shots figure { margin: 0; scroll-snap-align: start; }
-.app-shots img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-radius: 10px; border: 1px solid var(--divider); background: var(--fill); }
+.app-shots { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(min(460px, 86%), 1fr); gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; scrollbar-width: thin; }
+.app-shots figure { display: grid; gap: 8px; margin: 0; scroll-snap-align: start; }
+.app-shots img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; border-radius: 14px; border: 1px solid var(--border); background: var(--fill); box-shadow: 0 12px 32px -20px rgb(15 42 53 / 0.4); }
+.app-shots figcaption { font-size: var(--fs-13); line-height: 1.45; color: var(--text-3); }
+/* Related apps under the page, as the directory's cards. */
+.app-more { margin-top: 12px; padding-top: 28px; border-top: 1px solid var(--divider); }
 html.dark .app-shot-light, html:not(.dark) .app-shot-dark { display: none; }
 
 /*
@@ -1136,17 +1233,18 @@ html.dark .app-shot-light, html:not(.dark) .app-shot-dark { display: none; }
 }
 
 /* What it does: three plain columns, a green glyph over a title and a line (no boxes, no tiles). On a phone, rows. */
-.app-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 20px 28px; margin: 0; padding: 4px 0 0; list-style: none; }
-.app-highlight { display: grid; gap: 4px; align-content: start; font-size: var(--fs-13); }
-.app-highlight > svg { color: var(--green); margin-bottom: 4px; }
+.app-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; margin: 0; padding: 4px 0 0; list-style: none; }
+/* Each one a tile, as an app store lists what an app does: its icon on a pale green round, the point, a line on it. */
+.app-highlight { display: grid; gap: 4px; align-content: start; padding: 16px; border-radius: 14px; background: var(--fill); font-size: var(--fs-13); }
+.app-highlight > svg { box-sizing: content-box; width: 18px; height: 18px; margin-bottom: 8px; padding: 8px; border-radius: 50%; background: var(--green-tint); color: var(--green-dark); }
 .app-highlight > strong { font-weight: 600; color: var(--ink); }
 .app-highlight > span { color: var(--text-3); line-height: 1.5; }
 .app-about { margin: 0; max-width: 70ch; font-size: var(--fs-14); line-height: 1.6; color: var(--text-2); }
 @media (max-width: 900px) {
   .app-highlights { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; }
-  .app-highlight { grid-template-columns: 20px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; padding: 12px 0; border-bottom: 1px solid var(--row-divider); font-size: var(--fs-14); }
+  .app-highlight { grid-template-columns: 20px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; padding: 12px 0; border-radius: 0; background: none; border-bottom: 1px solid var(--row-divider); font-size: var(--fs-14); }
   .app-highlight:last-child { border-bottom: 0; }
-  .app-highlight > svg { grid-row: 1 / span 2; margin: 1px 0 0; }
+  .app-highlight > svg { grid-row: 1 / span 2; margin: 1px 0 0; padding: 0; background: none; color: var(--green); }
   .app-highlight > span { font-size: var(--fs-13); }
   .app-about { font-size: var(--fs-15); }
 }

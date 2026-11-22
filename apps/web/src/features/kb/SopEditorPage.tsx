@@ -453,7 +453,7 @@ function Editor({ pageId, initial, loaded, categories, titleHint }: { pageId: st
                 <div className={s.chips} role="group" aria-label="Team roles">
                   {roles.data!.map((r) => (
                     <button key={r.id} type="button" className={s.chip} aria-pressed={audienceRoles.includes(r.id)} onClick={() => toggle("audience_roles", r.id)}>
-                      {audienceRoles.includes(r.id) && <Icon name="check" size={12} strokeWidth={2.5} />}
+                      {audienceRoles.includes(r.id) && <Icon name="check" size={12} bold />}
                       {r.name}
                     </button>
                   ))}
@@ -464,7 +464,7 @@ function Editor({ pageId, initial, loaded, categories, titleHint }: { pageId: st
             <div className={s.chips} role="group" aria-label="Access levels">
               {ROLES.map((r) => (
                 <button key={r} type="button" className={s.chip} aria-pressed={draft.audience.includes(r)} onClick={() => toggle("audience", r)}>
-                  {draft.audience.includes(r) && <Icon name="check" size={12} strokeWidth={2.5} />}
+                  {draft.audience.includes(r) && <Icon name="check" size={12} bold />}
                   {ROLE_LABELS[r]}
                 </button>
               ))}

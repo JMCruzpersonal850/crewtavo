@@ -127,7 +127,7 @@ export function RestartBanner() {
     <div ref={ref} className="restart-banner" data-back={back || undefined} data-shown={shown || undefined} role="status" aria-live="polite" {...topLayerProps}>
       {back ? (
         <>
-          <Icon name="check" size={16} strokeWidth={2} />
+          <Icon name="check" size={16} bold />
           {t("Crewtavo is back")}
         </>
       ) : (

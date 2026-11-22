@@ -64,10 +64,12 @@ export function authMessage(error: { message: string; status?: number; code?: st
  * comes next (`aside`), or one column without one. On a phone the picture stays out and `back` is a
  * round button by the steps. `onSignOut` puts Sign out in the foot; `foot` is said on its right.
  */
-export function AuthLayout({ children, aside, asideAlign, caption, wide, top, back, foot, onSignOut, width, center }: {
+export function AuthLayout({ children, aside, asideAlign, panel, caption, wide, top, back, foot, onSignOut, width, center }: {
   children: ReactNode;
   aside?: ReactNode;
   asideAlign?: "top";
+  /** The picture fills an inset panel of its own (sign-in's), instead of sitting on the grouped ground. */
+  panel?: boolean;
   caption?: ReactNode;
   /** A narrower picture and a form as wide as its column (the trades). */
   wide?: boolean;
@@ -94,7 +96,7 @@ export function AuthLayout({ children, aside, asideAlign, caption, wide, top, ba
         </footer>
       </div>
       {aside && (
-        <aside className={styles.aside} data-align={asideAlign}>
+        <aside className={styles.aside} data-align={asideAlign} data-panel={panel || undefined}>
           <div className={styles.asideBody}>{aside}</div>
           {caption && <p className={styles.cap}>{caption}</p>}
         </aside>
@@ -119,36 +121,59 @@ function LanguageSwitch() {
   );
 }
 
-/** A day of the app drawn small beside sign-in: a picture, so it's read as one (the caption says what it shows). */
+/** The four stages across the top of sign-in's picture, each in its own color, as Home shows them. */
+const PICTURE_STAGES = [
+  { icon: "requests", label: msg("Requests"), figure: 6 },
+  { icon: "quote", label: msg("Quotes"), figure: 18400, money: true },
+  { icon: "job", label: msg("Jobs"), figure: 9 },
+  { icon: "invoice", label: msg("Invoices"), figure: 8920, money: true },
+] as const;
+
+/** A day of the app drawn small beside sign-in: a picture, so it's read as one (the headline says what it shows). */
 const DAY = [
   { at: 8, what: msg("Weekly mowing"), who: "Rosa D.", hue: "#2f6f6a", status: "completed" }, // i18n-ignore: a person's name
   { at: 10.5, what: msg("Leaf cleanup"), who: "Maya O.", hue: "#2f6f6a", status: "in_progress" }, // i18n-ignore: a person's name
   { at: 13, what: msg("Holiday lights"), who: "Henderson", hue: "#6b3fa0", status: "scheduled" },
 ] as const;
 
+/**
+ * Sign-in's picture (as Square, Origin and Pin do theirs): an inset navy panel with what Crewtavo does
+ * in one line, and a slice of Home under it, cut off at the panel's edges so it reads as the real thing.
+ */
 function DayPicture() {
   const at = (hours: number) => formatTime(new Date(2026, 10, 21, Math.floor(hours), (hours % 1) * 60).toISOString());
   return (
-    <div className={styles.doc} aria-hidden="true">
-      <div className={styles.dayHead}><span>{t("Today")}</span><span>{t("{done} of {total} done", { done: 3, total: 8 })}</span></div>
-      {DAY.map((v) => (
-        <div key={v.at} className={styles.dayRow}>
-          <time>{at(v.at)}</time>
-          <i style={{ background: v.hue }} />
-          <span className={styles.dayWhat}>{t(v.what)} <span className={styles.who}>· {v.who}</span></span>
-          <EntityStatus kind="visit" status={v.status} />
+    <div className={styles.panel}>
+      <p className={styles.panelHead}>{t("Requests, quotes, the schedule, invoices and your crews in one place.")}</p>
+      <div className={styles.shot} aria-hidden="true">
+        <div className={styles.shotStrip}>
+          {PICTURE_STAGES.map((s) => (
+            <div key={s.icon} data-stage={s.icon}>
+              <span><Icon name={s.icon} size={16} />{t(s.label)}</span>
+              <b>{"money" in s ? formatMoney(s.figure) : s.figure}</b>
+            </div>
+          ))}
         </div>
-      ))}
-      <div className={styles.dayQuote}>
-        <span><small>{t("Quote #{number} approved", { number: 88 })}</small><b>{t(DAY[2].what)}</b></span>
-        <b>{formatMoney(4850)}</b>
+        <div className={styles.dayHead}><span>{t("Today")}</span><span>{t("{done} of {total} done", { done: 3, total: 8 })}</span></div>
+        {DAY.map((v) => (
+          <div key={v.at} className={styles.dayRow}>
+            <time>{at(v.at)}</time>
+            <i style={{ background: v.hue }} />
+            <span className={styles.dayWhat}>{t(v.what)} <span className={styles.who}>· {v.who}</span></span>
+            <EntityStatus kind="visit" status={v.status} />
+          </div>
+        ))}
+        <div className={styles.dayQuote}>
+          <span><small>{t("Quote #{number} approved", { number: 88 })}</small><b>{t(DAY[2].what)}</b></span>
+          <b>{formatMoney(4850)}</b>
+        </div>
       </div>
     </div>
   );
 }
 
-/** Sign-in's picture and the words under it. */
-const signInAside = () => ({ aside: <DayPicture />, caption: t("Requests, quotes, the schedule, invoices and your crews in one place.") });
+/** Sign-in's picture, on its panel. */
+const signInAside = () => ({ aside: <DayPicture />, panel: true });
 
 /** A problem with what was sent, said once and read out. */
 function Problem({ children }: { children: ReactNode }) {
@@ -449,12 +474,13 @@ export function LoginPage({ notice = null }: { notice?: string | null } = {}) {
 }
 
 /**
- * Under the sign-in form, for a sub on a new phone: a code by text (and by email instead, for a sub
- * with no phone on file), a code by email, or asking the office.
+ * Under the sign-in form, for a sub on a new phone: one way in, a code by text or by email, or asking
+ * the office. The other way (email for a sub with no phone on file) is a link inside the code screen,
+ * so sign-in keeps to one quiet line under its buttons.
  */
 function NewPhoneOffer({ offers, onPick }: { offers: ReturnType<typeof newPhoneOffers>; onPick: (way: CodeWay) => void }) {
   if (offers === "ask_office") return <p style={{ margin: 0 }}>{t(ASK_THE_OFFICE)}</p>;
-  return offers.map((offer) => (
+  return offers.slice(0, 1).map((offer) => (
     <button key={offer.way} type="button" className="link-btn" onClick={() => onPick(offer.way)}>
       {offer.label}
     </button>

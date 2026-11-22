@@ -319,7 +319,7 @@ function ActionItem({ entry, index, onPick }: { entry: MenuAction; index: number
       title={entry.title}
       onClick={() => onPick(entry)}
     >
-      {entry.checkbox && <span className="menu-box" aria-hidden="true">{entry.checked && <Icon name="check" size={12} strokeWidth={2.5} />}</span>}
+      {entry.checkbox && <span className="menu-box" aria-hidden="true">{entry.checked && <Icon name="check" size={12} bold />}</span>}
       {entry.lead ? <span className="menu-lead" aria-hidden="true">{entry.lead}</span> : entry.icon && <Icon name={entry.icon} size={16} />}
       {entry.description ? (
         <span className="menu-text">
@@ -333,7 +333,7 @@ function ActionItem({ entry, index, onPick }: { entry: MenuAction; index: number
         <span className="menu-trail">
           {entry.end && <span className="menu-end">{entry.end}</span>}
           {entry.kbd && <kbd className="menu-kbd" aria-hidden="true">{entry.kbd}</kbd>}
-          {role === "menuitemradio" && entry.checked && <span className="menu-check" aria-hidden="true"><Icon name="check" size={14} strokeWidth={2} /></span>}
+          {role === "menuitemradio" && entry.checked && <span className="menu-check" aria-hidden="true"><Icon name="check" size={14} bold /></span>}
         </span>
       )}
     </button>
