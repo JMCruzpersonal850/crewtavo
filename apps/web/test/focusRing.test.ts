@@ -64,8 +64,8 @@ describe("the keyboard focus outline", () => {
         expect(ratio, `--green on --${surface} (${theme}): ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
       }
     }
-    // The figure the audit gives for the light theme.
-    expect(contrast(token("light", "green"), hex("#ffffff"))).toBeCloseTo(5.07, 1);
+    // The light theme's green on white (a shade darker than the audit's 5.07, for green words on the phone's ground).
+    expect(contrast(token("light", "green"), hex("#ffffff"))).toBeCloseTo(5.2, 1);
   });
 
   it("replaces a glow that was far too faint to count", () => {

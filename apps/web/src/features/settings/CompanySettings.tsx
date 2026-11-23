@@ -163,6 +163,7 @@ export function CompanySettings() {
   const unsaved = unsavedCount(f, loaded);
   const logo = ((details.data?.settings ?? {}) as Record<string, any>).branding?.logo ?? null;
   const days = f.workdays ? f.workdays.split(",").map(Number) : [];
+  const ownColor = !BRAND_COLORS.some((c) => c.value === f.color);
 
   return (
     <>
@@ -189,7 +190,8 @@ export function CompanySettings() {
             <span id="brand-color-label">Brand color <span className="optional">(Client Hub and emails)</span></span>
             <div className="set-swatches" role="group" aria-labelledby="brand-color-label">
               {BRAND_COLORS.map((c) => <button key={c.value} type="button" className="set-swatch" aria-label={`Brand color: ${c.name}`} aria-pressed={f.color === c.value} title={c.name} onClick={() => setF({ ...f, color: c.value })} style={{ background: c.value }} />)}
-              <input type="color" className="set-swatch" value={f.color} onChange={set("color")} aria-label="Custom brand color" title="Your own color" aria-pressed={!BRAND_COLORS.some((c) => c.value === f.color)} />
+              {/* A color box can't be pressed (aria-pressed): its ring is data-on, and its name says it's the one in use. */}
+              <input type="color" className="set-swatch" value={f.color} onChange={set("color")} aria-label={ownColor ? "Custom brand color, in use" : "Custom brand color"} title="Your own color" data-on={ownColor || undefined} />
             </div>
           </div>
         </div>
