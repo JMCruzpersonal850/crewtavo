@@ -30,8 +30,8 @@ export function RailwayConnect({ railway, returnTo }: { railway: Railway; return
         <div className={styles.split}>
           <div className="stack-sm">
             <span className={styles.lead}>
-              Railway runs Crewtavo and bills you for it. Once you log in, Crewtavo shows what it costs and warns you before your trial runs out or the bill goes over your plan, so it
-              never stops by surprise. It can set up your own web address too.
+              Railway runs Crewtavo and bills you for it. Once you log in, Crewtavo shows what it costs under Settings → Hosting and warns you before your trial runs out or the bill
+              goes over your plan, so it never stops by surprise. It can set up your own web address too.
             </span>
             <ConnectRailway returnTo={returnTo} projectName={railway.projectName} />
           </div>

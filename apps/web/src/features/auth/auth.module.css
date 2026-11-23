@@ -25,6 +25,21 @@
 /* A column as wide as the frame allows (the public license page). */
 .wide { width: 100%; }
 .page .main:has(> .wide) { max-width: 720px; }
+/*
+ * Page to page in a setup (AuthLayout's step): the new question comes in a little from the side
+ * it's on and fades up, as one-question onboarding flows move (Mobbin: Melio, Mercury, Whop);
+ * its picture fades in. Only the opacity changes for those who'd rather have less motion.
+ */
+@keyframes step-on { from { opacity: 0; transform: translateX(20px); } }
+@keyframes step-back { from { opacity: 0; transform: translateX(-20px); } }
+@keyframes step-fade { from { opacity: 0; } }
+.main[data-enter], .center[data-enter] { animation: step-on 360ms var(--ease-out) both; }
+.main[data-enter="back"] { animation-name: step-back; }
+.asideBody[data-enter] { animation: step-fade 420ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .main[data-enter], .main[data-enter="back"], .center[data-enter] { animation-name: step-fade; animation-duration: 200ms; }
+  .prog i { transition: none; }
+}
 /* A message in the middle of the screen: check your email, setting it up. */
 .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0; text-align: center; }
 
@@ -108,8 +123,9 @@
 
 /* Steps through a setup: three short bars and "Step 1 of 3". */
 .prog { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: var(--fs-12); font-weight: 600; color: var(--text-3); }
-.prog i { width: 28px; height: 4px; border-radius: 2px; background: var(--fill-3); }
-.prog i[data-on] { background: var(--green-solid); }
+.prog i { width: 28px; height: 4px; border-radius: 2px; background: linear-gradient(var(--green-solid), var(--green-solid)) 0 0 / 0% 100% no-repeat, var(--fill-3); transition: background-size 420ms var(--ease-out); }
+/* The next bar fills from the left as its step comes in. */
+.prog i[data-on] { background-size: 100% 100%, auto; }
 .prog span { margin-left: 6px; }
 /* A round back button beside the steps, on a phone. */
 .back { display: none; }
@@ -171,20 +187,35 @@
 .tradeSearch :global(.input), .prefs :global(.select) { height: 44px; border-radius: 10px; font-size: var(--fs-15); }
 .tradeSearch :global(.input) { padding-left: 36px; }
 .tradeStatus:not(:empty) { display: block; margin-top: 6px; font-size: var(--fs-12); color: var(--text-3); }
-.trades { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
+/*
+ * Trades (Mobbin: Whop, HubSpot): rows of a picture and a name, two to a line, a check on the one
+ * picked; what each is for and what it sets up show once, in the picture beside the list.
+ */
+.trades { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 20px 0 0; padding: 0; border: 0; min-width: 0; }
 .trade {
-  position: relative; box-sizing: border-box; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start; min-height: 76px; padding: 12px;
+  position: relative; box-sizing: border-box; display: grid; grid-template-columns: 36px minmax(0, 1fr) 22px; gap: 12px; align-items: center; min-height: 58px; padding: 10px 12px;
   border-radius: 12px; background: var(--page); box-shadow: inset 0 0 0 1px var(--border); cursor: pointer; transition: box-shadow var(--dur-fast), background var(--dur-fast);
 }
 .trade:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .trade input { position: absolute; opacity: 0; pointer-events: none; }
 .trade:has(input:focus-visible) { outline: 2px solid var(--green); outline-offset: 2px; }
 .trade[data-on] { background: color-mix(in srgb, var(--green-tint) 70%, var(--page)); box-shadow: inset 0 0 0 2px var(--green); }
-.tradeIcon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--fill-2); color: var(--text-2); }
+.tradeIcon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--fill-2); color: var(--text-2); transition: background var(--dur-fast), color var(--dur-fast); }
 .trade[data-on] .tradeIcon { background: var(--green-solid); color: #fff; }
-.trade strong { display: block; font-size: var(--fs-14); font-weight: 600; line-height: 1.3; }
-.tradeText { display: -webkit-box; margin-top: 2px; overflow: hidden; font-size: var(--fs-12); line-height: 1.35; color: var(--text-3); -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.radio { display: none; }
+.trade strong { display: block; font-size: var(--fs-15); font-weight: 600; line-height: 1.3; }
+.tradeName { min-width: 0; }
+.tradeText { display: none; margin-top: 3px; font-size: var(--fs-13); line-height: 1.4; color: var(--text-2); }
+.radio { display: grid; place-items: center; box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%; color: transparent; box-shadow: inset 0 0 0 1.5px var(--check-edge); transition: background var(--dur-fast), box-shadow var(--dur-fast); }
+.trade[data-on] .radio { background: var(--green-solid); box-shadow: none; color: #fff; }
+
+/* The trade beside the list: its photo (or its picture, large), name, what it's for and what it sets up. */
+.preview { display: grid; animation: step-fade 320ms var(--ease-out) both; }
+.previewPic { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 18px; background: linear-gradient(150deg, color-mix(in srgb, var(--green-tint) 85%, var(--page)), var(--fill-2)); }
+.previewPic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.credit { position: absolute; right: 10px; bottom: 10px; padding: 2px 8px; border-radius: var(--radius-pill); background: rgb(0 0 0 / 0.45); color: rgb(255 255 255 / 0.85); font-size: var(--fs-11); }
+.previewIcon { display: grid; place-items: center; width: 80px; height: 80px; border-radius: 22px; background: var(--green-solid); color: #fff; box-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.5); }
+.previewName { margin: 18px 0 0; font-size: var(--fs-22); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.previewText { margin: 6px 0 0; font-size: var(--fs-14); line-height: 1.5; color: var(--text-2); }
 .tradeSkeleton { display: grid; gap: 8px; align-content: start; min-height: 76px; padding: 12px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--border); }
 .trades > :global(.error-state), .tradesError { grid-column: 1 / -1; }
 .barHint { display: none; }
@@ -342,10 +373,7 @@
   .trade[data-on] { background: color-mix(in srgb, var(--green-tint) 60%, var(--m-card)); }
   .tradeIcon { width: 40px; height: 40px; border-radius: 10px; }
   .trade strong { font-size: var(--fs-15); }
-  .tradeText { font-size: var(--fs-13); }
-  .trade:not([data-on]) .tradeText { -webkit-line-clamp: 1; }
-  .radio { display: block; box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--check-edge); }
-  .trade[data-on] .radio { box-shadow: inset 0 0 0 2px var(--green); background: radial-gradient(circle, var(--green) 0 5px, transparent 6px); }
+  .trade[data-on] .tradeText { display: block; }
   .barHint { display: block; order: -2; margin: 0 0 2px; font-size: var(--fs-13); color: var(--text-3); text-align: center; }
 
   .list { margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: var(--m-card); gap: 10px; }

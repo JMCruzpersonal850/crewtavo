@@ -398,7 +398,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
   // On Railway the owner connects it first (required: the warnings before Railway stops Crewtavo
   // need it), then, just after setting up, may pick a web address (skippable).
   if (requireCompany && membership.role === "owner" && config.data.platform === "railway" && (membership.railway_needed || membership.company.settings?.railway_setup === "pending")) {
-    return <RailwaySetupPage companyName={membership.company.name} needed={Boolean(membership.railway_needed)} onDone={() => me.refetch()} onSignOut={signOut} />;
+    return <RailwaySetupPage companyName={membership.company.name} needed={Boolean(membership.railway_needed)} inSetup={membership.company.settings?.railway_setup === "pending"} onDone={() => me.refetch()} onSignOut={signOut} />;
   }
   if (!value) return <ShellSkeleton />;
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

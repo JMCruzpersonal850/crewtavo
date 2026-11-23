@@ -14,6 +14,7 @@ import { AuthLayout, authMessage, PasswordInput } from "@/features/auth/LoginPag
 import { SpareKeysSheet } from "@/features/auth/SpareKeys";
 import styles from "@/features/auth/auth.module.css";
 import { api, ApiError, supabase } from "@/lib/api";
+import { SETUP_STEPS, SetupProgress, useSetupSteps } from "./SetupProgress";
 
 export interface SetupStatus {
   ready: boolean;
@@ -204,24 +205,10 @@ export function SetupPage({ status, onCheck, checking }: { status: SetupStatus; 
 }
 
 /** Setting up a new server, in four steps: the owner, the key file, the business, the team. */
-const OWNER_STEPS = [
-  { title: "Your owner account", text: "You can do everything, and invite others." },
-  { title: "Save a key file", text: "Gets you back in if you lose your password." },
-  { title: "Set up your business", text: "Name, trade and the terms." },
-  { title: "Invite your team", text: "From Home, whenever you're ready." },
-];
-
-function OwnerSteps({ step }: { step: number }) {
-  return (
-    <span className={styles.prog}>
-      {OWNER_STEPS.map((_, i) => <i key={i} data-on={i < step || undefined} aria-hidden="true" />)}
-      <span>Step {step} of {OWNER_STEPS.length}</span>
-    </span>
-  );
-}
-
 /** A new instance's first visitor: create the owner account, then set up the business (OnboardingPage). */
 export function OwnerSetupPage({ onTaken }: { onTaken: () => void }) {
+  // Every step of setting up this Crewtavo, for "What happens next" (Railway's two at the end, on Railway).
+  const steps = useSetupSteps();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -263,7 +250,8 @@ export function OwnerSetupPage({ onTaken }: { onTaken: () => void }) {
   if (spareKeys)
     return (
       <AuthLayout
-        top={<OwnerSteps step={2} />}
+        step={2}
+        top={<SetupProgress at="keys" />}
         asideAlign="top"
         aside={
           <div>
@@ -286,14 +274,16 @@ export function OwnerSetupPage({ onTaken }: { onTaken: () => void }) {
 
   return (
     <AuthLayout
-      top={<OwnerSteps step={1} />}
+      step={1}
+      top={<SetupProgress at="owner" />}
       asideAlign="top"
       aside={
         <div>
           <p className={styles.asideLabel} style={{ fontSize: "var(--fs-14)", marginBottom: 14 }}>What happens next</p>
           <ol className={styles.whatNext}>
-            {OWNER_STEPS.map((step, i) => <li key={step.title} data-on={i === 0 || undefined}><span aria-hidden="true">{i + 1}</span><span><b>{step.title}</b>{step.text}</span></li>)}
+            {steps.map((step, i) => <li key={step} data-on={i === 0 || undefined}><span aria-hidden="true">{i + 1}</span><span><b>{SETUP_STEPS[step].title}</b>{SETUP_STEPS[step].text}</span></li>)}
           </ol>
+          <p className={styles.asideHint} style={{ marginTop: 16 }}>Then invite your team from Home, whenever you're ready.</p>
         </div>
       }
     >

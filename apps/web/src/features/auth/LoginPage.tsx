@@ -64,8 +64,13 @@ export function authMessage(error: { message: string; status?: number; code?: st
  * comes next (`aside`), or one column without one. On a phone the picture stays out and `back` is a
  * round button by the steps. `onSignOut` puts Sign out in the foot; `foot` is said on its right.
  */
-export function AuthLayout({ children, aside, asideAlign, panel, caption, wide, top, back, foot, onSignOut, width, center }: {
+export function AuthLayout({ children, aside, asideAlign, panel, caption, wide, top, back, foot, onSignOut, width, center, step }: {
   children: ReactNode;
+  /**
+   * Which question of a setup this is. A new one comes in from the side it's on (ahead, or back
+   * when the number is lower) and its picture fades in, as one-question onboarding flows move.
+   */
+  step?: number | string;
   aside?: ReactNode;
   asideAlign?: "top";
   /** The picture fills an inset panel of its own (sign-in's), instead of sitting on the grouped ground. */
@@ -81,6 +86,12 @@ export function AuthLayout({ children, aside, asideAlign, panel, caption, wide, 
   /** A message in the middle of the screen (check your email, setting it up). */
   center?: boolean;
 }) {
+  // The step shown last, to tell going on from going back.
+  const shown = useRef(step);
+  const goingBack = typeof step === "number" && typeof shown.current === "number" && step < shown.current;
+  useEffect(() => {
+    shown.current = step;
+  }, [step]);
   return (
     <div className={styles.page} data-layout={aside ? undefined : "one"} data-aside={aside && wide ? "wide" : undefined}>
       <div className={styles.left}>
@@ -89,7 +100,7 @@ export function AuthLayout({ children, aside, asideAlign, panel, caption, wide, 
           <span className={styles.brand}><BrandLockup size={22} /></span>
           {top && <div className={styles.topEnd}>{top}</div>}
         </header>
-        <main className={center ? styles.center : styles.main} data-width={wide ? "wide" : width}>{children}</main>
+        <main key={step} className={center ? styles.center : styles.main} data-width={wide ? "wide" : width} data-enter={step === undefined ? undefined : goingBack ? "back" : "on"}>{children}</main>
         <footer className={styles.foot}>
           {onSignOut ? <button type="button" className="link-btn" onClick={onSignOut}>{t("Sign out")}</button> : <LanguageSwitch />}
           {onSignOut ? <LanguageSwitch /> : <span>{foot}</span>}
@@ -97,7 +108,7 @@ export function AuthLayout({ children, aside, asideAlign, panel, caption, wide, 
       </div>
       {aside && (
         <aside className={styles.aside} data-align={asideAlign} data-panel={panel || undefined}>
-          <div className={styles.asideBody}>{aside}</div>
+          <div key={step} className={styles.asideBody} data-enter={step === undefined ? undefined : ""}>{aside}</div>
           {caption && <p className={styles.cap}>{caption}</p>}
         </aside>
       )}

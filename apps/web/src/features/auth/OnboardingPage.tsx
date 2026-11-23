@@ -16,12 +16,12 @@ import { ErrorState } from "@/components/ui/States";
 import { TERMS_REQUIRED, TERMS_VERSION, TermsAgreement } from "@/features/legal/License";
 import { api } from "@/lib/api";
 import { CURRENCIES, formatDate, timeZoneChoices } from "@/lib/format";
+import { SetupProgress } from "@/features/setup/SetupProgress";
 import { AuthLayout } from "./LoginPage";
 import styles from "./auth.module.css";
 
 interface PresetSummary { id: string; name: string; description: string }
 type Step = 1 | 2 | 3;
-const STEPS = 3;
 
 /**
  * The trades that match what was typed. A typed word matches a word of the trade's name or
@@ -77,8 +77,55 @@ const TRADE_ICONS: Record<string, IconName> = {
   general: "apps", cleaning: "sparkle", electrical: "bolt", handyman: "wrench", hvac: "thermometer", landscaping: "tree",
   lawn_exterior: "plant", paving: "paving", pest_control: "bug", plumbing: "drop", pool_service: "waves", roofing_exteriors: "roofing",
 };
-function TradeIcon({ id }: { id: string }) {
-  return <Icon name={TRADE_ICONS[id] ?? "apps"} size={18} />;
+function TradeIcon({ id, size = 18 }: { id: string; size?: number }) {
+  return <Icon name={TRADE_ICONS[id] ?? "apps"} size={size} />;
+}
+
+/** The website's photos of these trades (the demo's start screen and crewtavo.com use the same), credited on the picture. */
+const photo = (name: string, position: string, credit: string) => ({ src: `/demo-photos/${name}.jpg`, position, credit });
+const TRADE_PHOTOS: Record<string, ReturnType<typeof photo>> = {
+  // i18n-ignore below: photographers' names and where the photos are from.
+  lawn_exterior: photo("lawn", "74% 50%", "Michael Smith / Unsplash"), // i18n-ignore
+  roofing_exteriors: photo("roofing", "50% 40%", "Raze Solar / Unsplash"), // i18n-ignore
+  paving: photo("paving", "64% 50%", "Brian J. Tromp / Unsplash"), // i18n-ignore
+  cleaning: photo("cleaning", "50% 50%", "Tima Miroshnichenko / Pexels"), // i18n-ignore
+  hvac: photo("hvac", "54% 30%", "Kathleen Austin Kuhn / Pexels"), // i18n-ignore
+};
+
+/**
+ * The trade picked (or pointed at) beside the list, as the demo's start screen shows a business:
+ * its photo, or its picture large where it has none; what it's for, in full; and what it sets up.
+ */
+function TradePreview({ trade, full }: { trade: PresetSummary; full: TradePreset | undefined }) {
+  const pic = TRADE_PHOTOS[trade.id];
+  return (
+    <div className={styles.preview} key={trade.id}>
+      <div className={styles.previewPic} data-photo={pic ? "" : undefined}>
+        {pic ? (
+          <>
+            <img src={pic.src} alt="" style={{ objectPosition: pic.position }} />
+            <span className={styles.credit}>{pic.credit}</span>
+          </>
+        ) : (
+          <span className={styles.previewIcon}><TradeIcon id={trade.id} size={34} /></span>
+        )}
+      </div>
+      <p className={styles.previewName}>{trade.name}</p>
+      <p className={styles.previewText}>{trade.description}</p>
+      {full && (
+        <>
+          <p className={styles.asideHint} style={{ margin: "18px 0 12px" }}>Already in Crewtavo when you open it:</p>
+          <ul className={styles.list}>
+            <li><Icon name="check" size={16} /><span><b>{full.services.length} services with prices</b><br />{someOf(full.services.map((s) => s.name))}</span></li>
+            {full.checklists.length > 0 && <li><Icon name="check" size={16} /><span><b>Checklists for the crew</b><br />{someOf(full.checklists.map((c) => c.name))}</span></li>}
+            {full.intake_forms.length > 0 && <li><Icon name="check" size={16} /><span><b>Forms for your website</b><br />{someOf(full.intake_forms.map((f) => f.name))}</span></li>}
+            {(full.packages?.length ?? 0) > 0 && <li><Icon name="check" size={16} /><span><b>Roof packages</b><br />{someOf(full.packages!.map((p) => p.name))}</span></li>}
+            {full.weather_rules.length > 0 && <li><Icon name="check" size={16} /><span><b>Weather rules</b><br />For rain days and cold snaps, on the work they affect</span></li>}
+          </ul>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** "Weekly mow, Bi-weekly mow, Fertilizer application and 14 more": names as the business will see them. */
@@ -118,15 +165,6 @@ function buildParts(p: TradePreset | undefined) {
   ];
 }
 
-function Steps({ step }: { step: Step }) {
-  return (
-    <span className={styles.prog}>
-      {[1, 2, 3].map((i) => <i key={i} data-on={i <= step || undefined} aria-hidden="true" />)}
-      <span>Step {step} of {STEPS}</span>
-    </span>
-  );
-}
-
 /** `onSignOut` is the session's, which leaves nothing of theirs on the phone. */
 export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void; onSignOut: () => void }) {
   const presets = useQuery({ queryKey: ["presets"], queryFn: () => api.get<PresetSummary[]>("/presets") });
@@ -135,6 +173,8 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
   const [name, setName] = useState("");
   const [preset, setPreset] = useState("general");
   const [search, setSearch] = useState("");
+  // The trade the pointer is on: the picture beside the list shows it until the pointer leaves.
+  const [pointed, setPointed] = useState<string | null>(null);
   const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York");
   const [currency, setCurrency] = useState(() => currencyFor(timezone));
   const [changing, setChanging] = useState(false);
@@ -170,6 +210,11 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
     if (changing) zonePicker.current?.focus();
   }, [changing]);
 
+  // The trades' photos, fetched once the trades show, so pointing at one shows its picture at once.
+  useEffect(() => {
+    if (step === 2) Object.values(TRADE_PHOTOS).forEach((pic) => void (new Image().src = pic.src));
+  }, [step]);
+
   // A new step is a new question: say it (the first one's field has focus already).
   useEffect(() => {
     if (moved.current) heading.current?.focus();
@@ -197,7 +242,7 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
 
   if (create.isPending || made) {
     return (
-      <AuthLayout center>
+      <AuthLayout center step={4}>
         <span className={styles.tile} data-size="big" aria-hidden="true">{initials(business)}</span>
         <div role="status"><h1 className={styles.title} style={{ marginTop: 18 }}>Setting up {business}</h1></div>
         <ul className={styles.build}>
@@ -224,7 +269,8 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
   if (step === 1) {
     return (
       <AuthLayout
-        top={<Steps step={1} />}
+        step={1}
+        top={<SetupProgress at="name" />}
         onSignOut={onSignOut}
         caption="Its name and initials go on every quote. You can add a logo whenever you like."
         aside={
@@ -290,30 +336,16 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
 
   if (step === 2) {
     const sets = full ? listed(startsWith(full)) : "";
+    const previewed = presets.data?.find((p) => p.id === pointed) ?? trade;
     return (
       <AuthLayout
         wide
-        top={<Steps step={2} />}
+        step={2}
+        top={<SetupProgress at="trade" />}
         back={{ label: "Back", onClick: () => setStep(1) }}
         onSignOut={onSignOut}
         asideAlign="top"
-        aside={
-          trade && (
-            <div>
-              <p className={styles.asideLabel}>Ready for {trade.name}</p>
-              <p className={styles.asideHint}>Already filled in when you open Crewtavo:</p>
-              {full && (
-                <ul className={styles.list}>
-                  <li><Icon name="check" size={16} /><span><b>{full.services.length} services with prices</b><br />{someOf(full.services.map((s) => s.name))}</span></li>
-                  {full.checklists.length > 0 && <li><Icon name="check" size={16} /><span><b>Checklists for the crew</b><br />{someOf(full.checklists.map((c) => c.name))}</span></li>}
-                  {full.intake_forms.length > 0 && <li><Icon name="check" size={16} /><span><b>Forms for your website</b><br />{someOf(full.intake_forms.map((f) => f.name))}</span></li>}
-                  {(full.packages?.length ?? 0) > 0 && <li><Icon name="check" size={16} /><span><b>Roof packages</b><br />{someOf(full.packages!.map((p) => p.name))}</span></li>}
-                  {full.weather_rules.length > 0 && <li><Icon name="check" size={16} /><span><b>Weather rules</b><br />For rain days and cold snaps, on the work they affect</span></li>}
-                </ul>
-              )}
-            </div>
-          )
-        }
+        aside={previewed && <TradePreview trade={previewed} full={details?.[previewed.id]} />}
       >
         <form className={styles.flow} onSubmit={toStep(3)}>
           <h1 ref={heading} tabIndex={-1} className={styles.title}>What kind of work do you do?</h1>
@@ -329,14 +361,15 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
             {presets.isPending && Array.from({ length: 6 }, (_, i) => <div key={i} className={styles.tradeSkeleton}><Skeleton width="60%" height={14} /><Skeleton width="90%" height={10} /></div>)}
             {presets.error && <div className={styles.tradesError}><ErrorState compact error={presets.error} onRetry={() => presets.refetch()} /></div>}
             {shown?.map((p) => (
-              <label key={p.id} className={styles.trade} data-on={p.id === preset || undefined}>
+              <label key={p.id} className={styles.trade} data-on={p.id === preset || undefined} onPointerEnter={() => setPointed(p.id)} onPointerLeave={() => setPointed(null)}>
                 <input type="radio" name="preset" value={p.id} checked={p.id === preset} onChange={() => setPreset(p.id)} />
                 <span className={styles.tradeIcon}><TradeIcon id={p.id} /></span>
-                <span>
+                <span className={styles.tradeName}>
                   <strong>{p.name}</strong>
+                  {/* On a phone, with no picture beside the list, the one picked says what it's for. */}
                   <span className={styles.tradeText}>{p.description}</span>
                 </span>
-                <span className={styles.radio} aria-hidden="true" />
+                <span className={styles.radio} aria-hidden="true"><Icon name="check" size={13} bold /></span>
               </label>
             ))}
           </fieldset>
@@ -352,7 +385,8 @@ export function OnboardingPage({ onCreated, onSignOut }: { onCreated: () => void
 
   return (
     <AuthLayout
-      top={<Steps step={3} />}
+      step={3}
+      top={<SetupProgress at="terms" />}
       back={{ label: "Back", onClick: () => setStep(2) }}
       onSignOut={onSignOut}
       aside={

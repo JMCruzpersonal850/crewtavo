@@ -23,8 +23,10 @@ import authStyles from "@/features/auth/auth.module.css";
 import { RailwayConnect } from "@/features/settings/RailwayConnect";
 import { AddressScreen, useRailwayReturn, WEB_ADDRESS_KEY } from "@/features/settings/WebAddressSettings";
 import { api } from "@/lib/api";
+import { SetupProgress } from "./SetupProgress";
 
-export function RailwaySetupPage({ companyName, needed, onDone, onSignOut }: { companyName: string; needed: boolean; onDone: () => void; onSignOut: () => void }) {
+/** `inSetup`: right after the business was made (railway_setup "pending"), so these are setup's last two steps. */
+export function RailwaySetupPage({ companyName, needed, inSetup, onDone, onSignOut }: { companyName: string; needed: boolean; inSetup?: boolean; onDone: () => void; onSignOut: () => void }) {
   const [choosing, setChoosing] = useState(false);
   const overview = useQuery({
     queryKey: WEB_ADDRESS_KEY,
@@ -52,7 +54,7 @@ export function RailwaySetupPage({ companyName, needed, onDone, onSignOut }: { c
   if (needed) {
     const railway = overview.data?.railway;
     return (
-      <AuthLayout onSignOut={onSignOut} width="read">
+      <AuthLayout onSignOut={onSignOut} width="read" step={1} top={inSetup ? <SetupProgress at="railway" /> : undefined}>
         <div className={authStyles.flow}>
           <h1 className={authStyles.title}>{railway?.error ? "Connect Railway again" : "Connect Railway"}</h1>
           <p className={authStyles.sub}>{companyName}'s Crewtavo runs on Railway. This takes a minute, and you only do it once.</p>
@@ -80,7 +82,7 @@ export function RailwaySetupPage({ companyName, needed, onDone, onSignOut }: { c
   const connected = Boolean(data?.railway?.connected);
   const started = Boolean(data?.change);
   return (
-    <AuthLayout onSignOut={onSignOut} width="read">
+    <AuthLayout onSignOut={onSignOut} width="read" step={2} top={inSetup ? <SetupProgress at="address" /> : undefined}>
       <div className={authStyles.flow}>
         <h1 className={authStyles.title}>Your web address</h1>
         <p className={authStyles.sub}>
