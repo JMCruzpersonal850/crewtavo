@@ -213,3 +213,101 @@ describe("a Complete tapped in the field", () => {
     expect(tapTime("completed", undefined, now)).toBeNull();
   });
 });
+
+describe("a crew's status change", () => {
+  const VISIT = "00000000-0000-4000-8000-0000000000e1";
+  const CREW = "00000000-0000-4000-8000-0000000000e2";
+  type Who = "field_crew" | "subcontractor" | "office";
+
+  /**
+   * The person's Supabase client, answering as the database would: the visit's status is `read` when
+   * the API first looks and `now` by the time its change arrives (a crewmate tapped in between). A
+   * change limited to some statuses goes through only while the visit has one of them.
+   */
+  const visitDb = (who: Who, read: string, now: string) => {
+    let status = now;
+    let first = true;
+    const updates: Array<Record<string, unknown>> = [];
+    const from = () => {
+      let change: Record<string, unknown> | null = null;
+      let only: string[] | null = null;
+      const builder: Record<string, unknown> = {};
+      for (const name of ["select", "eq", "is", "order"]) builder[name] = () => builder;
+      builder.in = (column: string, values: string[]) => ((only = column === "status" ? values : only), builder);
+      builder.update = (payload: Record<string, unknown>) => ((change = payload), builder);
+      builder.maybeSingle = () => {
+        const seen = first ? read : status;
+        first = false;
+        return Promise.resolve({ data: { id: VISIT, status: seen, completed_at: null }, error: null });
+      };
+      builder.then = (resolve: (r: unknown) => unknown) => {
+        if (!change) return resolve({ data: null, error: null });
+        if (only && !only.includes(status)) return resolve({ data: [], error: null });
+        updates.push(change);
+        status = String(change.status ?? status);
+        return resolve({ data: [{ id: VISIT, scheduled_on: null, starts_at: null, crew_id: null, status }], error: null });
+      };
+      return builder;
+    };
+    const scope = { db: { from } as never, companyId: "00000000-0000-4000-8000-000000000001", role: who, permissions: [], userId: CREW };
+    return { scope, updates, status: () => status };
+  };
+  /** What the change came to: the answer, or the error refusing it, what was sent, and the visit's status after. */
+  const send = async (who: Who, read: string, body: unknown, now = read) => {
+    const db = visitDb(who, read, now);
+    const result = await updateVisit(db.scope, VISIT, visitChangeInput.parse(body)).then(
+      (answer) => answer as Record<string, unknown>,
+      (error: { status: number; message: string }) => ({ refused: error.status, message: error.message }),
+    );
+    return { result, updates: db.updates, status: db.status() };
+  };
+
+  it("never takes a visit back a step for a field crew or a sub, and says who does", async () => {
+    for (const who of ["field_crew", "subcontractor"] as const) {
+      // A step sent again is no change, and the next one goes through.
+      const again = await send(who, "in_progress", { status: "in_progress" });
+      expect(again.result, who).not.toHaveProperty("refused");
+      expect((await send(who, "in_progress", { status: "completed" })).status, who).toBe("completed");
+      // Back a step, asked outright.
+      const behind = await send(who, "in_progress", { status: "en_route" });
+      expect(behind.result, who).toEqual({ refused: 403, message: "Ask the office to move this visit back a step." });
+      expect(behind.updates, who).toEqual([]);
+      // Back to scheduled isn't a step a crew takes a visit to, from anywhere.
+      for (const read of ["en_route", "in_progress", "unscheduled"]) {
+        const scheduled = await send(who, read, { status: "scheduled" });
+        expect(scheduled.result, `${who} from ${read}`).toEqual({ refused: 403, message: "Ask the office to cancel or move this visit." });
+        expect(scheduled.updates).toEqual([]);
+      }
+      // Out of done or cancelled.
+      for (const read of ["completed", "cancelled"]) {
+        expect((await send(who, read, { status: "in_progress" })).result, `${who} from ${read}`).toEqual({ refused: 403, message: "Ask the office to cancel, move or reopen this visit." });
+      }
+    }
+  });
+
+  it("skips a field app tap that's behind, as before, rather than refusing it", async () => {
+    const late = await send("field_crew", "in_progress", { status: "en_route", forward_only: true });
+    expect(late.result).toMatchObject({ skipped: true, status: "in_progress" });
+    expect(late.updates).toEqual([]);
+  });
+
+  it("doesn't undo a crewmate's tap that landed after the visit was read", async () => {
+    // Read as started; finished by a crewmate before this Start went out.
+    const raced = await send("field_crew", "en_route", { status: "in_progress", forward_only: true }, "completed");
+    expect(raced.result).toMatchObject({ skipped: true, status: "completed" });
+    expect(raced.updates).toEqual([]);
+    expect(raced.status).toBe("completed");
+    // Without a crewmate in between it goes through, from any step up to its own.
+    for (const read of ["scheduled", "en_route", "in_progress"]) {
+      const tap = await send("field_crew", read, { status: "in_progress", forward_only: true });
+      expect(tap.status, read).toBe("in_progress");
+      expect(tap.result, read).not.toHaveProperty("skipped");
+    }
+  });
+
+  it("leaves the office to move a visit back", async () => {
+    const office = await send("office", "in_progress", { status: "scheduled" });
+    expect(office.updates).toEqual([{ status: "scheduled" }]);
+    expect(office.status).toBe("scheduled");
+  });
+});

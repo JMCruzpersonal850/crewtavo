@@ -399,7 +399,7 @@ describe("the API, for a sub", () => {
     expect((await as(AL, `/visits/${VISIT}`, { method: "PATCH", body: { status: "en_route", forward_only: true } })).status).toBe(200);
     expect((await as(AL, `/visits/${VISIT}`, { method: "PATCH", body: { notes: "Soft decking" } })).status).toBe(200);
     expect(world.tables.visits[0]).toMatchObject({ status: "en_route", notes: "Soft decking" });
-    for (const change of [{ title: "Easy" }, { scheduled_on: "2026-10-26" }, { assignee_ids: [AL] }, { status: "cancelled" }, { status: "unscheduled" }]) {
+    for (const change of [{ title: "Easy" }, { scheduled_on: "2026-10-26" }, { assignee_ids: [AL] }, { status: "cancelled" }, { status: "unscheduled" }, { status: "scheduled" }]) {
       const res = await as(AL, `/visits/${VISIT}`, { method: "PATCH", body: change });
       expect(res.status, JSON.stringify(change)).toBe(403);
     }

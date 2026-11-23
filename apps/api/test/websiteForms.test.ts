@@ -208,7 +208,9 @@ describe("a message from the website's own form", () => {
     const html = String(current.emails[0]!.html);
     expect(html.match(/display:inline-block/g)).toHaveLength(1);
     expect(html).toContain(`href="https://crm.greenlawn.example/requests/${REQUEST_ID}" style="display:inline-block`);
-    expect(html).toContain("Hi<br><a href=\"https://evil.example/requests/00000000-0000-4000-8000-0000000000e9\"");
+    // In the paragraph under "Message", with a blank line (a no-break space) between the visitor's own paragraphs.
+    expect(html).toContain("Message:<br>Hi<br>\u00a0<br><a href=\"https://evil.example/requests/00000000-0000-4000-8000-0000000000e9\"");
+    expect(html).toContain("0000000000e9</a><br>\u00a0<br>Thanks</p>");
   });
 
   it("puts no link or logo from the address a message came to in the office's email when the app's own address isn't set", async () => {

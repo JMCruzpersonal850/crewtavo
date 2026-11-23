@@ -249,17 +249,25 @@ export function fieldLabel(name: string): string {
   return label ? label.charAt(0).toUpperCase() + label.slice(1) : name;
 }
 
+/** The line that stands for a visitor's blank lines in the office's email (visitorLines): a no-break space. */
+const VISITOR_GAP = "\u00a0";
+
 /**
- * What a visitor typed, as it goes in the office's email: its lines kept and its blank lines dropped,
- * so none of it stands as a paragraph of its own there, where a link alone in one would be a button
- * (apps/api/src/lib/email.ts). A job application's email (careers.ts) does the same.
+ * What a visitor typed, as it goes in the office's email: its lines kept, and each run of blank lines
+ * between them a line holding only a no-break space (VISITOR_GAP). Their paragraphs still read apart,
+ * but the email never has two line breaks in a row from them, so none of it stands as a paragraph of
+ * its own there, where a link alone in one would be a button (apps/api/src/lib/email.ts). A job
+ * application's email (careers.ts) does the same.
  */
-export const visitorLines = (value: string) =>
-  value
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .filter((line) => line.trim())
-    .join("\n");
+export function visitorLines(value: string): string {
+  const lines: string[] = [];
+  for (const line of value.replace(/\r\n?/g, "\n").split("\n")) {
+    if (line.trim()) lines.push(line);
+    else if (lines.length && lines.at(-1) !== VISITOR_GAP) lines.push(VISITOR_GAP);
+  }
+  if (lines.at(-1) === VISITOR_GAP) lines.pop();
+  return lines.join("\n");
+}
 
 /** And what a visitor typed that's shown on one line: a field's name, a promo code. */
 export const visitorLine = (value: string) => value.replace(/\s+/g, " ").trim();
