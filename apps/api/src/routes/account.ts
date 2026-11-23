@@ -92,7 +92,7 @@ account.get("/presets", (c) => c.json(presetSummaries()));
  */
 account.get("/me", requireUser, async (c) => {
   const { db, userId } = c.var;
-  const [profile, memberships, everyRole] = await Promise.all([
+  const [profile, memberships, everyRole, kept] = await Promise.all([
     db.from("profiles").select("user_id, email, full_name, phone, avatar_url, color, locale").eq("user_id", userId).maybeSingle(),
     db
       .from("memberships")
@@ -100,7 +100,10 @@ account.get("/me", requireUser, async (c) => {
       .eq("user_id", userId)
       .eq("active", true),
     adminClient(c.env).from("memberships").select("company_id, role").eq("user_id", userId),
+    // The prices and targets kept apart from the settings: the database gives them only to those who sell.
+    db.from("company_private_settings").select("company_id, settings"),
   ]);
+  const keptFor = new Map(must(kept).map((k) => [k.company_id, k.settings]));
   const rows = must(memberships);
   const roleIds = rows.map((m) => m.role_id).filter((id): id is string => Boolean(id));
   const roles = roleIds.length ? must(await db.from("company_roles").select("id, name, permissions").in("id", roleIds)) : [];
@@ -151,7 +154,7 @@ account.get("/me", requireUser, async (c) => {
       const staff = m.role !== "subcontractor";
       return [{
         role: m.role,
-        company,
+        company: withKept(company, keptFor.get(m.company_id)),
         role_name: custom?.name ?? ROLE_LABELS[m.role as Role],
         role_id: custom ? m.role_id : null,
         permissions: memberPermissions(m.role as Role, custom ? custom.permissions : null),
@@ -186,6 +189,17 @@ account.get("/me", requireUser, async (c) => {
  */
 const ownSignIn = (appMetadata: unknown, companyId: string, subId: string, memberships: ReadonlyArray<{ company_id: string }>) =>
   isSubLogin(appMetadata, companyId, subId) && memberships.every((x) => x.company_id === companyId);
+
+/**
+ * A company with its prices and targets (company_private_settings: the paving calculator, the roofing
+ * price ranges, the revenue goal and margin target) back in its settings, where the app reads them.
+ * Only those who sell get them (the database decides); a crew's sign-in carries none.
+ */
+function withKept<T>(company: T, kept: unknown): T {
+  if (!kept || typeof kept !== "object") return company;
+  const settings = (company as { settings?: unknown }).settings;
+  return { ...company, settings: { ...(settings && typeof settings === "object" ? settings : {}), ...kept } };
+}
 
 /**
  * For a sub's own sign-in (own_sign_in), what's on the office's record for them: a number sign-in
@@ -683,6 +697,10 @@ async function photoTarget(c: Context<AppEnv>): Promise<string> {
   if (error) throw dbError(error);
   if (!member) throw new HttpError(404, "That person isn't on your team.");
   if (member.role === "owner" && role !== "owner") throw new HttpError(403, "Only an owner can do that for another owner.");
+  // Their photo is their account's, in every business they're in: one that isn't only this one's isn't this company's to change (as with reset links, routes/recovery.ts).
+  const elsewhere = await adminClient(c.env).from("memberships").select("company_id").eq("user_id", parsed.data).neq("company_id", companyId).limit(1);
+  if (elsewhere.error) throw dbError(elsewhere.error);
+  if (elsewhere.data.length) throw new HttpError(403, "This person also uses Crewtavo with another business, so they change their own photo.");
   return parsed.data;
 }
 

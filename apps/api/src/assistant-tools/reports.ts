@@ -6,6 +6,7 @@
  */
 import { breakPay, jobProfit, localDate, moneyFigures, previousRange, REPORT_PRESETS, resolveRange, salesFigures, serviceFigures, teamHours, type ReportPreset, type ReportRange } from "@crewtavo/core";
 import { z } from "zod";
+import { keptSettings } from "../lib/keptSettings";
 import { adminClient } from "../lib/supabase";
 import { timeRates } from "../services/payRates";
 import { companyArg, friendly, requireRole, roleAllows, rows, tool, type ToolContext } from "./tool";
@@ -144,19 +145,19 @@ export const reportTools = {
           .range(f, t),
       );
       const ids = jobs.slice(0, a.limit).map((j) => j.id);
-      const [time, expenses, rates, company, crewPay, materials] = ids.length
+      const [time, expenses, rates, kept, crewPay, materials] = ids.length
         ? await Promise.all([
             all((f, t) => ctx.db.from("time_entries").select("id, job_id, user_id, started_at, ended_at, approved_at").in("job_id", ids).range(f, t)),
             all((f, t) => ctx.db.from("expenses").select("job_id, amount, in_line_costs").in("job_id", ids).range(f, t)),
             timeRates(adminClient(ctx.env), ctx.companyId, { job_ids: ids }),
-            rows(ctx.db.from("companies").select("settings").eq("id", ctx.companyId)),
+            keptSettings(ctx.db, ctx.companyId),
             // Sub and crew pay (job pay agreed, done or paid), for the office with job costs.
             rows(ctx.db.rpc("job_pay_costs", { p_jobs: ids })),
             // Materials logged on the jobs, to count in place of the lines' estimate for them.
             all((f, t) => ctx.db.from("job_materials").select("job_id, service_id, name, unit, quantity").in("job_id", ids).order("id").range(f, t)),
           ])
-        : [[], [], {} as Record<string, number>, [], [], []];
-      const target = Number(((company[0]?.settings ?? {}) as Record<string, unknown>).margin_target ?? 0) || null;
+        : [[], [], {} as Record<string, number>, {} as Record<string, unknown>, [], []];
+      const target = Number(kept.margin_target ?? 0) || null;
       const result = jobProfit(jobs.slice(0, a.limit) as never, time, expenses, (e) => rates[e.id] ?? 0, target, crewPay, materials);
       return { period: range, ...result, jobs: result.jobs.sort((x, y) => (x.margin_percent ?? 0) - (y.margin_percent ?? 0)) };
     },

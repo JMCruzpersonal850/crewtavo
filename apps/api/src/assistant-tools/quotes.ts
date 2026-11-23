@@ -8,13 +8,13 @@
  * approved" does (services/contracts.ts manualApproval). Quote templates (quotes.is_template) are
  * listed apart, and new quotes start from them as "New from template" does (duplicate_quote).
  */
-import { addDays, localDate, optionTotals, taxRateFromPercent } from "@crewtavo/core";
+import { addDays, localDate, optionTotals, SALES, seesInvoices, taxRateFromPercent } from "@crewtavo/core";
 import { z } from "zod";
 import { asJson } from "../lib/http";
 import { isPriced, manualApproval, OPTION_FIELDS, type ManualApproval, type OptionRow } from "../services/contracts";
 import { convertQuote, keepDepositInCap, quoteFromRequest, sendQuote, sendSchema } from "../services/sales";
 import { customFieldsArg, customFieldsPatch } from "./customFields";
-import { changed, companyArg, friendly, one, rows, tool, type ToolContext } from "./tool";
+import { changed, companyArg, friendly, one, requireRole, rows, tool, type ToolContext } from "./tool";
 
 const quoteLine = z.object({
   service_id: z.uuid().optional().describe("A price list item (list_services): its name, unit, price and tax come with it."),
@@ -74,7 +74,7 @@ async function replaceLines(ctx: ToolContext, quoteId: string, lines: ReadonlyAr
   }
 }
 
-const salesScope = (ctx: ToolContext) => ({ db: ctx.db, env: ctx.env, companyId: ctx.companyId, baseUrl: (ctx.env.APP_URL ?? ctx.origin).replace(/\/$/, "") });
+const salesScope = (ctx: ToolContext) => ({ db: ctx.db, env: ctx.env, companyId: ctx.companyId, baseUrl: (ctx.env.APP_URL ?? ctx.origin).replace(/\/$/, ""), noMoney: !seesInvoices(ctx.role, ctx.permissions) });
 
 const OFFERS_OPTIONS = "This quote offers options; edit its lines in Crewtavo.";
 /** Approving a quote that's signed (or a job) already: its approval stays the client's. */
@@ -246,7 +246,11 @@ export const quoteTools = {
     description: "Send a quote to the client by email (default) or text, with their link to review, choose options and approve it; or just make the link (channel link) to share another way. It goes to the client and their contacts ticked for emails or texts, unless recipients names the addresses or numbers to send it to instead (10 at most). It's then marked sent.",
     input: z.object({ quote_id: z.uuid(), ...sendSchema.shape, ...companyArg }),
     area: "quotes",
-    run: async (ctx, { quote_id, company_id: _, ...body }) => sendQuote(salesScope(ctx), quote_id, body),
+    // It goes out with the server's own email and texting, so the role is checked here, as POST /quotes/:id/send does.
+    run: async (ctx, { quote_id, company_id: _, ...body }) => {
+      requireRole(ctx, SALES, "sales");
+      return sendQuote(salesScope(ctx), quote_id, body);
+    },
   }),
   convert_quote_to_job: tool({
     description:

@@ -179,7 +179,7 @@ const S = { roof: "s-roof", tear: "s-tear", edge: "s-edge", deck: "s-deck", chim
 
 // The client's own link as an email or text to them carries it (own: 1), unless it's a preview, the
 // office's copy (via), or `old`: a link minted before the client's own were marked.
-type HubLink = { t: "quote" | "invoice" | "client"; id: string; pv?: 1; via?: "office"; old?: true };
+type HubLink = { t: "quote" | "invoice" | "client"; id: string; pv?: 1; via?: "office"; nm?: 1; old?: true };
 const tokenFor = async ({ old, ...link }: HubLink) =>
   (await clientLink(env, "https://ops.example.com", { c: ROOFER, ...(old || link.pv || link.via ? {} : { own: 1 as const }), ...link })).split("/hub/")[1]!;
 const hub = async (link: HubLink, path = "", body?: unknown) =>
@@ -195,8 +195,10 @@ function roofer(quote: Row = {}) {
     companies: [{
       id: ROOFER, name: "Summit Roofing", phone: "555-0100", email: "office@summit.example", website: "summit.example", timezone: "America/Chicago", currency: "USD", trade_preset: "roofing_exteriors",
       address: { line1: "200 Main St", line2: "Suite 4", city: "Springfield", region: "IL", postal_code: "62704" },
-      settings: { branding: { color: "#1f4e79" }, hub_tips: false, roofing: { range_pct: 15, range_round: 50 }, roofing_app: { enabled: true } },
+      settings: { branding: { color: "#1f4e79" }, hub_tips: false, roofing_app: { enabled: true } },
     }],
+    // The price ranges are kept apart from the settings crews read.
+    company_private_settings: [{ company_id: ROOFER, settings: { roofing: { range_pct: 15, range_round: 50 } } }],
     quotes: [{
       id: QUOTE, company_id: ROOFER, number: 1042, status: "sent", title: "New roof", message: null, subtotal: 18304, discount_amount: 0, tax_rate: 0, tax_amount: 0,
       total: 18304, deposit_amount: 1000, valid_until: "2026-11-21", sent_at: "2026-10-22T15:00:00Z", created_at: "2026-10-21T13:00:00Z", approved_at: null, approval: null, client_id: CLIENT,
@@ -1736,6 +1738,10 @@ describe("autopay on the client's home page", () => {
     ]);
     // Nothing about the payment's processor or the charges' ids goes out.
     expect(JSON.stringify(home)).not.toMatch(/processor|invoice_id/);
+    // An office copy made for someone who doesn't see invoices (lib/links `nm`) leaves the money out; the rest stays.
+    const noMoney = await (await hub({ t: "client", id: CLIENT, via: "office", nm: 1 })).json();
+    expect([noMoney.invoices, noMoney.payments, noMoney.autopay]).toEqual([[], [], null]);
+    expect(noMoney.client).toEqual(home.client);
     // Called off for no reason the client needs: owed the usual way, and nothing is said.
     expect(home.invoices.map((i: { yours_to_pay: boolean }) => i.yours_to_pay)).toEqual([false, false, false, false]);
     // Closed because it's over the limit for their bank account: theirs to pay, and the page says why.

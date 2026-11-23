@@ -574,14 +574,17 @@ export async function withAutopayLink(env: Env, ctx: RunContext, trigger: string
  * (via "office", as Copy Client Hub link makes them), so none can be used to confirm a card for the
  * client or add a tip to their saved card. Everything else is as the client's emails have it.
  */
-export async function officeVars(env: Env, ctx: RunContext, baseUrl: string | null): Promise<TemplateVars> {
+export async function officeVars(env: Env, ctx: RunContext, baseUrl: string | null, noMoney = false): Promise<TemplateVars> {
   if (!baseUrl) return ctx.vars;
   const vars: TemplateVars = { ...ctx.vars };
+  // `noMoney`: for notices, which can go to crews; the Hub they open leaves out the client's invoices
+  // and payments (lib/links `nm`). An invoice's or autopay's notice only reaches the office with Invoices.
+  const nm = noMoney ? { nm: 1 as const } : {};
   if (vars.link && (ctx.subject === "quote" || ctx.subject === "invoice" || ctx.subject === "client")) {
-    vars.link = await clientLink(env, baseUrl, { c: ctx.company.id, t: ctx.subject, id: ctx.id, via: "office" });
+    vars.link = await clientLink(env, baseUrl, { c: ctx.company.id, t: ctx.subject, id: ctx.id, via: "office", ...(ctx.subject !== "invoice" && nm) });
   }
   if (vars.link && ctx.subject === "visit" && ctx.client) {
-    vars.link = await clientLink(env, baseUrl, { c: ctx.company.id, t: "client", id: ctx.client.id, via: "office" });
+    vars.link = await clientLink(env, baseUrl, { c: ctx.company.id, t: "client", id: ctx.client.id, via: "office", ...nm });
   }
   const group = autopayVars(vars);
   if (group.link && ctx.client) {
@@ -721,7 +724,7 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
             : "Only the office with the Subcontractors area hears about subs' offers, and nobody this rule notifies has it.",
         );
       }
-      const office = { ...ctx, vars: await officeVars(env, ctx, baseUrl) };
+      const office = { ...ctx, vars: await officeVars(env, ctx, baseUrl, true) };
       const title = render(action.title, office) || ruleName;
       // A new request whose client picked a time online says so, whatever the rule's own words are:
       // "Booked online for Tue, Jan 14, 10:00 to 11:00 AM." or "Asked for ... It waits for your OK."

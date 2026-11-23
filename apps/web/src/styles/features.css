@@ -1962,12 +1962,19 @@ button.material-result:focus-visible { outline: 2px solid var(--green); outline-
 }
 
 /* ---------- Roles ---------- */
-/* A role's areas in its dialog: a switch for each, on hairlines. */
-.perm-list { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--row-divider); }
-.perm-list > .switch-row { min-height: 40px; padding: 8px 0; border-bottom: 1px solid var(--row-divider); font-weight: 500; }
-@media (min-width: 560px) { .perm-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; } }
-/* On a phone the switch sits on the right of its words, as Settings' own switches do there. */
-@media (max-width: 900px) { .perm-list > .switch-row { flex-direction: row-reverse; justify-content: space-between; gap: 14px; min-height: 48px; font-size: var(--fs-15); } }
+/* A role's dialog: the level it starts from, then its areas in groups, each a settings row with what it opens. */
+.role-fieldset { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.role-legend { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 0; font-size: var(--fs-13); font-weight: 600; color: var(--ink); }
+.role-legend > .btn { margin-left: auto; }
+.role-count { font-weight: 400; color: var(--text-3); }
+.role-group { padding-top: 6px; }
+.role-group-title { margin: 0; padding-bottom: 2px; font-size: var(--fs-12); font-weight: 600; color: var(--text-3); border-bottom: 1px solid var(--row-divider); }
+.role-fieldset > .set-note { margin-top: 6px; }
+/* Stacked on a phone; side by side on a computer, the level on the left beside the areas it allows (Whop's add-member dialog). */
+.role-edit, .role-edit-side, .role-edit-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-content: start; min-width: 0; }
+@media (min-width: 901px) { .role-edit { grid-template-columns: 250px minmax(0, 1fr); gap: 28px; } }
+/* On a phone the areas come right after the level; the job description and storage after them. */
+@media (max-width: 900px) { .role-edit-side, .role-edit-main { display: contents; } .role-extra { order: 1; } }
 
 /* Promo codes */
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: var(--tracking-caps); }

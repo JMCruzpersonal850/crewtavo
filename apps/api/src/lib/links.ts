@@ -32,6 +32,10 @@ export interface ClientLink {
   // links (clients.links_reset_at): a quote, invoice or client link made before the reset, or one
   // from before links carried a time, then stops opening (linksReplaced). Other kinds don't look.
   at?: number;
+  // 1: an office copy made for someone who doesn't see invoices (an estimator, a crew, a role with
+  // Invoices and payments off): its Hub home leaves out the client's invoices, payments and autopay,
+  // and every link minted from it keeps the mark. The client's own link never has it.
+  nm?: 1;
 }
 
 const PATHS: Record<LinkKind, string> = {
@@ -62,7 +66,9 @@ export async function clientLink(env: Env, baseUrl: string, link: Omit<ClientLin
  * can say yes to autopay or tip on the client's saved card for them.
  */
 export async function clientLinks(env: Env, baseUrl: string, link: Omit<ClientLink, "exp" | "via" | "own">, days?: number): Promise<{ own: string; office: string }> {
-  const [own, office] = await Promise.all([clientLink(env, baseUrl, { ...link, own: 1 }, days), clientLink(env, baseUrl, { ...link, via: "office" }, days)]);
+  // `nm` only ever marks the office's copy: the client's own link shows them their money.
+  const { nm, ...rest } = link;
+  const [own, office] = await Promise.all([clientLink(env, baseUrl, { ...rest, own: 1 }, days), clientLink(env, baseUrl, { ...rest, via: "office", ...(nm && { nm }) }, days)]);
   return { own, office };
 }
 

@@ -1,4 +1,4 @@
-import { ADMINS, canMakeResetLink, LEVEL_SUMMARY, seesPayRates, type Role } from "@crewtavo/core/roles";
+import { ADMINS, canMakeResetLink, LEVEL_SUMMARY, PERMISSIONS, ROLE_LABELS, seesPayRates, type Role } from "@crewtavo/core/roles";
 import { formatBytes } from "@crewtavo/core/storage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
@@ -486,10 +486,15 @@ export function ResendInviteDialog({ member, onClose }: { member: Member; onClos
   );
 }
 
+/** What a choice gives: a built-in level's summary, or a role's level and the areas it actually has (a trimmed admin role isn't "Everything"). */
 function levelHint(choice: string, roles: ReturnType<typeof useCompanyRoles>["data"]): string {
   const patch = patchFor(choice);
-  const level = patch.role ?? roles?.find((r) => r.id === patch.role_id)?.base_role;
-  return level ? LEVEL_SUMMARY[level] : "";
+  const custom = roles?.find((r) => r.id === patch.role_id);
+  const level = patch.role ?? custom?.base_role;
+  if (!level) return "";
+  if (!custom) return LEVEL_SUMMARY[level];
+  const on = PERMISSIONS.filter((p) => custom.permissions.includes(p.key)).map((p) => p.label);
+  return `${ROLE_LABELS[level]} access. ${on.length ? `Can use: ${on.join(", ")}.` : "Their own work only."}`;
 }
 
 function RolePicker({ value, roles, viewerIsOwner, disabled, label, onChange }: { value: string; roles: ReturnType<typeof useCompanyRoles>["data"]; viewerIsOwner: boolean; disabled?: boolean; label: string; onChange: (choice: string) => void }) {

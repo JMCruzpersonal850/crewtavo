@@ -32,6 +32,8 @@ export interface SigningScope {
   companyId: string;
   userId: string;
   baseUrl: string;
+  /** As SalesScope's: the office copies leave out the client's money for someone who doesn't see invoices. */
+  noMoney?: boolean;
 }
 
 /**
@@ -214,7 +216,7 @@ export async function signQuote(s: SigningScope, id: string, body: SignBody) {
   if (body.save_signature && body.company_signature) await keepSignature(s, body.company_signature);
 
   // The person signed in gets the office's copy of the link; only a copy that goes out to the client's own email is theirs.
-  const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: "quote", id }, COPY_DAYS);
+  const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: "quote", id, ...(s.noMoney && { nm: 1 as const }) }, COPY_DAYS);
   if (!body.email_copy) return { status: "approved" as const, emailed: false, link: links.office };
   const copy = await deliverCopy(s, quote, company, links, { channel: "email", to: body.to });
   return { status: "approved" as const, emailed: copy.sent, ...(copy.sent ? {} : { email_reason: copy.reason }), link: links.office };
@@ -254,7 +256,7 @@ export async function sendSignedCopy(s: SigningScope, id: string, body: CopyBody
   const quote = await loadQuote(s, id);
   if (!SIGNED.includes(quote.status)) throw new HttpError(409, "This estimate isn't signed yet.");
   const company = await loadCompany(s);
-  const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: "quote", id }, COPY_DAYS);
+  const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: "quote", id, ...(s.noMoney && { nm: 1 as const }) }, COPY_DAYS);
   const result = await deliverCopy(s, quote, company, links, body);
   return { sent: result.sent, ...(result.sent ? {} : { reason: result.reason }), link: links.office };
 }

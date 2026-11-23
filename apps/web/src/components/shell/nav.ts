@@ -147,7 +147,8 @@ export function createItems(session: Pick<Session, "role" | "permissions">): Arr
       : []),
     ...(hasRole(session, "admin", "office") && can(session, "invoices") ? [{ to: "/invoices?new=1", label: msg("Invoice"), newLabel: t("New invoice"), icon: "invoice" as const, keywords: "bill", key: "I" }] : []),
     ...(canSell ? [{ to: "/measure", label: msg("Measurement"), newLabel: t("New measurement"), icon: "area" as const, keywords: "measure map draw area", key: "M", tool: true }] : []),
-    ...(hasRole(session, "admin", "office", "estimator", "crew_lead") && can(session, "schedule") ? [{ to: "/schedule?new=1", label: msg("Visit or task"), newLabel: t("New visit or task"), icon: "calendar" as const, keywords: "schedule appointment", key: "V", tool: true }] : []),
+    // A crew lead always schedules their own crew; "Schedule the whole team" opens the rest.
+    ...(hasRole(session, "admin", "office", "estimator", "crew_lead") && (session.role === "crew_lead" || can(session, "schedule")) ? [{ to: "/schedule?new=1", label: msg("Visit or task"), newLabel: t("New visit or task"), icon: "calendar" as const, keywords: "schedule appointment", key: "V", tool: true }] : []),
   ];
 }
 

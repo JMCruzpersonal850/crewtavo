@@ -1616,7 +1616,10 @@ describe("the office's autopay routes", () => {
     world();
     const res = await request("estimator-1", "GET", `/clients/${PAT}/hub-link`);
     const { link } = await res.json();
-    expect(await readClientLink(env, link.split("/hub/")[1])).toMatchObject({ c: CO, t: "client", id: PAT, via: "office" });
+    // An estimator doesn't see invoices, so their copy leaves the client's money out (lib/links `nm`); the office's doesn't.
+    expect(await readClientLink(env, link.split("/hub/")[1])).toMatchObject({ c: CO, t: "client", id: PAT, via: "office", nm: 1 });
+    const office = (await (await request("office-1", "GET", `/clients/${PAT}/hub-link`)).json()).link;
+    expect((await readClientLink(env, office.split("/hub/")[1]))?.nm).toBeUndefined();
   });
 });
 

@@ -23,12 +23,13 @@ import { useSopIndex } from "../kb/kbData";
 import { useCompanyRoles, type CompanyRole } from "./roles";
 import { gbField, parseGb, refreshStorage, setAllowance, setsAllowances, useStorageOverview } from "./storage";
 import { AllowanceDialog, GbInput } from "./StorageSettings";
-import { SettingsActions } from "./SettingsKit";
+import { SettingsActions, SwitchRow } from "./SettingsKit";
 import styles from "./settings.module.css";
 import { YourPassword } from "./TeamSettings";
 
 // The team's levels. A custom role is never a sub's (the database refuses it).
 const LEVELS = STAFF.filter((r) => r !== "owner");
+const GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))];
 const label = (p: Permission) => PERMISSIONS.find((x) => x.key === p)?.label ?? p;
 /** A role's areas in a quiet line: the first few by name, then how many more. */
 const areas = (list: Permission[]) => (list.length <= 3 ? list.map(label).join(", ") : `${list.slice(0, 3).map(label).join(", ")} and ${list.length - 3} more`);
@@ -195,40 +196,63 @@ export function RoleDialog({ role, existing, storage, onClose }: { role: Company
   };
 
   return (
-    <Dialog open onClose={onClose} title={role ? `Edit ${role.name}` : "New role"}>
+    <Dialog open onClose={onClose} title={role ? `Edit ${role.name}` : "New role"} size="lg">
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(grants ? password : ""); setPassword(""); }}>
-        <Field label="Name" requiredMessage="Give the role a name."><input className="input" value={name} onChange={(e) => { setName(e.target.value); save.reset(); }} maxLength={60} placeholder="e.g. Foreman" required autoFocus /></Field>
-        <Field label="Access level" hint={LEVEL_SUMMARY[level]}>
-          <select className="select" value={level} onChange={(e) => changeLevel(e.target.value as Role)}>
-            {LEVELS.map((l) => <option key={l} value={l}>{ROLE_LABELS[l]}</option>)}
-          </select>
-        </Field>
-        {allowed.length > 0 ? (
-          <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend style={{ marginBottom: 8 }}>Can use</legend>
-            <div className="perm-list">
-              {PERMISSIONS.filter((p) => allowed.includes(p.key)).map((p) => (
-                <label key={p.key} className="switch-row">
-                  <input type="checkbox" className="switch" checked={perms.includes(p.key)} onChange={(e) => setPerms(e.target.checked ? [...perms, p.key] : perms.filter((x) => x !== p.key))} />
-                  {p.label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        ) : (
-          <p className="muted small" style={{ margin: 0 }}>This level sees only their own visits and time.</p>
-        )}
-        <Field label="Job description" optional hint="The guide that says what this job is. It and every guide it links to are the job's training: people with this role have to read them all, and it shows how far each person is.">
-          <select className="select" value={guideId} onChange={(e) => { setGuideId(e.target.value); save.reset(); }}>
-            <option value="">None</option>
-            {(guides.data?.pages ?? []).map((g) => <option key={g.id} value={g.id}>{g.title}{g.status === "draft" ? " (draft)" : ""}</option>)}
-          </select>
-        </Field>
-        {storage && (
-          <Field label="Storage limit for everyone with this role" optional hint="For each person with this role who has no limit of their own: it stops what they add to Drive, plans and guides. Leave it empty for no limit.">
-            <GbInput value={size} placeholder="No limit" onChange={(v) => { setTyped(v); save.reset(); }} />
-          </Field>
-        )}
+        <div className="role-edit">
+          <div className="role-edit-side">
+            <Field label="Name" requiredMessage="Give the role a name."><input className="input" value={name} onChange={(e) => { setName(e.target.value); save.reset(); }} maxLength={60} placeholder="e.g. Foreman" required autoFocus /></Field>
+            {/* The level first, each with what it reaches (Jobber's preset levels); then its areas, grouped, each saying what it opens. */}
+            <fieldset className="role-fieldset">
+              <legend className="role-legend">Starts from</legend>
+              <div className="set-rows">
+                {LEVELS.map((l) => (
+                  <label key={l} className="set-row set-choice">
+                    <input type="radio" name="role-level" checked={level === l} onChange={() => changeLevel(l)} />
+                    <span className="set-row-text"><span className="set-row-label">{ROLE_LABELS[l]}</span><span className="set-row-hint">{LEVEL_SUMMARY[l]}</span></span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <Field className="role-extra" label="Job description" optional hint="The guide that says what this job is. It and every guide it links to are the job's training: people with this role have to read them all, and it shows how far each person is.">
+              <select className="select" value={guideId} onChange={(e) => { setGuideId(e.target.value); save.reset(); }}>
+                <option value="">None</option>
+                {(guides.data?.pages ?? []).map((g) => <option key={g.id} value={g.id}>{g.title}{g.status === "draft" ? " (draft)" : ""}</option>)}
+              </select>
+            </Field>
+            {storage && (
+              <Field className="role-extra" label="Storage limit for everyone with this role" optional hint="For each person with this role who has no limit of their own: it stops what they add to Drive, plans and guides. Leave it empty for no limit.">
+                <GbInput value={size} placeholder="No limit" onChange={(v) => { setTyped(v); save.reset(); }} />
+              </Field>
+            )}
+          </div>
+          <div className="role-edit-main">
+            {allowed.length > 0 ? (
+              <fieldset className="role-fieldset">
+                <legend className="role-legend">
+                  Can use <span className="role-count">{kept.length} of {allowed.length}</span>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setPerms(kept.length === allowed.length ? [] : [...allowed])}>{kept.length === allowed.length ? "Turn all off" : "Turn all on"}</button>
+                </legend>
+                {GROUPS.map((g) => {
+                  const items = PERMISSIONS.filter((p) => p.group === g && allowed.includes(p.key));
+                  return items.length ? (
+                    <div key={g} className="set-rows role-group" role="group" aria-label={g}>
+                      <p className="role-group-title">{g}</p>
+                      {items.map((p) => (
+                        <SwitchRow key={p.key} label={p.label} hint={p.hint} checked={perms.includes(p.key)} onChange={(on) => setPerms(on ? [...perms, p.key] : perms.filter((x) => x !== p.key))} />
+                      ))}
+                    </div>
+                  ) : null;
+                })}
+                {level === "admin" && <p className="set-note">With Business setup, Manage people and roles or Connect apps on, this is an admin role: saving it asks for your password.</p>}
+                {allowed.length < PERMISSIONS.length && (
+                  <p className="set-note">Others, like {PERMISSIONS.find((p) => !allowed.includes(p.key))!.label}, come with a higher level.</p>
+                )}
+              </fieldset>
+            ) : (
+              <p className="set-note">This level sees only their own visits and time.</p>
+            )}
+          </div>
+        </div>
         {grants && <YourPassword value={password} onChange={setPassword} />}
         <FormError error={save.error} />
         <div className="form-actions">

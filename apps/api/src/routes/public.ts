@@ -82,6 +82,7 @@ import { allow } from "../lib/limit";
 import { LINK_PAUSED, linkCanSend } from "../lib/linkBudget";
 import { clientLink, linkPreview, linksReplaced, readClientLink, REVIEW_TOKEN, type ClientLink, type LinkKind } from "../lib/links";
 import { storedFile } from "../lib/storedFile";
+import { keptSettings } from "../lib/keptSettings";
 import { adminClient } from "../lib/supabase";
 import { clientIp } from "../lib/visitor";
 import { buildCalendar } from "../lib/ics";
@@ -132,7 +133,7 @@ async function refuseReplaced(c: Parameters<typeof appUrl>[0], l: ClientLink) {
  * an old link ends with it when the office resets the client's links.
  */
 const viaOf = (l: Pick<ClientLink, "via">): "client" | "office" => (l.via === "office" ? "office" : "client");
-const keepVia = (l: Pick<ClientLink, "via" | "own" | "at">) => ({ ...(l.via === "office" ? { via: "office" as const } : l.own === 1 ? { own: 1 as const } : {}), at: l.at ?? 0 });
+const keepVia = (l: Pick<ClientLink, "via" | "own" | "at" | "nm">) => ({ ...(l.via === "office" ? { via: "office" as const } : l.own === 1 ? { own: 1 as const } : {}), ...(l.nm === 1 && { nm: 1 as const }), at: l.at ?? 0 });
 
 /**
  * Who a Hub link counts as for the two things only the client may do: say yes to a card they didn't
@@ -209,11 +210,11 @@ async function verifyTurnstile(c: Parameters<typeof appUrl>[0], token: string | 
   if (!result.success) throw new HttpError(400, "Please complete the verification and try again.");
 }
 
-// The range settings (settings->roofing), whether Roofing is installed, the autopay settings and the
+// The range settings (company_private_settings' roofing), whether Roofing is installed, the autopay settings and the
 // trade are read here but never sent: the room on top is the business's own, Roofing only decides
 // whether a preview shows a roofing range, autopay's only say whether a card is required, and the
 // trade only picks the starter terms.
-const BRANDING = "name, phone, email, website, timezone, currency, address, trade_preset, settings->branding, settings->hub_tips, settings->roofing, settings->roofing_app, settings->paving_app, settings->autopay, settings->privacy_url";
+const BRANDING = "name, phone, email, website, timezone, currency, address, trade_preset, settings->branding, settings->hub_tips, settings->roofing_app, settings->paving_app, settings->autopay, settings->privacy_url";
 
 /** The company as its clients see it, with where its logo loads from (null without one). */
 const withLogo = <T extends { branding?: unknown }>(companyId: string, company: T) => ({ ...company, logo: logoImage("", companyId, { branding: company.branding })?.src ?? null });
@@ -226,7 +227,9 @@ export { addressLines };
  * whether it has Roofing, whether it needs a card on file, and its trade for the server's own use.
  */
 async function hubCompany(admin: ReturnType<typeof adminClient>, companyId: string) {
-  const { address, roofing, roofing_app, paving_app, autopay, trade_preset: trade, privacy_url, ...row } = must(await admin.from("companies").select(BRANDING).eq("id", companyId).maybeSingle());
+  const [found, kept] = await Promise.all([admin.from("companies").select(BRANDING).eq("id", companyId).maybeSingle(), keptSettings(admin, companyId)]);
+  const { address, roofing_app, paving_app, autopay, trade_preset: trade, privacy_url, ...row } = must(found);
+  const roofing = kept.roofing ?? null;
   // privacy_url: the business's privacy policy link for the page's footer, when it set one (core privacyPolicy.ts).
   return { company: withLogo(companyId, { ...row, address: addressLines(address), privacy_url: privacyUrl({ privacy_url }) }), roofing, roofer: roofingOn({ roofing_app }), apps: { roofing_app, paving_app }, cardRequired: autopaySettings({ autopay }).card_required, trade };
 }
@@ -1326,7 +1329,7 @@ publicRoutes.post("/webhooks/stripe/:company", async (c) => {
 // ---------------------------------------------------------------------------------------------
 
 /** The client's Hub home. Minted from an office copy of a link (`from`), it stays one; from the client's own (own), so does it. */
-const homeLink = (c: Parameters<typeof appUrl>[0], companyId: string, clientId: string, from: Pick<ClientLink, "via" | "own" | "at">) =>
+const homeLink = (c: Parameters<typeof appUrl>[0], companyId: string, clientId: string, from: Pick<ClientLink, "via" | "own" | "at" | "nm">) =>
   clientLink(c.env, appUrl(c), { c: companyId, t: "client", id: clientId, ...keepVia(from) });
 const firstNames = (rows: Array<{ user_id: string }>, names: Map<string, string>) => rows.map((r) => names.get(r.user_id)).filter(Boolean) as string[];
 
@@ -1541,7 +1544,8 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     company,
     arrival_window_min: arrivalWindowMin(companySettings),
     preview: Boolean(l.pv),
-    autopay,
+    // A copy made for someone who doesn't see invoices (lib/links `nm`) leaves out the client's money.
+    autopay: l.nm ? null : autopay,
     client: { name: client.display_name, first_name: firstName(client.display_name), properties: client.properties },
     // A quote out as a price range shows the range, never its exact total. One that offers options
     // shows how many and the lowest price (`options`) until the client chooses, never as a total.
@@ -1562,11 +1566,11 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     // An invoice being charged automatically waits on the card, not on the client; a failed one
     // still has Pay, with a way to update the card.
     // One over the limit for their bank account wasn't taken from it: it's theirs to pay, and says why.
-    invoices: await Promise.all((invoices.data ?? []).map(async (i) => ({ ...i, autopay: charges.get(i.id)?.status ?? null, yours_to_pay: yours.has(i.id), link: await sign("invoice", i.id) }))),
+    invoices: l.nm ? [] : await Promise.all((invoices.data ?? []).map(async (i) => ({ ...i, autopay: charges.get(i.id)?.status ?? null, yours_to_pay: yours.has(i.id), link: await sign("invoice", i.id) }))),
     visits: (upcoming.data ?? []).map(visit),
     past_visits: (done.data ?? []).map((v) => ({ ...visit(v), checklists: checklists.get(v.id) ?? [] })),
     // "Charged automatically to Visa ending 4242": a Stripe payment on an invoice its autopay charge paid.
-    payments: (payments.data ?? []).map((p) => {
+    payments: (l.nm ? [] : payments.data ?? []).map((p) => {
       const charge = p.invoice_id ? charges.get(p.invoice_id) : undefined;
       const auto = p.processor === "stripe" && charge?.status === "paid";
       return {

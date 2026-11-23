@@ -30,6 +30,8 @@ export interface SalesScope {
   env: Env;
   companyId: string;
   baseUrl: string;
+  /** The person doesn't see invoices: the office copies they're handed leave out the client's money (lib/links `nm`). */
+  noMoney?: boolean;
 }
 
 export const sendSchema = z.object({
@@ -190,7 +192,7 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
   // Only a quote template has no client, and it's never sent: a quote is made from it first.
   if (!record.client_id) throw new HttpError(400, TEMPLATE_NOT_SENT);
   const company = must(await s.db.from("companies").select("name, email, phone, address, currency, settings").eq("id", s.companyId).maybeSingle());
-  const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: kind, id: record.id });
+  const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: kind, id: record.id, ...(s.noMoney && { nm: 1 as const }) });
   const label = `${kind === "quote" ? "Quote" : "Invoice"} #${record.number}`;
   const money = new Intl.NumberFormat("en-US", { style: "currency", currency: company.currency || "USD" }).format(Number(kind === "quote" ? record.total ?? 0 : record.balance_due ?? 0));
   const amount = record.recurrence_rule ? `${money} per visit` : money;

@@ -5,7 +5,7 @@
  * automatically (PUT /reviews/asks edits the two starter rules), referral links, and asking for
  * referrals (POST /referrals/request by hand, PUT /referrals/asks switches the starter rule).
  */
-import { addDays, ADMINS, localDate, OFFICE, SALES, type TablesInsert } from "@crewtavo/core";
+import { addDays, ADMINS, localDate, OFFICE, SALES, seesInvoices, type TablesInsert } from "@crewtavo/core";
 import {
   AUTOMATED_CAMPAIGNS,
   AUTOMATED_KEYS,
@@ -450,7 +450,9 @@ marketing.get("/referrals/link/:id", requireUser, requireCompany(SALES), async (
  */
 marketing.get("/clients/:id/hub-link", requireUser, requireCompany(SALES), async (c) => {
   const client = must(await c.var.db.from("clients").select("id").eq("id", param(c, "id")).eq("company_id", c.var.companyId).maybeSingle(), "Client not found.");
-  return c.json({ link: await clientLink(c.env, appUrl(c), { c: c.var.companyId, t: "client", id: client.id, via: "office" }) });
+  // Without Invoices and payments, the copy leaves out the client's invoices and payments (lib/links `nm`).
+  const nm = seesInvoices(c.var.role, c.var.permissions) ? {} : { nm: 1 as const };
+  return c.json({ link: await clientLink(c.env, appUrl(c), { c: c.var.companyId, t: "client", id: client.id, via: "office", ...nm }) });
 });
 
 /**

@@ -12,6 +12,7 @@ import {
   OFFICE,
   pitchProblem,
   SALES,
+  seesInvoices,
   summarizeFeatureCollection,
   validateFormula,
   type FeatureCollection,
@@ -33,7 +34,7 @@ import { BATCH_JOBS, convertQuote, invoiceJobs, quoteFromRequest, remindInvoices
 export const sales = new Hono<AppEnv>();
 
 /** The person's client, their company, and the address client links use (services/sales.ts). */
-const scope = (c: Context<AppEnv>): SalesScope => ({ db: c.var.db, env: c.env, companyId: c.var.companyId, baseUrl: appUrl(c) });
+const scope = (c: Context<AppEnv>): SalesScope => ({ db: c.var.db, env: c.env, companyId: c.var.companyId, baseUrl: appUrl(c), noMoney: !seesInvoices(c.var.role, c.var.permissions) });
 
 // ---------------------------------------------------------------------------------------------
 // Requests and quotes

@@ -104,6 +104,14 @@ class FakeQuery implements PromiseLike<Answer> {
     return { data, error: null, count: this.counting ? found.length : null, status: 200 };
   }
 
+  /** The one row, or null when there's none (more than one is an error, as PostgREST says). */
+  async maybeSingle(): Promise<Answer> {
+    const answer = await this;
+    if (answer.error || !Array.isArray(answer.data)) return answer;
+    if (answer.data.length > 1) return { data: null, error: { message: "JSON object requested, multiple (or no) rows returned", code: "PGRST116" }, count: null, status: 406 };
+    return { ...answer, data: answer.data[0] ?? null };
+  }
+
   then<A = Answer, B = never>(resolve?: ((answer: Answer) => A | PromiseLike<A>) | null, reject?: ((reason: unknown) => B | PromiseLike<B>) | null): Promise<A | B> {
     return new Promise<Answer>((done) => {
       this.db.beforeAnswer?.(this.db.requests.length);

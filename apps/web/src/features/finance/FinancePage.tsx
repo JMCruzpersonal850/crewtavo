@@ -417,10 +417,11 @@ function RevenueGoal() {
       const db = supabase();
       const yearRange = resolveRange("year", today, tz);
       const [settings, payments] = await Promise.all([
-        db.from("companies").select("settings").eq("id", company.id).single(),
+        // The goals are kept apart from the settings crews read (company_private_settings); saving them below still goes through the company.
+        db.from("company_private_settings").select("settings").eq("company_id", company.id).maybeSingle(),
         everyRow(() => db.from("payments").select("amount").eq("company_id", company.id).gte("received_at", yearRange.start)),
       ]);
-      const s = (unwrap(settings).settings ?? {}) as Record<string, unknown>;
+      const s = (unwrap(settings)?.settings ?? {}) as Record<string, unknown>;
       return { settings: s, goal: Number(s.revenue_goal ?? 0), margin: Number(s.margin_target ?? 0), ytd: sum(payments, (p) => Number(p.amount)) };
     },
   });

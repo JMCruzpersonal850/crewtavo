@@ -31,7 +31,7 @@ import { Icon } from "@/components/ui/Icon";
 import { BackLink } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
-import { EmptyState, ErrorState } from "@/components/ui/States";
+import { EmptyState, ErrorState, NoAccess } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { addDaysIso, formatMoney, formatMoneyCents, formatNumber, todayIn } from "@/lib/format";
 import { hasRole, useSession } from "@/lib/session";
@@ -89,6 +89,11 @@ interface OpenWorksheet {
 }
 
 export function PavingCalculatorPage() {
+  // Its prices and profit are the business's own: only those who sell open it (a crew's sign-in doesn't carry them, routes/account.ts).
+  return hasRole(useSession(), "admin", "office", "estimator") ? <Calculator /> : <NoAccess title="Paving calculator" />;
+}
+
+function Calculator() {
   const session = useSession();
   const { company } = session;
   const navigate = useNavigate();
@@ -172,8 +177,12 @@ export function PavingCalculatorPage() {
 
   // Owner or admin: the business's setup, read fresh so a change someone made meanwhile isn't undone.
   const saveSetup = async (change: (current: CalcSetup) => CalcSetup) => {
-    const current = (unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single()).settings ?? {}) as Record<string, unknown>;
-    const next = change(parseSetup(current.paving_calculator));
+    const [current, kept] = await Promise.all([
+      supabase().from("companies").select("settings").eq("id", company.id).single().then((r) => (unwrap(r).settings ?? {}) as Record<string, unknown>),
+      // The setup itself is kept apart from the settings crews read (company_private_settings); saving it through the company moves it there.
+      supabase().from("company_private_settings").select("settings").eq("company_id", company.id).maybeSingle().then((r) => (unwrap(r)?.settings ?? {}) as Record<string, unknown>),
+    ]);
+    const next = change(parseSetup(kept.paving_calculator));
     unwrap(await supabase().from("companies").update({ settings: { ...current, paving_calculator: next } as never }).eq("id", company.id));
     await session.refresh();
     return next;

@@ -792,6 +792,26 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"company_private_settings": {
+                  Row: {
+                    "company_id": string,"settings": NonNullable<Json>
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"settings"?: NonNullable<Json>
+                  }
+                  Update: {
+                    "company_id"?: string,"settings"?: NonNullable<Json>
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "company_private_settings_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: true
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"company_roles": {
                   Row: {
                     "base_role": Database["public"]['Enums']["member_role"],"company_id": string,"created_at": string,"description": string | null,"guide_id": string | null,"id": string,"name": string,"permissions": (string)[],"updated_at": string

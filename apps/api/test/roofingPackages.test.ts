@@ -507,7 +507,7 @@ describe("the price range", () => {
 
   it("emails the range in its own words, with the business's room on top and rounding", async () => {
     roofer({ lines });
-    rows("companies")[0]!.settings = { roofing: { range_pct: 10, range_round: 100 } };
+    state.tables.company_private_settings = [{ company_id: ROOFER, settings: { roofing: { range_pct: 10, range_round: 100 } } }];
     env.MAILPIT_URL = "http://mailpit.local";
     try {
       const body = await (await send(`/roofing/${QUOTE}/send-range`, { channel: "email" })).json();

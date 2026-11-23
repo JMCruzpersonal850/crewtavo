@@ -98,7 +98,9 @@ update public.companies set name = 'Uniform Paving LLC', settings = settings
        "maps": {"default": "esri"}, "revenue_goal": 500000}'
 where id = :'co';
 commit;
-select tsrm.check((select name = 'Uniform Paving LLC' and settings #>> '{maps,default}' = 'esri' and settings ->> 'revenue_goal' = '500000' from public.companies where id = :'co'),
+-- The revenue goal is kept with the business's other figures crews don't read (company_private_settings).
+select tsrm.check((select name = 'Uniform Paving LLC' and settings #>> '{maps,default}' = 'esri' and settings -> 'revenue_goal' is null from public.companies where id = :'co')
+  and (select settings ->> 'revenue_goal' = '500000' from public.company_private_settings where company_id = :'co'),
   'an admin without the apps, settings or subs areas still saves the company''s details and the settings every admin has');
 select tsrm.check((select settings - array['maps', 'revenue_goal'] = :'before'::jsonb - array['maps', 'revenue_goal'] from public.companies where id = :'co'),
   'but the apps installed, the weather rules and how subs are reminded stay as they were');
@@ -112,7 +114,8 @@ select public.chat_set_enabled(:'co', true);
 select tsrm.as_user(:'bea');
 update public.companies set settings = :'stale'::jsonb || '{"revenue_goal": 600000}' where id = :'co';
 commit;
-select tsrm.check((select settings #>> '{team_chat,enabled}' = 'true' and settings ->> 'revenue_goal' = '600000' from public.companies where id = :'co'),
+select tsrm.check((select settings #>> '{team_chat,enabled}' = 'true' from public.companies where id = :'co')
+  and (select settings ->> 'revenue_goal' = '600000' from public.company_private_settings where company_id = :'co'),
   'a page open since before an app was installed doesn''t uninstall it when it saves');
 
 -- With the area, saving the company changes them as before; so does the server.
