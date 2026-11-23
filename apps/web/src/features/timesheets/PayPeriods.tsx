@@ -82,13 +82,16 @@ export function PayPeriods({ header }: { header: (actions: ReactNode) => ReactNo
   const d = summary.data;
   // Your own pay is an owner's to mark paid, as your pay rate is (the server and the database hold to it).
   const mine = (p: PersonPay) => p.user_id === session.userId && session.role !== "owner";
-  const unpaid = d ? d.people.filter((p) => owedFor(p) && !p.paid && !mine(p)) : [];
-  const ownLeft = Boolean(d?.people.some((p) => mine(p) && owedFor(p) && !p.paid));
+  // Everyone still owed, your own pay included: what the period still has to pay.
+  const owed = d ? d.people.filter((p) => owedFor(p) && !p.paid) : [];
+  // Those you can mark paid yourself.
+  const unpaid = owed.filter((p) => !mine(p));
+  const ownLeft = owed.some(mine);
   // Marking paid is refused while anyone it marks has time not approved (piece pay alone included).
   const waiting = waitingFor(unpaid);
   const piece = (d?.piece_amount ?? 0) > 0;
   const anyPaid = Boolean(d?.people.some((p) => p.paid));
-  const stillOwed = unpaid.reduce((s, p) => s + p.amount, 0);
+  const stillOwed = owed.reduce((s, p) => s + p.amount, 0);
   const exportCsv = () => d && downloadCsv(`pay-${d.from}-to-${d.to}.csv`, inEnglish(() => toCsv(payRows(d.people, methodLabel), [...PAY_COLUMNS])));
   const takeBack = async () => (await confirm({ title: "Take back the paid mark?", body: "Everyone in this period goes back to not paid, and their time can be changed again. Nothing is paid or refunded.", confirmLabel: "Take it back" })) && unmark.mutate();
   const preset = presets.find((p) => p.from === range.from && p.to === range.to)?.label ?? "";
@@ -128,7 +131,7 @@ export function PayPeriods({ header }: { header: (actions: ReactNode) => ReactNo
             <StatStrip label={`Pay for ${dayLabel(d.from)} – ${dayLabel(d.to)}`}>
               <Stat label="Approved hours" value={`${d.hours.toFixed(2)} h`} note={d.overtime_hours > 0 ? `${d.overtime_hours.toFixed(1)} h over 40` : `${dayLabel(d.from)} – ${dayLabel(d.to)}`} />
               <Stat label="Pay" value={formatMoney(d.amount)} note={piece ? `${formatMoney(d.piece_amount)} of it piece pay` : "At each person's rate"} />
-              <Stat label="Still to pay" value={formatMoney(stillOwed)} note={unpaid.length ? `${unpaid.length} ${unpaid.length === 1 ? "person" : "people"}` : "Everyone's paid"} />
+              <Stat label="Still to pay" value={formatMoney(stillOwed)} note={owed.length ? `${owed.length} ${owed.length === 1 ? "person" : "people"}` : "Everyone's paid"} />
             </StatStrip>
             {ownLeft && (
               <div className="callout callout-info">

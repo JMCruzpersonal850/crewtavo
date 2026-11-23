@@ -8,6 +8,7 @@ import type { Env } from "../src/env";
 import { encryptJson, signToken } from "../src/lib/crypto";
 import { HttpError } from "../src/lib/http";
 import { clientLink, linksReplaced, readClientLink } from "../src/lib/links";
+import { NO_MONEY_INVOICE } from "../src/routes/public";
 import { StripeError } from "../src/services/stripe";
 import { drawnPng } from "./fixtures/drawn";
 
@@ -1906,9 +1907,21 @@ describe("an office copy made by someone who doesn't see the money", () => {
     const payload = (url: string) => readClientLink(env, url.split("/hub/")[1]!);
     const copy = await (await hub({ t: "client", id: CLIENT, via: "office", nm: 1 })).json();
     expect(await payload(copy.quotes[0].link)).toMatchObject({ t: "quote", via: "office", nm: 1 });
-    expect(await payload((await invoicePage({ via: "office", nm: 1 })).home)).toMatchObject({ t: "client", via: "office", nm: 1 });
     // The client's own never carries it.
     expect(await payload((await invoicePage()).home)).not.toHaveProperty("nm");
+  });
+
+  it("never opens an invoice, whatever it's reached through", async () => {
+    mowed();
+    // An invoice's page is its amounts and payments: a copy without the money doesn't open one, or print it.
+    for (const path of ["", "/print-ticket"]) {
+      const res = await hub({ t: "invoice", id: MOW, via: "office", nm: 1 }, path, path ? {} : undefined);
+      expect(res.status, path || "page").toBe(403);
+      expect((await res.json()).error).toBe(NO_MONEY_INVOICE);
+    }
+    // The office's own copy, and the client's own link, open it as before.
+    expect((await invoicePage({ via: "office" })).invoice.id).toBe(MOW);
+    expect((await invoicePage()).invoice.id).toBe(MOW);
   });
 });
 

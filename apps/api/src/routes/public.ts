@@ -98,9 +98,14 @@ export const publicRoutes = new Hono<AppEnv>();
 export async function link(c: Parameters<typeof appUrl>[0], kinds: LinkKind[] = ["quote", "invoice", "client"]) {
   const payload = await readClientLink(c.env, c.req.param("token") ?? "");
   if (!payload || !kinds.includes(payload.t)) throw new HttpError(404, "This link has expired or isn't valid. Ask for a new one.");
+  // A copy made without the money (nm, lib/links.ts) never opens an invoice: its page is the money.
+  if (payload.t === "invoice" && payload.nm === 1) throw new HttpError(403, NO_MONEY_INVOICE);
   await refuseReplaced(c, payload);
   return payload;
 }
+
+/** An invoice reached through a copy of a link made without the money. */
+export const NO_MONEY_INVOICE = "This copy of the link leaves out invoices and payments. Open the invoice in Crewtavo instead.";
 
 /**
  * Stops a quote, invoice or client link the office has replaced: "Reset this client's links" on the
@@ -819,7 +824,8 @@ async function collectDeposit(c: Parameters<typeof appUrl>[0], admin: ReturnType
     console.error("Couldn't make the deposit invoice", error);
     return null;
   }
-  if (!invoiceId || !online) return null;
+  // Made all the same through a copy without the money (nm), but it shows no invoice: the client pays from their own link.
+  if (!invoiceId || !online || l.nm === 1) return null;
   const link = await clientLink(c.env, appUrl(c), { c: l.c, t: "invoice", id: invoiceId, ...keepVia(l) });
   try {
     return { url: await stripeCheckout(c.env, admin, l.c, invoiceId, 0), link };
@@ -829,8 +835,12 @@ async function collectDeposit(c: Parameters<typeof appUrl>[0], admin: ReturnType
   }
 }
 
-/** A signed quote's deposit invoice as the client sees it, with its link to pay; null once it's void. */
+/**
+ * A signed quote's deposit invoice as the client sees it, with its link to pay; null once it's void,
+ * and on a copy made without the money (nm), which shows no invoice.
+ */
 async function hubDeposit(c: Parameters<typeof appUrl>[0], admin: ReturnType<typeof adminClient>, l: ClientLink, invoiceId: string) {
+  if (l.nm === 1) return null;
   const { data: invoice } = await admin.from("invoices").select("id, status, total, balance_due").eq("company_id", l.c).eq("id", invoiceId).maybeSingle();
   if (!invoice || invoice.status === "void") return null;
   return {
