@@ -54,6 +54,12 @@ async function settle(page) {
   await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => {});
   await page.waitForFunction(() => !document.querySelector(".skeleton, [aria-busy='true']"), null, { timeout: 15_000 }).catch(() => {});
   await page.waitForTimeout(600);
+  // The first time someone's clock shows (My day, Timesheets), a notice asks once about their location: they say OK.
+  const understood = page.getByRole("button", { name: "OK, I understand" });
+  if (await understood.isVisible()) {
+    await understood.click();
+    await page.waitForTimeout(600);
+  }
 }
 
 async function shot(page, name, path) {
@@ -137,10 +143,6 @@ await shot(client, "client-hub", hubPath);
 await client.context().close();
 
 const crew = await signedIn(FIELD_EMAIL, PHONE);
-// The crew's first My day asks once about clocking in with their location; they say OK, as the crew does.
-await crew.goto(`${BASE}/field`);
-const understood = crew.getByRole("button", { name: "OK, I understand" });
-await understood.waitFor({ timeout: 8_000 }).then(() => understood.click(), () => undefined);
 await shot(crew, "field", "/field");
 await follow(crew, "/field", /Stone base/, /\/field\/visits\/[\w-]+$/);
 await shot(crew, "field-visit");
