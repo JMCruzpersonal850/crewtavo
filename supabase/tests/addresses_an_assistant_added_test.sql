@@ -51,6 +51,7 @@ commit;
 
 begin;
 set local role authenticated;
+select t1123a.as_request(:'owner', null);
 select t1123a.check(not contact_from_assistant, 'a client the owner adds isn''t marked') from public.clients where id = :'pat';
 select t1123a.as_request(:'owner', :'assistant');
 insert into public.clients (company_id, display_name, email, contact_from_assistant) values (:'co', 'X', 'drop@attacker.test', false) returning id as x \gset
