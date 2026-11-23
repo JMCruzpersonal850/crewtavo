@@ -100,10 +100,13 @@ export const teamTools = {
     input: z.object({ user_id: z.uuid(), role: z.enum(LEVELS).optional(), role_id: z.uuid().nullable().optional(), ...companyArg }),
     area: "team",
     run: async (ctx, a) => {
-      if (!a.role && !a.role_id) throw new Error("Give a role or a role_id.");
-      await requireCrewLevel(ctx, a.role ?? "", a.role_id);
+      if (!a.role && a.role_id === undefined) throw new Error("Give a role or a role_id.");
+      // role_id null with no role takes them off their custom role, at the level they have now: that
+      // level is what they're left with, so it's the one checked.
+      const level = a.role ?? (a.role_id ? "" : (await one(ctx.db.from("memberships").select("role").eq("company_id", ctx.companyId).eq("user_id", a.user_id).maybeSingle(), "That person")).role);
+      await requireCrewLevel(ctx, level, a.role_id);
       // A custom role decides the level itself (its base role).
-      const patch = a.role_id ? { role_id: a.role_id } : { role: a.role!, role_id: null };
+      const patch = a.role_id ? { role_id: a.role_id } : { ...(a.role && { role: a.role }), role_id: null };
       const { data, error } = await ctx.db.from("memberships").update(patch).eq("company_id", ctx.companyId).eq("user_id", a.user_id).select("user_id, role");
       if (error) throw new Error(friendly(error.message));
       if (!data?.length) throw new Error("That person not found (or you can't change them).");

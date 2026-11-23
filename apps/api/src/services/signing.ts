@@ -266,8 +266,8 @@ export async function sendSignedCopy(s: SigningScope, id: string, body: CopyBody
  * The signed copy itself. Problems a person can fix (no email on file, email not set up) come back
  * as a reason instead of an error, so the estimate stays signed and the screen can say what to do.
  * An email or text to the client's own email or phone on file carries their own link (`links.own`;
- * lib/links sentToClient); one typed to any other address, and the copy kept on their timeline,
- * carry the office's (`links.office`).
+ * lib/links sentToClient); one typed to any other address carries the office's (`links.office`), and
+ * the copy kept on their timeline none (`links.kept`, lib/links KEPT_LINK).
  */
 async function deliverCopy(s: SigningScope, quote: Quote, company: Company, links: { own: string; office: string; kept: string }, body: CopyBody): Promise<{ sent: boolean; reason?: string }> {
   const client = quote.client as { display_name: string; email: string | null; phone: string | null } | null;

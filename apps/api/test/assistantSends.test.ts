@@ -11,6 +11,8 @@ import { quoteTools } from "../src/assistant-tools/quotes";
 import type { ToolContext } from "../src/assistant-tools/tool";
 import type { Env } from "../src/env";
 import { NO_LINKS_FOR_ASSISTANTS } from "../src/lib/noAssistants";
+import { addedByAssistantRefusal } from "../src/services/recipients";
+import { startCampaign } from "../src/services/campaigns";
 import { notOnFile, sendQuote } from "../src/services/sales";
 
 const QUOTE = "11111111-1111-4111-8111-111111111111";
@@ -40,17 +42,27 @@ const TABLES: Record<string, unknown[]> = {
   client_contacts: [{ id: "contact-1", name: "Mo Manager", email: "mo@example.com", phone: null, notify_email: true, notify_sms: false }],
 };
 
-/** The Data API: reads answer from TABLES, writes and functions answer nothing; what's sent is kept. */
-function database() {
+/**
+ * The Data API: reads answer from TABLES, writes and functions answer nothing; what's sent is kept.
+ * `added`: the client's own address and the contact's, as an assistant put them on file
+ * (contact_from_assistant), which is the one filter it reads.
+ */
+function database(added: { client?: boolean; contact?: boolean; clients?: string[] } = {}, more: { tables?: Record<string, unknown[]>; answers?: Record<string, unknown> } = {}) {
   const sent: Array<{ method: string; path: string; body: unknown }> = [];
+  const tables = { ...TABLES, ...more.tables };
+  const marked = (path: string, row: unknown) =>
+    path === "clients" ? Boolean(added.client) || Boolean(added.clients?.includes((row as { id: string }).id)) : path === "client_contacts" ? Boolean(added.contact) : false;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
     const method = init?.method ?? "GET";
     const path = url.pathname.replace("/rest/v1/", "");
     sent.push({ method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) : null });
     const single = String(new Headers(init?.headers).get("accept")).includes("vnd.pgrst.object");
+    const answer = more.answers?.[`${method} ${path}`];
+    if (answer !== undefined) return Response.json(answer);
     if (path.startsWith("rpc/")) return Response.json(null);
-    const rows = method === "GET" ? (TABLES[path] ?? []) : [];
+    let rows = method === "GET" ? (tables[path] ?? []) : [];
+    if (url.searchParams.get("contact_from_assistant") === "eq.true") rows = rows.filter((row) => marked(path, row));
     return Response.json(single ? (rows[0] ?? null) : rows);
   });
   const ctx = {
@@ -103,10 +115,74 @@ describe("an assistant sending a quote or invoice", () => {
     expect(JSON.stringify(result)).not.toContain("https://ops.example.com/");
   });
 
+  it("won't send to an address an assistant put on file itself, and sends nothing", async () => {
+    const { ctx, sent } = database({ client: true, contact: true });
+    await expect(quoteTools.send_quote.run(ctx, quoteTools.send_quote.input.parse({ quote_id: QUOTE, recipients: ["pat@example.com"] }))).rejects.toThrow(addedByAssistantRefusal("pat@example.com"));
+    await expect(invoiceTools.send_invoice.run(ctx, invoiceTools.send_invoice.input.parse({ invoice_id: INVOICE, recipients: ["mo@example.com"] }))).rejects.toThrow(addedByAssistantRefusal("mo@example.com"));
+    // Left to who's ticked, and every one of them was put there by an assistant.
+    await expect(quoteTools.send_quote.run(ctx, quoteTools.send_quote.input.parse({ quote_id: QUOTE }))).rejects.toThrow(addedByAssistantRefusal(null));
+    expect(wrote(sent)).toEqual([]);
+  });
+
+  it("leaves out only the addresses an assistant put on file", async () => {
+    const { ctx } = database({ client: true });
+    await expect(quoteTools.send_quote.run(ctx, quoteTools.send_quote.input.parse({ quote_id: QUOTE, recipients: ["pat@example.com", "mo@example.com"] }))).rejects.toThrow(addedByAssistantRefusal("pat@example.com"));
+    // The contact the office added still gets it (no email is set up here, so it reaches nobody).
+    expect(await quoteTools.send_quote.run(ctx, quoteTools.send_quote.input.parse({ quote_id: QUOTE, recipients: ["mo@example.com"] }))).toMatchObject({ sent: false });
+    expect(await quoteTools.send_quote.run(ctx, quoteTools.send_quote.input.parse({ quote_id: QUOTE }))).toMatchObject({ sent: false });
+  });
+
+  it("goes to an address an assistant put on file when the office sends it", async () => {
+    const { ctx } = database({ client: true, contact: true });
+    const scope = { db: ctx.db, env, companyId: "company-1", baseUrl: "https://ops.example.com" };
+    expect(await sendQuote(scope, QUOTE, { channel: "email", recipients: ["pat@example.com"] })).toMatchObject({ sent: false });
+  });
+
   it("never just makes the link, though the office can", async () => {
     const { ctx } = database();
     const scope = { db: ctx.db, env, companyId: "company-1", baseUrl: "https://ops.example.com" };
     await expect(sendQuote({ ...scope, assistant: true }, QUOTE, { channel: "link" })).rejects.toThrow(NO_LINKS_FOR_ASSISTANTS);
     expect((await sendQuote(scope, QUOTE, { channel: "link" })).link).toMatch(/^https:\/\/ops\.example\.com\//);
+  });
+});
+
+describe("an assistant sending a campaign", () => {
+  const CAMPAIGN = "44444444-4444-4444-8444-444444444444";
+  const OTHER = "55555555-5555-4555-8555-555555555555";
+  const more = {
+    tables: {
+      companies: [{ name: "Kilo Gardens", settings: { marketing: { enabled: true } }, address: { line1: "1 Main St", city: "Radford", region: "VA", postal_code: "24141" } }],
+      campaigns: [{ id: CAMPAIGN, kind: "one_off", status: "draft", name: "Spring", subject: "Spring cleanup", body: "Spots are open this spring.", audience: { tags_any: ["zz"] }, scheduled_at: null }],
+      clients: [{ id: CLIENT }, { id: OTHER }],
+    },
+    answers: {
+      "POST rpc/campaign_audience": [
+        { client_id: CLIENT, email: "pat@example.com", display_name: "Pat Lee" },
+        { client_id: OTHER, email: "drop@attacker.test", display_name: "X" },
+      ],
+      "PATCH campaigns": [{ id: CAMPAIGN }],
+    },
+  };
+  const mailEnv = { ...env, MAILPIT_URL: "http://127.0.0.1:8025" } as Env;
+  const recipients = (sent: Array<{ method: string; path: string; body: unknown }>) =>
+    sent.filter((s) => s.method === "POST" && s.path === "campaign_recipients").flatMap((s) => (s.body as Array<{ email: string }>).map((r) => r.email));
+
+  it("leaves out clients whose email an assistant put on file, and says how many", async () => {
+    const { ctx, sent } = database({ clients: [OTHER] }, more);
+    const result = await startCampaign(mailEnv, ctx.db, "company-1", CAMPAIGN, undefined, { assistant: true });
+    expect(result).toMatchObject({ status: "sending", recipients: 1, left_out: 1 });
+    expect(recipients(sent)).toEqual(["pat@example.com"]);
+  });
+
+  it("sends nothing when everyone in the audience was put on file by an assistant", async () => {
+    const { ctx, sent } = database({ clients: [CLIENT, OTHER] }, more);
+    await expect(startCampaign(mailEnv, ctx.db, "company-1", CAMPAIGN, undefined, { assistant: true })).rejects.toThrow(/an AI assistant put on file/);
+    expect(recipients(sent)).toEqual([]);
+  });
+
+  it("goes to everyone in the audience when the office sends it", async () => {
+    const { ctx, sent } = database({ clients: [OTHER] }, more);
+    expect(await startCampaign(mailEnv, ctx.db, "company-1", CAMPAIGN)).toMatchObject({ recipients: 2 });
+    expect(recipients(sent)).toEqual(["pat@example.com", "drop@attacker.test"]);
   });
 });

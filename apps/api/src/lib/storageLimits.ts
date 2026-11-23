@@ -578,18 +578,29 @@ export function storageFull(message: string, video = false): Response {
 /** A refusal in Storage's own shape, which the app reads its message from. */
 const refusal = (status: number, error: string, message: string) => Response.json({ statusCode: String(status), error, message }, { status });
 
+/** A file through a link the server made goes in one request, as the booking form and the paperwork page send it. */
+export const ONE_REQUEST = "Send the file through this link in one request.";
+
+/**
+ * How much of a file through a link the server made arrives before it's counted: each step's worth
+ * is counted as it comes in, and what's left when the file is all in. Far fewer counts than pieces,
+ * and an upload past the day's worth stops within a step of it.
+ */
+export const COUNTED_EVERY = 16 * 1024 * 1024;
+
 /**
  * An upload through a link the server made for someone without an account (a booking form's file,
  * a sub's paperwork): it has to say its size, its link has to be on record and not run out, it may
  * be no bigger than the size given when the link was made (with a form's envelope: FORM_ROOM), and
- * it counts against the visitor's and the business's day (lib/publicUploads.ts) before anything is
- * stored. A resumable one is held to its Upload-Length, which its pieces can't go past. When the
- * record can't be read the upload goes ahead as before: a budget never stops normal use.
+ * it goes in one request (a resumable one could be made and never sent). Its bytes count against
+ * the visitor's and the business's day (lib/publicUploads.ts) as they arrive, so only what's really
+ * sent uses the day up: a size said and never sent counts for nothing. Once the day is spent the
+ * upload is cut off where it is and turned away, and a new one isn't started. When the record can't
+ * be read the upload goes ahead as before: a budget never stops normal use.
  */
 async function guardServerLink(uploads: PublicUploads, visitor: string, upload: StorageUpload & { serverLink: string }, request: Request, send: (request: Request) => Promise<Response>): Promise<Response> {
-  if (upload.bytes === null) {
-    return refusal(411, "Length Required", upload.resumable ? "Send the file's size (Upload-Length) when the upload starts." : "Send the file's size (Content-Length) with the upload.");
-  }
+  if (upload.resumable) return refusal(400, "Bad Request", ONE_REQUEST);
+  if (upload.bytes === null) return refusal(411, "Length Required", "Send the file's size (Content-Length) with the upload.");
   let made: UploadRecord | null;
   try {
     made = await uploads.find(upload.serverLink);
@@ -598,9 +609,39 @@ async function guardServerLink(uploads: PublicUploads, visitor: string, upload: 
     return send(request);
   }
   if (!made || made.company !== upload.company || made.expiresAt <= Date.now()) return refusal(403, "Forbidden", LINK_RUN_OUT);
-  if (upload.bytes > made.maxBytes + (upload.resumable ? 0 : FORM_ROOM)) return refusal(413, "Payload too large", BIGGER_THAN_SAID);
-  if (!(await uploads.spend(made.company, visitor, upload.bytes))) return refusal(429, "Too Many Requests", UPLOADS_PAUSED);
-  return send(request);
+  if (upload.bytes > made.maxBytes + FORM_ROOM) return refusal(413, "Payload too large", BIGGER_THAN_SAID);
+  // Only asks (counts nothing): a day that's spent turns the upload away before it starts.
+  if (!(await uploads.spend(made.company, visitor, 0))) return refusal(429, "Too Many Requests", UPLOADS_PAUSED);
+  if (!request.body) return send(request);
+  const company = made.company;
+  const size = upload.bytes;
+  let arrived = 0;
+  let waiting = 0;
+  let paused = false;
+  const count = async () => {
+    const bytes = waiting;
+    waiting = 0;
+    if (bytes > 0 && !(await uploads.spend(company, visitor, bytes))) paused = true;
+  };
+  const counted = request.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      async transform(chunk, controller) {
+        arrived += chunk.byteLength;
+        waiting += chunk.byteLength;
+        // The last piece is counted before it goes on, so Storage never has the whole of a file the
+        // day had no room for.
+        if (waiting >= COUNTED_EVERY || arrived >= size) await count();
+        if (paused) return controller.error(new Error(UPLOADS_PAUSED));
+        controller.enqueue(chunk);
+      },
+      async flush(controller) {
+        await count();
+        if (paused) controller.error(new Error(UPLOADS_PAUSED));
+      },
+    }),
+  );
+  const res = await send(new Request(request.url, { method: request.method, headers: request.headers, body: counted, duplex: "half" } as RequestInit));
+  return paused ? refusal(429, "Too Many Requests", UPLOADS_PAUSED) : res;
 }
 
 /** What guardStorage needs for uploads through links the server made: their records and budgets, and who's sending. */

@@ -45,8 +45,8 @@ const originOf = (url: string) => {
   }
 };
 
-/** Whether a link on its own line may be a button: any link, or with `base`, only one to that address. */
-const buttonFor = (url: string, base: string | null | undefined) => !base || originOf(url) === originOf(base);
+/** Whether a link on its own line may be a button: any link, with `base` only one to that address, and with `base` null none. */
+const buttonFor = (url: string, base: string | null | undefined) => base === undefined || (base !== null && originOf(url) === originOf(base));
 
 function paragraph(p: string, code: string | null | undefined, href: (url: string) => string, buttons: Record<string, string> | undefined, shown: readonly string[] | undefined, label: string | null | undefined, base: string | null | undefined): string {
   const trimmed = p.trim();
@@ -86,6 +86,7 @@ export interface EmailParts {
    * This Crewtavo's own address (APP_URL), for an email that carries what an outsider typed (a
    * website form's message, a job application): only a link to it becomes a button, and any other
    * link stays a link in the text, so nobody can make their own link look like the email's button.
+   * Null when the address isn't known (no APP_URL): then no link is a button.
    */
   base?: string | null;
 }

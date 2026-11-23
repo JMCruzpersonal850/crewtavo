@@ -80,7 +80,10 @@ export function PayPeriods({ header }: { header: (actions: ReactNode) => ReactNo
   });
 
   const d = summary.data;
-  const unpaid = d ? d.people.filter((p) => owedFor(p) && !p.paid) : [];
+  // Your own pay is an owner's to mark paid, as your pay rate is (the server and the database hold to it).
+  const mine = (p: PersonPay) => p.user_id === session.userId && session.role !== "owner";
+  const unpaid = d ? d.people.filter((p) => owedFor(p) && !p.paid && !mine(p)) : [];
+  const ownLeft = Boolean(d?.people.some((p) => mine(p) && owedFor(p) && !p.paid));
   // Marking paid is refused while anyone it marks has time not approved (piece pay alone included).
   const waiting = waitingFor(unpaid);
   const piece = (d?.piece_amount ?? 0) > 0;
@@ -127,6 +130,12 @@ export function PayPeriods({ header }: { header: (actions: ReactNode) => ReactNo
               <Stat label="Pay" value={formatMoney(d.amount)} note={piece ? `${formatMoney(d.piece_amount)} of it piece pay` : "At each person's rate"} />
               <Stat label="Still to pay" value={formatMoney(stillOwed)} note={unpaid.length ? `${unpaid.length} ${unpaid.length === 1 ? "person" : "people"}` : "Everyone's paid"} />
             </StatStrip>
+            {ownLeft && (
+              <div className="callout callout-info">
+                <Icon name="info" size={16} />
+                <div className="grow">An owner marks your own pay paid.</div>
+              </div>
+            )}
             {waiting.length > 0 && (
               <div className="callout callout-warning">
                 <Icon name="alert" size={16} />

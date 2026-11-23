@@ -4,7 +4,7 @@ import { optionTotals, quoteTotals } from "@crewtavo/core/money";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import { encryptJson } from "../src/lib/crypto";
-import { readClientLink } from "../src/lib/links";
+import { KEPT_LINK, readClientLink } from "../src/lib/links";
 import { packageLines, type PackageService } from "../src/services/roofPackages";
 
 // Stand-ins for the signed-in person's Supabase client and the service-role client: tables of rows
@@ -841,7 +841,7 @@ describe("the link a send hands back", () => {
     expect(rows("messages")).toEqual([]);
   });
 
-  it("is the client's own only in the email that goes out; the timeline keeps the office's copy", async () => {
+  it("is the client's own only in the email that goes out; the timeline keeps no link", async () => {
     roofer({ lines, status: "sent" });
     env.MAILPIT_URL = "http://mailpit.local";
     let body: { sent: boolean; link: string };
@@ -856,8 +856,9 @@ describe("the link a send hands back", () => {
     expect(own).toMatchObject({ c: ROOFER, t: "quote", id: QUOTE });
     expect(own!.via).toBeUndefined();
     expect(await payload(body.link)).toMatchObject({ t: "quote", id: QUOTE, via: "office" });
-    // Estimators read a quote's timeline too: the copy kept there leads to a Client Hub home without the money.
-    expect(await payload(hubLink(rows("messages")[0]!.body))).toMatchObject({ t: "quote", id: QUOTE, via: "office", nm: 1 });
+    // Estimators, and any assistant connected as someone, read a quote's timeline: no link there.
+    expect(rows("messages")[0]!.body).toContain(KEPT_LINK);
+    expect(rows("messages")[0]!.body).not.toContain("/hub/");
   });
 
   /** The link in what went out, by email or text, for a send with this body. */

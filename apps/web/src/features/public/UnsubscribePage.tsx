@@ -5,11 +5,13 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Field";
 import { PrivacyFooter } from "@/components/ui/PrivacyLink";
+import { linkToken } from "@/lib/linkToken";
 import { publicFetch } from "@/lib/publicApi";
 import { Broken, ClientBody, ClientHeader, ClientPage, ClientSkeleton, Done, kit as k } from "./ClientKit";
 
 export function UnsubscribePage() {
-  const { token = "" } = useParams();
+  const { token: raw = "" } = useParams();
+  const token = linkToken(raw);
   const isTest = token === "test";
   const status = useQuery({
     queryKey: ["unsubscribe", token],

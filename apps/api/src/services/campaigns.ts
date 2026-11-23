@@ -20,6 +20,7 @@ import { clientLink } from "../lib/links";
 import { emailReady, sendEmail } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { CAMPAIGN_LINK_DAYS, trackedLinks } from "./automatedCampaigns";
+import { addedByAssistant } from "./recipients";
 import { companyAddress } from "./automations";
 import { logoImage } from "./logo";
 import { senderAddressProblem, tellAddressNeeded } from "./senderAddress";
@@ -238,9 +239,11 @@ export async function loadCampaign(db: Db, companyId: string, id: string) {
 
 /**
  * Send now, or schedule: snapshots the audience so later edits to clients don't change who gets it.
- * Sending, the caller starts it (kickCampaign) or the every-minute task does.
+ * Sending, the caller starts it (kickCampaign) or the every-minute task does. `assistant`: an AI
+ * assistant is sending it (assistant-tools/marketing.ts), so clients whose email an assistant put on
+ * file itself are left out (services/recipients.ts addedByAssistant), and the answer says how many.
  */
-export async function startCampaign(env: Env, db: Db, companyId: string, id: string, scheduledAt?: string) {
+export async function startCampaign(env: Env, db: Db, companyId: string, id: string, scheduledAt?: string, { assistant = false }: { assistant?: boolean } = {}) {
   await requireCampaignsOn(env, companyId);
   await requireCampaignEmail(env, companyId);
   await requireSenderAddress(db, companyId);
@@ -250,11 +253,15 @@ export async function startCampaign(env: Env, db: Db, companyId: string, id: str
   if (campaign.body.trim().length < 10) throw new HttpError(400, "Write the email before sending it.");
   if (scheduledAt && Date.parse(scheduledAt) < Date.now() - 60_000) throw new HttpError(400, "Pick a time in the future.");
 
-  const audience = must(await db.rpc("campaign_audience", { p_company_id: companyId, p_audience: campaign.audience }));
-  if (!audience.length) throw new HttpError(400, "No one matches this audience. Clients need an email address and must not have unsubscribed.");
+  const admin = adminClient(env);
+  const matched = must(await db.rpc("campaign_audience", { p_company_id: companyId, p_audience: campaign.audience }));
+  const added = assistant ? (await addedByAssistant(admin, companyId, matched.map((a) => a.client_id))).clients : new Set<string>();
+  const audience = matched.filter((a) => !added.has(a.client_id));
+  if (!audience.length) {
+    throw new HttpError(400, matched.length ? "Everyone in this audience has an email an AI assistant put on file, so an assistant doesn't send to them. Send it from Crewtavo instead." : "No one matches this audience. Clients need an email address and must not have unsubscribed.");
+  }
   if (audience.length > 5000) throw new HttpError(400, "Campaigns are limited to 5,000 recipients. Narrow the audience.");
 
-  const admin = adminClient(env);
   const { error } = await admin.from("campaign_recipients").upsert(
     audience.map((a) => ({ company_id: companyId, campaign_id: campaign.id, client_id: a.client_id, email: a.email, name: a.display_name })),
     { onConflict: "campaign_id,email,send_key", ignoreDuplicates: true },
@@ -275,7 +282,12 @@ export async function startCampaign(env: Env, db: Db, companyId: string, id: str
   if (updateError) throw dbError(updateError);
   // Only the request that moved it out of draft starts sending (a double-clicked Send doesn't).
   if (!started?.length) throw new HttpError(409, "This campaign has already been sent or scheduled.");
-  return { status: scheduled ? ("scheduled" as const) : ("sending" as const), recipients: audience.length };
+  const leftOut = matched.length - audience.length;
+  return {
+    status: scheduled ? ("scheduled" as const) : ("sending" as const),
+    recipients: audience.length,
+    ...(leftOut ? { left_out: leftOut, note: `${leftOut} ${leftOut === 1 ? "client has an email" : "clients have emails"} an AI assistant put on file, so ${leftOut === 1 ? "it isn't" : "they aren't"} sent this. Send to them from Crewtavo.` } : {}),
+  };
 }
 
 /** Stop: a scheduled campaign goes back to draft so it can be edited; a sending one stops where it is. */

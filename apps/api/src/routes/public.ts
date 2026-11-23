@@ -85,7 +85,7 @@ import { storedFile } from "../lib/storedFile";
 import { THUMBNAIL_PX, thumbnail } from "../lib/thumbnail";
 import { keptSettings } from "../lib/keptSettings";
 import { adminClient } from "../lib/supabase";
-import { clientIp } from "../lib/visitor";
+import { clientIp, visitorBlock } from "../lib/visitor";
 import { buildCalendar } from "../lib/ics";
 import { bookingVisit } from "../services/analytics";
 import { StripeError, verifyStripeSignature, type StripeEvent } from "../services/stripe";
@@ -1734,19 +1734,14 @@ async function pictureVisitor(c: Parameters<typeof appUrl>[0]) {
 }
 
 /**
- * A business's public pictures (its logo, letterhead, and its packages' and price list items'
- * pictures) send at most a day's worth between them (lib/linkBudget.ts), as the Client Hub's map
- * drawings do: anyone can ask for them over and over from many addresses, and sending costs money.
- * Past it they answer 429 until the day is over; the pages and emails they're on still open.
+ * What one visitor's address is sent of businesses' public pictures (logos, letterheads, and
+ * packages' and price list items' pictures) in a day, at most a day's worth (lib/linkBudget.ts), on
+ * top of PICTURES_AN_HOUR. Counted by the address, not by the business: these pictures are on every
+ * email and estimate a business sends and on its own screens, so a day's worth for the whole
+ * business would let a stranger asking from a few addresses take them away from everyone else.
  */
-async function pictureBudget(c: Parameters<typeof appUrl>[0], companyId: string, bytes: number) {
-  const within = await linkCanSend(c.env, `public-pictures:${companyId}`, c.req.method === "HEAD" ? 0 : bytes, {
-    company: companyId,
-    title: "Your logo and pictures are paused for the day",
-    body: "Your logo, letterhead and the pictures on your estimates were sent far more times in the last day than clients look at them, so they're paused until tomorrow. Your emails and the Client Hub still open, without them.",
-    open: "/settings?tab=hosting",
-  });
-  if (!within) throw new HttpError(429, "These pictures were sent a lot today, so they're paused until tomorrow.");
+async function pictureBudget(c: Parameters<typeof appUrl>[0], bytes: number) {
+  if (!(await linkCanSend(c.env, `public-pictures:ip:${visitorBlock(clientIp(c))}`, c.req.method === "HEAD" ? 0 : bytes))) throw new HttpError(429, TOO_MANY_PICTURES);
 }
 
 // The company's logo (services/logo.ts), on the Client Hub and in emails. A logo's file name is
@@ -1763,7 +1758,7 @@ publicRoutes.get("/public/logo/:company/:file", async (c) => {
   if (!path) throw new HttpError(404, "Logo not found.");
   const bytes = await storedFile(admin, path, LOGO_MAX_BYTES);
   if (!bytes || !isPng(bytes)) throw new HttpError(404, "Logo not found.");
-  await pictureBudget(c, companyId, bytes.length);
+  await pictureBudget(c, bytes.length);
   const current = path === `${companyId}/logo/${file}.png`;
   return c.body(bytes, 200, { "Content-Type": "image/png", "Cache-Control": current ? "public, max-age=31536000, immutable" : "public, max-age=3600" });
 });
@@ -1797,7 +1792,7 @@ publicRoutes.get("/public/letterhead/:company/:file", async (c) => {
   await pictureVisitor(c);
   const bytes = await storedFile(adminClient(c.env), `${companyId}/letterhead/${file}.png`, LETTERHEAD_MAX_BYTES);
   if (!bytes || !isPng(bytes)) throw new HttpError(404, "Letterhead not found.");
-  await pictureBudget(c, companyId, bytes.length);
+  await pictureBudget(c, bytes.length);
   return c.body(bytes, 200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 
@@ -1812,7 +1807,7 @@ publicRoutes.get("/public/package/:company/:file", async (c) => {
   await pictureVisitor(c);
   const bytes = await storedFile(adminClient(c.env), `${companyId}/packages/${file}.jpg`, PACKAGE_PICTURE_MAX_BYTES);
   if (!bytes || !isJpeg(bytes)) throw new HttpError(404, "Picture not found.");
-  await pictureBudget(c, companyId, bytes.length);
+  await pictureBudget(c, bytes.length);
   return c.body(bytes, 200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 
@@ -1825,7 +1820,7 @@ publicRoutes.get("/public/service/:company/:file", async (c) => {
   await pictureVisitor(c);
   const bytes = await storedFile(adminClient(c.env), `${companyId}/services/${file}.jpg`, PACKAGE_PICTURE_MAX_BYTES);
   if (!bytes || !isJpeg(bytes)) throw new HttpError(404, "Picture not found.");
-  await pictureBudget(c, companyId, bytes.length);
+  await pictureBudget(c, bytes.length);
   return c.body(bytes, 200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 

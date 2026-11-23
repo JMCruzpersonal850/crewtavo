@@ -1254,16 +1254,18 @@ describe("package pictures", () => {
     expect((await picture("not-a-uuid")).status).toBe(404);
   });
 
-  it("counts each visitor's address by the hour and the business's pictures by the day, and keeps them cached for good", async () => {
+  it("counts each visitor's address by the hour and what it's sent by the day, never the business's pictures as a whole, and keeps them cached for good", async () => {
     state.files[`${ROOFER}/packages/${PICTURE}.jpg`] = JPEG;
     const res = await picture(PICTURE);
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(state.calls.filter((c) => c.name === "rate_limit_hit").map((c) => [c.args.p_key, c.args.p_max, c.args.p_window_seconds])).toEqual([["public-pictures:ip:unknown", 600, 3600]]);
-    expect(state.calls.filter((c) => c.name === "rate_limit_spend").map((c) => [c.args.p_key, c.args.p_amount, c.args.p_window_seconds])).toEqual([[`link-bytes:public-pictures:${ROOFER}`, Math.ceil(JPEG.length / 1000), 86_400]]);
+    expect(state.calls.filter((c) => c.name === "rate_limit_spend").map((c) => [c.args.p_key, c.args.p_amount, c.args.p_window_seconds])).toEqual([["link-bytes:public-pictures:ip:unknown", Math.ceil(JPEG.length / 1000), 86_400]]);
+    // Nothing is counted against the business, so nobody can use its pictures up for everyone else.
+    expect(state.calls.some((c) => c.name === "rate_limit_spend" && String(c.args.p_key).includes(ROOFER))).toBe(false);
   });
 
-  it("turns an address away past its hour before reading anything, and pauses the business's pictures past their day", async () => {
+  it("turns an address away past its hour before reading anything, and past its day, without telling the business", async () => {
     const path = `${ROOFER}/packages/${PICTURE}.jpg`;
     state.files[path] = JPEG;
     state.rpcs.rate_limit_hit = () => ({ data: false, error: null });
@@ -1274,6 +1276,7 @@ describe("package pictures", () => {
     const paused = await picture(PICTURE);
     expect(paused.status).toBe(429);
     expect(paused.headers.get("cache-control")).toBeNull();
+    expect(state.tables.notifications ?? []).toEqual([]);
   });
 });
 

@@ -174,16 +174,25 @@ describe("a message from the website's own form", () => {
 
   it("sends people on only to the form's own website or this Crewtavo, whatever _next says", async () => {
     const next = async (to: string, headers: Record<string, string> = {}) => (await post(`email=jane%40example.com&_next=${encodeURIComponent(to)}`, headers)).headers.get("location");
-    // Taking messages from anywhere: the website the message came from (www or not), or this Crewtavo.
-    withForm();
+    // Taking messages from anywhere: the business's website on Settings → Company (www or not), or this Crewtavo.
+    withForm({ company: { ...form().company, website: "https://www.greenlawn.example" } });
     expect(await next("https://greenlawn.example/sent")).toBe("https://greenlawn.example/sent");
     expect(await next("https://crm.greenlawn.example/f/other")).toBe("https://crm.greenlawn.example/f/other");
     // Anywhere else, the form's own thank-you page instead; the message is still kept.
     for (const to of ["https://evil.example/login", "https://greenlawn.example.evil.example/", "http://localhost:3000/"]) expect(await next(to), to).toBe(THANKS);
-    // With no page to tell by, only the thank-you page the business set has a say.
+    // The thank-you page the business set has a say too, wherever the message says it came from.
     withForm({ redirect_url: "https://greenlawn.example/thanks" });
     expect(await next("https://evil.example/", { Origin: "null" })).toBe("https://greenlawn.example/thanks");
     expect(await next("https://greenlawn.example/sent", { Origin: "null" })).toBe("https://greenlawn.example/sent");
+    // With no website named, the page the message says it came from has none: anyone's page can post here.
+    withForm();
+    expect(await next("https://greenlawn.example/sent")).toBe(THANKS);
+    expect(await next("https://evil.example/login", { Origin: "https://evil.example" })).toBe(THANKS);
+    expect(await next("https://evil.example/login", { Origin: "", Referer: "https://evil.example/page" })).toBe(THANKS);
+    // A bot's message (the hidden field filled in) is kept nowhere, and isn't sent on anywhere else either.
+    const bot = await post(`_gotcha=x&_next=${encodeURIComponent("https://evil.example/login")}`, { Origin: "https://evil.example" });
+    expect(bot.status).toBe(303);
+    expect(bot.headers.get("location")).toBe(THANKS);
     // Only these websites: one of them (and their subdomains).
     withForm({ allowed_sites: ["greenlawn.example"] });
     expect(await next("https://shop.greenlawn.example/thanks")).toBe("https://shop.greenlawn.example/thanks");
@@ -200,6 +209,26 @@ describe("a message from the website's own form", () => {
     expect(html.match(/display:inline-block/g)).toHaveLength(1);
     expect(html).toContain(`href="https://crm.greenlawn.example/requests/${REQUEST_ID}" style="display:inline-block`);
     expect(html).toContain("Hi<br><a href=\"https://evil.example/requests/00000000-0000-4000-8000-0000000000e9\"");
+  });
+
+  it("puts no link or logo from the address a message came to in the office's email when the app's own address isn't set", async () => {
+    withForm({ company: { ...form().company, settings: { website_forms: { enabled: true }, branding: { logo: `${COMPANY}/logo/00000000-0000-4000-8000-0000000000b1.png` } } } });
+    const { APP_URL: _, ...noAddress } = env;
+    // Without APP_URL the address is whatever the request says, here a stranger's.
+    const res = await app.request(`https://evil.example/f/${KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", Origin: "https://www.greenlawn.example" },
+      body: JSON.stringify({ email: "jane@example.com", message: "Hi" }),
+    }, noAddress);
+    expect(res.status).toBe(200);
+    await Promise.all(current.background);
+    expect(current.emails).toHaveLength(2);
+    for (const email of current.emails) {
+      expect(String(email.html)).not.toContain("evil.example");
+      expect(String(email.html)).not.toContain("display:inline-block");
+      expect(String(email.text)).not.toContain("evil.example");
+      expect(String(email.text)).toContain("It's in Requests in Crewtavo.");
+    }
   });
 
   it("tells a bot that filled in _gotcha it worked, and keeps nothing", async () => {

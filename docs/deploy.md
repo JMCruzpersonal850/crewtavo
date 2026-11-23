@@ -609,7 +609,10 @@ read), on Railway or not (`apps/api/src/lib/linkBudget.ts`). `PUBLIC_LINK_GB_A_D
 GB; `0` for no limit), for a business whose showcase is shared widely. Past that its pictures pause until the
 day is over: the page still opens, and owners and admins hear once a day which link it was. A
 guide's new link (**Share → Get a new link**) starts afresh; a showcase can be unpublished, and a
-client's links reset from their page. Visitors also have their own per-address limits.
+client's links reset from their page. Visitors also have their own per-address limits. A business's
+own pictures (its logo, letterhead, and packages' and price list items' pictures, which are on every
+email and estimate it sends) have no limit for the business as a whole, so nobody can pause them for
+everyone: each visitor's address is sent at most that much of them a day.
 
 **Warnings:** the `storage` task (every 6 hours, on Railway or not) tells owners and admins, by the
 bell, when the company's files reach 80% and then 95% of the limit (or that storage is full, when

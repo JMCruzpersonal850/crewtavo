@@ -114,7 +114,10 @@ export function loadConfig(): Promise<AppConfig> {
       config.supabaseUrl ||= window.location.origin;
       if (typeof window !== "undefined") config.supabaseUrl = reachableSupabaseUrl(config.supabaseUrl, window.location.hostname);
       startMonitoring(config.sentry);
-      client ??= createClient<Database>(config.supabaseUrl, config.supabaseKey, { global: { fetch: signedInFetch(config) } });
+      // A sign-in in the address's hash isn't taken by supabase-js by itself: anyone could put their
+      // own there and switch this browser to their account. session.tsx takes it, asking first when
+      // someone else is signed in here (lib/emailLink.ts).
+      client ??= createClient<Database>(config.supabaseUrl, config.supabaseKey, { auth: { detectSessionInUrl: false }, global: { fetch: signedInFetch(config) } });
       return config;
     });
   return configPromise;

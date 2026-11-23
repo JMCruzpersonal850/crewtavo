@@ -1,14 +1,16 @@
 /**
  * A one-time link from an email (invite, password reset, sign-in) opens the app with
  * ?token_hash=…&type=… (emailAuthLink in apps/api/src/lib/auth.ts), and the app redeems it
- * (session.tsx), so it works whatever the Supabase project's Site URL is. Links from Supabase's own
- * mailer arrive with #access_token=…&type=… instead, and supabase-js signs in from those by itself.
+ * (session.tsx), so it works whatever the Supabase project's Site URL is. A sign-in that comes back
+ * in the address's hash (#access_token=…&refresh_token=…, as Sign in with Google does) is taken the
+ * same way: supabase-js doesn't take it by itself (lib/api.ts).
  *
  * Someone already signed in on this browser keeps that sign-in until they say otherwise. The link is
  * redeemed apart from it first, and when it's for a different account they're asked, with both
- * accounts named: anyone can make a link like this for their own account, and it would otherwise
- * switch this browser into that account without a word. A link for the account that's signed in, or
- * opened with nobody signed in, goes straight through, as it always has.
+ * accounts named: anyone can make a link like this for their own account (or paste their own
+ * sign-in into one), and it would otherwise switch this browser into that account without a word.
+ * A link for the account that's signed in, or opened with nobody signed in, goes straight through,
+ * as it always has.
  */
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import type { Session } from "@supabase/supabase-js";
@@ -32,11 +34,26 @@ export function readEmailLink(search: string): EmailLink | null {
   return tokenHash && type ? { tokenHash, type, welcome: query.get("welcome") === "1" } : null;
 }
 
+/** A sign-in handed over in the address's hash (#access_token=…&refresh_token=…), and what kind it says it is. */
+export interface HashSignIn {
+  accessToken: string;
+  refreshToken: string;
+  type: LinkType | null;
+}
+
+/** The sign-in in a page's hash, or null when it has none. */
+export function readHashSignIn(hash: string): HashSignIn | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+  return accessToken && refreshToken ? { accessToken, refreshToken, type: LINK_TYPES.find((kind) => kind === params.get("type")) ?? null } : null;
+}
+
 /** The parts of supabase-js's sign-in client this uses (the app's own, and one kept apart from it). */
 export interface LinkAuth {
   getSession(): Promise<{ data: { session: Session | null } }>;
   verifyOtp(params: { token_hash: string; type: LinkType }): Promise<{ data: { session: Session | null }; error: unknown }>;
-  setSession(tokens: { access_token: string; refresh_token: string }): Promise<{ error: unknown }>;
+  setSession(tokens: { access_token: string; refresh_token: string }): Promise<{ data?: { session: Session | null }; error: unknown }>;
   signOut(options: { scope: "local" }): Promise<unknown>;
 }
 
@@ -66,25 +83,27 @@ export function accountName(session: Session): string {
 }
 
 /**
- * Trades the link's token for a sign-in. `auth` is the app's own client; `apart` makes one that
- * keeps nothing, for redeeming a link while someone is signed in; `ask` asks them whether to switch
- * (true to switch to the link's account).
+ * Trades the link's token (or the sign-in in its hash) for a sign-in. `auth` is the app's own
+ * client; `apart` makes one that keeps nothing, for redeeming a link while someone is signed in;
+ * `ask` asks them whether to switch (true to switch to the link's account).
  */
-export async function redeemEmailLink(link: EmailLink, { auth, apart, ask }: { auth: LinkAuth; apart: () => LinkAuth; ask: (question: SwitchQuestion) => Promise<boolean> }): Promise<Redeemed> {
+export async function redeemEmailLink(link: EmailLink | HashSignIn, { auth, apart, ask }: { auth: LinkAuth; apart: () => LinkAuth; ask: (question: SwitchQuestion) => Promise<boolean> }): Promise<Redeemed> {
   const expired = t("That link has expired or was already used. Ask whoever sent it for a new one, or sign in below.");
   const offline = t("Couldn't open that link. Check your connection and try again.");
+  const open = (on: LinkAuth) =>
+    "tokenHash" in link ? on.verifyOtp({ token_hash: link.tokenHash, type: link.type }) : on.setSession({ access_token: link.accessToken, refresh_token: link.refreshToken });
   let signedIn = false;
   try {
     const current = (await auth.getSession()).data.session;
     signedIn = Boolean(current);
     if (!current) {
-      const { error } = await auth.verifyOtp({ token_hash: link.tokenHash, type: link.type });
+      const { error } = await open(auth);
       return { problem: error ? expired : null, kept: false };
     }
     // Someone is signed in: see whose the link is before anything changes here.
     const other = apart();
-    const { data, error } = await other.verifyOtp({ token_hash: link.tokenHash, type: link.type });
-    const opened = data.session;
+    const { data, error } = await open(other);
+    const opened = data?.session;
     if (error || !opened) return { problem: t("That link has expired or was already used. Ask whoever sent it for a new one."), kept: true };
     if (opened.user.id !== current.user.id && !(await ask({ current: accountName(current), link: accountName(opened) }))) {
       // They stay as they are, and the link's sign-in is ended rather than left open.

@@ -35,6 +35,19 @@ function mayPay(s: PayScope) {
   }
 }
 
+export const OWN_PAY = "Ask an owner to mark your own pay paid, or take the mark back.";
+
+/**
+ * Someone's own pay in a period is an owner's to mark paid or take back, as their pay rate is (the
+ * database holds pay_period_lines to it): anyone else who handles pay leaves their own line alone.
+ * Named on purpose, it's refused; with nobody named, they're left out.
+ */
+function ownPayOut(s: PayScope, named: readonly string[] | undefined): boolean {
+  if (s.role === "owner") return false;
+  if (named?.includes(s.userId)) throw new HttpError(403, OWN_PAY);
+  return true;
+}
+
 async function names(s: PayScope) {
   const members = must(await s.db.from("memberships").select("user_id").eq("company_id", s.companyId));
   const profiles = members.length ? must(await s.db.from("profiles").select("user_id, full_name").in("user_id", members.map((m) => m.user_id))) : [];
@@ -174,8 +187,9 @@ export async function markPaid(s: PayScope, body: { from: string; to: string; us
     const subs = await subSignIns(s);
     if (body.user_ids.some((id) => subs.has(id))) throw new HttpError(400, SUBS_NOT_PAYROLL);
   }
+  const notMine = ownPayOut(s, body.user_ids);
   const owed = (p: { hours: number; piece_amount: number }) => p.hours > 0 || p.piece_amount > 0;
-  const named = summary.people.filter((p) => (body.user_ids ? body.user_ids.includes(p.user_id) : owed(p)));
+  const named = summary.people.filter((p) => (body.user_ids ? body.user_ids.includes(p.user_id) : owed(p) && !(notMine && p.user_id === s.userId)));
   // A paid line is the record of a payment: marking again never writes over it.
   const people = named.filter((p) => !p.paid);
   if (!people.length) {
@@ -225,9 +239,11 @@ export async function markPaid(s: PayScope, body: { from: string; to: string; us
 /** Take back a paid mark (for the period, or some people), so their time can be changed again (and their piece pay is done again, owed). */
 export async function unmarkPaid(s: PayScope, body: { from: string; to: string; user_ids?: readonly string[] }) {
   mayPay(s);
+  const notMine = ownPayOut(s, body.user_ids);
   const period = must(await s.db.from("pay_periods").select("id").eq("company_id", s.companyId).eq("starts_on", body.from).eq("ends_on", body.to).maybeSingle(), "No pay period with those dates has been marked paid.");
   let query = s.db.from("pay_period_lines").update({ paid_at: null, paid_by: null, paid_amount: null, method: null, reference: null }).eq("period_id", period.id);
   if (body.user_ids) query = query.in("user_id", [...body.user_ids]);
+  else if (notMine) query = query.neq("user_id", s.userId);
   const changed = must(await query.select("user_id"));
   must(await s.db.from("pay_periods").update({ status: "open", paid_at: null, paid_by: null }).eq("id", period.id).select("id"));
   return { period_id: period.id, unmarked: changed.length };

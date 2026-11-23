@@ -205,8 +205,12 @@ export const fileSize = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1,
 // The email, and a form to start from
 // ---------------------------------------------------------------------------------------------
 
-/** The email the people a careers form names get for each application (lib/email.ts renders it). */
-export function applicationEmail(input: { formName: string; application: Application; files: Array<{ name: string; field: string; size: number }>; link: string }): { subject: string; text: string } {
+/**
+ * The email the people a careers form names get for each application (lib/email.ts renders it).
+ * `link`: the applicant in Crewtavo; null when the server doesn't know its own address, and the email
+ * says where to find them instead.
+ */
+export function applicationEmail(input: { formName: string; application: Application; files: Array<{ name: string; field: string; size: number }>; link: string | null }): { subject: string; text: string } {
   const { application: a, formName, files, link } = input;
   const who = a.name ?? a.email ?? a.phone ?? "someone";
   const short: string[] = [];
@@ -227,7 +231,7 @@ export function applicationEmail(input: { formName: string; application: Applica
       short.join("\n"),
       ...long,
       attached.length ? `${attached.join("\n")}\nOpen ${files.length === 1 ? "it" : "them"} in Crewtavo.` : null,
-      link,
+      link ?? "It's in Applicants in Crewtavo.",
       a.email ? `Reply to this email to answer ${first || "them"}.` : null,
     ].filter(Boolean).join("\n\n"),
   };

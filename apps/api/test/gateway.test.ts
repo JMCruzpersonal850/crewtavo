@@ -14,7 +14,7 @@ import type { Env } from "../src/env";
 import { EMAIL_CHANGE_STALE, gateway, MAX_AUTH_BODY, MAX_REST_BODY, NO_S3, PASSWORD_LINK_STALE, safeFile, storesFile, unsizedUpload } from "../src/lib/gateway";
 import { NO_AUTH_MAIL, sealAuthToken } from "../src/lib/signInGuard";
 import { BIGGER_THAN_SAID, LINK_RUN_OUT, UPLOADS_PAUSED, type PublicUploads, type UploadRecord } from "../src/lib/publicUploads";
-import { forgetStorageUsage, type StorageSnapshot } from "../src/lib/storageLimits";
+import { COUNTED_EVERY, forgetStorageUsage, ONE_REQUEST, type StorageSnapshot } from "../src/lib/storageLimits";
 import { STORAGE_PAUSED } from "../src/services/storageBucket";
 
 // Whether a storage move has uploads turned away right now (services/storageBucket.ts).
@@ -294,9 +294,10 @@ describe("storage limits at the gateway", () => {
   let reads = 0;
   /** The records of the upload links the server made (public.upload_links), by stored name. */
   let records: Map<string, UploadRecord>;
-  /** What was counted against the day's worth of strangers' uploads, and whether there's room. */
+  /** What was counted against the day's worth of strangers' uploads, whether there's room, and how much is left of the day. */
   let spent: Array<{ company: string; visitor: string; bytes: number }>;
   let room = true;
+  let left = Infinity;
   let recordsDown = false;
   const uploads: PublicUploads = {
     find: async (path) => {
@@ -305,9 +306,12 @@ describe("storage limits at the gateway", () => {
     },
     spend: async (company, visitor, bytes) => {
       spent.push({ company, visitor, bytes });
-      return room;
+      left -= bytes;
+      return room && left >= 0;
     },
   };
+  /** What was counted, without the asks (0) before an upload starts. */
+  const counted = () => spent.filter((s) => s.bytes > 0);
   const limited = (jwtSecret = SECRET) =>
     gateway(env, { auth: base, rest: base, storage: base }, {
       jwtSecret,
@@ -332,6 +336,7 @@ describe("storage limits at the gateway", () => {
     records = new Map();
     spent = [];
     room = true;
+    left = Infinity;
     recordsDown = false;
   });
 
@@ -415,7 +420,8 @@ describe("storage limits at the gateway", () => {
   it("holds an upload through a link the server made to the size its visitor gave, and counts it against the day", async () => {
     const token = made(`${CO}/plans/b.pdf`, 4096);
     expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${token}`, 4096, null, "PUT")).status).toBe(200);
-    expect(spent).toEqual([{ company: CO, visitor: "127.0.0.1", bytes: 4096 }]);
+    // Asked first (counting nothing), then counted as it arrived.
+    expect(spent).toEqual([{ company: CO, visitor: "127.0.0.1", bytes: 0 }, { company: CO, visitor: "127.0.0.1", bytes: 4096 }]);
     // A form's envelope is a little more than its file.
     expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${token}`, 4096 + 1000, null, "PUT")).status).toBe(200);
     // Far more than its visitor said: refused before Storage sees a byte, and not counted.
@@ -440,8 +446,6 @@ describe("storage limits at the gateway", () => {
       duplex: "half",
     } as RequestInit, from);
     expect(res.status).toBe(411);
-    const resumable = await create(`${CO}/plans/b.pdf`, 4096, { Authorization: "", "x-signature": token, "Upload-Length": "", "Upload-Defer-Length": "1" }, "/storage/v1/upload/resumable/sign");
-    expect(resumable.status).toBe(411);
     expect(reached).toEqual([]);
   });
 
@@ -454,11 +458,70 @@ describe("storage limits at the gateway", () => {
     expect(reached).toEqual([]);
   });
 
-  it("holds a resumable upload through a link the server made to its size too", async () => {
+  it("takes no resumable upload through a link the server made: one could be made and never sent", async () => {
     const token = made(`${CO}/plans/r.pdf`, 4096);
-    expect((await create(`${CO}/plans/r.pdf`, 4097, { Authorization: "", "x-signature": token }, "/storage/v1/upload/resumable/sign")).status).toBe(413);
-    expect((await create(`${CO}/plans/r.pdf`, 4096, { Authorization: "", "x-signature": token }, "/storage/v1/upload/resumable/sign")).status).toBe(200);
-    expect(spent).toEqual([{ company: CO, visitor: "127.0.0.1", bytes: 4096 }]);
+    for (const headers of [{}, { "Upload-Length": "", "Upload-Defer-Length": "1" }] as Array<Record<string, string>>) {
+      const res = await create(`${CO}/plans/r.pdf`, 4096, { Authorization: "", "x-signature": token, ...headers }, "/storage/v1/upload/resumable/sign");
+      expect(res.status).toBe(400);
+      expect((await res.json()).message).toBe(ONE_REQUEST);
+    }
+    expect(reached).toEqual([]);
+    expect(spent).toEqual([]);
+  });
+
+  /** A body that sends `bytes` in pieces of `piece`, then (with `drop`) stops there as a dropped connection does. */
+  const pieces = (bytes: number, piece: number, drop = false) => {
+    let sent = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (sent >= bytes) return drop ? c.error(new Error("the connection dropped")) : c.close();
+        const n = Math.min(piece, bytes - sent);
+        sent += n;
+        c.enqueue(new Uint8Array(n));
+      },
+    });
+  };
+  const putThrough = (name: string, token: string, said: number, body: ReadableStream<Uint8Array>) =>
+    limited().request(`/storage/v1/object/upload/sign/files/${name}?token=${token}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream", "Content-Length": String(said) },
+      body,
+      duplex: "half",
+    } as RequestInit, from);
+
+  it("counts nothing for a size said and never sent, however often it's said", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const name = `${CO}/plans/big.pdf`;
+    const token = made(name, 200_000_000);
+    for (let i = 0; i < 3; i++) await putThrough(name, token, 200_000_000, pieces(1000, 1000, true));
+    expect(counted()).toEqual([]);
+    expect(storedBytes).toBe(0);
+  });
+
+  it("counts a big file as it arrives, and all of it once it's in", async () => {
+    const MB = 1024 * 1024;
+    const name = `${CO}/plans/plan-set.pdf`;
+    const res = await putThrough(name, made(name, 40 * MB), 40 * MB, pieces(40 * MB, MB));
+    expect(res.status).toBe(200);
+    expect(counted().map((s) => s.bytes)).toEqual([COUNTED_EVERY, COUNTED_EVERY, 40 * MB - 2 * COUNTED_EVERY]);
+    expect(storedBytes).toBe(40 * MB);
+  });
+
+  it("cuts an upload off where the day runs out, and never sends Storage the end of a file it had no room for", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const MB = 1024 * 1024;
+    left = 20 * MB;
+    const name = `${CO}/plans/plan-set.pdf`;
+    const res = await putThrough(name, made(name, 40 * MB), 40 * MB, pieces(40 * MB, MB));
+    expect(res.status).toBe(429);
+    expect((await res.json()).message).toBe(UPLOADS_PAUSED);
+    expect(storedBytes).toBe(0);
+    // A small file whose last piece goes over: counted before it goes on, so it isn't stored either.
+    left = 1000;
+    const small = `${CO}/plans/small.pdf`;
+    const smallRes = await putThrough(small, made(small, 4096), 4096, pieces(4096, 4096));
+    expect(smallRes.status).toBe(429);
+    expect(storedBytes).toBe(0);
   });
 
   it("turns uploads through links the server made away once the day's worth has come in", async () => {

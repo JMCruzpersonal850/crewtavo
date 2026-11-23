@@ -52,7 +52,8 @@ export function TimesheetsPage() {
   // Crew leads see their crew's time (the database limits the rows) and approve it with the area.
   const isLead = session.role === "crew_lead";
   const canApprove = isOffice || (isLead && can(session, "timesheets"));
-  const approvable = (userId: string) => canApprove && !(isLead && userId === session.userId);
+  // Nobody but an owner approves their own time (the database holds to it): it's what they're paid for.
+  const approvable = (userId: string) => canApprove && (userId !== session.userId || session.role === "owner");
   // Where people clocked in and out: the office's to see, and a crew lead's for their crew (the
   // database decides which, and never shows someone their own).
   const seesPlaces = isOffice || isLead;

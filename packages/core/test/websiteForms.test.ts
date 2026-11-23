@@ -190,6 +190,10 @@ describe("the email for a message", () => {
       ].join("\n\n"),
     );
     expect(messageEmail({ formName: "Quote form", submission: { ...s, subject: "Quote please" }, link: "x" }).subject).toBe("Quote please");
+    // Without a link (the server doesn't know its own address), it says where the request is.
+    const unlinked = messageEmail({ formName: "Contact form", submission: s, link: null }).text;
+    expect(unlinked).toContain("It's in Requests in Crewtavo.");
+    expect(unlinked).not.toContain("http");
   });
 
   it("says what became of a promo code, in the office's words", () => {

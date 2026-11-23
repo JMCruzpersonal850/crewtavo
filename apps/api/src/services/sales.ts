@@ -21,7 +21,7 @@ import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
 import { loadOptions, manualApproval } from "./contracts";
 import { logoImage } from "./logo";
-import { clientReach, recipientsColumn, sendChoicesFor, sendToEach, stoppedNumbers } from "./recipients";
+import { addedByAssistant, addedByAssistantRefusal, clientReach, recipientsColumn, sendChoicesFor, sendToEach, stoppedNumbers } from "./recipients";
 import { textWithStopLine } from "./stopLine";
 import { noteRefusedText, numberStoppedRefusal, textsOffRefusal, textsOffTo } from "./textsOff";
 
@@ -35,7 +35,8 @@ export interface SalesScope {
   noMoney?: boolean;
   /**
    * An AI assistant is sending (assistant-tools/quotes.ts, invoices.ts): only to the client's own
-   * email or phone and their contacts' on file (sendTo), and never just for the link (lib/noAssistants.ts).
+   * email or phone and their contacts' on file, and not those an assistant put on file itself
+   * (sendTo), and never just for the link (lib/noAssistants.ts).
    */
   assistant?: boolean;
 }
@@ -209,9 +210,9 @@ export interface Delivered {
  * Email or text the client their link to a quote or invoice (or just make the link), and log it on
  * their timeline. Only an email or text to the client's own email or phone on file carries their
  * own link (lib/links sentToClient); one typed to any other address carries the office's copy. What
- * comes back (Copy link, the assistants' send_quote and send_invoice) and the copy on the timeline
- * carry the office's copy too (lib/links clientLinks), so the person sending can't use it, or send
- * it to themselves, to say yes to autopay or tip on the client's saved card for them.
+ * comes back to the person sending (Copy link) carries the office's copy too (lib/links
+ * clientLinks), so they can't use it, or send it to themselves, to say yes to autopay or tip on the
+ * client's saved card for them. The copy on the timeline carries no link at all (KEPT_LINK).
  */
 export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: Deliverable, body: SendBody, defaults: DeliverDefaults = {}): Promise<Delivered> {
   // Only a quote template has no client, and it's never sent: a quote is made from it first.
@@ -258,10 +259,9 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
       client_id: record.client_id,
       channel,
       subject: channel === "email" ? body.subject || defaults.subject || label : label,
-      // The office's copy of the link: anyone who reads the timeline can open it, but not as the
-      // client. A quote's timeline is read by estimators too, so its copy leaves the money out of the
-      // Client Hub home it leads to (lib/links clientLinks).
-      body: message(kind === "quote" ? links.kept : links.office),
+      // No working link: everyone who reads the timeline (an AI assistant connected as someone
+      // among them) would otherwise hold one that opens the client's page as the client (lib/links KEPT_LINK).
+      body: message(links.kept),
       related_type: kind,
       related_id: record.id,
       external_id: delivery.id,
@@ -289,14 +289,20 @@ type SendClient = { id: string; display_name: string; email: string | null; phon
  * ones it goes to: every one is checked, and there are MAX_RECIPIENTS at most. With none named: the
  * client's own, and their contacts ticked for emails or texts (services/recipients.ts). Never a
  * number that texted STOP. Refuses, with what to fix, when that leaves nobody. `onFileOnly` (an AI
- * assistant sending) refuses any named address that isn't the client's own or a contact's.
+ * assistant sending) refuses any named address that isn't the client's own or a contact's, and
+ * leaves out (or, named, refuses) one an assistant put on file itself (recipients.ts addedByAssistant).
  */
 async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", client: SendClient, body: SendBody, settings: unknown, onFileOnly = false): Promise<Recipient[]> {
   const reach = await clientReach(admin, companyId, client, settings);
   const named = uniqueAddresses(channel, [...(body.recipients ?? []), body.to]);
+  // An assistant's send leaves out the addresses an assistant put on file itself.
+  const added = onFileOnly ? await addedByAssistant(admin, companyId, [client.id]) : null;
+  const byAssistant = (person: Recipient) => Boolean(added && (person.contact_id ? added.contacts.has(person.contact_id) : added.clients.has(client.id)));
   if (!named.length) {
-    const people = clientRecipients(channel, client, reach.contacts, reach);
+    const everyone = clientRecipients(channel, client, reach.contacts, reach);
+    const people = everyone.filter((person) => !byAssistant(person));
     if (people.length) return people.slice(0, MAX_RECIPIENTS);
+    if (everyone.length) throw new HttpError(400, addedByAssistantRefusal(everyone.length === 1 ? everyone[0]!.to : null));
     if (channel === "email") throw new HttpError(400, "Add a valid email address for this client first.");
     throw new HttpError(400, client.phone ? textsOffRefusal(client.display_name) : "This client has no phone number.");
   }
@@ -312,6 +318,8 @@ async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", cl
     const onFileTo = (to: string) => Boolean(key(to)) && (sentToClient(channel, to, client) || reach.contacts.some((c) => key(channel === "email" ? c.email : c.phone) === key(to)));
     const elsewhere = named.find((to) => !onFileTo(to));
     if (elsewhere) throw new HttpError(400, notOnFile(elsewhere));
+    const putThere = named.map(whose).find(byAssistant);
+    if (putThere) throw new HttpError(400, addedByAssistantRefusal(putThere.to));
   }
   if (channel === "email") {
     const wrong = named.find((to) => !isEmail(to));

@@ -10,7 +10,7 @@ import { friendlyIssue } from "../src/lib/http";
 import { cronMatches } from "../src/lib/cron";
 import { buildCalendar } from "../src/lib/ics";
 import { allow, allowStrict } from "../src/lib/limit";
-import { clientLink, clientLinks, readClientLink, sentToClient } from "../src/lib/links";
+import { clientLink, clientLinks, KEPT_LINK, readClientLink, sentToClient } from "../src/lib/links";
 import { buildMime } from "../src/lib/smtp";
 import { twilioSignature } from "../src/routes/messages";
 import { TOOLS } from "../src/assistant-tools";
@@ -66,12 +66,21 @@ describe("crypto", () => {
   it("reads only the two parts a token is made of, so one token can't be spelled many ways", async () => {
     const token = await signToken(env, { id: "x", exp: Date.now() / 1000 + 60 });
     expect(token.split(".")).toHaveLength(2);
-    for (const spelled of [`${token}.1`, `${token}.`, `${token}..2`, `x.${token}`]) expect(await verifyToken(env, spelled), spelled).toBeNull();
+    for (const spelled of [`${token}.1`, `${token}..`, `${token}..2`, `${token}.1.`, `x.${token}`]) expect(await verifyToken(env, spelled), spelled).toBeNull();
     expect(await verifyToken(env, token)).toMatchObject({ id: "x" });
+    // The full stop of the sentence a link ends (a text app takes it in) is the sentence's, not the token's.
+    expect(await verifyToken(env, `${token}.`)).toMatchObject({ id: "x" });
     // Every link and token the server makes is two parts.
     const url = await clientLink(env, "https://ops.example.com", { c: "company-1", t: "client", id: "client-1" });
     expect(url.split("/hub/")[1]!.split(".")).toHaveLength(2);
     expect((await request(`/api/hub/${url.split("/hub/")[1]}.1`)).status).toBe(404);
+  });
+
+  it("opens a referral, paperwork or unsubscribe link that a text app took the sentence's full stop into", async () => {
+    const refer = await clientLink(env, "https://ops.example.com", { c: "company-1", t: "refer", id: "client-1" });
+    const token = refer.split("/refer/")[1]!;
+    expect(await readClientLink(env, `${token}.`)).toMatchObject({ t: "refer", id: "client-1" });
+    expect(await readClientLink(env, `${token}.x`)).toBeNull();
   });
 
   it("builds client links that decode to the same record", async () => {
@@ -396,9 +405,11 @@ describe("client links by kind", () => {
     expect(await readClientLink(env, links.own.split("/hub/")[1]!)).not.toHaveProperty("nm");
   });
 
-  it("always marks the copy kept on a quote's timeline (nm), which estimators read too", async () => {
+  it("keeps no working link in the copy kept on the timeline, which crews and connected assistants read", async () => {
     const links = await clientLinks(env, "https://ops.example.com", { c: "co", t: "quote", id: "quote-1" });
-    expect(await readClientLink(env, links.kept.split("/hub/")[1]!)).toMatchObject({ t: "quote", via: "office", nm: 1 });
+    expect(links.kept).toBe(KEPT_LINK);
+    expect(links.kept).not.toMatch(/https?:|\/hub\//);
+    expect(await readClientLink(env, links.office.split("/hub/")[1]!)).toMatchObject({ t: "quote", via: "office" });
     expect(await readClientLink(env, links.office.split("/hub/")[1]!)).not.toHaveProperty("nm");
   });
 
@@ -657,6 +668,8 @@ describe("email rendering", () => {
     expect(html).toContain('<a href="https://evil.example/login" style="color:#2c611a;font-weight:600;word-break:break-all">https://evil.example/login</a>');
     // Without the address, as before: any link on its own line is a button.
     expect(renderEmail({ companyName: "Acme Lawn", text: "https://acme.example/spring" }).html).toContain('href="https://acme.example/spring" style="display:inline-block');
+    // With the address unknown (null: no APP_URL), none is.
+    expect(renderEmail({ companyName: "Acme Lawn", text: `Message:\nhi\n\n${request}`, base: null }).html).not.toContain("display:inline-block");
   });
 
   it("shows a one-time code large, on its own, and leaves the plain text as it is", () => {

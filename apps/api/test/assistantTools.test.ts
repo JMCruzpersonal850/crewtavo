@@ -52,6 +52,11 @@ function supabase(role = "owner", answers: Record<string, unknown> = {}) {
       return Response.json(CONNECTIONS[client] ? [CONNECTIONS[client]] : []);
     }
     if (table === "memberships") memberships.push(url);
+    // Someone else on the team, when a test says who (answers.member): read without the company, as the team tools read them.
+    if (table === "memberships" && "member" in answers && !url.searchParams.get("select")?.includes("company")) {
+      if (method === "PATCH") sent.push({ method, table, body, query: url.searchParams });
+      return Response.json(answers.member);
+    }
     if (table === "memberships") return Response.json([{ company_id: "company-1", role, role_id: null, company: { timezone: "America/New_York", settings: {} } }]);
     // The company's settings as the person reads them (lib/companySettings.ts settingsAs): all of them, for an owner.
     if (table === "rpc/company_settings") return Response.json(db.companies?.[0]?.settings ?? {});
@@ -351,6 +356,19 @@ describe("tools", () => {
       expect((await call("full", "change_role", args)).error, JSON.stringify(args)).toBe(OFFICE_FROM_TEAM_PAGE);
     }
     expect(sent.filter((r) => r.method !== "GET" && r.table !== "assistant_calls")).toEqual([]);
+  });
+
+  it("take someone off a custom role (role_id null), at the crew level they have", async () => {
+    const person = "00000000-0000-4000-8000-000000000009";
+    const { sent } = supabase("owner", { member: [{ user_id: person, role: "field_crew", role_id: null }] });
+    expect(await call("full", "change_role", { user_id: person, role_id: null })).toEqual({ saved: true, level: "field_crew" });
+    expect(sent.filter((r) => r.method === "PATCH" && r.table === "memberships").map((r) => r.body)).toEqual([{ role_id: null }]);
+    // Not someone whose level is more than crew lead: that's done on Settings → People.
+    supabase("owner", { member: [{ user_id: person, role: "office", role_id: null }] });
+    expect((await call("full", "change_role", { user_id: person, role_id: null })).error).toBe(OFFICE_FROM_TEAM_PAGE);
+    // And still one or the other.
+    supabase("owner");
+    expect((await call("full", "change_role", { user_id: person })).error).toBe("Give a role or a role_id.");
   });
 
   it("give access back only to crew", async () => {

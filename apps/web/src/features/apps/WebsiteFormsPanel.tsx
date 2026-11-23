@@ -289,13 +289,13 @@ function FormCard({ form, first, kind, promoBox, siteKey, keysUnreadable }: { fo
           {careers ? (
             <p className={kit.note}>
               Fields named <strong>name</strong>, <strong>email</strong>, <strong>phone</strong>, <strong>position</strong>, <strong>start_date</strong>, <strong>availability</strong>, <strong>pay</strong>, <strong>experience</strong>, <strong>drivers_license</strong>, <strong>location</strong> and <strong>message</strong> fill in the applicant, in the usual spellings of each.
-              Anything else your form asks comes along too. A file field named <strong>resume</strong> is their résumé: up to 3 files of 10 MB each, PDF, Word or a photo. <code className={kit.code}>_gotcha</code>, <code className={kit.code}>_subject</code> and <code className={kit.code}>_next</code> work as they do with Formspree.
+              Anything else your form asks comes along too. A file field named <strong>resume</strong> is their résumé: up to 3 files of 10 MB each, PDF, Word or a photo. <code className={kit.code}>_gotcha</code>, <code className={kit.code}>_subject</code> and <code className={kit.code}>_next</code> work as they do with Formspree. <code className={kit.code}>_next</code> only goes to your own website: the one in Settings → Company, your thank-you page's, or one you only take messages from.
             </p>
           ) : (
             <p className={kit.note}>
               Fields named <strong>name</strong>, <strong>email</strong>, <strong>phone</strong>, <strong>address</strong> and <strong>message</strong> fill in the client and the request.
               A field named <strong>promo</strong>, <strong>promo_code</strong>, <strong>promocode</strong>, <strong>coupon</strong>, <strong>coupon_code</strong> or <strong>discount_code</strong> (in any case, with spaces or dashes too) is checked as a promo code. A valid one is ready to apply on the quote.
-              Anything else your form asks comes along with the message. Moving from Formspree? Change the action to this address: <code className={kit.code}>_gotcha</code>, <code className={kit.code}>_subject</code>, <code className={kit.code}>_next</code> and <code className={kit.code}>_replyto</code> work the same.
+              Anything else your form asks comes along with the message. Moving from Formspree? Change the action to this address: <code className={kit.code}>_gotcha</code>, <code className={kit.code}>_subject</code>, <code className={kit.code}>_next</code> and <code className={kit.code}>_replyto</code> work the same. <code className={kit.code}>_next</code> only goes to your own website: the one in Settings → Company, your thank-you page's, or one you only take messages from.
             </p>
           )}
         </Step>

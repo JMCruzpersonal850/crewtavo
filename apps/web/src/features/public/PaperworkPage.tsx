@@ -11,6 +11,7 @@ import { useParams } from "react-router-dom";
 import { Button, cx } from "@/components/ui/Button";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { linkToken } from "@/lib/linkToken";
 import { publicFetch } from "@/lib/publicApi";
 import { Broken, ClientBody, ClientHeader, ClientPage, ClientSkeleton, Done, kit as k } from "./ClientKit";
 import p from "./paperwork.module.css";
@@ -44,7 +45,8 @@ const REQUIREMENT_LABELS: Record<string, string> = { w9: "W-9", liability: msg("
 const localToday = () => new Date().toLocaleDateString("en-CA");
 
 export function PaperworkPage() {
-  const { token = "" } = useParams();
+  const { token: raw = "" } = useParams();
+  const token = linkToken(raw);
   const path = `/public/paperwork/${encodeURIComponent(token)}`;
   const view = useQuery({ queryKey: ["paperwork", token], retry: false, queryFn: () => publicFetch<PaperworkView>(path) });
   const [items, setItems] = useState<Item[] | null>(null);

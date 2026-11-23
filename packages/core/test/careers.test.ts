@@ -113,6 +113,10 @@ describe("the email for each application", () => {
     expect(email.text).toContain("Message:\nLine one\nLine two");
     expect(email.text).toContain("Résumé: resume.pdf (244 KB)\nOpen it in Crewtavo.");
     expect(email.text).toContain("Reply to this email to answer Jane.");
+    // Without a link (the server doesn't know its own address), it says where the applicant is.
+    const unlinked = applicationEmail({ formName: "Job application", application: a, files: [], link: null }).text;
+    expect(unlinked).toContain("It's in Applicants in Crewtavo.");
+    expect(unlinked).not.toContain("https://");
   });
 });
 

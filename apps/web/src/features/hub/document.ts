@@ -15,6 +15,7 @@ import { SITE_ADJUSTMENT_NAME } from "@crewtavo/core/estimates";
 import { normalizePitch, pitchFactor } from "@crewtavo/core/geo";
 import { chosenTotals, lineTotal, optionLabels, toCents, type Amount } from "@crewtavo/core/money";
 import { dateIn, formatMoney, formatMoneyCents, formatNumber } from "@/lib/format";
+import { linkToken } from "@/lib/linkToken";
 import {
   hasContract,
   inkOn,
@@ -30,11 +31,8 @@ import {
 } from "../documents/build";
 import type { DocumentCompany, DocumentData } from "../documents/types";
 
-/**
- * A Client Hub link's token as the server made it: its two parts. A text or chat app that took the
- * full stop or bracket after a link into it still opens the page, since the server reads nothing more.
- */
-export const hubToken = (raw: string) => /^[\w-]+\.[\w-]+/.exec(raw)?.[0] ?? raw;
+/** A Client Hub link's token as the server made it (lib/linkToken.ts). */
+export const hubToken = linkToken;
 
 export interface HubLine {
   id?: string;

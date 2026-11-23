@@ -89,12 +89,13 @@ export async function removeFiles(admin: Db, files: Array<{ path: string }>): Pr
 /** Email each application to the people the form names, replying to the applicant. Sent one by one; a failure is logged. */
 export async function emailApplication(
   env: Env,
-  input: { base: string; company: FormCompany; form: { name: string; email_to: string[] }; application: Application; files: ApplicantFile[]; applicantId: string },
+  input: { base: string | null; company: FormCompany; form: { name: string; email_to: string[] }; application: Application; files: ApplicantFile[]; applicantId: string },
 ): Promise<void> {
   const { base, company, form, application } = input;
-  const { subject, text } = applicationEmail({ formName: form.name, application, files: input.files, link: `${base}/applicants/${input.applicantId}` });
+  // Without this Crewtavo's own address (base null), no link or logo: see emailMessage.
+  const { subject, text } = applicationEmail({ formName: form.name, application, files: input.files, link: base ? `${base}/applicants/${input.applicantId}` : null });
   // What the applicant typed is in it: only the application's own link here is a button.
-  const email = renderEmail({ companyName: company.name, logo: logoImage(base, company.id, company.settings), text, base });
+  const email = renderEmail({ companyName: company.name, logo: base ? logoImage(base, company.id, company.settings) : null, text, base });
   for (const to of form.email_to) {
     const result = await sendEmail(env, { to, subject, text: email.text, html: email.html, replyTo: application.email ?? undefined, fromName: company.name }, company.id);
     if (!result.sent) console.warn(`Careers email to ${to} wasn't sent: ${result.reason ?? "unknown reason"}`);

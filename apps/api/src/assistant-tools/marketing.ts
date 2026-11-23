@@ -97,12 +97,12 @@ export const marketingTools = {
   }),
   send_campaign: tool({
     description:
-      "Send a draft campaign to everyone in its audience now (it starts going out within a minute), or at scheduled_at. This emails clients: tell the person how many it reaches (save_campaign says) and confirm first. Up to 5,000 recipients.",
+      "Send a draft campaign to everyone in its audience now (it starts going out within a minute), or at scheduled_at. This emails clients: tell the person how many it reaches (save_campaign says) and confirm first. Up to 5,000 recipients. Clients whose email an AI assistant put on file aren't sent it (the answer says how many): the person sends to them from Crewtavo.",
     input: z.object({ campaign_id: z.uuid(), scheduled_at: z.iso.datetime({ offset: true }).optional(), ...companyArg }),
     area: "marketing",
     run: async (ctx, a) => {
       marketer(ctx);
-      return startCampaign(ctx.env, ctx.db, ctx.companyId, a.campaign_id, a.scheduled_at);
+      return startCampaign(ctx.env, ctx.db, ctx.companyId, a.campaign_id, a.scheduled_at, { assistant: true });
     },
   }),
   cancel_campaign: tool({

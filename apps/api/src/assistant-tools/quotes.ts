@@ -245,7 +245,7 @@ export const quoteTools = {
   }),
   send_quote: tool({
     description:
-      "Send a quote to the client by email (default) or text, in Crewtavo's usual words, with their link to review, choose options and approve it. It goes to the client and their contacts ticked for emails or texts, or to the ones recipients names from the client's own email or phone and their contacts' (get_client, 10 at most). An assistant never sends one to any other address, never with words of its own, and doesn't get the link. It's then marked sent.",
+      "Send a quote to the client by email (default) or text, in Crewtavo's usual words, with their link to review, choose options and approve it. It goes to the client and their contacts ticked for emails or texts, or to the ones recipients names from the client's own email or phone and their contacts' (get_client, 10 at most). An assistant never sends one to any other address, or to one an assistant put on file (the person sends those from Crewtavo), never with words of its own, and doesn't get the link. It's then marked sent.",
     input: z.object({ quote_id: z.uuid(), ...assistantSendSchema.shape, ...companyArg }).strict(),
     area: "quotes",
     // It goes out with the server's own email and texting, so the role is checked here, as POST /quotes/:id/send does.

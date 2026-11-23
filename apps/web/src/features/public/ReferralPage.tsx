@@ -7,6 +7,7 @@ import { Button, cx } from "@/components/ui/Button";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { PrivacyFooter } from "@/components/ui/PrivacyLink";
+import { linkToken } from "@/lib/linkToken";
 import { publicFetch, useTurnstile } from "@/lib/publicApi";
 import { formatPhoneTyping } from "@/lib/validate";
 import { Broken, ClientBody, ClientHeader, ClientPage, ClientSkeleton, Done, kit as k } from "./ClientKit";
@@ -20,7 +21,8 @@ interface ReferralView {
 }
 
 export function ReferralPage() {
-  const { token = "" } = useParams();
+  const { token: raw = "" } = useParams();
+  const token = linkToken(raw);
   const view = useQuery({ queryKey: ["referral", token], retry: false, queryFn: () => publicFetch<ReferralView>(`/public/refer/${token}`) });
   const [f, setF] = useState({ name: "", email: "", phone: "", line1: "", city: "", postal_code: "", details: "" });
   const turnstile = useTurnstile(Boolean(view.data));

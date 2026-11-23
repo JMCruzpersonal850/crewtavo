@@ -101,7 +101,7 @@ async function findForm(c: Ctx, key = c.req.param("key") ?? ""): Promise<FoundFo
   if (!/^[a-z0-9]{8,32}$/.test(key)) return null;
   const { data, error } = await adminClient(c.env)
     .from("website_forms")
-    .select("id, key, kind, name, email_to, redirect_url, allowed_sites, bot_check, bot_check_armed_at, company:companies(id, name, settings)")
+    .select("id, key, kind, name, email_to, redirect_url, allowed_sites, bot_check, bot_check_armed_at, company:companies(id, name, settings, website)")
     .eq("key", key)
     .maybeSingle();
   if (error) throw dbError(error);
@@ -132,9 +132,10 @@ const thanksPage = (c: Ctx, form: FoundForm, next: string | null) => ownNext(c, 
 
 /**
  * A form's _next, when it goes to the form's own website or this Crewtavo; null otherwise. A form's
- * own website is one it takes messages from (Only these websites), or with none listed, the one the
- * message came from or the thank-you page the business set. A form's address doesn't send people on
- * to any other site, whatever its _next says.
+ * own website is one the business named: one the form takes messages from (Only these websites), the
+ * site of the thank-you page it set, or its website on Settings → Company. Never the page a message
+ * says it came from: any page can post to the form and say so, and then send people anywhere from
+ * the business's own address.
  */
 function ownNext(c: Ctx, form: FoundForm, next: string | null): string | null {
   if (!next) return null;
@@ -146,11 +147,16 @@ function ownNext(c: Ctx, form: FoundForm, next: string | null): string | null {
     }
   };
   if (origin(next) === origin(appUrl(c))) return next;
-  const sites = form.allowed_sites.length
-    ? form.allowed_sites
-    : [siteHost(c.req.header("origin") ?? c.req.header("referer")), siteHost(form.redirect_url)].filter((host): host is string => Boolean(host));
+  const sites = [...form.allowed_sites, siteHost(form.redirect_url), siteHost(form.company.website)].filter((host): host is string => Boolean(host));
   return sites.length && siteAllowed(next, sites) ? next : null;
 }
+
+/**
+ * This Crewtavo's own address for the office's email about a message, or null without APP_URL: the
+ * address a message came to is whatever its sender wrote, so it never goes in that email as the way
+ * to the request (emailMessage).
+ */
+const ownAddress = (c: Ctx) => (c.env.APP_URL ? appUrl(c) : null);
 
 const sentOk = (c: Ctx, json: boolean, next: string) => (json ? c.json({ ok: true, next }, 200, CORS) : c.redirect(next, 303));
 
@@ -296,7 +302,7 @@ formInbox.post("/f/:key", async (c) => {
     // Where their number came from, for the office: the business's own website form (which Crewtavo doesn't write, so it can't say what the form told them).
     if (message.phone && made.client_id) runInBackground(c, noteTextConsent(adminClient(c.env), company.id, made.client_id, message.phone, "website_form"));
     if (form.email_to.length) {
-      runInBackground(c, emailMessage(c.env, { base: appUrl(c), company, form, submission: message, requestId: made.request_id, promo }));
+      runInBackground(c, emailMessage(c.env, { base: ownAddress(c), company, form, submission: message, requestId: made.request_id, promo }));
     }
     return done();
   } catch (error) {
@@ -354,7 +360,7 @@ async function takeApplication(c: Ctx, json: boolean, form: FoundForm, sent: Arr
   }
   noteCheck(c, form, checked.note);
   if (form.email_to.length) {
-    runInBackground(c, emailApplication(c.env, { base: appUrl(c), company, form, application, files: stored, applicantId }));
+    runInBackground(c, emailApplication(c.env, { base: ownAddress(c), company, form, application, files: stored, applicantId }));
   }
   return done();
 }

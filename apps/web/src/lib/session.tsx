@@ -19,7 +19,7 @@ import { registerFieldActions } from "@/features/field/fieldActions";
 import { TermsPage } from "@/features/legal/License";
 import { RailwaySetupPage } from "@/features/setup/RailwaySetupPage";
 import { api, ApiError, companyFeatures, loadConfig, setActiveCompany, supabase, type AppConfig } from "./api";
-import { readEmailLink, redeemEmailLink, type Redeemed, type SwitchQuestion } from "./emailLink";
+import { readEmailLink, readHashSignIn, redeemEmailLink, type Redeemed, type SwitchQuestion } from "./emailLink";
 import { setCurrency } from "./format";
 import { followProfile, forgetLanguageAtSignOut } from "./i18n";
 import { forgetOfflineCache, keepQueuedFieldActions, keepsDayOffline, pendingFieldActions, signOutWarning, startOfflineCache } from "./offline";
@@ -120,7 +120,7 @@ function Centered({ children }: { children: ReactNode }) {
   );
 }
 
-/** A one-time link from an email (invite, password reset, sign-in), read before Supabase clears the URL (lib/emailLink.ts). */
+/** A one-time link from an email (invite, password reset, sign-in), read before the URL is cleared (lib/emailLink.ts). */
 const emailLink = (() => {
   try {
     return readEmailLink(window.location.search);
@@ -129,11 +129,26 @@ const emailLink = (() => {
   }
 })();
 
-/** Arriving from a password-reset or invitation email (read before Supabase clears the URL). */
+/**
+ * A sign-in handed over in the URL's hash (Sign in with Google comes back with one), taken like an
+ * emailed link: someone signed in here is asked before it takes their place (lib/emailLink.ts).
+ */
+const hashSignIn = (() => {
+  try {
+    return emailLink ? null : readHashSignIn(window.location.hash);
+  } catch {
+    return null;
+  }
+})();
+
+/** What the page was opened with to sign in, if anything. */
+const arrivingLink = emailLink ?? hashSignIn;
+
+/** Arriving from a password-reset or invitation email (read before the URL is cleared). */
 const arrivedVia = (() => {
   if (emailLink) return emailLink.welcome || emailLink.type === "invite" ? "invite" : emailLink.type === "recovery" ? "recovery" : null;
   try {
-    const type = new URLSearchParams(window.location.hash.slice(1)).get("type") ?? new URLSearchParams(window.location.search).get("type");
+    const type = hashSignIn?.type ?? new URLSearchParams(window.location.search).get("type");
     return type === "recovery" || type === "invite" ? type : null;
   } catch {
     return null;
@@ -147,16 +162,17 @@ let redeeming: Promise<Redeemed> | null = null;
  * first when someone else is signed in here (lib/emailLink.ts). `ask` shows the question.
  */
 function openEmailLink(config: AppConfig, ask: (question: SwitchQuestion) => Promise<boolean>): Promise<Redeemed> {
-  if (!emailLink) return Promise.resolve({ problem: null, kept: false });
-  redeeming ??= redeemEmailLink(emailLink, {
+  if (!arrivingLink) return Promise.resolve({ problem: null, kept: false });
+  redeeming ??= redeemEmailLink(arrivingLink, {
     auth: supabase().auth,
     // Keeps nothing: the sign-in already here stays as it is unless they choose to switch.
     apart: () => new AuthClient({ url: `${config.supabaseUrl}/auth/v1`, headers: { apikey: config.supabaseKey, Authorization: `Bearer ${config.supabaseKey}` }, persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "crewtavo-email-link" }),
     ask,
   }).finally(() => {
-    // The token works once; keep it out of the address bar and history.
+    // The token works once, and a sign-in in the hash is someone's: keep both out of the address bar and history.
     const url = new URL(window.location.href);
     for (const key of ["token_hash", "type", "welcome"]) url.searchParams.delete(key);
+    if (hashSignIn) url.hash = "";
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   });
   return redeeming;
@@ -177,8 +193,8 @@ export function SessionProvider({ children, requireCompany = true }: { children:
   const [linkProblem, setLinkProblem] = useState<string | null>(null);
   /** An emailed link for another account than the one signed in here, waiting on the person's answer. */
   const [switching, setSwitching] = useState<(SwitchQuestion & { answer: (yes: boolean) => void }) | null>(null);
-  /** Whose sign-in this browser keeps isn't settled while an emailed link is being opened. */
-  const openingLink = useRef(Boolean(emailLink));
+  /** Whose sign-in this browser keeps isn't settled while an emailed link (or a sign-in in the hash) is being opened. */
+  const openingLink = useRef(Boolean(arrivingLink));
   /** The person chose to sign out (rather than the app signing them out). */
   const signingOut = useRef(false);
 

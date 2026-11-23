@@ -17,8 +17,8 @@ export interface ClientLink {
   exp: number; // seconds since epoch
   pv?: 1; // office preview: may show drafts
   // "office": a copy of the client's Hub link the office made (Copy Client Hub link), every link a
-  // signed-in person is handed (a send's Copy link, the copy kept on the client's timeline, a send
-  // typed to an address that isn't the client's; clientLinks), and every link minted from one. It
+  // signed-in person is handed (a send's Copy link, a send typed to an address that isn't the
+  // client's, a rule's email or text to a contact; clientLinks), and every link minted from one. It
   // works as the client's own link, except that it can't say yes to a card it didn't save itself or
   // add a tip to a saved card. Missing means the client's own link (and see `own`).
   via?: "office";
@@ -67,24 +67,32 @@ export async function clientLink(env: Env, baseUrl: string, link: Omit<ClientLin
 }
 
 /**
- * One client link minted twice: `own`, the client's own (own: 1), only for the email or text that
- * goes out to their own email or phone (sentToClient); and `office`, the office's copy (via
- * "office"), for anything a signed-in person gets: what a send hands back to copy, the copy kept on
- * the client's timeline, and a send to any other address. So no one on the team holds a link that
- * can say yes to autopay or tip on the client's saved card for them.
+ * What stands for a client's link in the copy the team keeps of what was sent: the client's timeline,
+ * and a rule's notes, tasks and notices. A link opens the client's page without a sign-in, as the
+ * client, for months, and everyone who reads these would hold one: crews read a visit's messages, and
+ * an AI assistant connected as someone reads what they do. The client has their link; someone in the
+ * office who needs one copies it from the quote, invoice or client page.
+ */
+export const KEPT_LINK = "[Client Hub link]";
+
+/**
+ * One client link minted for each place it goes: `own`, the client's own (own: 1), only for the email
+ * or text that goes out to their own email or phone (sentToClient); `office`, the office's copy (via
+ * "office"), for what a send hands back to the person who sent it to copy, and for a send to any other
+ * address. So no one on the team holds a link that can say yes to autopay or tip on the client's
+ * saved card for them. `kept`, for the copy kept on the client's timeline, is no link at all
+ * (KEPT_LINK).
  *
  * `nm` (lib/links above) only ever marks the office's copy: the client's own link shows them their
- * money. `kept`: the office's copy for a quote's timeline, which estimators read too, so it's always
- * marked nm.
+ * money.
  */
 export async function clientLinks(env: Env, baseUrl: string, link: Omit<ClientLink, "exp" | "via" | "own">, days?: number): Promise<{ own: string; office: string; kept: string }> {
   const { nm, ...rest } = link;
-  const [own, office, kept] = await Promise.all([
+  const [own, office] = await Promise.all([
     clientLink(env, baseUrl, { ...rest, own: 1 }, days),
     clientLink(env, baseUrl, { ...rest, via: "office", ...(nm && { nm }) }, days),
-    clientLink(env, baseUrl, { ...rest, via: "office", nm: 1 }, days),
   ]);
-  return { own, office, kept };
+  return { own, office, kept: KEPT_LINK };
 }
 
 /** An email's address for comparing: trimmed, in lower case. */

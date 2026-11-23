@@ -30,17 +30,24 @@ export interface FormCompany {
   id: string;
   name: string;
   settings: unknown;
+  /** Its website on Settings → Company: where a form's _next may send people (routes/websiteForms.ts). */
+  website?: string | null;
 }
 
-/** Email each message to the people the form names, replying to whoever sent it. Sent one by one; a failure is logged. */
+/**
+ * Email each message to the people the form names, replying to whoever sent it. Sent one by one; a
+ * failure is logged. `base`: this Crewtavo's own address (APP_URL), for the request's link and the
+ * logo; null without one, when the address a request came to is whatever its sender wrote, so the
+ * email has neither and says where the request is.
+ */
 export async function emailMessage(
   env: Env,
-  input: { base: string; company: FormCompany; form: { name: string; email_to: string[] }; submission: Submission; requestId: string; promo?: PromoResult },
+  input: { base: string | null; company: FormCompany; form: { name: string; email_to: string[] }; submission: Submission; requestId: string; promo?: PromoResult },
 ): Promise<void> {
   const { base, company, form, submission } = input;
-  const { subject, text } = messageEmail({ formName: form.name, submission, link: `${base}/requests/${input.requestId}`, promo: input.promo });
+  const { subject, text } = messageEmail({ formName: form.name, submission, link: base ? `${base}/requests/${input.requestId}` : null, promo: input.promo });
   // What the visitor typed is in it: only the request's own link here is a button.
-  const email = renderEmail({ companyName: company.name, logo: logoImage(base, company.id, company.settings), text, base });
+  const email = renderEmail({ companyName: company.name, logo: base ? logoImage(base, company.id, company.settings) : null, text, base });
   for (const to of form.email_to) {
     const result = await sendEmail(env, { to, subject, text: email.text, html: email.html, replyTo: submission.email ?? undefined, fromName: company.name }, company.id);
     if (!result.sent) console.warn(`Website form email to ${to} wasn't sent: ${result.reason ?? "unknown reason"}`);

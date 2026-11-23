@@ -188,7 +188,7 @@ export const invoiceTools = {
   }),
   send_invoice: tool({
     description:
-      "Send an invoice to the client by email (default) or text, in Crewtavo's usual words, with their link to view and pay it. It goes to the client and their contacts ticked for emails or texts, or to the ones recipients names from the client's own email or phone and their contacts' (get_client, 10 at most). An assistant never sends one to any other address, never with words of its own, and doesn't get the link. A draft becomes sent.",
+      "Send an invoice to the client by email (default) or text, in Crewtavo's usual words, with their link to view and pay it. It goes to the client and their contacts ticked for emails or texts, or to the ones recipients names from the client's own email or phone and their contacts' (get_client, 10 at most). An assistant never sends one to any other address, or to one an assistant put on file (the person sends those from Crewtavo), never with words of its own, and doesn't get the link. A draft becomes sent.",
     input: z.object({ invoice_id: z.uuid(), ...assistantSendSchema.shape, ...companyArg }).strict(),
     area: "invoices",
     run: async (ctx, { invoice_id, company_id: _, ...body }) => {

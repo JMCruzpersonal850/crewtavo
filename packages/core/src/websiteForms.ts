@@ -275,8 +275,12 @@ export function promoLine(promo: PromoResult): string | null {
   return `Promo code ${code} wasn't applied: ${promo.problem.charAt(0).toLowerCase()}${promo.problem.slice(1)}`;
 }
 
-/** The email the people a form names get for each message: its subject and words (lib/email.ts renders them). */
-export function messageEmail(input: { formName: string; submission: Submission; link: string; promo?: PromoResult }): { subject: string; text: string } {
+/**
+ * The email the people a form names get for each message: its subject and words (lib/email.ts
+ * renders them). `link`: the request in Crewtavo; null when the server doesn't know its own address,
+ * and the email says where to find it instead.
+ */
+export function messageEmail(input: { formName: string; submission: Submission; link: string | null; promo?: PromoResult }): { subject: string; text: string } {
   const { submission: s, formName, link } = input;
   const who = s.name ?? s.email ?? s.phone ?? "someone";
   const short: string[] = [];
@@ -295,7 +299,7 @@ export function messageEmail(input: { formName: string; submission: Submission; 
       short.join("\n"),
       ...long,
       promoLine(input.promo ?? null),
-      link,
+      link ?? "It's in Requests in Crewtavo.",
       s.email ? `Reply to this email to answer ${first || "them"}.` : null,
     ].filter(Boolean).join("\n\n"),
   };

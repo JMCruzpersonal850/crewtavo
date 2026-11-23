@@ -464,7 +464,7 @@ marketing.get("/clients/:id/hub-link", requireUser, noAssistants, requireCompany
 
 /**
  * "Reset this client's links" (the office): every quote, invoice and Client Hub link made for this
- * client before now stops opening, the office's copies on the timeline included, so a link that
+ * client before now stops opening, the copies the office handed out included, so a link that
  * was forwarded to someone else can be cut off without touching any other client's. Links made from
  * now on work as usual; unsubscribe, review and referral links are left alone. Only the server sets
  * the time (clients.links_reset_at), from the clock that stamps the links, and a note on the

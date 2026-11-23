@@ -7,9 +7,10 @@
  * given: sign-in, passwords and spare keys, connected apps and keys, and its own access.
  *
  * Prices are what clients pay: the price list (whose "Add to every job" items go on new jobs by
- * themselves), a job's lines and how it's billed, extra work on a visit, and changing prices across
- * jobs. So are the money settings on a client or the company: tax, payment terms, the minimum charge,
- * late fees and tips, which go with Invoices and payments.
+ * themselves), a job's lines and how it's billed (its retainage too, and a new job's billing), what
+ * one visit bills, extra work on a visit, and changing prices across jobs. So are the money settings
+ * on a client or the company: tax, payment terms, the minimum charge, late fees and tips, and
+ * whether a job is charged automatically (autopay), which go with Invoices and payments.
  *
  * The web app's access picker, the MCP server (apps/api/src/mcp.ts) and the database
  * (private.assistant_may_change, in the assistant_areas migrations) use the same rules.
