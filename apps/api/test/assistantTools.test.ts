@@ -52,6 +52,8 @@ function supabase(role = "owner", answers: Record<string, unknown> = {}) {
     }
     if (table === "memberships") memberships.push(url);
     if (table === "memberships") return Response.json([{ company_id: "company-1", role, role_id: null, company: { timezone: "America/New_York", settings: {} } }]);
+    // The company's settings as the person reads them (lib/companySettings.ts settingsAs): all of them, for an owner.
+    if (table === "rpc/company_settings") return Response.json(db.companies?.[0]?.settings ?? {});
     if (!url.pathname.startsWith("/rest/v1/")) return Response.json([]);
     sent.push({ method, table, body, query: url.searchParams });
     const rows = (db[table] ??= []);
@@ -289,6 +291,8 @@ describe("tools", () => {
       expect((await call("full", "change_role", args)).error, JSON.stringify(args)).toBe(ADMIN_FROM_TEAM_PAGE);
     }
     expect((await call("full", "save_role", { name: "Everything", base_role: "admin", permissions: ["team"] })).error).toBe(ADMIN_FROM_TEAM_PAGE);
+    // Nor given back: turning a removed admin's access back on is giving it.
+    expect((await call("full", "restore_person", { user_id: person })).error).toBe(ADMIN_FROM_TEAM_PAGE);
     expect(sent.filter((r) => r.method !== "GET" && r.table !== "assistant_calls")).toEqual([]);
     // A role that's admin-level already can still be renamed.
     expect(await call("full", "save_role", { role_id: "00000000-0000-4000-8000-0000000000aa", name: "Manager", base_role: "admin", permissions: ["team"] })).toEqual({ role_id: "00000000-0000-4000-8000-0000000000aa", saved: true });

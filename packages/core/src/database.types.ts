@@ -4655,6 +4655,9 @@ isOneToOne: false
               "currency": string,"id": string,"logo": string,"name": string,"phone": string,"settings": Json,"timezone": string
             }[]
                            },
+"company_settings":
+{ Args: { "p_company": string }; Returns: Json
+                           },
 "convert_quote_to_job":
 { Args: { "p_quote": string }; Returns: string
                            },
@@ -5664,6 +5667,11 @@ isOneToOne: false
                            },
 "visit_notice_is_repeat":
 { Args: { "p_run": number }; Returns: boolean
+                           },
+"visit_prices":
+{ Args: { "p_visits": (string)[] }; Returns: {
+              "id": string,"price": number,"price_note": string
+            }[]
                            },
 "web_analytics_save":
 { Args: { "p_changes": Json,"p_company": string }; Returns: Json

@@ -26,6 +26,7 @@ import { useSession } from "@/lib/session";
 import { checkGooglePlaces } from "../measure/googlePlaces";
 import { SwitchRow } from "./SettingsKit";
 import { AUTO_NAME, checkEsriKey, checkGoogleKey, choiceName, DEFAULT_CHOICES, googleFirst, imageryUsable, mapKeys, teamDefault, type ImageryChoice } from "../measure/imagery";
+import { loadSettings } from "@/lib/companySettings";
 
 type Provider = "esri" | "google";
 const FIELD: Record<Provider, keyof MapKeys> = { esri: "esri_key", google: "google_key" };
@@ -36,13 +37,13 @@ export function MapsSettings() {
   const queryClient = useQueryClient();
   const settings = useQuery({
     queryKey: ["company", company.id, "settings"],
-    queryFn: async () => unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single()).settings as Record<string, unknown> | null,
+    queryFn: async (): Promise<Record<string, unknown> | null> => loadSettings(company.id),
   });
   const maps = ((settings.data ?? {}).maps ?? {}) as MapSettings;
 
   const writeMaps = async (patch: MapSettings) => {
     // Read the settings fresh, so a change someone made meanwhile isn't undone.
-    const current = (unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single()).settings ?? {}) as Record<string, unknown>;
+    const current = await loadSettings(company.id);
     const maps = { ...((current.maps ?? {}) as MapSettings), ...patch };
     unwrap(await supabase().from("companies").update({ settings: { ...current, maps } as never }).eq("id", company.id));
   };

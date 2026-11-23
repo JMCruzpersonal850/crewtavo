@@ -18,6 +18,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { addressLine } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { SaveBar, Suffix, SwitchRow, unsavedCount } from "./SettingsKit";
+import { loadSettings } from "@/lib/companySettings";
 
 const STEP_LABELS: Record<number, string> = { 1: "1 minute (exact)", 5: "5 minutes, like Google Calendar's app", 15: "15 minutes" };
 
@@ -27,7 +28,10 @@ export function ScheduleSettings() {
   const queryClient = useQueryClient();
   const details = useQuery({
     queryKey: ["company", company.id, "schedule"],
-    queryFn: async () => unwrap(await supabase().from("companies").select("address, settings").eq("id", company.id).single()),
+    queryFn: async () => {
+      const [row, settings] = await Promise.all([supabase().from("companies").select("address").eq("id", company.id).single(), loadSettings(company.id)]);
+      return { ...unwrap(row), settings };
+    },
   });
   const [f, setF] = useState<ReturnType<typeof scheduleSettings> | null>(null);
   useEffect(() => {

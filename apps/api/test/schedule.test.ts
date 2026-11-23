@@ -5,12 +5,13 @@ import type { Env } from "../src/env";
 // with `visits` for the visits query.
 const state = vi.hoisted(() => ({ visits: [] as unknown[], route: null as unknown, schedule: {} as Record<string, unknown>, queries: [] as Array<{ table: string; calls: unknown[][] }> }));
 vi.mock("../src/lib/supabase", () => {
+  const settings = () => ({ depot: { lat: 40, lng: -74 }, working_hours: { start: "08:00", end: "17:00" }, schedule: state.schedule });
   const query = (table: string) => {
     const calls: unknown[][] = [];
     state.queries.push({ table, calls });
     const result = () =>
       table === "memberships" ? { data: { role: "owner", role_id: null }, error: null }
-      : table === "companies" ? { data: { timezone: "America/New_York", settings: { depot: { lat: 40, lng: -74 }, working_hours: { start: "08:00", end: "17:00" }, schedule: state.schedule } }, error: null }
+      : table === "companies" ? { data: { timezone: "America/New_York", settings: settings() }, error: null }
       : table === "routes" && !calls.some((c) => c[0] === "upsert") ? { data: state.route, error: null }
       : { data: table === "visits" && !calls.some((c) => c[0] === "update") ? state.visits : null, error: null };
     const builder: Record<string, unknown> = {};
@@ -21,7 +22,9 @@ vi.mock("../src/lib/supabase", () => {
     builder.then = (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve(result()).then(resolve, reject);
     return builder;
   };
-  const db = { auth: { getClaims: async () => ({ data: { claims: { sub: "user-1" } }, error: null }) }, from: query, rpc: async () => ({ data: [], error: null }) };
+  const db = { auth: { getClaims: async () => ({ data: { claims: { sub: "user-1" } }, error: null }) }, from: query,
+    // The company's settings as the person reads them (lib/companySettings.ts settingsAs).
+    rpc: async (name: string) => (name === "company_settings" ? { data: settings(), error: null } : { data: [], error: null }) };
   return { userClient: () => db, adminClient: () => db, publishableKey: () => "key" };
 });
 const { app } = await import("../src/app");

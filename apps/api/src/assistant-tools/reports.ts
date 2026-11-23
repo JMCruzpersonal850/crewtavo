@@ -10,6 +10,7 @@ import { keptSettings } from "../lib/keptSettings";
 import { adminClient } from "../lib/supabase";
 import { timeRates } from "../services/payRates";
 import { companyArg, friendly, requireRole, roleAllows, rows, tool, type ToolContext } from "./tool";
+import { settingsAs } from "../lib/companySettings";
 
 const OFFICE = ["owner", "admin", "office"] as const;
 const rangeInput = {
@@ -173,14 +174,14 @@ export const reportTools = {
         all((f, t) => ctx.db.from("time_entries").select("id, user_id, job_id, started_at, ended_at, category, approved_at").eq("company_id", ctx.companyId).gte("started_at", range.start).lt("started_at", range.end).range(f, t)),
         teamNames(ctx),
         costs ? timeRates(adminClient(ctx.env), ctx.companyId, { from: range.start, to: range.end }) : Promise.resolve({} as Record<string, number>),
-        rows(ctx.db.from("companies").select("settings").eq("id", ctx.companyId)),
+        settingsAs(ctx.db, ctx.companyId),
       ]);
       const now = new Date().toISOString();
       const result = teamHours(
         entries.map((e) => ({ ...e, running: !e.ended_at, ended_at: e.ended_at ?? now })),
         (id) => nameOf(id),
         (e) => rates[e.id] ?? 0,
-        breakPay(company[0]?.settings),
+        breakPay(company),
       );
       return costs ? { period: range, ...result } : { period: range, ...result, labor_cost: undefined, by_person: result.by_person.map(({ cost: _, ...p }) => p) };
     },

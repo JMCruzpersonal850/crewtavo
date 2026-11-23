@@ -203,9 +203,13 @@ export async function processCampaigns(env: Env, options: { campaignId?: string;
 // Send and Stop (routes/marketing.ts, and the assistant's tools)
 // ---------------------------------------------------------------------------------------------
 
-/** Uninstalled, Marketing sends clients nothing, so no campaign goes out (or starts, or is tested). */
-export async function requireCampaignsOn(db: Db, companyId: string) {
-  const company = must(await db.from("companies").select("settings").eq("id", companyId).maybeSingle());
+/**
+ * Uninstalled, Marketing sends clients nothing, so no campaign goes out (or starts, or is tested).
+ * Read with the server's key, for the company the person was checked into: the browser's role
+ * doesn't read the company's settings (lib/companySettings.ts).
+ */
+export async function requireCampaignsOn(env: Env, companyId: string) {
+  const company = must(await adminClient(env).from("companies").select("settings").eq("id", companyId).maybeSingle());
   if (!marketingOn(company.settings as Record<string, unknown> | null)) {
     throw new HttpError(409, "Marketing is off, so campaigns can't be sent. An owner or admin can install it again in Apps.");
   }
@@ -237,7 +241,7 @@ export async function loadCampaign(db: Db, companyId: string, id: string) {
  * Sending, the caller starts it (kickCampaign) or the every-minute task does.
  */
 export async function startCampaign(env: Env, db: Db, companyId: string, id: string, scheduledAt?: string) {
-  await requireCampaignsOn(db, companyId);
+  await requireCampaignsOn(env, companyId);
   await requireCampaignEmail(env, companyId);
   await requireSenderAddress(db, companyId);
   const campaign = await loadCampaign(db, companyId, id);

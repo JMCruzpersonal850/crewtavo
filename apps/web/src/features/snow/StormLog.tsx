@@ -24,9 +24,18 @@ import { workText } from "./storm";
 import styles from "./snow.module.css";
 
 const FIELDS =
-  "job_id, snow_date, kind, forecast_in, actual_in, actual_by, pushes, job:jobs!inner(number, title, client:clients(display_name), property:properties(line1, city), financials:job_financials(contract_total)), visits:snow_visits(visit:visits(id, title, status, price, invoice_id))";
-const loadEvents = async (companyId: string, since: string) =>
-  unwrap(await supabase().from("snow_events").select(FIELDS).eq("company_id", companyId).gte("snow_date", since).order("snow_date", { ascending: false }).limit(1000));
+  "job_id, snow_date, kind, forecast_in, actual_in, actual_by, pushes, job:jobs!inner(number, title, client:clients(display_name), property:properties(line1, city), financials:job_financials(contract_total)), visits:snow_visits(visit:visits(id, title, status, invoice_id))";
+/** Each storm, with what its visits bill: read through visit_prices(), since the browser doesn't read a visit's price itself. */
+async function loadEvents(companyId: string, since: string) {
+  const db = supabase();
+  const events = unwrap(await db.from("snow_events").select(FIELDS).eq("company_id", companyId).gte("snow_date", since).order("snow_date", { ascending: false }).limit(1000));
+  const ids = events.flatMap((e) => e.visits.flatMap((v) => (v.visit ? [v.visit.id] : [])));
+  const prices = new Map<string, number | null>();
+  for (let i = 0; i < ids.length; i += 500) {
+    for (const p of unwrap(await db.rpc("visit_prices", { p_visits: ids.slice(i, i + 500) }))) prices.set(p.id, p.price);
+  }
+  return events.map((e) => ({ ...e, visits: e.visits.map((v) => ({ ...v, visit: v.visit && { ...v.visit, price: prices.get(v.visit.id) ?? null } })) }));
+}
 type Storm = Awaited<ReturnType<typeof loadEvents>>[number];
 
 /** A snow season runs July to June: the winter is one season, whichever year a storm falls in. */

@@ -27,6 +27,7 @@ import { adminClient, type Db } from "../lib/supabase";
 import { formulaValue, MEASUREMENT_VALUE_FIELDS, measurementVariables, type MeasurementValues, type MeasurementVariables } from "./measurements";
 import { addMissingCustomFields, addMissingServices } from "./presetServices";
 import { deliver, rangeMessage, type SalesScope, type SendBody } from "./sales";
+import { settingsAs } from "../lib/companySettings";
 
 /** Quotes whose lines can still change. */
 export const EDITABLE = ["draft", "sent", "changes_requested"];
@@ -275,8 +276,7 @@ export function workKind(settings: unknown, made: string | null | undefined, roo
  * they're priced from.
  */
 export async function packageWork(db: Db, companyId: string, quote: { id: string; work_kind: string | null }, packageIds: readonly string[]) {
-  const [company, measurement] = await Promise.all([db.from("companies").select("settings").eq("id", companyId).maybeSingle(), quoteMeasurement(db, companyId, quote.id)]);
-  const { settings } = must(company, "Company not found.");
+  const [settings, measurement] = await Promise.all([settingsAs(db, companyId), quoteMeasurement(db, companyId, quote.id)]);
   // Only a business with both apps and an estimate made outside their sections asks its packages.
   const asks = roofingOn(settings) && pavingOn(settings) && !quote.work_kind && packageIds.length > 0;
   const roofs = asks ? must(await db.from("roof_packages").select("roof_service_id").eq("company_id", companyId).in("id", [...packageIds])).map((p) => p.roof_service_id) : [];
@@ -499,7 +499,7 @@ async function markSent(db: Db, companyId: string, quoteId: string) {
 export async function sendRange(s: SalesScope, quoteId: string, body: SendBody) {
   const [quote, company, kept] = await Promise.all([
     rangeQuote(s.db, s.companyId, quoteId),
-    s.db.from("companies").select("name, currency, settings").eq("id", s.companyId).maybeSingle().then((r) => must(r)),
+    adminClient(s.env).from("companies").select("name, currency, settings").eq("id", s.companyId).maybeSingle().then((r) => must(r)),
     keptSettings(s.db, s.companyId),
   ]);
   const { range, options } = rangeOf(quote, rangeSettings(kept));
@@ -528,7 +528,7 @@ export const RANGE_NOT_WAITING = "This price range isn't waiting for an answer."
 export async function markRangeAccepted(env: Env, db: Db, companyId: string, userId: string, quoteId: string, body: { note?: string; option_id?: string } = {}) {
   const [quote, company, profile, kept] = await Promise.all([
     rangeQuote(db, companyId, quoteId),
-    db.from("companies").select("currency, settings").eq("id", companyId).maybeSingle(),
+    adminClient(env).from("companies").select("currency, settings").eq("id", companyId).maybeSingle(),
     db.from("profiles").select("full_name").eq("user_id", userId).maybeSingle(),
     keptSettings(db, companyId),
   ]);

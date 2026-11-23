@@ -21,6 +21,7 @@ import { hasRole, useSession } from "@/lib/session";
 import { BASES, BASIS_IDS, DEFAULT_SETUP, DEFAULT_WEIGHT, fromArea, parseSetup, sectionsOf, setupFrom, type Basis, type CalcItem, type CalcSetup, type ProfitBy } from "./calculator";
 import { NumberBox } from "./NumberBox";
 import styles from "./paving.module.css";
+import { loadSettings } from "@/lib/companySettings";
 
 const PROFIT_WAYS: Array<{ id: ProfitBy; label: string }> = [
   { id: "day", label: "By the day" },
@@ -53,7 +54,7 @@ export function CalculatorSetupPage() {
     meta: { success: "Saved. New estimates use this setup." },
     mutationFn: async () => {
       // Read the settings fresh, so a change someone made meanwhile isn't undone.
-      const current = (unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single()).settings ?? {}) as Record<string, unknown>;
+      const current = await loadSettings(company.id);
       // Through the same reading the calculator does, so what's saved is what it prices.
       const clean = parseSetup({ ...setup, items: setup.items.map((i) => ({ ...i, name: i.name.trim() || "Item", section: i.section.trim() || "Other" })) });
       unwrap(await supabase().from("companies").update({ settings: { ...current, paving_calculator: clean } as never }).eq("id", company.id));

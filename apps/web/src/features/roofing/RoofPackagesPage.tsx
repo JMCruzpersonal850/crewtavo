@@ -91,6 +91,7 @@ import {
   type RoofPackageItem,
 } from "./packages";
 import styles from "./RoofPackagesPage.module.css";
+import { loadSettings } from "@/lib/companySettings";
 
 const FORMAT = { whole: formatMoney, cents: formatMoneyCents };
 const money = (n: number) => moneyText(n, FORMAT);
@@ -355,7 +356,7 @@ function useSaveRoofingSettings() {
     meta: { inline: true },
     mutationFn: async (patch: RoofingSettingsPatch) => {
       // Read the settings fresh, so a change someone made meanwhile isn't undone.
-      const current = (unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single()).settings ?? {}) as Record<string, unknown>;
+      const current = await loadSettings(company.id);
       const roofing = { ...((current.roofing ?? {}) as Record<string, unknown>), ...patch };
       unwrap(await supabase().from("companies").update({ settings: { ...current, roofing } as never }).eq("id", company.id));
     },

@@ -102,10 +102,13 @@ export const teamTools = {
     },
   }),
   restore_person: tool({
-    description: "Give someone whose access was taken away their access back, with the role they had.",
+    description: "Give someone whose access was taken away their access back, with the role they had. Not someone whose role is owner or admin access (or a custom role with the apps, settings or team area): that's done in Crewtavo, which asks for the person's password.",
     input: z.object({ user_id: z.uuid(), ...companyArg }),
     area: "team",
     run: async (ctx, a) => {
+      // Giving admin-level access back is giving it (the database refuses it from an assistant too).
+      const member = await one(ctx.db.from("memberships").select("role, role_id").eq("company_id", ctx.companyId).eq("user_id", a.user_id).maybeSingle(), "That person");
+      if (await adminAccess(ctx.db, ctx.companyId, member.role, member.role_id)) throw new Error(ADMIN_FROM_TEAM_PAGE);
       const { data, error } = await ctx.db.from("memberships").update({ active: true }).eq("company_id", ctx.companyId).eq("user_id", a.user_id).select("user_id");
       if (error) throw new Error(friendly(error.message));
       if (!data?.length) throw new Error("That person not found (or you can't change them).");

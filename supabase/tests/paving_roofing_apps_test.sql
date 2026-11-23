@@ -75,10 +75,10 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claims', format('{"sub": "%s", "role": "authenticated"}', :'rex'), true);
 select tpr.check(public.trade_app_set_enabled(:'roofer', 'paving', true), 'the owner installs Paving too');
-select tpr.check((select settings #>> '{paving_app,enabled}' = 'true' and settings #>> '{roofing_app,enabled}' = 'true' from public.companies where id = :'roofer'),
+select tpr.check((select public.company_settings(id) #>> '{paving_app,enabled}' = 'true' and public.company_settings(id) #>> '{roofing_app,enabled}' = 'true' from public.companies where id = :'roofer'),
   'a business that does both has both');
 select tpr.check(not public.trade_app_set_enabled(:'roofer', 'roofing', false), 'and can uninstall Roofing');
-select tpr.check((select settings #>> '{roofing_app,enabled}' = 'false' from public.companies where id = :'roofer')
+select tpr.check((select public.company_settings(id) #>> '{roofing_app,enabled}' = 'false' from public.companies where id = :'roofer')
   and (select settings -> 'roofing' = '{"range_pct": 15, "range_round": 50}' from public.company_private_settings where company_id = :'roofer'),
   'which leaves the price ranges as they were');
 select public.trade_app_set_enabled(:'roofer', 'roofing', true);
@@ -87,7 +87,7 @@ select tpr.expect_error(format($q$select public.trade_app_set_enabled(%L, 'pavin
 
 -- Changing the trade in Settings → Company leaves the apps installed.
 update public.companies set trade_preset = 'general' where id = :'roofer';
-select tpr.check((select trade_preset = 'general' and settings #>> '{roofing_app,enabled}' = 'true' and settings #>> '{paving_app,enabled}' = 'true' from public.companies where id = :'roofer'),
+select tpr.check((select trade_preset = 'general' and public.company_settings(id) #>> '{roofing_app,enabled}' = 'true' and public.company_settings(id) #>> '{paving_app,enabled}' = 'true' from public.companies where id = :'roofer'),
   'changing the trade turns neither app off');
 
 select set_config('request.jwt.claims', format('{"sub": "%s", "role": "authenticated"}', :'oli'), true);

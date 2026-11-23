@@ -16,7 +16,7 @@ import type { Env } from "../env";
 import { HttpError, must } from "../lib/http";
 import { adminClient, type Db } from "../lib/supabase";
 import { timeRates } from "./payRates";
-import { companyZone } from "./schedule";
+import { companyTimeZone, companyZone } from "./schedule";
 
 export interface PayScope {
   db: Db;
@@ -185,7 +185,7 @@ export async function markPaid(s: PayScope, body: { from: string; to: string; us
   if (waiting.length) {
     throw new HttpError(400, `Approve everyone's time first: ${waiting.map((p) => `${p.name} (${p.running ? "a clock is still running" : `${p.unapproved_hours} h not approved`})`).join(", ")}.`);
   }
-  const { tz } = await companyZone(s);
+  const tz = await companyTimeZone(s);
   const paidAt = zonedTimeToUtc(body.paid_on ?? localDate(new Date(), tz), "12:00", tz).toISOString();
   const period = must(
     await s.db

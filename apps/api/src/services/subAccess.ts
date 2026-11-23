@@ -299,7 +299,7 @@ export async function sendSignInLink(s: SubAccessScope, subId: string, send: Sig
   const { email } = await giveAccess(s, sub);
   const admin = adminClient(s.env);
   const out: SignInLinkResult = { access: await accessOf(s, sub, await subLogin(admin, s.companyId, sub.id)), link: null, texted: false, emailed: false, sms_link: null, reason: null };
-  const company = must(await s.db.from("companies").select("id, name, email, settings").eq("id", s.companyId).maybeSingle());
+  const company = must(await admin.from("companies").select("id, name, email, settings").eq("id", s.companyId).maybeSingle());
   // Only a sign-in made here for this sub, and nobody's own account (accessOf).
   if (out.access.shared) {
     out.reason = `They already have their own Crewtavo sign-in. They sign in as they usually do (or with an email link from the sign-in page) and ${company.name} is there.`;

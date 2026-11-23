@@ -63,10 +63,33 @@ describe("crypto", () => {
     expect((await request("/api/hub/abc.!!!")).status).toBe(404);
   });
 
+  it("reads only the two parts a token is made of, so one token can't be spelled many ways", async () => {
+    const token = await signToken(env, { id: "x", exp: Date.now() / 1000 + 60 });
+    expect(token.split(".")).toHaveLength(2);
+    for (const spelled of [`${token}.1`, `${token}.`, `${token}..2`, `x.${token}`]) expect(await verifyToken(env, spelled), spelled).toBeNull();
+    expect(await verifyToken(env, token)).toMatchObject({ id: "x" });
+    // Every link and token the server makes is two parts.
+    const url = await clientLink(env, "https://ops.example.com", { c: "company-1", t: "client", id: "client-1" });
+    expect(url.split("/hub/")[1]!.split(".")).toHaveLength(2);
+    expect((await request(`/api/hub/${url.split("/hub/")[1]}.1`)).status).toBe(404);
+  });
+
   it("builds client links that decode to the same record", async () => {
     const url = await clientLink(env, "https://ops.example.com", { c: "company-1", t: "quote", id: "quote-1" });
     expect(url.startsWith("https://ops.example.com/hub/")).toBe(true);
     expect(await readClientLink(env, url.split("/hub/")[1])).toMatchObject({ c: "company-1", t: "quote", id: "quote-1" });
+  });
+
+  it("never lets a link minted from another outlive it", async () => {
+    const soon = Math.floor(Date.now() / 1000) + 3600;
+    const minted = await readClientLink(env, (await clientLink(env, "https://ops.example.com", { c: "company-1", t: "quote", id: "quote-1", exp: soon })).split("/hub/")[1]!);
+    expect(minted?.exp).toBe(soon);
+    // Its own lifetime when that's shorter, and without one, its kind's.
+    const later = Math.floor(Date.now() / 1000) + 400 * 86_400;
+    const capped = await readClientLink(env, (await clientLink(env, "https://ops.example.com", { c: "company-1", t: "quote", id: "quote-1", exp: later })).split("/hub/")[1]!);
+    expect(capped!.exp - Date.now() / 1000).toBeLessThanOrEqual(60 * 86_400);
+    const fresh = await readClientLink(env, (await clientLink(env, "https://ops.example.com", { c: "company-1", t: "client", id: "client-1" })).split("/hub/")[1]!);
+    expect(fresh!.exp - Date.now() / 1000).toBeGreaterThan(119 * 86_400);
   });
 });
 
@@ -364,6 +387,19 @@ describe("client links by kind", () => {
     const office = await readClientLink(env, links.office.split("/hub/")[1]!);
     expect(office).toMatchObject({ t: "invoice", id: "invoice-1", via: "office" });
     expect(office).not.toHaveProperty("own");
+    expect(office).not.toHaveProperty("nm");
+  });
+
+  it("marks the office's copy made for someone who doesn't see the money (nm), never the client's own", async () => {
+    const links = await clientLinks(env, "https://ops.example.com", { c: "co", t: "quote", id: "quote-1", nm: 1 });
+    expect(await readClientLink(env, links.office.split("/hub/")[1]!)).toMatchObject({ t: "quote", via: "office", nm: 1 });
+    expect(await readClientLink(env, links.own.split("/hub/")[1]!)).not.toHaveProperty("nm");
+  });
+
+  it("always marks the copy kept on a quote's timeline (nm), which estimators read too", async () => {
+    const links = await clientLinks(env, "https://ops.example.com", { c: "co", t: "quote", id: "quote-1" });
+    expect(await readClientLink(env, links.kept.split("/hub/")[1]!)).toMatchObject({ t: "quote", via: "office", nm: 1 });
+    expect(await readClientLink(env, links.office.split("/hub/")[1]!)).not.toHaveProperty("nm");
   });
 
   it("knows a send to the client's own email or phone from one typed to anyone else", () => {

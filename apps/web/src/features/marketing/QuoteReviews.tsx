@@ -15,6 +15,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import styles from "./Presence.module.css";
+import { loadSettings } from "@/lib/companySettings";
 
 type Picked = QuoteReviewRow & { id: string };
 
@@ -32,10 +33,10 @@ export function useQuoteReviews() {
     queryKey: ["quote-reviews", session.company.id],
     queryFn: async (): Promise<QuoteReviewState> => {
       const [company, picked] = await Promise.all([
-        supabase().from("companies").select("settings").eq("id", session.company.id).single(),
+        loadSettings(session.company.id),
         supabase().from("reviews").select("id, reviewer_name, reviewer_anonymous, rating, comment, posted_at, quote_pick, deleted_at").eq("company_id", session.company.id).not("quote_pick", "is", null).order("quote_pick"),
       ]);
-      const s = ((unwrap(company).settings ?? {}) as { quote_reviews?: { show?: boolean; pdf?: boolean } }).quote_reviews;
+      const s = (company as { quote_reviews?: { show?: boolean; pdf?: boolean } }).quote_reviews;
       return { show: s?.show === true, pdf: s?.show === true && s?.pdf === true, picked: unwrap(picked) as Picked[] };
     },
   });

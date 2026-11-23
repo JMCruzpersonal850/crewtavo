@@ -50,6 +50,7 @@ import { RailwayConnect } from "./RailwayConnect";
 import { bucketTipDismissed, dismissBucketTip, managesStorage, STORAGE_SETTINGS } from "./storage";
 import { ExternalButton, RailwayAccess, useRailwayReturn, WEB_ADDRESS_KEY } from "./WebAddressSettings";
 import styles from "./HostingSettings.module.css";
+import { loadSettings } from "@/lib/companySettings";
 
 export const HOSTING_KEY = ["hosting"];
 export const FILES_STORAGE_KEY = ["hosting", "files-storage"];
@@ -175,7 +176,7 @@ export function suggestedLimit(o: Pick<HostingOverview, "plan" | "project">): nu
 
 /** Notes that the owner set Railway's hard limit, reading the settings fresh so every other setting stays as it is now. */
 async function noteUsageLimit(session: Pick<Session, "company" | "userId">) {
-  const current = (unwrap(await supabase().from("companies").select("settings").eq("id", session.company.id).single()).settings ?? {}) as Record<string, unknown>;
+  const current = await loadSettings(session.company.id);
   const next = { ...current, railway_usage_limit: { set_at: new Date().toISOString(), set_by: session.userId } };
   unwrap(await supabase().from("companies").update({ settings: next as never }).eq("id", session.company.id));
 }

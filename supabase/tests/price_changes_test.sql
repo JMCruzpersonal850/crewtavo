@@ -108,7 +108,7 @@ reset role;
 insert into public.memberships (company_id, user_id, role, role_id) values
   (:'co', :'olin', 'office', null), (:'co', :'bree', 'office', :'no_sales'), (:'co', :'eli', 'estimator', null), (:'co', :'cruz', 'field_crew', null);
 set local role authenticated;
-update public.companies set settings = settings || '{"default_tax_rate": 0.1}' where id = :'co';
+update public.companies set settings = public.company_settings(id) || '{"default_tax_rate": 0.1}' where id = :'co';
 insert into public.services (company_id, name, unit, unit_price) values (:'co', 'Pine mowing', 'visit', 45) returning id as mowing \gset
 insert into public.services (company_id, name, unit, unit_price) values (:'co', 'Pine edging', 'visit', 10) returning id as edging \gset
 insert into public.crews (company_id, name) values (:'co', 'Pine crew A') returning id as crew_a \gset

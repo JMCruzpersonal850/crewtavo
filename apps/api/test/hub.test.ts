@@ -179,7 +179,8 @@ const S = { roof: "s-roof", tear: "s-tear", edge: "s-edge", deck: "s-deck", chim
 
 // The client's own link as an email or text to them carries it (own: 1), unless it's a preview, the
 // office's copy (via), or `old`: a link minted before the client's own were marked.
-type HubLink = { t: "quote" | "invoice" | "client"; id: string; pv?: 1; via?: "office"; nm?: 1; old?: true };
+// `nm`: an office copy made by someone who doesn't see the money; `exp`: the link it's minted from runs out then.
+type HubLink = { t: "quote" | "invoice" | "client"; id: string; pv?: 1; via?: "office"; old?: true; nm?: 1; exp?: number };
 const tokenFor = async ({ old, ...link }: HubLink) =>
   (await clientLink(env, "https://ops.example.com", { c: ROOFER, ...(old || link.pv || link.via ? {} : { own: 1 as const }), ...link })).split("/hub/")[1]!;
 const hub = async (link: HubLink, path = "", body?: unknown) =>
@@ -487,6 +488,20 @@ describe("photos from the client's finished visits", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/jpeg");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("counts a link's day by what it says, never by how it's spelled, and each visitor's address by the hour", async () => {
+    const token = await tokenFor({ t: "client", id: CLIENT });
+    expect((await app.request(`/api/hub/${token}/photos/${PHOTO}.jpg`, {}, env)).status).toBe(200);
+    const at = (await readClientLink(env, token))!.at;
+    expect(state.calls.filter((c) => c.name === "rate_limit_hit").map((c) => [c.args.p_key, c.args.p_max, c.args.p_window_seconds])).toEqual([["hub-photos:ip:unknown", 300, 3600]]);
+    expect(state.calls.filter((c) => c.name === "rate_limit_spend").map((c) => c.args.p_key)).toEqual([`link-bytes:hub-photos:${ROOFER}:client:${CLIENT}:${at}`]);
+    // The same link with more after it isn't another link with a day of its own: it doesn't open at all.
+    for (const spelled of [`${token}.1`, `${token}.2`]) expect((await app.request(`/api/hub/${spelled}/photos/${PHOTO}.jpg`, {}, env)).status).toBe(404);
+    // Past an address's hour, nothing is read.
+    state.rpcs.rate_limit_hit = () => ({ data: false, error: null });
+    state.files = {};
+    expect((await app.request(`/api/hub/${token}/photos/${PHOTO}.jpg`, {}, env)).status).toBe(429);
   });
 
   it("sends nothing that isn't shared, isn't theirs, isn't done, or through another kind of link", async () => {
@@ -1238,6 +1253,28 @@ describe("package pictures", () => {
     expect((await app.request(`/api/public/package/${ROOFER}/..%2Flogo%2F${OTHER}.jpg`, {}, env)).status).toBe(404);
     expect((await picture("not-a-uuid")).status).toBe(404);
   });
+
+  it("counts each visitor's address by the hour and the business's pictures by the day, and keeps them cached for good", async () => {
+    state.files[`${ROOFER}/packages/${PICTURE}.jpg`] = JPEG;
+    const res = await picture(PICTURE);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(state.calls.filter((c) => c.name === "rate_limit_hit").map((c) => [c.args.p_key, c.args.p_max, c.args.p_window_seconds])).toEqual([["public-pictures:ip:unknown", 600, 3600]]);
+    expect(state.calls.filter((c) => c.name === "rate_limit_spend").map((c) => [c.args.p_key, c.args.p_amount, c.args.p_window_seconds])).toEqual([[`link-bytes:public-pictures:${ROOFER}`, Math.ceil(JPEG.length / 1000), 86_400]]);
+  });
+
+  it("turns an address away past its hour before reading anything, and pauses the business's pictures past their day", async () => {
+    const path = `${ROOFER}/packages/${PICTURE}.jpg`;
+    state.files[path] = JPEG;
+    state.rpcs.rate_limit_hit = () => ({ data: false, error: null });
+    expect((await picture(PICTURE)).status).toBe(429);
+    expect(state.streamed[path]).toBeUndefined();
+    state.rpcs.rate_limit_hit = () => ({ data: true, error: null });
+    state.rpcs.rate_limit_spend = () => ({ data: false, error: null });
+    const paused = await picture(PICTURE);
+    expect(paused.status).toBe(429);
+    expect(paused.headers.get("cache-control")).toBeNull();
+  });
 });
 
 describe("hub helpers", () => {
@@ -1824,6 +1861,76 @@ describe("a copy of the client's link the office made", () => {
     }
     // The office's copy never gets it.
     expect((await payload((await invoicePage({ via: "office" })).home))?.own).toBeUndefined();
+  });
+});
+
+describe("an office copy made by someone who doesn't see the money", () => {
+  const card = (status: "active" | "off") => ({
+    status, method: status === "active" ? { id: CARD, type: "card", label: "Visa ending 4242", exp: "08/28" } : null, imported: false, since: null,
+    terms: "We charge the card on file after each visit is done.", terms_version: "2026-10-31T14:05:09", timing: "at the end of the day of each visit", bank_terms: "If you pay from a bank account, we take it automatically.",
+    next_charge: null, per_visit: 45, per_visit_taxed: false, reagree: false, available: true, card_required: false,
+  });
+
+  it("leads to a home without the client's invoices, payments or credit, and the page doesn't say nothing is owed", async () => {
+    mowed();
+    const own = await (await hub({ t: "client", id: CLIENT })).json();
+    expect(own.money).toBe(true);
+    expect(own.invoices.length).toBeGreaterThan(0);
+    const copy = await (await hub({ t: "client", id: CLIENT, via: "office", nm: 1 })).json();
+    expect(copy).toMatchObject({ money: false, invoices: [], payments: [] });
+    expect(copy.quotes.length).toBe(own.quotes.length);
+    expect(JSON.stringify(copy)).not.toMatch(/balance_due|credit_left/);
+  });
+
+  it("shows autopay only while it's being set up, so a quote approved through it can still go on to a card, and doesn't turn it off", async () => {
+    mowed();
+    vi.mocked(autopay.hubAutopay).mockResolvedValueOnce(card("active"));
+    expect((await (await hub({ t: "client", id: CLIENT, via: "office", nm: 1 })).json()).autopay).toBeNull();
+    vi.mocked(autopay.hubAutopay).mockResolvedValueOnce(card("off"));
+    expect((await (await hub({ t: "client", id: CLIENT, via: "office", nm: 1 })).json()).autopay).toEqual(card("off"));
+    // The office's copy made by someone who does see it shows it as before.
+    vi.mocked(autopay.hubAutopay).mockResolvedValueOnce(card("active"));
+    expect((await (await hub({ t: "client", id: CLIENT, via: "office" })).json()).autopay).toEqual(card("active"));
+    const off = await hub({ t: "client", id: CLIENT, via: "office", nm: 1 }, "/autopay/off", {});
+    expect(off.status).toBe(403);
+    expect(vi.mocked(autopay.turnOffAutopay)).not.toHaveBeenCalled();
+  });
+
+  it("stays one in every link the Hub makes from it", async () => {
+    mowed();
+    const payload = (url: string) => readClientLink(env, url.split("/hub/")[1]!);
+    const copy = await (await hub({ t: "client", id: CLIENT, via: "office", nm: 1 })).json();
+    expect(await payload(copy.quotes[0].link)).toMatchObject({ t: "quote", via: "office", nm: 1 });
+    expect(await payload((await invoicePage({ via: "office", nm: 1 })).home)).toMatchObject({ t: "client", via: "office", nm: 1 });
+    // The client's own never carries it.
+    expect(await payload((await invoicePage()).home)).not.toHaveProperty("nm");
+  });
+});
+
+describe("links the Hub makes from a link", () => {
+  it("never outlive it: opening one can't hand out fresh links that keep it going", async () => {
+    mowed();
+    const payload = (url: string) => readClientLink(env, url.split("/hub/")[1]!);
+    const soon = Math.floor(Date.now() / 1000) + 3600;
+    const home = await (await hub({ t: "client", id: CLIENT, exp: soon })).json();
+    expect((await payload(home.quotes[0].link))?.exp).toBe(soon);
+    expect((await payload(home.invoices[0].link))?.exp).toBe(soon);
+    expect((await payload((await invoicePage({ exp: soon })).home))?.exp).toBe(soon);
+    // From a link with longer to go than a quote lasts, a quote's link gets its own 60 days, no more.
+    const home120 = await (await hub({ t: "client", id: CLIENT })).json();
+    const quoteLink = (await payload(home120.quotes[0].link))!.exp - Date.now() / 1000;
+    expect(quoteLink).toBeGreaterThan(59 * 86_400);
+    expect(quoteLink).toBeLessThanOrEqual(60 * 86_400);
+  });
+
+  it("leaves a referral link its own lifetime: it opens no Hub page, and the client shares it for years", async () => {
+    const company = state.tables.companies![0]!;
+    company.settings = { ...(company.settings as Row), referrals: { reward: { kind: "amount", value: 50 }, offer: "$25 off" }, marketing: { enabled: true } };
+    const soon = Math.floor(Date.now() / 1000) + 3600;
+    const home = await (await hub({ t: "client", id: CLIENT, exp: soon })).json();
+    const refer = await readClientLink(env, home.refer.link.split("/refer/")[1]!);
+    expect(refer).toMatchObject({ t: "refer", id: CLIENT });
+    expect(refer!.exp - Date.now() / 1000).toBeGreaterThan(3000 * 86_400);
   });
 });
 

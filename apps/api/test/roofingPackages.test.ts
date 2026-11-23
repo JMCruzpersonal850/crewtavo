@@ -69,6 +69,8 @@ vi.mock("../src/lib/supabase", () => {
   const client = (by: string) => ({
     auth: { getClaims: async () => ({ data: { claims: { sub: "viewer" } }, error: null }) },
     rpc: async (name: string, args: Record<string, unknown> = {}) => {
+      // The company's settings as the person reads them (lib/companySettings.ts settingsAs): all of them, for the office.
+      if (name === "company_settings") return { data: (state.tables.companies ?? []).find((c) => c.id === args.p_company)?.settings ?? null, error: null };
       const meanwhile = state.meanwhile;
       state.meanwhile = null;
       meanwhile?.();
@@ -854,7 +856,8 @@ describe("the link a send hands back", () => {
     expect(own).toMatchObject({ c: ROOFER, t: "quote", id: QUOTE });
     expect(own!.via).toBeUndefined();
     expect(await payload(body.link)).toMatchObject({ t: "quote", id: QUOTE, via: "office" });
-    expect(await payload(hubLink(rows("messages")[0]!.body))).toMatchObject({ t: "quote", id: QUOTE, via: "office" });
+    // Estimators read a quote's timeline too: the copy kept there leads to a Client Hub home without the money.
+    expect(await payload(hubLink(rows("messages")[0]!.body))).toMatchObject({ t: "quote", id: QUOTE, via: "office", nm: 1 });
   });
 
   /** The link in what went out, by email or text, for a send with this body. */

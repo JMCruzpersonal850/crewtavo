@@ -191,7 +191,8 @@ export interface Delivered {
 export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: Deliverable, body: SendBody, defaults: DeliverDefaults = {}): Promise<Delivered> {
   // Only a quote template has no client, and it's never sent: a quote is made from it first.
   if (!record.client_id) throw new HttpError(400, TEMPLATE_NOT_SENT);
-  const company = must(await s.db.from("companies").select("name, email, phone, address, currency, settings").eq("id", s.companyId).maybeSingle());
+  // With the server's key: the browser's role doesn't read the settings (lib/companySettings.ts).
+  const company = must(await adminClient(s.env).from("companies").select("name, email, phone, address, currency, settings").eq("id", s.companyId).maybeSingle());
   const links = await clientLinks(s.env, s.baseUrl, { c: s.companyId, t: kind, id: record.id, ...(s.noMoney && { nm: 1 as const }) });
   const label = `${kind === "quote" ? "Quote" : "Invoice"} #${record.number}`;
   const money = new Intl.NumberFormat("en-US", { style: "currency", currency: company.currency || "USD" }).format(Number(kind === "quote" ? record.total ?? 0 : record.balance_due ?? 0));
@@ -229,8 +230,10 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
       client_id: record.client_id,
       channel,
       subject: channel === "email" ? body.subject || defaults.subject || label : label,
-      // The office's copy of the link: anyone who reads the timeline can open it, but not as the client.
-      body: message(links.office),
+      // The office's copy of the link: anyone who reads the timeline can open it, but not as the
+      // client. A quote's timeline is read by estimators too, so its copy leaves the money out of the
+      // Client Hub home it leads to (lib/links clientLinks).
+      body: message(kind === "quote" ? links.kept : links.office),
       related_type: kind,
       related_id: record.id,
       external_id: delivery.id,
@@ -311,7 +314,7 @@ export async function sendChoicesOf(s: SalesScope, kind: "quote" | "invoice", id
  */
 export async function quoteFromRequest(s: SalesScope, requestId: string, options: { keepRequest?: boolean } = {}) {
   const request = must(await s.db.from("requests").select("id, client_id, property_id, title, details").eq("id", requestId).eq("company_id", s.companyId).maybeSingle(), "Request not found.");
-  const company = must(await s.db.from("companies").select("settings").eq("id", s.companyId).maybeSingle());
+  const company = must(await adminClient(s.env).from("companies").select("settings").eq("id", s.companyId).maybeSingle());
   const taxRate = Number((company.settings as { default_tax_rate?: number } | null)?.default_tax_rate ?? 0);
   const quote = must(
     await s.db

@@ -3,15 +3,21 @@
  * them (apps/web/src/features/settings/CompanySettings.tsx). The database lets an assistant change
  * these and nothing else about the company (the assistant_areas migration).
  */
-import { isTimeZoneName, lateFeeSettings, minimumCharge, taxPercent, taxRateFromPercent, workdays } from "@crewtavo/core";
+import { isTimeZoneName, lateFeeSettings, minimumCharge, SEES_ALL_SETTINGS, taxPercent, taxRateFromPercent, workdays } from "@crewtavo/core";
 import { z } from "zod";
+import { settingsAs } from "../lib/companySettings";
 import { geocodeAddress } from "../services/external";
 import { changed, companyArg, friendly, one, tool, type ToolContext } from "./tool";
 
 type Settings = Record<string, any>;
 
+/** The company, with its settings as the person reads them (settingsAs: the money ones are the office's and sales'). */
 async function current(ctx: ToolContext) {
-  return one(ctx.db.from("companies").select("name, phone, email, website, address, timezone, settings").eq("id", ctx.companyId).maybeSingle(), "The company");
+  const [company, settings] = await Promise.all([
+    one(ctx.db.from("companies").select("name, phone, email, website, address, timezone").eq("id", ctx.companyId).maybeSingle(), "The company"),
+    settingsAs(ctx.db, ctx.companyId),
+  ]);
+  return { ...company, settings };
 }
 
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM.");
@@ -33,15 +39,18 @@ export const companyTools = {
         website: c.website,
         address: c.address,
         timezone: c.timezone,
-        payment_terms_days: s.payment_terms_days ?? 30,
-        minimum_charge: minimumCharge(s),
-        late_fee: lateFeeSettings(s),
-        sales_tax_percent: taxPercent(s.default_tax_rate ?? 0),
-        quote_valid_days: s.quote_valid_days ?? 30,
+        // Terms, tax, minimum charge and late fees for the roles that see prices only.
+        ...((SEES_ALL_SETTINGS as readonly string[]).includes(ctx.role) && {
+          payment_terms_days: s.payment_terms_days ?? 30,
+          minimum_charge: minimumCharge(s),
+          late_fee: lateFeeSettings(s),
+          sales_tax_percent: taxPercent(s.default_tax_rate ?? 0),
+          quote_valid_days: s.quote_valid_days ?? 30,
+          client_tips: s.hub_tips === true,
+        }),
         working_hours: { start: s.working_hours?.start ?? "07:00", end: s.working_hours?.end ?? "18:00" },
         workdays: workdays(s).map((d) => DAY_NAMES[d]),
         brand_color: s.branding?.color ?? "#0f2a35",
-        client_tips: s.hub_tips === true,
       };
     },
   }),

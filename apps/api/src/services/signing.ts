@@ -124,7 +124,8 @@ async function loadQuote(s: SigningScope, id: string) {
 type Quote = Awaited<ReturnType<typeof loadQuote>>;
 
 async function loadCompany(s: SigningScope) {
-  return must(await s.db.from("companies").select("name, email, phone, timezone, address, settings, trade_preset").eq("id", s.companyId).maybeSingle(), "Company not found.");
+  // With the server's key: the browser's role doesn't read the settings (lib/companySettings.ts).
+  return must(await adminClient(s.env).from("companies").select("name, email, phone, timezone, address, settings, trade_preset").eq("id", s.companyId).maybeSingle(), "Company not found.");
 }
 
 type Company = Awaited<ReturnType<typeof loadCompany>>;
@@ -268,7 +269,7 @@ export async function sendSignedCopy(s: SigningScope, id: string, body: CopyBody
  * lib/links sentToClient); one typed to any other address, and the copy kept on their timeline,
  * carry the office's (`links.office`).
  */
-async function deliverCopy(s: SigningScope, quote: Quote, company: Company, links: { own: string; office: string }, body: CopyBody): Promise<{ sent: boolean; reason?: string }> {
+async function deliverCopy(s: SigningScope, quote: Quote, company: Company, links: { own: string; office: string; kept: string }, body: CopyBody): Promise<{ sent: boolean; reason?: string }> {
   const client = quote.client as { display_name: string; email: string | null; phone: string | null } | null;
   const who = client?.display_name || "this client";
   const intro = `Here's your signed estimate from ${company.name}. You can view, print or save it any time:`;
@@ -312,7 +313,8 @@ async function deliverCopy(s: SigningScope, quote: Quote, company: Company, link
       client_id: quote.client_id,
       channel: body.channel,
       subject: body.channel === "email" ? subject : `Signed estimate #${quote.number}`,
-      body: body.channel === "email" ? email(links.office) : sms(links.office),
+      // A quote's timeline is read by estimators too: its copy leaves the money out of the Client Hub home (lib/links clientLinks).
+      body: body.channel === "email" ? email(links.kept) : sms(links.kept),
       related_type: "quote",
       related_id: quote.id,
       external_id: result.id ?? null,

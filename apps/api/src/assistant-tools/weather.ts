@@ -4,6 +4,7 @@
  */
 import { namedWeatherRules, PAVING_WORK_IDS, weatherRuleSummary, type WeatherRule } from "@crewtavo/core";
 import { z } from "zod";
+import { adminClient } from "../lib/supabase";
 import { companyArg, friendly, one, tool } from "./tool";
 
 const rule = z.object({
@@ -24,7 +25,8 @@ export const weatherTools = {
     input: z.object({ ...companyArg }),
     run: async (ctx) => {
       const [c, services] = await Promise.all([
-        one(ctx.db.from("companies").select("settings").eq("id", ctx.companyId).maybeSingle(), "The company"),
+        // With the server's key: the browser's role doesn't read the settings (lib/companySettings.ts).
+        one(adminClient(ctx.env).from("companies").select("settings").eq("id", ctx.companyId).maybeSingle(), "The company"),
         ctx.db.from("services").select("id, name").eq("company_id", ctx.companyId),
       ]);
       const list = (c.settings as { weather_rules?: unknown } | null)?.weather_rules;

@@ -22,6 +22,7 @@ import { Section } from "@/components/ui/Section";
 import { useSession } from "@/lib/session";
 import p from "./Prefs.module.css";
 import { SwitchRow } from "./SettingsKit";
+import { loadSettings } from "@/lib/companySettings";
 
 interface QuoteForm {
   sendPayments: boolean;
@@ -52,7 +53,10 @@ export function QuoteSettings() {
   const queryClient = useQueryClient();
   const details = useQuery({
     queryKey: ["company", company.id],
-    queryFn: async () => unwrap(await supabase().from("companies").select("name, slug, phone, email, website, address, timezone, currency, settings, trade_preset").eq("id", company.id).single()),
+    queryFn: async () => {
+      const [row, settings] = await Promise.all([supabase().from("companies").select("name, slug, phone, email, website, address, timezone, currency, trade_preset").eq("id", company.id).single(), loadSettings(company.id)]);
+      return { ...unwrap(row), settings };
+    },
   });
   const [f, setF] = useState<QuoteForm | null>(null);
   useEffect(() => {

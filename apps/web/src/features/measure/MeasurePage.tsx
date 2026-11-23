@@ -52,6 +52,7 @@ import { MeasurePitch, PitchPicker, pitchLabel, riseOf, STEEP_FROM } from "./Roo
 import { EDGE_HINTS, RoofSteps } from "./RoofSteps";
 import type { SheetInfo } from "./takeoffSheet";
 import { TAP_ITEMS, TapBanner, useTapOutline } from "./TapOutline";
+import { loadSettings } from "@/lib/companySettings";
 
 const TOOLS: Array<{ tool: Tool; label: string; icon: IconName; key: string; what: string }> = [
   { tool: "polygon", label: "Area", icon: "area", key: "A", what: "Lawns, roofs, lots, driveways" },
@@ -254,7 +255,7 @@ export function MeasurePage() {
         ids.quote ? db.from("quotes").select("id, number, title, client_id").eq("id", ids.quote).maybeSingle() : null,
         ids.request ? db.from("requests").select("id, number, title, client_id").eq("id", ids.request).maybeSingle() : null,
         ids.invoice ? db.from("invoices").select("id, number, subject, client_id").eq("id", ids.invoice).maybeSingle() : null,
-        db.from("companies").select("settings").eq("id", company.id).single(),
+        loadSettings(company.id),
       ]);
       let p = property ? unwrap(property) : null;
       if (p && (p.lat == null || p.lng == null)) {
@@ -264,7 +265,7 @@ export function MeasurePage() {
       const q = quote ? unwrap(quote) : null;
       const r = request ? unwrap(request) : null;
       const inv = invoice ? unwrap(invoice) : null;
-      const depot = ((unwrap(companyRow).settings ?? {}) as { depot?: { lat: number; lng: number } }).depot ?? null;
+      const depot = (companyRow as { depot?: { lat: number; lng: number } }).depot ?? null;
       const clientId = p?.client?.id ?? q?.client_id ?? inv?.client_id ?? r?.client_id ?? null;
       return { measurement: m, property: p, quote: q, request: r, invoice: inv, depot, ids, clientId };
     },

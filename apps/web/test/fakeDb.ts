@@ -131,17 +131,18 @@ export class FakeDb {
   /** Called before each read is answered with how many were answered before it, to change rows between pages. */
   beforeAnswer: ((answered: number) => void) | null = null;
 
-  constructor(public tables: Record<string, Row[]>, private functions: Record<string, (args: never) => Row[]> = {}) {}
+  constructor(public tables: Record<string, Row[]>, private functions: Record<string, (args: never) => Row[] | Row | null> = {}) {}
 
   from(table: string) {
     return new FakeQuery(this, table);
   }
 
-  /** A database function's rows, cut at 1,000 as a table's are. */
+  /** A database function's rows, cut at 1,000 as a table's are, or the one value it returns. */
   rpc(name: string, args: Record<string, unknown> = {}): Promise<Answer> {
     this.calls.push({ name, args });
     const run = this.functions[name];
     if (!run) return Promise.resolve({ data: null, error: { message: `function ${name} does not exist`, code: "PGRST202" }, count: null, status: 404 });
-    return Promise.resolve({ data: run(args as never).slice(0, MAX_ROWS), error: null, count: null, status: 200 });
+    const answer = run(args as never);
+    return Promise.resolve({ data: Array.isArray(answer) ? answer.slice(0, MAX_ROWS) : answer, error: null, count: null, status: 200 } as Answer);
   }
 }

@@ -33,8 +33,9 @@ export interface ClientLink {
   // from before links carried a time, then stops opening (linksReplaced). Other kinds don't look.
   at?: number;
   // 1: an office copy made for someone who doesn't see invoices (an estimator, a crew, a role with
-  // Invoices and payments off): its Hub home leaves out the client's invoices, payments and autopay,
-  // and every link minted from it keeps the mark. The client's own link never has it.
+  // Invoices and payments off): its Hub home leaves out the client's invoices, balances, payments,
+  // referral credit and the autopay they're on (routes/public.ts clientHome), and every link minted
+  // from it keeps the mark. The client's own link never has it.
   nm?: 1;
 }
 
@@ -51,10 +52,17 @@ const PATHS: Record<LinkKind, string> = {
 const LIFETIME_DAYS: Record<LinkKind, number> = { quote: 60, invoice: 90, client: 120, unsub: 3650, review: 365, refer: 3650, sub: 30 };
 export const linkLifetimeDays = (kind: LinkKind) => LIFETIME_DAYS[kind];
 
-export async function clientLink(env: Env, baseUrl: string, link: Omit<ClientLink, "exp">, days?: number): Promise<string> {
+/**
+ * A signed link of `link.t`'s kind, good for `days` (the kind's own lifetime unless said). `exp`:
+ * the link it's minted from runs out then, and this one never outlives it (it runs out at whichever
+ * comes first), so opening a link can't hand out fresh ones that keep it going for good.
+ */
+export async function clientLink(env: Env, baseUrl: string, link: Omit<ClientLink, "exp"> & { exp?: number }, days?: number): Promise<string> {
   const lifetime = days ?? LIFETIME_DAYS[link.t];
   const now = Date.now();
-  const token = await signToken(env, { ...link, at: link.at ?? now, exp: Math.floor(now / 1000) + lifetime * 86_400 });
+  const own = Math.floor(now / 1000) + lifetime * 86_400;
+  const exp = typeof link.exp === "number" && Number.isFinite(link.exp) ? Math.min(link.exp, own) : own;
+  const token = await signToken(env, { ...link, at: link.at ?? now, exp });
   return `${baseUrl.replace(/\/$/, "")}${PATHS[link.t]}${token}`;
 }
 
@@ -64,12 +72,19 @@ export async function clientLink(env: Env, baseUrl: string, link: Omit<ClientLin
  * "office"), for anything a signed-in person gets: what a send hands back to copy, the copy kept on
  * the client's timeline, and a send to any other address. So no one on the team holds a link that
  * can say yes to autopay or tip on the client's saved card for them.
+ *
+ * `nm` (lib/links above) only ever marks the office's copy: the client's own link shows them their
+ * money. `kept`: the office's copy for a quote's timeline, which estimators read too, so it's always
+ * marked nm.
  */
-export async function clientLinks(env: Env, baseUrl: string, link: Omit<ClientLink, "exp" | "via" | "own">, days?: number): Promise<{ own: string; office: string }> {
-  // `nm` only ever marks the office's copy: the client's own link shows them their money.
+export async function clientLinks(env: Env, baseUrl: string, link: Omit<ClientLink, "exp" | "via" | "own">, days?: number): Promise<{ own: string; office: string; kept: string }> {
   const { nm, ...rest } = link;
-  const [own, office] = await Promise.all([clientLink(env, baseUrl, { ...rest, own: 1 }, days), clientLink(env, baseUrl, { ...rest, via: "office", ...(nm && { nm }) }, days)]);
-  return { own, office };
+  const [own, office, kept] = await Promise.all([
+    clientLink(env, baseUrl, { ...rest, own: 1 }, days),
+    clientLink(env, baseUrl, { ...rest, via: "office", ...(nm && { nm }) }, days),
+    clientLink(env, baseUrl, { ...rest, via: "office", nm: 1 }, days),
+  ]);
+  return { own, office, kept };
 }
 
 /** An email's address for comparing: trimmed, in lower case. */

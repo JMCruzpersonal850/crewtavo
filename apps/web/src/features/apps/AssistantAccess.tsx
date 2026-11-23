@@ -19,6 +19,7 @@ import { timeAgo } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { Fold, kit, Row, RowsSkeleton, SwitchLine } from "./PanelKit";
 import { disconnect, endTeamConnection, loadConnections, loadTeamConnections, setAccess, type AssistantConnection, type TeamConnection } from "./assistantConnections";
+import { loadSettings } from "@/lib/companySettings";
 
 /** The assistants the signed-in person has connected; `poll` checks again every so many milliseconds. */
 export function useAssistantConnections(poll: number | false = false) {
@@ -35,8 +36,7 @@ export function AssistantAccess() {
   // The switches change in place, which says it worked.
   const save = useMutation({
     mutationFn: async (patch: { enabled?: boolean; read_only?: boolean }) => {
-      const current = unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single());
-      const s = (current.settings ?? {}) as Record<string, unknown>;
+      const s = await loadSettings(company.id);
       unwrap(await supabase().from("companies").update({ settings: { ...s, assistants: { enabled, read_only: readOnly, ...(s.assistants as object), ...patch } } as never }).eq("id", company.id));
     },
     onSuccess: () => session.refresh(),

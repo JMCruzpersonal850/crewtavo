@@ -23,6 +23,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 import { SettingsActions } from "./SettingsKit";
+import { loadSettings } from "@/lib/companySettings";
 
 interface Service { id: string; name: string; category: string | null; active: boolean }
 
@@ -35,8 +36,7 @@ export function WeatherSettings() {
   const rules = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const row = unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single());
-      const list = (row.settings as { weather_rules?: unknown } | null)?.weather_rules;
+      const list = (await loadSettings(company.id)).weather_rules;
       // Settings are JSON anyone with the key could have edited: anything that isn't a rule is skipped, as the weather task does.
       return Array.isArray(list) ? (list.filter((r) => r && typeof r === "object") as WeatherRule[]) : [];
     },
@@ -223,10 +223,10 @@ function ForecastSource() {
     queryKey: key,
     queryFn: async () => {
       const [row, app] = await Promise.all([
-        supabase().from("companies").select("settings").eq("id", company.id).single(),
+        loadSettings(company.id),
         supabase().from("integrations").select("status").eq("company_id", company.id).eq("provider", "open_meteo").maybeSingle(),
       ]);
-      return { source: weatherSourceOf(unwrap(row).settings), paid: app.data?.status === "connected" };
+      return { source: weatherSourceOf(row), paid: app.data?.status === "connected" };
     },
   });
   const pick = useMutation({

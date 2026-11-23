@@ -259,9 +259,11 @@ describe("signing on site", () => {
     const own = await hubLinkIn(message.text);
     expect(own).toMatchObject({ c: ROOFER, t: "quote", id: QUOTE, own: 1 });
     expect(own!.via).toBeUndefined();
-    expect(await hubLinkIn(body.link)).toMatchObject({ c: ROOFER, t: "quote", id: QUOTE, via: "office" });
+    // An estimator doesn't see the money: their copy, and the timeline's, lead to a Client Hub home without it (nm).
+    expect(await hubLinkIn(body.link)).toMatchObject({ c: ROOFER, t: "quote", id: QUOTE, via: "office", nm: 1 });
+    expect(own).not.toHaveProperty("nm");
     expect(state.tables.messages).toEqual([expect.objectContaining({ client_id: CLIENT, channel: "email", related_type: "quote", related_id: QUOTE, external_id: "email-1" })]);
-    expect(await hubLinkIn(state.tables.messages![0]!.body)).toMatchObject({ t: "quote", id: QUOTE, via: "office" });
+    expect(await hubLinkIn(state.tables.messages![0]!.body)).toMatchObject({ t: "quote", id: QUOTE, via: "office", nm: 1 });
     expect(background.kickAutomations).toHaveBeenCalledTimes(1);
   });
 

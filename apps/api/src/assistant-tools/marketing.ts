@@ -15,6 +15,7 @@ import { sendReferralAsk } from "../services/referrals";
 import { sendReviewRequest } from "../services/reviews";
 import { checkPost, MARKETING_OFF_POSTS, postBody } from "../services/social";
 import { changed, companyArg, friendly, one, requireRole, rows, tool, type ToolContext } from "./tool";
+import { settingsAs } from "../lib/companySettings";
 
 /** The Marketing screens are the office's, with the Marketing area of their role. */
 const marketer = (ctx: ToolContext) => requireRole(ctx, OFFICE, "marketing");
@@ -22,8 +23,7 @@ const baseUrl = (ctx: ToolContext) => (ctx.env.APP_URL ?? ctx.origin).replace(/\
 
 /** Uninstalled, Marketing sends, posts and replies nothing. */
 async function requireOn(ctx: ToolContext, message: string) {
-  const company = await one(ctx.db.from("companies").select("settings").eq("id", ctx.companyId).maybeSingle(), "The company");
-  if (!marketingOn(company.settings as Record<string, unknown> | null)) throw new Error(message);
+  if (!marketingOn(await settingsAs(ctx.db, ctx.companyId))) throw new Error(message);
 }
 
 const audience = z
@@ -48,11 +48,11 @@ export const marketingTools = {
     run: async (ctx) => {
       marketer(ctx);
       const [company, summary, reviews] = await Promise.all([
-        one(ctx.db.from("companies").select("settings").eq("id", ctx.companyId).maybeSingle(), "The company"),
+        settingsAs(ctx.db, ctx.companyId),
         ctx.db.rpc("marketing_summary", { p_company_id: ctx.companyId }),
         ctx.db.rpc("review_stats", { p_company: ctx.companyId }),
       ]);
-      return { installed: marketingOn(company.settings as Record<string, unknown> | null), summary: summary.data, reviews: reviews.data };
+      return { installed: marketingOn(company), summary: summary.data, reviews: reviews.data };
     },
   }),
 

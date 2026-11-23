@@ -153,14 +153,15 @@ const { id: company } = await res.json();
 const c = (row) => ({ company_id: company, ...row });
 
 // Merged into what sign-up saved (the Paving app, the preset's formulas and weather rules), not replacing it.
-const { data: signedUp } = await db.from("companies").select("settings").eq("id", company).single();
+// The browser's role reads settings through company_settings() (all of them, for an owner).
+const { data: signedUp } = await db.rpc("company_settings", { p_company: company });
 await must(
   db.from("companies").update({
     phone: "(540) 483-0000",
     email: "office@acmepaving.test",
     address: { line1: "100 Industrial Dr", city: "Rocky Mount", region: "VA", postal_code: "24151" },
     settings: {
-      ...(signedUp?.settings ?? {}),
+      ...(signedUp ?? {}),
       payment_terms_days: 30,
       default_tax_rate: 0.053,
       depot: { lat: 36.9976, lng: -79.8920 },

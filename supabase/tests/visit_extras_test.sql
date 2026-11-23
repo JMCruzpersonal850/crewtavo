@@ -108,7 +108,7 @@ select public.create_company('Mossy Lawn', 'lawn_exterior', 'America/Chicago') a
 reset role;
 insert into public.memberships (company_id, user_id, role) values (:'co', :'owen', 'office'), (:'co', :'edie', 'estimator'), (:'co', :'tad', 'field_crew'), (:'co', :'uma', 'field_crew');
 set local role authenticated;
-update public.companies set settings = settings || '{"default_tax_rate": 0.1}' where id = :'co';
+update public.companies set settings = public.company_settings(id) || '{"default_tax_rate": 0.1}' where id = :'co';
 insert into public.services (company_id, name, description, unit, unit_price, unit_cost, taxable) values (:'co', 'Mossy mulch', 'Brown hardwood', 'yd', 60, 25, true) returning id as mulch \gset
 insert into public.services (company_id, name, unit, unit_price, taxable) values (:'co', 'Mossy aeration', 'ea', 80, false) returning id as aeration \gset
 insert into public.clients (company_id, display_name) values (:'co', 'Mossy Client Ada') returning id as client \gset

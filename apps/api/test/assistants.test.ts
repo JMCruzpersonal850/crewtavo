@@ -85,6 +85,9 @@ function supabase(company: { settings?: object; held?: object; role?: string; lo
       }
       case "/rest/v1/rpc/assistant_switch":
         return Response.json(company.held ?? { state: "on" });
+      // The company's settings as the person reads them (lib/companySettings.ts settingsAs): all of them, for an owner.
+      case "/rest/v1/rpc/company_settings":
+        return Response.json(settings);
       case "/rest/v1/rpc/company_assistant_connections":
         return Response.json(TEAM);
       case "/rest/v1/rpc/end_assistant_connection":

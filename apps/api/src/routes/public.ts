@@ -75,11 +75,11 @@ import { formPage } from "../services/websiteForms";
 import { firstName } from "../lib/email";
 import { smsReady } from "../lib/notify";
 import { noteTextConsent } from "../services/textsOff";
-import { sha256Hex } from "../lib/recovery";
 import { fromBase64Url, signToken, verifyToken } from "../lib/crypto";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
 import { allow } from "../lib/limit";
 import { LINK_PAUSED, linkCanSend } from "../lib/linkBudget";
+import { uploadLinks, uploadsLeftToday } from "../lib/publicUploads";
 import { clientLink, linkPreview, linksReplaced, readClientLink, REVIEW_TOKEN, type ClientLink, type LinkKind } from "../lib/links";
 import { storedFile } from "../lib/storedFile";
 import { THUMBNAIL_PX, thumbnail } from "../lib/thumbnail";
@@ -94,7 +94,8 @@ import { membersOfCrews } from "../services/visitPeople";
 
 export const publicRoutes = new Hono<AppEnv>();
 
-async function link(c: Parameters<typeof appUrl>[0], kinds: LinkKind[] = ["quote", "invoice", "client"]) {
+/** The Client Hub link in the request's address, checked: of one of `kinds`, unexpired, and not replaced. Also a print ticket's (routes/documentPdf.ts). */
+export async function link(c: Parameters<typeof appUrl>[0], kinds: LinkKind[] = ["quote", "invoice", "client"]) {
   const payload = await readClientLink(c.env, c.req.param("token") ?? "");
   if (!payload || !kinds.includes(payload.t)) throw new HttpError(404, "This link has expired or isn't valid. Ask for a new one.");
   await refuseReplaced(c, payload);
@@ -131,10 +132,17 @@ async function refuseReplaced(c: Parameters<typeof appUrl>[0], l: ClientLink) {
  * Links minted from a link keep it, and keep the client's own mark (own), so an office copy or an
  * unmarked link can't become the client's own by opening an invoice from the client's home. They
  * keep when it was made too (at; 0 for a link from before links carried one), so a link minted from
- * an old link ends with it when the office resets the client's links.
+ * an old link ends with it when the office resets the client's links; whether it leaves the money
+ * out (nm); and when it runs out (exp): a link minted from another never outlives it, so opening
+ * one can't hand out fresh links that keep it going for good.
  */
 const viaOf = (l: Pick<ClientLink, "via">): "client" | "office" => (l.via === "office" ? "office" : "client");
-const keepVia = (l: Pick<ClientLink, "via" | "own" | "at" | "nm">) => ({ ...(l.via === "office" ? { via: "office" as const } : l.own === 1 ? { own: 1 as const } : {}), ...(l.nm === 1 && { nm: 1 as const }), at: l.at ?? 0 });
+const keepVia = (l: Pick<ClientLink, "via" | "own" | "at" | "nm" | "exp">) => ({
+  ...(l.via === "office" ? { via: "office" as const } : l.own === 1 ? { own: 1 as const } : {}),
+  at: l.at ?? 0,
+  ...(l.nm === 1 ? { nm: 1 as const } : {}),
+  exp: l.exp,
+});
 
 /**
  * Who a Hub link counts as for the two things only the client may do: say yes to a card they didn't
@@ -1041,6 +1049,8 @@ publicRoutes.post("/hub/:token/autopay/confirm", async (c) => {
  */
 publicRoutes.post("/hub/:token/autopay/off", async (c) => {
   const { l, admin, clientId } = await autopayRequest(c, 20);
+  // An office copy made without the money (nm) doesn't show autopay that's on, and doesn't turn it off either.
+  if (l.nm === 1) throw new HttpError(403, "Autopay is turned off from your own link, or ask us to turn it off.");
   await readJson(c, z.object({}).default({}));
   await turnOffAutopay(admin, { companyId: l.c, clientId, via: "client", userId: null });
   return c.json({ ok: true });
@@ -1139,7 +1149,8 @@ const formAnswers = z
 // Files sent with a request (a "Files" or "Photos" question): what the visitor picked, before uploading.
 // Each as big as the form's page says (200 MB, the most Storage takes), and 500 MB between them: a
 // set of plans and a phone's worth of photos fit many times over, and a stranger can't fill the
-// business's storage 2 GB at a time. /files holds each upload to the size given here.
+// business's storage 2 GB at a time. The gateway holds each upload to the size given here
+// (lib/publicUploads.ts), and /files holds what arrived to it again.
 const MAX_FORM_FILES = 10;
 const MAX_FORM_FILES_BYTES = 500 * 1024 * 1024;
 const formFiles = z
@@ -1147,6 +1158,8 @@ const formFiles = z
   .max(MAX_FORM_FILES, `Send up to ${MAX_FORM_FILES} files with a request.`)
   .refine((files) => files.reduce((sum, f) => sum + f.size, 0) <= MAX_FORM_FILES_BYTES, "Send up to 500 MB of files with a request.")
   .default([]);
+/** How long a request's files have to arrive and be recorded: their links and files token run out then. */
+const FORM_FILES_HOURS = 3;
 /** `size`: what the visitor said the file was (links made before sizes were kept have none). */
 interface FilesToken { purpose: "form-files"; c: string; r: string; f: Array<{ path: string; name: string; type?: string; size?: number }>; exp: number }
 const fileExtension = (name: string) => name.match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase() ?? "bin";
@@ -1241,20 +1254,23 @@ publicRoutes.post("/public/forms/:company/:form", async (c) => {
   runInBackground(c, draftArrivedRequest(c.env, company.id, request.id));
   if (!body.files.length) return c.json({ ok: true, reference: request.number, booking }, 201);
 
-  // The request is in. Each file goes straight to Storage on a link that works once (and is
-  // checked against Storage's size limit there); /files then records the ones that arrived, and
-  // holds each to the size given here.
-  const uploads = await Promise.all(
-    body.files.map(async (f) => {
-      const path = `${company.id}/plans/${crypto.randomUUID()}.${fileExtension(f.name)}`;
-      const { data, error } = await admin.storage.from("files").createSignedUploadUrl(path);
-      if (error || !data) return null;
-      return { name: f.name, type: f.type, size: f.size, path, token: data.token };
-    }),
-  );
+  // The request is in. Each file goes straight to Storage on a link that works once, on record
+  // with the size given here (lib/publicUploads.ts): the gateway holds the upload to that size and
+  // counts it against the business's day. /files then records the ones that arrived, and holds each
+  // to its size again. None are handed out once the business has taken its day's worth of files: the
+  // page then says to send them another way. One nobody records goes when its link runs out.
+  const exp = Math.floor(Date.now() / 1000) + FORM_FILES_HOURS * 60 * 60;
+  const planned = body.files.map((f) => ({ ...f, path: `${company.id}/plans/${crypto.randomUUID()}.${fileExtension(f.name)}` }));
+  const links = (await uploadsLeftToday(c.env, company.id))
+    ? await uploadLinks(admin, { company: company.id, kind: "form", files: planned.map((f) => ({ path: f.path, bytes: f.size })), expiresAt: exp * 1000 })
+    : planned.map(() => null);
+  const uploads = planned.map((f, i) => {
+    const made = links[i];
+    return made ? { name: f.name, type: f.type, size: f.size, path: f.path, token: made.token } : null;
+  });
   const ready = uploads.filter((u): u is NonNullable<typeof u> => Boolean(u));
   const filesToken = await signToken(c.env, {
-    purpose: "form-files", c: company.id, r: request.id, f: ready.map(({ path, name, type, size }) => ({ path, name, type, size })), exp: Math.floor(Date.now() / 1000) + 3 * 60 * 60,
+    purpose: "form-files", c: company.id, r: request.id, f: ready.map(({ path, name, type, size }) => ({ path, name, type, size })), exp,
   } satisfies FilesToken);
   // In the order the files were sent, null where Storage couldn't make a link.
   return c.json({ ok: true, reference: request.number, booking, uploads: uploads.map((u) => u && { name: u.name, path: u.path, token: u.token }), files_token: filesToken }, 201);
@@ -1273,15 +1289,16 @@ publicRoutes.post("/public/forms/:company/:form/files", async (c) => {
     const { data: info } = await admin.storage.from("files").info(f.path);
     if (info) arrived.push({ ...f, info, stored: info.size ?? 0 });
   }
-  // An upload link takes anything up to Storage's own limit, whatever size was given for its file,
-  // so the sizes are checked here, before anything is recorded: each file against the size given
-  // for it, and all of them against the most a request takes. A bigger one isn't the file that was
+  // The gateway holds each upload to the size given for its file, but Storage reached another way
+  // (a Supabase project, without this server's gateway) takes anything up to its own limit, so the
+  // sizes are checked here too, before anything is recorded: each file against the size given for
+  // it, and all of them against the most a request takes. A bigger one isn't the file that was
   // offered: it's removed, and none of them go on the request.
   const tooBig = arrived.filter((f) => f.stored > (f.size ?? UPLOAD_LIMIT));
   const tooMuch = arrived.reduce((sum, f) => sum + f.stored, 0) > MAX_FORM_FILES_BYTES;
   if (tooBig.length || tooMuch) {
     const { error } = await admin.storage.from("files").remove((tooMuch ? arrived : tooBig).map((f) => f.path));
-    // Left behind, it goes with the nightly tidy-up (services/planFiles.ts), as any unrecorded file does.
+    // Left behind, it goes once its link runs out (services/planFiles.ts), as any unrecorded file does.
     if (error) console.warn(`Couldn't remove a booking form's oversized files: ${error.message}`);
     throw new HttpError(413, "Those files are bigger than this form takes. Send them to us another way.");
   }
@@ -1329,8 +1346,8 @@ publicRoutes.post("/webhooks/stripe/:company", async (c) => {
 // Client Hub home: a client's open quotes, invoices and upcoming visits, and "request work"
 // ---------------------------------------------------------------------------------------------
 
-/** The client's Hub home. Minted from an office copy of a link (`from`), it stays one; from the client's own (own), so does it. */
-const homeLink = (c: Parameters<typeof appUrl>[0], companyId: string, clientId: string, from: Pick<ClientLink, "via" | "own" | "at" | "nm">) =>
+/** The client's Hub home. Minted from an office copy of a link (`from`), it stays one; from the client's own (own), so does it. It runs out with `from`. */
+const homeLink = (c: Parameters<typeof appUrl>[0], companyId: string, clientId: string, from: Pick<ClientLink, "via" | "own" | "at" | "nm" | "exp">) =>
   clientLink(c.env, appUrl(c), { c: companyId, t: "client", id: clientId, ...keepVia(from) });
 const firstNames = (rows: Array<{ user_id: string }>, names: Map<string, string>) => rows.map((r) => names.get(r.user_id)).filter(Boolean) as string[];
 
@@ -1436,22 +1453,35 @@ async function invoiceChecklists(admin: ReturnType<typeof adminClient>, companyI
   return visits.flatMap((v) => byVisit.get(v.id) ?? []);
 }
 
+/** Autopay while it's being set up (not on yet, or a card saved and waiting for a yes): what a quote approved through any link goes on to. */
+const SETTING_UP = new Set(["off", "agree"]);
+
 async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typeof adminClient>, l: ClientLink, company: unknown) {
   const companyId = l.c;
   const clientId = l.id;
+  // An office copy made by someone who doesn't see the business's money (nm, lib/links.ts) leads to
+  // a home without it: no invoices, balances, payments or referral credit, and the client's autopay
+  // only while it's being set up, so a quote approved through it can still go on to adding a card.
+  const money = l.nm !== 1;
+  const none = { data: [] as never[], error: null };
   const client = must(await admin.from("clients").select("id, display_name, properties(id, line1, city)").eq("company_id", companyId).eq("id", clientId).maybeSingle(), "This link isn't valid anymore.");
   const settings = must(await admin.from("companies").select("timezone, currency, settings").eq("id", companyId).maybeSingle());
   const today = new Date().toLocaleDateString("en-CA", { timeZone: settings.timezone || "UTC" });
-  const [quotes, invoices, jobs, payments, requests, services, autopay] = await Promise.all([
+  const [quotes, invoices, jobs, payments, requests, services, found] = await Promise.all([
     admin.from("quotes").select("id, number, title, status, total, tax_rate, discount_amount, valid_until, sent_at, approved_at, recurrence_rule, range_low, range_high, range_accepted_at, priced_on_site_at, exact_sent_at, promo:promo_codes(kind, value)").eq("company_id", companyId).eq("client_id", clientId).in("status", ["sent", "changes_requested", "approved", "converted"]).order("created_at", { ascending: false }).limit(20),
-    admin.from("invoices").select("id, number, subject, status, total, balance_due, due_on, issued_on").eq("company_id", companyId).eq("client_id", clientId).in("status", ["sent", "partially_paid", "overdue", "paid"]).order("issued_on", { ascending: false }).limit(20),
+    money
+      ? admin.from("invoices").select("id, number, subject, status, total, balance_due, due_on, issued_on").eq("company_id", companyId).eq("client_id", clientId).in("status", ["sent", "partially_paid", "overdue", "paid"]).order("issued_on", { ascending: false }).limit(20)
+      : none,
     admin.from("jobs").select("id").eq("company_id", companyId).eq("client_id", clientId),
-    admin.from("payments").select("amount, tip_amount, method, received_at, invoice_id, processor, invoice:invoices(number)").eq("company_id", companyId).eq("client_id", clientId).gt("amount", 0).order("received_at", { ascending: false }).limit(5),
+    money
+      ? admin.from("payments").select("amount, tip_amount, method, received_at, invoice_id, processor, invoice:invoices(number)").eq("company_id", companyId).eq("client_id", clientId).gt("amount", 0).order("received_at", { ascending: false }).limit(5)
+      : none,
     admin.from("requests").select("number, title, status, created_at").eq("company_id", companyId).eq("client_id", clientId).in("status", ["new", "assessment_scheduled", "assessment_complete"]).order("created_at", { ascending: false }).limit(5),
     admin.from("services").select("category").eq("company_id", companyId).eq("active", true).not("category", "is", null).limit(200),
     // The "Pay automatically" card and view: null when the business doesn't take autopay.
     hubAutopay(c.env, admin, companyId, clientId, { trust: trustOf(l) }),
   ]);
+  const autopay = money || !found || SETTING_UP.has(found.status) ? found : null;
   // What autopay is doing on the invoices listed and the ones the recent payments are on.
   const charges = await invoiceCharges(admin, companyId, clientId, [
     ...new Set([...(invoices.data ?? []).map((i) => i.id), ...(payments.data ?? []).flatMap((p) => (p.invoice_id ? [p.invoice_id] : []))]),
@@ -1543,7 +1573,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   const referrals = referralSettings(companySettings);
   // Credit they've earned that goes on their next invoice: not on one yet, not given outside
   // Crewtavo, and not one the office keeps off invoices (that may never reach an invoice).
-  const earned = referralOn
+  const earned = referralOn && money
     ? (await admin.from("referrals").select("reward_amount, given_amount, credits:referral_credits(amount)").eq("company_id", companyId).eq("referrer_client_id", clientId).eq("reward_status", "earned").eq("auto_apply", true)).data ?? []
     : [];
   const creditLeft = earned.reduce((sum, r) => sum + Number(r.reward_amount) - Number(r.given_amount ?? 0) - (r.credits as Array<{ amount: number }>).reduce((on, x) => on + Number(x.amount), 0), 0);
@@ -1552,8 +1582,9 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     company,
     arrival_window_min: arrivalWindowMin(companySettings),
     preview: Boolean(l.pv),
-    // A copy made for someone who doesn't see invoices (lib/links `nm`) leaves out the client's money.
-    autopay: l.nm ? null : autopay,
+    // false: the money is left out (nm), so the page doesn't say nothing is owed.
+    money,
+    autopay,
     client: { name: client.display_name, first_name: firstName(client.display_name), properties: client.properties },
     // A quote out as a price range shows the range, never its exact total. One that offers options
     // shows how many and the lowest price (`options`) until the client chooses, never as a total.
@@ -1590,10 +1621,11 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     services: [...new Set((services.data ?? []).map((s) => s.category as string))].slice(0, 8),
     refer: referralOn
       ? {
-          link: await clientLink(c.env, base, { c: companyId, t: "refer", id: clientId, ...keepVia(l) }),
+          // The client's to share for years: it opens no Hub page, so it keeps a referral link's own lifetime.
+          link: await clientLink(c.env, base, { c: companyId, t: "refer", id: clientId, ...keepVia(l), exp: undefined }),
           offer: referrals.offer,
           rewards: referrerLine(referrals.reward, settings.currency) || null,
-          credit_left: Math.round(creditLeft * 100) / 100,
+          ...(money ? { credit_left: Math.round(creditLeft * 100) / 100 } : {}),
         }
       : null,
   };
@@ -1625,9 +1657,13 @@ publicRoutes.post("/hub/:token/message", async (c) => {
 /** A map drawing's picture is a JPEG of the map (MeasurePage), a few hundred KB to a few MB. */
 const DRAWING_MAX_BYTES = 20_000_000;
 
+/** Map drawings one visitor's address may ask for in an hour: a quote has a few, and the browser keeps each for an hour. */
+const DRAWINGS_AN_HOUR = 200;
+
 // The picture of a map drawing on a quote or invoice. Only drawings shown to the client, and only
 // through the link to the quote or invoice they're on.
 publicRoutes.get("/hub/:token/drawings/:file", async (c) => {
+  if (!(await allow(c.env, `hub-drawings:ip:${clientIp(c)}`, DRAWINGS_AN_HOUR, 60 * 60))) throw new HttpError(429, "Too many requests. Try again later.");
   const l = await link(c, ["quote", "invoice"]);
   const id = (c.req.param("file") ?? "").replace(/\.jpg$/i, "");
   if (!z.uuid().safeParse(id).success) throw new HttpError(404, "Drawing not found.");
@@ -1639,9 +1675,11 @@ publicRoutes.get("/hub/:token/drawings/:file", async (c) => {
   const bytes = await storedFile(admin, drawing.snapshot_path, DRAWING_MAX_BYTES);
   const type = bytes && (isJpeg(bytes) ? "image/jpeg" : isPng(bytes) ? "image/png" : null);
   if (!bytes || !type) throw new HttpError(404, "Drawing not found.");
-  // At most a day's worth through one link (lib/linkBudget.ts): counted by the link itself, so
-  // resetting the client's links gives the new one a fresh day (hashed: a key is 200 characters at most).
-  const within = await linkCanSend(c.env, `hub-drawings:${await sha256Hex(c.req.param("token") ?? "")}`, bytes.length, {
+  // At most a day's worth through one link (lib/linkBudget.ts): counted by what the link says once
+  // it's checked (its business, quote or invoice, and when it was made), never by its text, so a
+  // link can't be spelled another way for a fresh day, and the links a Hub page mints from it share
+  // its day. Resetting the client's links gives the new ones a fresh day.
+  const within = await linkCanSend(c.env, `hub-drawings:${l.c}:${l.t}:${l.id}:${l.at ?? 0}`, bytes.length, {
     company: l.c,
     title: `A${l.t === "quote" ? " quote's" : "n invoice's"} map drawings are paused for the day`,
     body: `The Client Hub link to this ${l.t} has sent its map drawings far more times in the last day than a client looks at them, so they're paused until tomorrow; the ${l.t} itself still opens. If the link went somewhere it shouldn't, reset the client's links from their page.`,
@@ -1655,11 +1693,14 @@ publicRoutes.get("/hub/:token/drawings/:file", async (c) => {
 const VISIT_PHOTOS = 6;
 const PHOTO_MAX_BYTES = 25_000_000;
 const PHOTO_FULL_PX = 1600;
+/** Visit photos one visitor's address may ask for in an hour: a home shows a few dozen, and the browser keeps each for an hour. */
+const PHOTOS_AN_HOUR = 300;
 
 // A photo from one of the client's finished visits, through the link to their account: only one the
 // office marked OK to share, on a visit of theirs that's done. Small for the page (?full for one to
 // look at), as a JPEG or PNG, and never as a storage link.
 publicRoutes.get("/hub/:token/photos/:file", async (c) => {
+  if (!(await allow(c.env, `hub-photos:ip:${clientIp(c)}`, PHOTOS_AN_HOUR, 60 * 60))) throw new HttpError(429, "Too many requests. Try again later.");
   const l = await link(c, ["client"]);
   const id = (c.req.param("file") ?? "").replace(/\.jpg$/i, "");
   if (!z.uuid().safeParse(id).success) throw new HttpError(404, "Photo not found.");
@@ -1672,8 +1713,9 @@ publicRoutes.get("/hub/:token/photos/:file", async (c) => {
   const type = stored && (isJpeg(stored) ? "image/jpeg" : isPng(stored) ? "image/png" : null);
   if (!stored || !type) throw new HttpError(404, "Photo not found.");
   const small = await thumbnail(stored, type, c.req.query("full") !== undefined ? PHOTO_FULL_PX : THUMBNAIL_PX);
-  // At most a day's worth through one link, as map drawings (lib/linkBudget.ts).
-  const within = await linkCanSend(c.env, `hub-photos:${await sha256Hex(c.req.param("token") ?? "")}`, small.body.length, {
+  // At most a day's worth through one link, as map drawings (lib/linkBudget.ts): counted by what the
+  // link says once it's checked (its business, client and when it was made), never by its text.
+  const within = await linkCanSend(c.env, `hub-photos:${l.c}:${l.t}:${l.id}:${l.at ?? 0}`, small.body.length, {
     company: l.c,
     title: "A client's visit photos are paused for the day",
     body: "The Client Hub link to this client's account has sent their visit photos far more times in the last day than a client looks at them, so they're paused until tomorrow; the account itself still opens. If the link went somewhere it shouldn't, reset the client's links from their page.",
@@ -1682,6 +1724,30 @@ publicRoutes.get("/hub/:token/photos/:file", async (c) => {
   if (!within) throw new HttpError(429, LINK_PAUSED);
   return c.body(small.body, 200, { "Content-Type": small.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600" });
 });
+/** The business's public pictures one visitor's address may ask for in an hour: browsers and mail apps keep each one, so a person asks once. */
+const PICTURES_AN_HOUR = 600;
+const TOO_MANY_PICTURES = "Too many requests. Try again later.";
+
+/** Before a public picture is read: one visitor's address asks for at most PICTURES_AN_HOUR. */
+async function pictureVisitor(c: Parameters<typeof appUrl>[0]) {
+  if (!(await allow(c.env, `public-pictures:ip:${clientIp(c)}`, PICTURES_AN_HOUR, 60 * 60))) throw new HttpError(429, TOO_MANY_PICTURES);
+}
+
+/**
+ * A business's public pictures (its logo, letterhead, and its packages' and price list items'
+ * pictures) send at most a day's worth between them (lib/linkBudget.ts), as the Client Hub's map
+ * drawings do: anyone can ask for them over and over from many addresses, and sending costs money.
+ * Past it they answer 429 until the day is over; the pages and emails they're on still open.
+ */
+async function pictureBudget(c: Parameters<typeof appUrl>[0], companyId: string, bytes: number) {
+  const within = await linkCanSend(c.env, `public-pictures:${companyId}`, c.req.method === "HEAD" ? 0 : bytes, {
+    company: companyId,
+    title: "Your logo and pictures are paused for the day",
+    body: "Your logo, letterhead and the pictures on your estimates were sent far more times in the last day than clients look at them, so they're paused until tomorrow. Your emails and the Client Hub still open, without them.",
+    open: "/settings?tab=hosting",
+  });
+  if (!within) throw new HttpError(429, "These pictures were sent a lot today, so they're paused until tomorrow.");
+}
 
 // The company's logo (services/logo.ts), on the Client Hub and in emails. A logo's file name is
 // never reused, so the current one is kept for good; an older one (in an email sent before the logo
@@ -1690,12 +1756,14 @@ publicRoutes.get("/public/logo/:company/:file", async (c) => {
   const companyId = c.req.param("company");
   const file = (c.req.param("file") ?? "").replace(/\.png$/i, "");
   if (!z.uuid().safeParse(companyId).success || !z.uuid().safeParse(file).success) throw new HttpError(404, "Logo not found.");
+  await pictureVisitor(c);
   const admin = adminClient(c.env);
   const { data: company } = await admin.from("companies").select("settings").eq("id", companyId).maybeSingle();
   const path = company ? logoOf(company.settings, companyId) : null;
   if (!path) throw new HttpError(404, "Logo not found.");
   const bytes = await storedFile(admin, path, LOGO_MAX_BYTES);
   if (!bytes || !isPng(bytes)) throw new HttpError(404, "Logo not found.");
+  await pictureBudget(c, companyId, bytes.length);
   const current = path === `${companyId}/logo/${file}.png`;
   return c.body(bytes, 200, { "Content-Type": "image/png", "Cache-Control": current ? "public, max-age=31536000, immutable" : "public, max-age=3600" });
 });
@@ -1726,8 +1794,10 @@ publicRoutes.get("/public/letterhead/:company/:file", async (c) => {
   const companyId = c.req.param("company");
   const file = (c.req.param("file") ?? "").replace(/\.png$/i, "");
   if (!z.uuid().safeParse(companyId).success || !z.uuid().safeParse(file).success) throw new HttpError(404, "Letterhead not found.");
+  await pictureVisitor(c);
   const bytes = await storedFile(adminClient(c.env), `${companyId}/letterhead/${file}.png`, LETTERHEAD_MAX_BYTES);
   if (!bytes || !isPng(bytes)) throw new HttpError(404, "Letterhead not found.");
+  await pictureBudget(c, companyId, bytes.length);
   return c.body(bytes, 200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 
@@ -1739,8 +1809,10 @@ publicRoutes.get("/public/package/:company/:file", async (c) => {
   const companyId = c.req.param("company");
   const file = (c.req.param("file") ?? "").replace(/\.jpg$/i, "");
   if (!z.uuid().safeParse(companyId).success || !z.uuid().safeParse(file).success) throw new HttpError(404, "Picture not found.");
+  await pictureVisitor(c);
   const bytes = await storedFile(adminClient(c.env), `${companyId}/packages/${file}.jpg`, PACKAGE_PICTURE_MAX_BYTES);
   if (!bytes || !isJpeg(bytes)) throw new HttpError(404, "Picture not found.");
+  await pictureBudget(c, companyId, bytes.length);
   return c.body(bytes, 200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 
@@ -1750,8 +1822,10 @@ publicRoutes.get("/public/service/:company/:file", async (c) => {
   const companyId = c.req.param("company");
   const file = (c.req.param("file") ?? "").replace(/\.jpg$/i, "");
   if (!z.uuid().safeParse(companyId).success || !z.uuid().safeParse(file).success) throw new HttpError(404, "Picture not found.");
+  await pictureVisitor(c);
   const bytes = await storedFile(adminClient(c.env), `${companyId}/services/${file}.jpg`, PACKAGE_PICTURE_MAX_BYTES);
   if (!bytes || !isJpeg(bytes)) throw new HttpError(404, "Picture not found.");
+  await pictureBudget(c, companyId, bytes.length);
   return c.body(bytes, 200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" });
 });
 

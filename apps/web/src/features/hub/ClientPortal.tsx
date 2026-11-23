@@ -48,6 +48,12 @@ export interface ClientView {
   arrival_window_min?: number;
   /** The office's look at the page: it shows, and nothing on it can be done. */
   preview?: boolean;
+  /**
+   * false: an office copy made by someone who doesn't see the business's money, so the invoices,
+   * payments and credit are left out, and the page doesn't say nothing is owed. Servers that don't
+   * send it show the money.
+   */
+  money?: boolean;
   /** Their autopay. Null when the business doesn't take autopay; servers that don't send it have none. */
   autopay?: HubAutopay | null;
   client: { name: string; first_name: string; properties: Array<{ id: string; line1: string; city: string | null }> };
@@ -261,9 +267,9 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
         )}
       </section>
 
-      <Section title={waitingCount ? "Waiting on you" : "All caught up"} count={waitingCount}>
+      <Section title={waitingCount || data.money === false ? "Waiting on you" : "All caught up"} count={waitingCount}>
         {waitingCount === 0 && (
-          <p className="hub-card hub-calm"><Icon name="check" size={18} />Nothing needs your attention right now.</p>
+          <p className="hub-card hub-calm"><Icon name="check" size={18} />{data.money === false ? "No quotes are waiting on you." : "Nothing needs your attention right now."}</p>
         )}
         {waitingQuotes.map((q) =>
           q.range ? (

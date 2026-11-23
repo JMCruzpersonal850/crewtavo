@@ -76,10 +76,12 @@ insert into public.clients (company_id, display_name) values (:'co', 'Elm Street
 insert into public.attachments (company_id, owner_type, owner_id, path, file_name, content_type) values (:'co', 'client', :'other_client', :'co' || '/client/' || :'other_client' || '/lofts.jpg', 'lofts.jpg', 'image/jpeg') returning id as lofts_photo \gset
 update public.memberships set labor_rate = 40 where company_id = :'co' and user_id = 'd0000000-0000-0000-0000-000000000001';
 select t3.check(true, 'an owner sets their own pay rate');
-update public.companies set settings = settings || '{"roofing": {"range_pct": 10, "typical_squares": 30}, "revenue_goal": 100000}' where id = :'co';
-update public.companies set settings = settings || '{"roofing": {"range_pct": 12}}' where id = :'co';
+-- Saved as a screen saves its own settings (the browser doesn't read companies.settings:
+-- 20261123100100_prices_and_settings_for_the_office.sql).
+select public.merge_company_settings(:'co', '{"roofing": {"range_pct": 10, "typical_squares": 30}, "revenue_goal": 100000}');
+select public.merge_company_settings(:'co', '{"roofing": {"range_pct": 12}}');
 select t3.check((select settings -> 'roofing' = '{"range_pct": 12, "typical_squares": 30}' and settings ->> 'revenue_goal' = '100000' from public.company_private_settings where company_id = :'co')
-  and (select not settings ?| array['roofing', 'revenue_goal'] from public.companies where id = :'co'),
+  and not public.company_settings(:'co') ?| array['roofing', 'revenue_goal'],
   'the business''s prices and targets are kept apart from its settings, and saving one keeps the rest');
 select public.create_invoice_for_job(:'job') as invoice \gset
 insert into public.expenses (company_id, job_id, user_id, amount, description) values (:'co', :'job', 'd0000000-0000-0000-0000-000000000001', 120, 'Owner fuel');

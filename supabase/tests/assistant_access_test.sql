@@ -288,18 +288,18 @@ rollback;
 begin;
 set local role authenticated;
 select t1040.as_request(:'owner', :'full', 'PATCH', '/companies');
-select t1040.check(t1040.error_of(format($$update public.companies set name = 'Kilo Lawns', settings = settings || '{"quote_valid_days": 14, "branding": {"color": "#3b7d23"}}' where id = %L$$, :'co')) = 'none',
+select t1040.check(t1040.error_of(format($$update public.companies set name = 'Kilo Lawns', settings = public.company_settings(id) || '{"quote_valid_days": 14, "branding": {"color": "#3b7d23"}}' where id = %L$$, :'co')) = 'none',
   'an assistant with full access changes the company''s details and settings');
-select t1040.check(t1040.error_of(format($$update public.companies set settings = settings || '{"assistants": {"enabled": true, "read_only": false}}' where id = %L$$, :'co')) like '42501:%',
+select t1040.check(t1040.error_of(format($$update public.companies set settings = public.company_settings(id) || '{"assistants": {"enabled": true, "read_only": false}}' where id = %L$$, :'co')) like '42501:%',
   'but not the owner''s limits on assistants');
-select t1040.check(t1040.error_of(format($$update public.companies set settings = jsonb_set(settings, '{branding,logo}', '"x"') where id = %L$$, :'co')) like '42501:%',
+select t1040.check(t1040.error_of(format($$update public.companies set settings = jsonb_set(public.company_settings(id), '{branding,logo}', '"x"') where id = %L$$, :'co')) like '42501:%',
   'or anything else in its settings');
 select t1040.check(t1040.error_of(format($$update public.companies set slug = 'kilo-new' where id = %L$$, :'co')) like '42501:%', 'or its other columns');
 rollback;
 begin;
 set local role authenticated;
 select t1040.as_request(:'owner', null, 'PATCH', '/companies');
-select t1040.check(t1040.error_of(format($$update public.companies set settings = settings || '{"assistants": {"read_only": true}}' where id = %L$$, :'co')) = 'none', 'the owner still sets them');
+select t1040.check(t1040.error_of(format($$update public.companies set settings = public.company_settings(id) || '{"assistants": {"read_only": true}}' where id = %L$$, :'co')) = 'none', 'the owner still sets them');
 rollback;
 
 -- Files: Storage writes with the person's token, through the storage.objects policies.

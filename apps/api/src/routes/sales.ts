@@ -25,6 +25,7 @@ import type { AppEnv } from "../env";
 import { requireCompany, requireUser } from "../lib/auth";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, param, readJson, requireEnv, uuid } from "../lib/http";
 import { clientLink } from "../lib/links";
+import { noAssistants } from "../lib/noAssistants";
 import { roofSegments } from "../services/external";
 import { applyMeasurement } from "../services/measurements";
 import { draftQuote, setQuoteAi } from "../services/quoteDrafts";
@@ -89,8 +90,11 @@ sales.post("/quotes/:id/send", requireUser, requireCompany(SALES, "sales"), asyn
   return c.json(await sendQuote(scope(c), param(c, "id"), await readJson(c, sendSchema)));
 });
 
-/** The client's link for a quote or invoice, without sending it or changing its status (preview, PDF). */
-sales.get("/:kind{quotes|invoices}/:id/link", requireUser, requireCompany(SALES), async (c) => {
+/**
+ * The client's link for a quote or invoice, without sending it or changing its status (preview, PDF).
+ * It opens without a sign-in, so never for an AI assistant (lib/noAssistants.ts).
+ */
+sales.get("/:kind{quotes|invoices}/:id/link", requireUser, noAssistants, requireCompany(SALES), async (c) => {
   const kind = c.req.param("kind") === "quotes" ? "quote" : "invoice";
   const id = param(c, "id");
   const table = kind === "quote" ? "quotes" : "invoices";

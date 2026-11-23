@@ -40,7 +40,7 @@ import {
 import { quoteSchedule } from "@/features/documents/build";
 import { smallInitials } from "@/features/documents/data";
 import { DocumentSheet, PrintableDocument } from "@/features/documents/EstimateDocument";
-import { openPrintablePdf } from "@/features/documents/pdfPrint";
+import { openPrintablePdf, printTicketsFrom } from "@/features/documents/pdfPrint";
 import { inkOn } from "@/features/documents/words";
 import { nextFrames, paperSettled } from "@/features/documents/paper";
 import type { DocumentSection } from "@/features/documents/types";
@@ -92,6 +92,7 @@ import {
   yoursToPayNote,
   unpickedGroup,
   websiteHref,
+  hubToken,
   type HubCompany,
   type HubDrawing,
   type HubLine,
@@ -143,7 +144,7 @@ function usePrintMode(loaded: boolean) {
   const print = useCallback(() => {
     setOn(true);
     // In Safari, as a PDF of the page's document (filling the sheet, no browser header or footer); else the page itself.
-    if (!openPrintablePdf()) void printWhenReady();
+    if (!openPrintablePdf("new tab", () => void printWhenReady())) void printWhenReady();
   }, []);
   // A tab opened to print (?print=1, the office's Print): in Safari it becomes the PDF, and Back comes
   // to the page without ?print=1, so it doesn't print again.
@@ -152,7 +153,7 @@ function usePrintMode(loaded: boolean) {
     const url = new URL(window.location.href);
     url.searchParams.delete("print");
     window.history.replaceState(window.history.state, "", url);
-    if (!openPrintablePdf("this tab")) void printWhenReady();
+    if (!openPrintablePdf("this tab", () => void printWhenReady())) void printWhenReady();
   }, []);
   return { on: asked || loaded, print, printHere };
 }
@@ -196,13 +197,16 @@ function CompanyMark({ company, logoClass = "hub-logo", tileClass = "tile" }: { 
 }
 
 export function HubPage() {
-  const { token = "" } = useParams();
+  const { token: raw = "" } = useParams();
+  const token = hubToken(raw);
   const [params] = useSearchParams();
   const printing = params.get("print") === "1";
   const view = useQuery({ queryKey: ["hub", token], queryFn: () => hubFetch<View>(token), retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2 });
   const [messaging, setMessaging] = useState<{ visit?: PortalVisit } | null>(null);
   const { on: printable, print, printHere } = usePrintMode(Boolean(view.data));
   const printed = useRef(false);
+  // The Hub has no sign-in: its PDF's print ticket comes with its link (pdfPrint.ts), for this quote or invoice only.
+  useEffect(() => printTicketsFrom(async () => (await hubFetch<{ ticket: string }>(`${token}/print-ticket`, {})).ticket), [token]);
 
   useEffect(() => {
     if (view.data) document.title = `${view.data.kind === "quote" ? `${view.data.quote.range ? rangeWords({ roof: isRoofJob(view.data), options: 0, first: null }).kind : "Quote"} #${view.data.quote.number}` : view.data.kind === "invoice" ? `Invoice #${view.data.invoice.number}` : "Your account"} · ${view.data.company.name}`;

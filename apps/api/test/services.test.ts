@@ -463,9 +463,12 @@ describe("sign-in links", () => {
 
 describe("public submissions", () => {
   /** The database for one company's forms; rate limits whose key matches `full` are used up. */
-  function database(options: { full?: RegExp; questions?: unknown[]; known?: boolean; zips?: string[] } = {}) {
+  function database(options: { full?: RegExp; questions?: unknown[]; known?: boolean; zips?: string[]; dayUsed?: boolean; recordsDown?: boolean } = {}) {
     const calls = serve((call) => {
       if (call.path === "rpc/rate_limit_hit") return !options.full?.test(call.body.p_key);
+      // The day's worth of strangers' files (lib/publicUploads.ts), and the records of upload links.
+      if (call.path === "rpc/rate_limit_spend") return !options.dayUsed;
+      if (call.path === "upload_links" && options.recordsDown) return Response.json({ message: "the database is busy" }, { status: 503 });
       if (call.path === "companies") return [{ id: "co-1", name: "Acme Lawn Care", phone: null, timezone: "America/New_York", settings: {} }];
       if (call.path === "intake_forms") return [{ id: "form-1", name: "Request a quote", kind: "request", questions: options.questions ?? [], service_area_zips: options.zips ?? [], lead_time_days: 0, slot_minutes: null }];
       // Storage: a link to upload each file, and what arrived, at the size it was stored.
@@ -590,6 +593,36 @@ describe("public submissions", () => {
     // A made-up path isn't recorded, and the link only works for this company.
     const forged = await post("/public/forms/acme/quote/files", { files_token: `${sent.files_token}x`, uploaded: [sent.uploads[0]!.path] });
     expect(forged.status).toBe(400);
+  });
+
+  it("keeps each upload link on record with the size given for its file, for the gateway to hold it to, until a little after it runs out", async () => {
+    const db = database({ questions: [plansQuestion] });
+    const before = Date.now();
+    const sent = await sendFiles([48 * MB, 2 * MB]);
+    const kept = db.calls.find((c) => c.method === "POST" && c.path === "upload_links")!.body as Array<{ path: string; company_id: string; kind: string; max_bytes: number; expires_at: string }>;
+    expect(kept.map(({ path, company_id, kind, max_bytes }) => ({ path, company_id, kind, max_bytes }))).toEqual(sent.uploads.map((u, i) => ({ path: u.path, company_id: "co-1", kind: "form", max_bytes: [48 * MB, 2 * MB][i] })));
+    // Kept until the files token runs out (3 hours), and ten minutes more.
+    const until = Date.parse(kept[0]!.expires_at) - before;
+    expect(until).toBeGreaterThan(3 * 3600_000 + 9 * 60_000);
+    expect(until).toBeLessThan(3 * 3600_000 + 11 * 60_000);
+    // Recorded before any link is made.
+    const order = db.calls.map((c) => (c.path === "upload_links" ? "record" : c.url.pathname.startsWith("/storage/v1/object/upload/sign/") ? "link" : null)).filter(Boolean);
+    expect(order).toEqual(["record", "link", "link"]);
+    // Only asks whether the business has room today: the bytes count where they arrive.
+    expect(db.calls.filter((c) => c.path === "rpc/rate_limit_spend").map((c) => [c.body.p_key, c.body.p_amount])).toEqual([["upload-bytes:company:co-1", 0]]);
+  });
+
+  it("takes the request but hands out no upload links once the business has taken its day's worth of files, or when their records can't be kept", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    for (const options of [{ dayUsed: true }, { recordsDown: true }]) {
+      const db = database({ questions: [plansQuestion], ...options });
+      const res = await post("/public/forms/acme/quote", { ...lead, files: [{ question: "plans", name: "plan.pdf", size: MB }] });
+      expect(res.status, JSON.stringify(options)).toBe(201);
+      const sent = (await res.json()) as { reference: number; uploads: unknown[] };
+      // The page says the file didn't come through and to send it another way.
+      expect(sent).toMatchObject({ reference: 1042, uploads: [null] });
+      expect(db.calls.some((c) => c.url.pathname.startsWith("/storage/v1/object/upload/sign/"))).toBe(false);
+    }
   });
 
   it("takes files only for a form's file questions, and no more than ten", async () => {
@@ -764,6 +797,27 @@ describe("drawings in the Client Hub", () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]));
     expect(calls.find((c) => c.path === "measurements")?.url.searchParams.get("company_id")).toBe("eq.co-1");
     expect(calls.some((c) => c.url.pathname === `/storage/v1/object/files/co-1/measurements/${DRAWING}.jpg`)).toBe(true);
+  });
+
+  it("counts a link's day by what it says, never by how it's spelled, and each visitor's address by the hour", async () => {
+    const keys: string[] = [];
+    const calls = serve((call) => {
+      if (call.path === "rpc/rate_limit_spend" || call.path === "rpc/rate_limit_hit") keys.push(call.body.p_key);
+      if (call.method === "GET" && call.path === "measurements") return [shown];
+      if (call.url.pathname.startsWith("/storage/v1/object/files/")) return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), { headers: { "Content-Type": "image/jpeg" } });
+      return call.path.startsWith("rpc/") ? true : [];
+    });
+    const token = (await clientLink(env, "https://ops.example.com", { c: "co-1", t: "quote", id: "quote-1", at: 1_700_000_000_000 })).split("/hub/")[1]!;
+    expect((await app.request(`/api/hub/${token}/drawings/${DRAWING}.jpg`, {}, env)).status).toBe(200);
+    expect(keys).toEqual([`hub-drawings:ip:unknown`, `link-bytes:hub-drawings:co-1:quote:quote-1:1700000000000`]);
+    // The same link with more after it isn't another link with a day of its own: it doesn't open at all.
+    keys.length = 0;
+    calls.length = 0;
+    for (const spelled of [`${token}.1`, `${token}.2`]) expect((await app.request(`/api/hub/${spelled}/drawings/${DRAWING}.jpg`, {}, env)).status).toBe(404);
+    expect(calls.some((c) => c.url.pathname.startsWith("/storage/"))).toBe(false);
+    // Past an address's hour, nothing is read.
+    serve((call) => (call.path === "rpc/rate_limit_hit" ? false : []));
+    expect((await app.request(`/api/hub/${token}/drawings/${DRAWING}.jpg`, {}, env)).status).toBe(429);
   });
 
   it("shows nothing the office didn't choose to show on that quote or invoice", async () => {

@@ -933,6 +933,22 @@ describe("contract sections without a browser", () => {
     expect(sanitizeContractHtml("<h2>Big heading</h2><div>div text</div><section>More</section>")).toBe("Big heading\ndiv text\nMore");
   });
 
+  it("leaves out what a browser doesn't show, closed or never closed", () => {
+    expect(sanitizeContractHtml("<p>Before</p><STYLE>p { color: red }</style ><p>After</p><template><p>Hidden</p></template><p>End</p>")).toBe("Before\nAfter\nEnd");
+    expect(sanitizeContractHtml("<p>Kept</p><iframe src=x></iframe><p>Also kept</p><style>never closed <p>so it runs to the end</p>")).toBe("Kept\nAlso kept");
+    // A tag that only starts like one of them isn't one.
+    expect(sanitizeContractHtml("<p>A <scripted>word</scripted></p>")).toBe("A word");
+  });
+
+  it("reads a section in time with its length, however its tags are left open", () => {
+    // Each of these took a long time per section before (every unclosed tag searched to the end).
+    for (const html of ["<style".repeat(50_000), "<script>".repeat(40_000), "<style></style ".repeat(20_000) + "<style", "<a".repeat(150_000), "&#x".repeat(100_000) + "1", "<br".repeat(100_000) + " ".repeat(100_000)]) {
+      const started = performance.now();
+      sanitizeContractHtml(html);
+      expect(performance.now() - started, html.slice(0, 12)).toBeLessThan(500);
+    }
+  });
+
   it("prints a section's body as one block of its words", () => {
     expect(contractBlocks("<p>Half to start.</p><ul><li>Cash</li><li>Check</li></ul>")).toEqual([{ kind: "text", html: "Half to start.\nCash\nCheck" }]);
     expect(contractBlocks("<p> </p>")).toEqual([]);

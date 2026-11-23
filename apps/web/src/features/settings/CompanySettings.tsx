@@ -26,6 +26,7 @@ import { JobCostSettings } from "./JobCostSettings";
 import { NextNumbers } from "./NextNumberSettings";
 import { QuoteSettings } from "./QuoteSettings";
 import { SaveBar, Suffix, SwitchRow, unsavedCount } from "./SettingsKit";
+import { loadSettings } from "@/lib/companySettings";
 
 // The clock at the property's choices of how close counts as there, in meters, said in feet too.
 const RADII = [100, 150, 200, 300, 400, 500];
@@ -43,7 +44,10 @@ export function CompanySettings() {
   const queryClient = useQueryClient();
   const details = useQuery({
     queryKey: ["company", company.id],
-    queryFn: async () => unwrap(await supabase().from("companies").select("name, slug, phone, email, website, address, timezone, currency, settings, trade_preset").eq("id", company.id).single()),
+    queryFn: async () => {
+      const [row, settings] = await Promise.all([supabase().from("companies").select("name, slug, phone, email, website, address, timezone, currency, trade_preset").eq("id", company.id).single(), loadSettings(company.id)]);
+      return { ...unwrap(row), settings };
+    },
   });
   const [f, setF] = useState<Record<string, string> | null>(null);
   // What was loaded (or last saved), to say how many changes are waiting.

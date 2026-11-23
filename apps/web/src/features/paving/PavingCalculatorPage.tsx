@@ -68,6 +68,7 @@ import { EDITABLE } from "./ProjectFlow";
 import { quoteOptionsKey } from "../quotes/options";
 import styles from "./paving.module.css";
 import { worksheetsKey } from "./WorksheetsCard";
+import { loadSettings } from "@/lib/companySettings";
 
 const UNIT_WORDS: Record<string, string> = { gal: "gal", ton: "tons", "sq yd": "sq yd", "sq ft": "sq ft", ft: "ft", day: "days", ea: "each" };
 /** The standard job types' photos (assets/paving/README.md); one a business adds shows an icon. */
@@ -178,7 +179,7 @@ function Calculator() {
   // Owner or admin: the business's setup, read fresh so a change someone made meanwhile isn't undone.
   const saveSetup = async (change: (current: CalcSetup) => CalcSetup) => {
     const [current, kept] = await Promise.all([
-      supabase().from("companies").select("settings").eq("id", company.id).single().then((r) => (unwrap(r).settings ?? {}) as Record<string, unknown>),
+      loadSettings(company.id),
       // The setup itself is kept apart from the settings crews read (company_private_settings); saving it through the company moves it there.
       supabase().from("company_private_settings").select("settings").eq("company_id", company.id).maybeSingle().then((r) => (unwrap(r)?.settings ?? {}) as Record<string, unknown>),
     ]);

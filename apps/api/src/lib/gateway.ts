@@ -12,6 +12,7 @@ import { EMAILED_SIGN_INS, signedInWithin } from "./auth";
 import { authMetadata, signsIdTokens, withoutOpenId } from "./authMetadata";
 import { authRoute, guardLink, guardSignIn, isGuessable, NO_AUTH_MAIL, readUpTo, sendsAuthMail } from "./signInGuard";
 import type { Stack } from "./stack";
+import { publicUploadsFrom, type PublicUploads } from "./publicUploads";
 import { guardStorage, routedPath, snapshotsFrom, verifiedClaims, type SnapshotSource } from "./storageLimits";
 import { adminClient } from "./supabase";
 import { connectionOf, visitorIp } from "./visitor";
@@ -21,12 +22,18 @@ type Gateway = { Bindings: HttpBindings };
 /**
  * `storage`: where the storage limits' numbers come from (the database, unless a test says
  * otherwise). `jwtSecret`: what the instance's services sign tokens with (JWT_SECRET, which stack
- * mode always has), so the limits know who's really uploading.
+ * mode always has), so the limits know who's really uploading. `uploads`: the records and daily
+ * counts that hold uploads through the links the server makes for people without an account
+ * (lib/publicUploads.ts).
  */
 export function gateway(
   env: Env,
   stack: Stack,
-  { storage = snapshotsFrom(() => adminClient(env)), jwtSecret = (env as Env & { JWT_SECRET?: string }).JWT_SECRET }: { storage?: SnapshotSource; jwtSecret?: string } = {},
+  {
+    storage = snapshotsFrom(() => adminClient(env)),
+    jwtSecret = (env as Env & { JWT_SECRET?: string }).JWT_SECRET,
+    uploads = publicUploadsFrom(env),
+  }: { storage?: SnapshotSource; jwtSecret?: string; uploads?: PublicUploads } = {},
 ) {
   const routes = new Hono<Gateway>();
   const visitor = (c: Context<Gateway>) => visitorIp(env, c.req.raw.headers, connectionOf(c.env));
@@ -84,8 +91,10 @@ export function gateway(
     const request = c.req.raw;
     const send = (r: Request) => forward(r, stack.storage, "/storage/v1", visitor(c), { "x-forwarded-prefix": "/storage/v1" }, true);
     // A signed-in person's upload over the company's storage limit, or their own, is refused before
-    // anything is stored (lib/storageLimits.ts).
-    const res = await guardAssistant(env, request, "/storage/v1", (r) => (storesFile(r) ? guardStorage(storage, jwtSecret, r, send) : send(r)));
+    // anything is stored (lib/storageLimits.ts); so is one through a link the server made for
+    // someone without an account that's bigger than it was made for, or past the day's worth.
+    const links = { uploads, visitor: visitor(c) };
+    const res = await guardAssistant(env, request, "/storage/v1", (r) => (storesFile(r) ? guardStorage(storage, jwtSecret, r, send, links) : send(r)));
     return safeFile(request, res);
   });
   return routes;

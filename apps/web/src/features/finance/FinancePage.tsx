@@ -34,6 +34,7 @@ import styles from "./Finance.module.css";
 import { byJobs, jobRates, loadProfit } from "./jobCosts";
 import { bucketize, bucketizeShifted, bucketsFor, dayWords, resolveRange, type Range } from "./range";
 import { both, datesWords, pct, plural, RangeHeader, rangeQuery, sum, TabBody, TabPanel, useRangeParams } from "./shared";
+import { loadSettings } from "@/lib/companySettings";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -489,7 +490,7 @@ function GoalDialog({ settings, onClose }: { settings: Record<string, unknown>; 
       if (g !== null && !(g >= 0 && g < 1e10)) throw new Error("Enter a revenue goal of $0 or more.");
       if (m !== null && !(m >= 0 && m < 100)) throw new Error("Target margin must be between 0 and 99%.");
       // Re-read settings so a concurrent change elsewhere isn't overwritten.
-      const current = (unwrap(await supabase().from("companies").select("settings").eq("id", company.id).single()).settings ?? {}) as Record<string, unknown>;
+      const current = await loadSettings(company.id);
       unwrap(await supabase().from("companies").update({ settings: { ...current, revenue_goal: g || null, margin_target: m } as never }).eq("id", company.id));
     },
     onSuccess: () => {

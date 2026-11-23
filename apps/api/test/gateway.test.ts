@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Env } from "../src/env";
 import { EMAIL_CHANGE_STALE, gateway, NO_S3, PASSWORD_LINK_STALE, safeFile, storesFile, unsizedUpload } from "../src/lib/gateway";
 import { NO_AUTH_MAIL, sealAuthToken } from "../src/lib/signInGuard";
+import { BIGGER_THAN_SAID, LINK_RUN_OUT, UPLOADS_PAUSED, type PublicUploads, type UploadRecord } from "../src/lib/publicUploads";
 import { forgetStorageUsage, type StorageSnapshot } from "../src/lib/storageLimits";
 import { STORAGE_PAUSED } from "../src/services/storageBucket";
 
@@ -280,6 +281,22 @@ describe("storage limits at the gateway", () => {
 
   let numbers: StorageSnapshot;
   let reads = 0;
+  /** The records of the upload links the server made (public.upload_links), by stored name. */
+  let records: Map<string, UploadRecord>;
+  /** What was counted against the day's worth of strangers' uploads, and whether there's room. */
+  let spent: Array<{ company: string; visitor: string; bytes: number }>;
+  let room = true;
+  let recordsDown = false;
+  const uploads: PublicUploads = {
+    find: async (path) => {
+      if (recordsDown) throw new Error("the database is busy");
+      return records.get(path) ?? null;
+    },
+    spend: async (company, visitor, bytes) => {
+      spent.push({ company, visitor, bytes });
+      return room;
+    },
+  };
   const limited = (jwtSecret = SECRET) =>
     gateway(env, { auth: base, rest: base, storage: base }, {
       jwtSecret,
@@ -288,13 +305,23 @@ describe("storage limits at the gateway", () => {
         // The database has what the stand-in kept.
         return { ...numbers, companyUsed: numbers.companyUsed + storedBytes };
       },
+      uploads,
     });
+  /** A link the server made for `name`, on record for a file of `bytes`. */
+  const made = (name: string, bytes = 4096, expiresAt = Date.now() + 3_600_000) => {
+    records.set(name, { company: CO, maxBytes: bytes, expiresAt });
+    return link(name);
+  };
   beforeEach(() => {
     forgetStorageUsage();
     reads = 0;
     storedBytes = 0;
     reached.length = 0;
     numbers = { companyUsed: 45e9, companyLimit: 45e9, userUsed: 0, userLimit: null, owner: false, member: true };
+    records = new Map();
+    spent = [];
+    room = true;
+    recordsDown = false;
   });
 
   /** A resumable upload being made (tus-js-client's first request): its size and where it goes, no file yet. */
@@ -364,14 +391,77 @@ describe("storage limits at the gateway", () => {
     expect(reads).toBe(0);
   });
 
-  it("never checks the server, a booking form or an upload link the server made", async () => {
+  it("never holds the server, or an upload link the server made, to the storage limits", async () => {
     expect((await upload(`/storage/v1/object/files/${CO}/plans/a.pdf`, 4096, service)).status).toBe(200);
-    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${link(`${CO}/plans/b.pdf`)}`, 4096, anon, "PUT")).status).toBe(200);
-    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/subs/s1/c.pdf?token=${link(`${CO}/subs/s1/c.pdf`)}`, 4096, null, "PUT")).status).toBe(200);
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${made(`${CO}/plans/b.pdf`)}`, 4096, anon, "PUT")).status).toBe(200);
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/subs/s1/c.pdf?token=${made(`${CO}/subs/s1/c.pdf`)}`, 4096, null, "PUT")).status).toBe(200);
     // Storage goes by the link there, not by who's signed in.
-    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/e.pdf?token=${link(`${CO}/plans/e.pdf`)}`, 4096, ana, "PUT")).status).toBe(200);
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/e.pdf?token=${made(`${CO}/plans/e.pdf`)}`, 4096, ana, "PUT")).status).toBe(200);
     expect((await create(`${CO}/plans/d.pdf`, 4096, { Authorization: `Bearer ${service}` })).status).toBe(200);
     expect(reads).toBe(0);
+  });
+
+  it("holds an upload through a link the server made to the size its visitor gave, and counts it against the day", async () => {
+    const token = made(`${CO}/plans/b.pdf`, 4096);
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${token}`, 4096, null, "PUT")).status).toBe(200);
+    expect(spent).toEqual([{ company: CO, visitor: "127.0.0.1", bytes: 4096 }]);
+    // A form's envelope is a little more than its file.
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${token}`, 4096 + 1000, null, "PUT")).status).toBe(200);
+    // Far more than its visitor said: refused before Storage sees a byte, and not counted.
+    reached.length = 0;
+    spent = [];
+    const big = await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${token}`, 100_000, null, "PUT");
+    expect(big.status).toBe(413);
+    expect((await big.json()).message).toBe(BIGGER_THAN_SAID);
+    expect(reached).toEqual([]);
+    expect(spent).toEqual([]);
+  });
+
+  it("wants the size of an upload through a link the server made, however it's sent", async () => {
+    const token = made(`${CO}/plans/b.pdf`);
+    const form = new FormData();
+    form.append("", new Blob([new Uint8Array(2048)], { type: "application/pdf" }), "plan.pdf");
+    const body = new Request("http://x", { method: "PUT", body: form });
+    const res = await limited().request(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${token}`, {
+      method: "PUT",
+      headers: { "Content-Type": body.headers.get("content-type")! },
+      body: body.body,
+      duplex: "half",
+    } as RequestInit, from);
+    expect(res.status).toBe(411);
+    const resumable = await create(`${CO}/plans/b.pdf`, 4096, { Authorization: "", "x-signature": token, "Upload-Length": "", "Upload-Defer-Length": "1" }, "/storage/v1/upload/resumable/sign");
+    expect(resumable.status).toBe(411);
+    expect(reached).toEqual([]);
+  });
+
+  it("takes nothing through a link the server made that isn't on record, or has run out", async () => {
+    const unknown = await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/x.pdf?token=${link(`${CO}/plans/x.pdf`)}`, 4096, null, "PUT");
+    expect(unknown.status).toBe(403);
+    expect((await unknown.json()).message).toBe(LINK_RUN_OUT);
+    const old = made(`${CO}/plans/y.pdf`, 4096, Date.now() - 1000);
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/y.pdf?token=${old}`, 4096, null, "PUT")).status).toBe(403);
+    expect(reached).toEqual([]);
+  });
+
+  it("holds a resumable upload through a link the server made to its size too", async () => {
+    const token = made(`${CO}/plans/r.pdf`, 4096);
+    expect((await create(`${CO}/plans/r.pdf`, 4097, { Authorization: "", "x-signature": token }, "/storage/v1/upload/resumable/sign")).status).toBe(413);
+    expect((await create(`${CO}/plans/r.pdf`, 4096, { Authorization: "", "x-signature": token }, "/storage/v1/upload/resumable/sign")).status).toBe(200);
+    expect(spent).toEqual([{ company: CO, visitor: "127.0.0.1", bytes: 4096 }]);
+  });
+
+  it("turns uploads through links the server made away once the day's worth has come in", async () => {
+    room = false;
+    const res = await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${made(`${CO}/plans/b.pdf`)}`, 4096, null, "PUT");
+    expect(res.status).toBe(429);
+    expect((await res.json()).message).toBe(UPLOADS_PAUSED);
+    expect(reached).toEqual([]);
+  });
+
+  it("lets an upload through a link the server made go ahead when its record can't be read", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    recordsDown = true;
+    expect((await upload(`/storage/v1/object/upload/sign/files/${CO}/plans/b.pdf?token=${link(`${CO}/plans/b.pdf`)}`, 4096, null, "PUT")).status).toBe(200);
   });
 
   it("checks an upload link a team member made, whoever uses it", async () => {

@@ -61,7 +61,7 @@ import { adminClient } from "../lib/supabase";
 import { noteTextConsent } from "../services/textsOff";
 import { clientIp } from "../lib/visitor";
 import { bookingVisit } from "../services/analytics";
-import { checkFiles, emailApplication, removeFiles, storeFiles } from "../services/careers";
+import { checkFiles, emailApplication, FILES_PAUSED, removeFiles, roomForFiles, storeFiles } from "../services/careers";
 import { checkMessage, checkRefusal, checkScript, loadTurnstile, newCheckToken, saveTurnstile } from "../services/formBotCheck";
 import { logoImage } from "../services/logo";
 import { emailMessage, formPage, newFormKey, type FormCompany } from "../services/websiteForms";
@@ -307,6 +307,8 @@ async function takeApplication(c: Ctx, json: boolean, form: FoundForm, sent: Arr
   const checked = await botCheck(c, json, form, sent);
   if (checked.refused) return checked.refused;
   if (!(await companyUnderLimit(c, company.id))) return refuse(c, json, 429, TOO_MANY.careers, company, "careers");
+  // Their files are kept, so they count against the business's day of strangers' files.
+  if (!(await roomForFiles(c.env, company.id, clientIp(c), files))) return refuse(c, json, 429, FILES_PAUSED, company, "careers");
 
   const admin = adminClient(c.env);
   const visit = await bookingVisit(c, company.id);
@@ -401,7 +403,7 @@ websiteForms.get("/website-forms", requireUser, requireCompany(ADMINS, "apps"), 
   const { db, companyId } = c.var;
   const kind = kindOf(c.req.query("kind"));
   const [company, forms, codes, turnstile] = await Promise.all([
-    db.from("companies").select("settings").eq("id", companyId).maybeSingle(),
+    adminClient(c.env).from("companies").select("settings").eq("id", companyId).maybeSingle(),
     db.from("website_forms").select(FORM_COLUMNS).eq("company_id", companyId).eq("kind", kind).order("created_at"),
     // A contact form to paste has a promo code box only for a business with codes.
     kind === "contact" ? db.from("promo_codes").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("active", true) : null,

@@ -12,6 +12,7 @@ import { dbError, HttpError, isoDate, must, uuid } from "../lib/http";
 import { adminClient, type Db } from "../lib/supabase";
 import { materializeJob, recurringJob } from "../tasks";
 import { arrivalTime, fitQuietly } from "./routes";
+import { settingsAs } from "../lib/companySettings";
 
 /** Who's asking, as requireCompany works it out. */
 export interface Scope {
@@ -23,9 +24,15 @@ export interface Scope {
   userId?: string;
 }
 
+/** The company's time zone. */
+export async function companyTimeZone(s: Scope): Promise<string> {
+  return must(await s.db.from("companies").select("timezone").eq("id", s.companyId).maybeSingle()).timezone;
+}
+
+/** The company's time zone, and its settings as the person reads them (settingsAs: the working days, the schedule's own settings and the time clock's are a crew's too). */
 export async function companyZone(s: Scope): Promise<{ tz: string; settings: Record<string, any> }> {
-  const company = must(await s.db.from("companies").select("timezone, settings").eq("id", s.companyId).maybeSingle());
-  return { tz: company.timezone, settings: (company.settings ?? {}) as Record<string, any> };
+  const [tz, settings] = await Promise.all([companyTimeZone(s), settingsAs(s.db, s.companyId)]);
+  return { tz, settings };
 }
 
 export const VISIT_FIELDS =
@@ -186,12 +193,15 @@ export function tapTime(status: string | undefined, completedAt: string | undefi
 /** The steps a crew takes a visit through, in order. */
 const CREW_STEPS: Record<string, number> = { unscheduled: 0, scheduled: 0, en_route: 1, in_progress: 2, completed: 3 };
 
-/** What a sub changes on their own visit (the database holds them to it: private.visit_sub_guard). */
+/**
+ * What a sub or field crew change on their own visit (the database holds them to it:
+ * private.visit_sub_guard and private.visit_field_crew_guard).
+ */
 const SUB_FIELDS = ["status", "notes", "forward_only", "completed_at", "from"];
 const SUB_STATUSES = ["scheduled", "en_route", "in_progress", "completed"];
 
 export async function updateVisit(s: Scope, id: string, body: z.infer<typeof visitChangeInput>) {
-  if (s.role === "subcontractor") {
+  if (s.role === "subcontractor" || s.role === "field_crew") {
     if (Object.keys(body).some((k) => !SUB_FIELDS.includes(k))) throw new HttpError(403, "You can change a visit's status and notes. Ask the office about anything else.");
     if (body.status && !SUB_STATUSES.includes(body.status)) throw new HttpError(403, "Ask the office to cancel or move this visit.");
   }
@@ -340,7 +350,7 @@ export async function shiftDay(s: Scope, body: { from_date: string; to_date: str
   if (!DISPATCH.includes(s.role)) throw new HttpError(403, "Your role can't move visits.");
   // Without "Schedule the whole team", a crew lead shifts their own crew (the database checks it's theirs).
   if (!s.permissions.includes("schedule") && !body.crew_id) throw new HttpError(400, "Pick your crew to move its visits.");
-  const { tz } = await companyZone(s);
+  const tz = await companyTimeZone(s);
   let query = s.db
     .from("visits")
     .select("id, starts_at, ends_at")

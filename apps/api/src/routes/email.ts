@@ -85,7 +85,7 @@ email.put("/email", ...requireEmailAdmin, async (c) => {
   const who = await confirmPassword(c, body.current_password, "mailbox", 10);
   const preset = mailPreset(body.preset)!;
   const saved = await loadMailbox(c.env, c.var.companyId).catch(() => null);
-  const company = must(await c.var.db.from("companies").select("name, email, settings").eq("id", c.var.companyId).maybeSingle());
+  const company = must(await adminClient(c.env).from("companies").select("name, email, settings").eq("id", c.var.companyId).maybeSingle());
   const me = must(await c.var.db.from("profiles").select("email").eq("user_id", c.var.userId).maybeSingle());
 
   let settings: MailboxSettings;
@@ -157,7 +157,7 @@ email.put("/email", ...requireEmailAdmin, async (c) => {
 email.post("/email/test", ...requireEmailAdmin, async (c) => {
   const body = await readJson(c, z.object({ to: z.email().optional() }));
   const me = must(await c.var.db.from("profiles").select("email").eq("user_id", c.var.userId).maybeSingle());
-  const company = must(await c.var.db.from("companies").select("name, email, settings").eq("id", c.var.companyId).maybeSingle());
+  const company = must(await adminClient(c.env).from("companies").select("name, email, settings").eq("id", c.var.companyId).maybeSingle());
   const to = body.to ?? me.email;
   if (!to) throw new HttpError(400, "Add an address to send the test to.");
   forgetMailbox(c.var.companyId);

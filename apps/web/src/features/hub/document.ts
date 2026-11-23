@@ -30,6 +30,12 @@ import {
 } from "../documents/build";
 import type { DocumentCompany, DocumentData } from "../documents/types";
 
+/**
+ * A Client Hub link's token as the server made it: its two parts. A text or chat app that took the
+ * full stop or bracket after a link into it still opens the page, since the server reads nothing more.
+ */
+export const hubToken = (raw: string) => /^[\w-]+\.[\w-]+/.exec(raw)?.[0] ?? raw;
+
 export interface HubLine {
   id?: string;
   /** The option it's on; null for a line on every option (and on a quote without options). */

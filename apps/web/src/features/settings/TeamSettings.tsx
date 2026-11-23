@@ -19,7 +19,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
 import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
-import { timeAgo } from "@/lib/format";
+import { formatMoneyCents, timeAgo } from "@/lib/format";
 import { useListAnimation } from "@/lib/motion";
 import { can, useSession } from "@/lib/session";
 import { RatesCard } from "../subs/RatesCard";
@@ -54,6 +54,8 @@ export function TeamSettings() {
   const [resending, setResending] = useState<Member | null>(null);
   // A role change that gives admin access, waiting on the changer's password.
   const [granting, setGranting] = useState<{ member: Member; choice: string } | null>(null);
+  // Admin access given back, waiting on the restorer's password.
+  const [restoring, setRestoring] = useState<Member | null>(null);
   const [photoFor, setPhotoFor] = useState<string | null>(null);
   const [ratesFor, setRatesFor] = useState<Member | null>(null);
   const [storageFor, setStorageFor] = useState<{ member: Member; usage: StoragePerson | undefined } | null>(null);
@@ -72,11 +74,18 @@ export function TeamSettings() {
   };
   const update = useMutation({
     // Access and roles change things elsewhere, so they're announced.
-    meta: { success: (_: unknown, v: { patch: { active: boolean } }) => (v.patch.active ? "Access restored" : "Access removed") },
-    mutationFn: async ({ userId, patch }: { userId: string; patch: { active: boolean } }) =>
+    meta: { success: "Access removed" },
+    mutationFn: async ({ userId, patch }: { userId: string; patch: { active: false } }) =>
       unwrap(await supabase().from("memberships").update(patch).eq("company_id", session.company.id).eq("user_id", userId)),
     onSettled: refreshTeam,
   });
+  // Access goes back through the API, which asks for the restorer's password when it's admin access.
+  const restore = useMutation({
+    meta: { success: "Access restored", inline: Boolean(restoring) },
+    mutationFn: ({ userId, password }: { userId: string; password?: string }) => api.post(`/team/${userId}/restore`, { current_password: password || undefined }),
+    onSettled: refreshTeam,
+  });
+  const restoreAccess = (member: Member) => (givesAdmin(choiceFor(member), roles.data) ? setRestoring(member) : restore.mutate({ userId: member.user_id }));
   // Roles go through the API, which asks for the changer's password when one gives admin access.
   const access = useMutation({
     meta: { success: "Role changed", inline: Boolean(granting) },
@@ -116,13 +125,15 @@ export function TeamSettings() {
     const rates = rateCounts.data?.[m.user_id];
     const resets = !sentAt && m.active && !me && can(session, "team") && canMakeResetLink(session.role, m.role);
     const limits = isOwner && Boolean(storage.data) && m.active && limitable(m);
+    const ownPay = me && !isOwner;
     const more: MenuEntry[] = [
       { label: m.profile?.avatar_url ? "Change photo" : "Add a photo", icon: "camera", hidden: !canSetPhoto(m), onSelect: () => setPhotoFor(m.user_id) },
       { label: "Resend invite", icon: "send", hidden: !sentAt || locked, onSelect: () => setResending(m) },
       { label: "Reset password", icon: "lock", hidden: !resets, onSelect: () => setResetting(m) },
-      { label: "Piece rates", icon: "dollar", end: rates ? String(rates) : undefined, hidden: !pieceRates, onSelect: () => setRatesFor(m) },
+      // Your own pay is an owner's to set, unless you're an owner.
+      { label: "Piece rates", icon: "dollar", end: rates ? String(rates) : undefined, hidden: !pieceRates || ownPay, onSelect: () => setRatesFor(m) },
       { label: "Storage limit", icon: "hardDrive", end: usage?.limit_bytes ? formatBytes(usage.limit_bytes) : undefined, hidden: !limits, onSelect: () => setStorageFor({ member: m, usage }) },
-      { label: "Restore access", icon: "undo", hidden: locked || m.active, onSelect: () => update.mutate({ userId: m.user_id, patch: { active: true } }) },
+      { label: "Restore access", icon: "undo", hidden: locked || m.active, onSelect: () => restoreAccess(m) },
       { separator: true },
       {
         label: "Remove access",
@@ -172,7 +183,11 @@ export function TeamSettings() {
           {/* Someone who isn't given pay rates has none to show here, and $0 would be a lie. */}
           {!paySeen ? <span className="muted small" title="Pay rates are for people who manage the team or have Job costs and profit.">Hidden</span> : m.active && (
             <>
-              <MoneyInput value={Number(m.labor_rate ?? 0)} max={1000} width={92} label={`Labor cost for ${name}`} onSave={(v) => void saving.track(rate.mutateAsync({ userId: m.user_id, labor_rate: v || null }))} />
+              {ownPay ? (
+                <span className="tabular" title="Ask an owner to change your own pay.">{m.labor_rate === null ? "—" : formatMoneyCents(Number(m.labor_rate))}</span>
+              ) : (
+                <MoneyInput value={Number(m.labor_rate ?? 0)} max={1000} width={92} label={`Labor cost for ${name}`} onSave={(v) => void saving.track(rate.mutateAsync({ userId: m.user_id, labor_rate: v || null }))} />
+              )}
               <span className={styles.per} aria-hidden="true">/ hr</span>
             </>
           )}
@@ -219,6 +234,19 @@ export function TeamSettings() {
           onClose={() => {
             setGranting(null);
             access.reset();
+          }}
+        />
+      )}
+      {restoring && (
+        <RestoreWithPassword
+          name={restoring.profile?.full_name || restoring.profile?.email || "this person"}
+          roleLabel={roleName(restoring, roles.data)}
+          busy={restore.isPending}
+          error={restore.error}
+          onRestore={(password) => restore.mutate({ userId: restoring.user_id, password }, { onSuccess: () => setRestoring(null) })}
+          onClose={() => {
+            setRestoring(null);
+            restore.reset();
           }}
         />
       )}
@@ -279,6 +307,32 @@ function GrantWithPassword({ name, roleLabel, busy, error, onGrant, onClose }: {
         <div className="form-actions">
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" loading={busy}>Change role</Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Admin access given back, with the restorer's password; it's cleared once sent, and a wrong one says so here. */
+function RestoreWithPassword({ name, roleLabel, busy, error, onRestore, onClose }: { name: string; roleLabel: string; busy: boolean; error: unknown; onRestore: (password: string) => void; onClose: () => void }) {
+  const [password, setPassword] = useState("");
+  const first = name.split(/\s+/)[0];
+  return (
+    <Dialog open onClose={onClose} title={`Restore ${first}'s access?`} size="sm">
+      <form
+        className="stack-sm"
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault();
+          onRestore(password);
+          setPassword("");
+        }}
+      >
+        <div className="muted" style={{ marginTop: -6 }}>{first} comes back as {roleLabel}, with admin access, including payments, email and who's on the team.</div>
+        <YourPassword value={password} onChange={setPassword} autoFocus />
+        <FormError error={error} />
+        <div className="form-actions">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={busy}>Restore access</Button>
         </div>
       </form>
     </Dialog>

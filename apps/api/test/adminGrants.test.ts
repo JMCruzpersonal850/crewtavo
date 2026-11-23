@@ -258,3 +258,51 @@ describe("links into an admin's account", () => {
     expect(wrote(s)).toEqual(["link recovery", "link recovery"]);
   });
 });
+
+describe("access given back", () => {
+  it("to someone with admin access asks for the password first, as giving it does, and tells the owners", async () => {
+    const s = supabase();
+    s.members[ADA]!.active = false;
+    const missing = await send("POST", `/team/${ADA}/restore`);
+    expect(missing.status).toBe(400);
+    expect(await errorOf(missing)).toBe(ADMIN_PASSWORD);
+    expect(await errorOf(await send("POST", `/team/${ADA}/restore`, { current_password: "guess" }))).toBe(WRONG_PASSWORD);
+    expect(s.log).toEqual([]);
+
+    const res = await send("POST", `/team/${ADA}/restore`, { current_password: "right" });
+    expect(res.status).toBe(200);
+    expect(s.log).toEqual([
+      { what: "grant", body: { p_user: PAT, p_company: CO, p_target: ADA } },
+      { what: "memberships PATCH", body: { active: true } },
+    ]);
+    await vi.waitFor(() => expect(s.tables.activity).toHaveLength(1));
+    expect(s.tables.activity[0]).toMatchObject({ verb: "team.admin_access", summary: "Pat Owner gave Ada Admin their access back, as Admin" });
+  });
+
+  it("goes by their role as it is now", async () => {
+    const s = supabase();
+    s.members[SAM]!.active = false;
+    s.members[SAM]!.role_id = GM;
+    expect(await errorOf(await send("POST", `/team/${SAM}/restore`))).toBe(ADMIN_PASSWORD);
+    expect(s.log).toEqual([]);
+  });
+
+  it("to anyone else needs no password, and someone with access already is left as they are", async () => {
+    const s = supabase();
+    s.members[SAM]!.active = false;
+    expect((await send("POST", `/team/${SAM}/restore`)).status).toBe(200);
+    expect(s.log).toEqual([{ what: "memberships PATCH", body: { active: true } }]);
+    expect((await send("POST", `/team/${ADA}/restore`)).status).toBe(200);
+    expect(s.log).toHaveLength(1);
+    expect(s.passwordChecks).toBe(0);
+  });
+
+  it("keeps the rules for who acts for an owner", async () => {
+    const s = supabase();
+    s.members[PAT]!.role = "admin";
+    s.members[SAM]!.role = "owner";
+    s.members[SAM]!.active = false;
+    expect(await errorOf(await send("POST", `/team/${SAM}/restore`, { current_password: "right" }))).toBe("Only an owner can do that for another owner.");
+    expect(s.log).toEqual([]);
+  });
+});

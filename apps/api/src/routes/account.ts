@@ -1,5 +1,5 @@
 /** Public config, the signed-in user, onboarding (company + trade preset), the license and team invites. */
-import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetCustomFields, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
+import { ADMINS, adminLevel, currencyOffered, emailKey, getPreset, isPlaceholderEmail, isSubLogin, isTimeZoneName, memberPermissions, OFFICE, PERMISSIONS, presetCustomFields, presetSummaries, presetWeatherRules, ROLE_LABELS, seesPayRates, ROLES, settingsFor, signInPhone, STAFF, subSettings, TERMS_VERSION, WITH_SUBS, type Permission, type Role, type TradePreset } from "@crewtavo/core";
 import { LOCALES } from "@crewtavo/core/i18n";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -96,7 +96,7 @@ account.get("/me", requireUser, async (c) => {
     db.from("profiles").select("user_id, email, full_name, phone, avatar_url, color, locale").eq("user_id", userId).maybeSingle(),
     db
       .from("memberships")
-      .select("company_id, role, role_id, subcontractor_id, company:companies(id, name, slug, trade_preset, timezone, currency, address, phone, settings)")
+      .select("company_id, role, role_id, subcontractor_id, company:companies(id, name, slug, trade_preset, timezone, currency, address, phone)")
       .eq("user_id", userId)
       .eq("active", true),
     adminClient(c.env).from("memberships").select("company_id, role").eq("user_id", userId),
@@ -105,6 +105,12 @@ account.get("/me", requireUser, async (c) => {
   ]);
   const keptFor = new Map(must(kept).map((k) => [k.company_id, k.settings]));
   const rows = must(memberships);
+  // The browser doesn't read companies.settings: each person gets what their level reads of it
+  // (settingsFor, as public.company_settings() decides in the database). A sub's is in company_basics().
+  const teamRows = rows.filter((m) => m.role !== "subcontractor");
+  const savedSettings = new Map<string, unknown>(
+    teamRows.length ? must(await adminClient(c.env).from("companies").select("id, settings").in("id", teamRows.map((m) => m.company_id))).map((r) => [r.id, r.settings] as const) : [],
+  );
   const roleIds = rows.map((m) => m.role_id).filter((id): id is string => Boolean(id));
   const roles = roleIds.length ? must(await db.from("company_roles").select("id, name, permissions").in("id", roleIds)) : [];
   const byId = new Map(roles.map((r) => [r.id, r]));
@@ -148,7 +154,7 @@ account.get("/me", requireUser, async (c) => {
     memberships: rows.flatMap((m) => {
       const custom = m.role_id ? byId.get(m.role_id) : undefined;
       const sub = m.role === "subcontractor" ? subRecords.find((x) => x.id === m.subcontractor_id) : undefined;
-      const company = m.role === "subcontractor" ? basicsOf.get(m.company_id) : m.company;
+      const company = m.role === "subcontractor" ? basicsOf.get(m.company_id) : m.company && { ...m.company, settings: settingsFor(m.role, savedSettings.get(m.company_id)) };
       // A sub's sign-in whose sub the office turned off reaches nothing, so it isn't offered.
       if (!company || (m.role === "subcontractor" && !sub)) return [];
       const staff = m.role !== "subcontractor";
@@ -177,7 +183,7 @@ account.get("/me", requireUser, async (c) => {
         // Only the owner is asked to connect Railway at sign-in.
         railway_needed:
           m.role === "owner" &&
-          railwayNeeded(c.env, railways.find((r) => r.company_id === m.company_id) ?? null, (m.company as { settings?: unknown } | null)?.settings ?? null),
+          railwayNeeded(c.env, railways.find((r) => r.company_id === m.company_id) ?? null, savedSettings.get(m.company_id) ?? null),
       }];
     }),
   });
@@ -308,7 +314,7 @@ account.post("/companies", requireUser, async (c) => {
     const set = await db.from("companies").update({ currency }).eq("id", companyId as string);
     if (set.error) console.error("Couldn't set the currency", set.error.message);
   }
-  await applyPreset(db, companyId as string, preset);
+  await applyPreset(db, adminClient(c.env), companyId as string, preset);
   // Where texting is connected (a business this new has no Twilio account of its own yet, so the
   // server's), the starters that tell clients about their visits text as well as email, and the
   // on-my-way text starts on. If this fails they're as every company's start, and can be changed
@@ -360,10 +366,13 @@ const tradeApp = (trade: string) => {
   return app ? { [app]: { enabled: true } } : {};
 };
 
-/** Load a trade preset into a new company. Runs as the new owner, so RLS still applies. */
-async function applyPreset(db: Db, companyId: string, preset: TradePreset) {
+/**
+ * Load a trade preset into a new company. Runs as the new owner, so RLS still applies; the settings
+ * it adds to are read with `admin` (the browser's role doesn't read companies.settings).
+ */
+async function applyPreset(db: Db, admin: Db, companyId: string, preset: TradePreset) {
   const formulas = new Map(preset.formulas.map((f) => [f.name, f]));
-  const { data: company, error } = await db.from("companies").select("settings").eq("id", companyId).maybeSingle();
+  const { data: company, error } = await admin.from("companies").select("settings").eq("id", companyId).maybeSingle();
   if (error) throw dbError(error);
   const current = (company?.settings ?? {}) as Record<string, unknown>;
   // The price list's ids, made here so the weather rules can name their items by id in the same go.
@@ -573,6 +582,33 @@ account.patch("/team/:userId/access", requireUser, requireCompany(ADMINS, "team"
   if (error) throw dbError(error);
   if (!data.length) throw new HttpError(404, "That person isn't on your team.");
   if (who) noteAdminGrant(c, who, `made ${await personName(c, targetId)} ${custom?.name ?? ROLE_LABELS[level]}`);
+  return c.json({ ok: true });
+});
+
+/**
+ * Someone's access given back (Settings → People → Restore). Through here rather than straight to
+ * the database, which refuses admin-level access given back from the browser (the
+ * admin_access_back_and_own_pay migration): giving it back asks for the password, as giving it does.
+ * Written with the person's own client, so the database's other rules hold (only an owner acts for
+ * an owner, nobody gives back areas their own role doesn't have).
+ */
+account.post("/team/:userId/restore", requireUser, requireCompany(ADMINS, "team"), async (c) => {
+  const parsed = uuid.safeParse(c.req.param("userId"));
+  if (!parsed.success) throw new HttpError(404, "That person isn't on your team.");
+  const targetId = parsed.data;
+  const { db, companyId, userId, role } = c.var;
+  const password = await passwordIn(c);
+  const member = must(await db.from("memberships").select("role, role_id, active").eq("company_id", companyId).eq("user_id", targetId).maybeSingle(), "That person isn't on your team.");
+  if (member.role === "subcontractor") throw new HttpError(400, "A sub's sign-in is given and taken away on their page, under Subs.");
+  if (member.role === "owner" && role !== "owner") throw new HttpError(403, "Only an owner can do that for another owner.");
+  if (member.active) return c.json({ ok: true });
+  // Admin-level access (as the database counts it: their role as it is now) asks for the password.
+  const who = (await adminAccess(db, companyId, member.role, member.role_id)) ? await confirmAdminGrant(c, password) : null;
+  if (who) await allowAdminGrant(c.env, companyId, userId, targetId);
+  const { data, error } = await db.from("memberships").update({ active: true }).eq("company_id", companyId).eq("user_id", targetId).select("user_id");
+  if (error) throw dbError(error);
+  if (!data.length) throw new HttpError(404, "That person isn't on your team.");
+  if (who) noteAdminGrant(c, who, `gave ${await personName(c, targetId)} their access back, as ${await accessName(c, member.role as Role, member.role_id)}`);
   return c.json({ ok: true });
 });
 

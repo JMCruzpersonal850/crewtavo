@@ -92,7 +92,7 @@ select settings as before from public.companies where id = :'co' \gset
 begin;
 set local role authenticated;
 select tsrm.as_user(:'bea');
-update public.companies set name = 'Uniform Paving LLC', settings = settings
+update public.companies set name = 'Uniform Paving LLC', settings = public.company_settings(id)
   || '{"drive": {"enabled": false}, "team_chat": {"enabled": true}, "careers": {"enabled": true}, "paving_app": {"enabled": false}, "roofing_app": {"enabled": true},
        "website_forms": {"enabled": true}, "website_analytics": {"enabled": true, "site": "evil.test"}, "weather_rules": [], "subs": {"remind_subs": true},
        "maps": {"default": "esri"}, "revenue_goal": 500000}'
@@ -122,7 +122,7 @@ select tsrm.check((select settings #>> '{team_chat,enabled}' = 'true' from publi
 begin;
 set local role authenticated;
 select tsrm.as_user(:'ada');
-update public.companies set settings = settings || '{"weather_rules": [{"max_rain_pct": 40}], "careers": {"enabled": true}}' where id = :'co';
+update public.companies set settings = public.company_settings(id) || '{"weather_rules": [{"max_rain_pct": 40}], "careers": {"enabled": true}}' where id = :'co';
 commit;
 select tsrm.check((select settings #>> '{weather_rules,0,max_rain_pct}' = '40' and settings #>> '{careers,enabled}' = 'true' from public.companies where id = :'co'),
   'an admin with the areas changes them by saving the company, as before');

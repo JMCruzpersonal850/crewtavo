@@ -10,6 +10,7 @@ import type { Env } from "../env";
 import { renderEmail } from "../lib/email";
 import { HttpError } from "../lib/http";
 import { sendEmail } from "../lib/notify";
+import { spendUploadBytes } from "../lib/publicUploads";
 import type { Db } from "../lib/supabase";
 import { logoImage } from "./logo";
 import type { FormCompany } from "./websiteForms";
@@ -46,6 +47,19 @@ export function checkFiles(entries: Array<[string, unknown]>): CheckedFile[] {
     if (file.size > MAX_FILE_BYTES) throw new HttpError(413, `${file.name || "That file"} is too large. Each file can be up to ${MAX_FILE_BYTES / (1024 * 1024)} MB.`);
     return { field: field.trim().slice(0, 100), file, name: fileName(file.name, kind.ext), ext: kind.ext, type: kind.type };
   });
+}
+
+/** What an application hears when the business has taken its day's worth of strangers' files. */
+export const FILES_PAUSED = "This form has taken in a lot of files today, so it can't take more until tomorrow. Try again tomorrow, or email your application.";
+
+/**
+ * Whether the business can take these files today: they're counted against the visitor's and the
+ * business's day of strangers' uploads (lib/publicUploads.ts) before any is stored, since what an
+ * application sends is kept. An application without files always can.
+ */
+export async function roomForFiles(env: Env, companyId: string, visitor: string, files: CheckedFile[]): Promise<boolean> {
+  const bytes = files.reduce((sum, f) => sum + f.file.size, 0);
+  return bytes === 0 || spendUploadBytes(env, companyId, visitor, bytes);
 }
 
 /** Store an application's files under its applicant. Stored ones are removed again if one fails. */

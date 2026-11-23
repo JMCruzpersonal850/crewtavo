@@ -15,6 +15,7 @@ import { isPriced, manualApproval, OPTION_FIELDS, type ManualApproval, type Opti
 import { convertQuote, keepDepositInCap, quoteFromRequest, sendQuote, sendSchema } from "../services/sales";
 import { customFieldsArg, customFieldsPatch } from "./customFields";
 import { changed, companyArg, friendly, one, requireRole, rows, tool, type ToolContext } from "./tool";
+import { settingsAs } from "../lib/companySettings";
 
 const quoteLine = z.object({
   service_id: z.uuid().optional().describe("A price list item (list_services): its name, unit, price and tax come with it."),
@@ -179,8 +180,7 @@ export const quoteTools = {
         if (a.title || a.message || fields.custom_fields) await ctx.db.from("quotes").update({ ...(a.title && { title: a.title }), ...(a.message && { message: a.message }), ...fields }).eq("id", quote.id);
       } else {
         if (!a.client_id || !a.title) throw new Error("Give a request_id, or a client_id and a title.");
-        const company = await one(ctx.db.from("companies").select("settings").eq("id", ctx.companyId).maybeSingle(), "The company");
-        const settings = (company.settings ?? {}) as { default_tax_rate?: number; quote_valid_days?: number };
+        const settings = (await settingsAs(ctx.db, ctx.companyId)) as { default_tax_rate?: number; quote_valid_days?: number };
         quote = await one(
           ctx.db
             .from("quotes")

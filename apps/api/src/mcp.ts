@@ -190,8 +190,8 @@ mcp.post("/mcp", async (c) => {
 async function toolContext(env: Env, db: Db, userId: string, origin: string, access: AssistantAccess | null, companyId?: string): Promise<ToolContext> {
   // Many-to-one embeds come back as a single object at runtime.
   const all = (await rows(
-    db.from("memberships").select("company_id, role, role_id, company:companies(timezone, settings)").eq("user_id", userId).eq("active", true),
-  )) as unknown as Array<{ company_id: string; role: string; role_id: string | null; company: { timezone: string; settings: { assistants?: { enabled?: boolean; read_only?: boolean } } | null } | null }>;
+    db.from("memberships").select("company_id, role, role_id, company:companies(timezone)").eq("user_id", userId).eq("active", true),
+  )) as unknown as Array<{ company_id: string; role: string; role_id: string | null; company: { timezone: string } | null }>;
   // A sub's sign-in is never an assistant's to use (the database gives an assistant none of it too).
   const memberships = all.filter((m) => isStaff(m.role));
   if (!memberships.length) throw new Error(all.length ? NO_ASSISTANTS_FOR_SUBS : "You aren't a member of any company in Crewtavo yet.");
@@ -199,7 +199,10 @@ async function toolContext(env: Env, db: Db, userId: string, origin: string, acc
   if (!chosen || !isStaff(chosen.role)) throw new Error(companyId && all.some((m) => m.company_id === companyId) ? NO_ASSISTANTS_FOR_SUBS : "You aren't a member of that company.");
   // The areas their role gives them, as requireCompany works them out (lib/auth.ts).
   const custom = chosen.role_id ? ((await rows(db.from("company_roles").select("permissions").eq("id", chosen.role_id)))[0]?.permissions ?? []) : null;
-  const settings = chosen.company?.settings?.assistants ?? {};
+  // How the company has assistants set up, read with the server's key (the browser's role doesn't read companies.settings).
+  const company = await adminClient(env).from("companies").select("settings").eq("id", chosen.company_id).maybeSingle();
+  if (company.error) throw new Error(company.error.message);
+  const settings = ((company.data?.settings as { assistants?: { enabled?: boolean; read_only?: boolean } } | null)?.assistants ?? {});
   return {
     db,
     env,
