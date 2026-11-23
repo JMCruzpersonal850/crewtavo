@@ -4,7 +4,12 @@
  * needs it, AUTH PLAIN or LOGIN, MAIL FROM, RCPT TO, DATA. Bodies are base64, so long lines and
  * leading dots never need special handling.
  * Runs on Node (Railway, Docker, local), using node:net and node:tls.
+ *
+ * The server is one on the internet: a name that leads to this server, its private network (the
+ * instance's own services) or a cloud's metadata service is refused before connecting, checked as
+ * the name is looked up for the connection itself, as lib/publicHttp.ts does for links.
  */
+import { PrivateAddressError, privateHost, publicLookup } from "./publicHttp";
 
 export interface SmtpSettings {
   host: string;
@@ -59,9 +64,28 @@ const TIMEOUTS: SmtpTimeouts = {
   sentMs: 2 * 60_000,
 };
 
-async function open({ host, port, security }: SmtpSettings, idleMs: number): Promise<Connection> {
+/**
+ * Which mail servers a connection may reach: only ones on the internet, or (for tests of this client
+ * against a mail server on localhost) any.
+ */
+export type SmtpReach = "public" | "any";
+
+/** The mail server's name or address alone says it's on a private network (localhost, *.internal, 10.0.0.5). */
+function plainlyPrivate(host: string, isIP: (input: string) => number): boolean {
+  try {
+    return privateHost(new URL(`http://${isIP(host) === 6 ? `[${host}]` : host}`));
+  } catch {
+    // Not a name or an address at all.
+    return true;
+  }
+}
+
+async function open({ host, port, security }: SmtpSettings, idleMs: number, reach: SmtpReach): Promise<Connection> {
   const net = await import("node:net");
   const tls = await import("node:tls");
+  if (reach === "public" && plainlyPrivate(host, net.isIP)) throw new PrivateAddressError(host);
+  // A name is checked as it's looked up for this connection, so the address checked is the one used.
+  const lookup = reach === "public" ? publicLookup : undefined;
   type Sock = import("node:net").Socket;
   const chunks: string[] = [];
   let waiting: ((value: string | null) => void) | null = null;
@@ -90,7 +114,7 @@ async function open({ host, port, security }: SmtpSettings, idleMs: number): Pro
   };
 
   let socket: Sock = await new Promise<Sock>((resolve, reject) => {
-    const s: Sock = security === "tls" ? tls.connect({ host, port, servername: host }) : net.connect({ host, port });
+    const s: Sock = security === "tls" ? tls.connect({ host, port, servername: host, lookup }) : net.connect({ host, port, lookup });
     s.setTimeout(idleMs, () => s.destroy(new Error("timed out")));
     s.once(security === "tls" ? "secureConnect" : "connect", () => resolve(s));
     s.once("error", reject);
@@ -245,15 +269,20 @@ function explain(step: string, reply: { code: number; text: string }, settings: 
   return new SmtpError(`The mail server said: ${reply.code} ${text.slice(0, 200)}`, reply.code);
 }
 
+/** A mail server on a private network, which Crewtavo doesn't send through. */
+export const privateServer = (host: string) =>
+  `${host} is on a private network, and Crewtavo only sends through mail servers on the internet. Use your email provider's server name, like smtp.gmail.com.`;
+
 /**
  * Connect, sign in, and (unless `message` is null, which only checks the sign-in) send one message.
- * Returns the Message-ID.
+ * Returns the Message-ID. `reach` is "public" (only a server on the internet) everywhere but tests.
  */
-export async function smtpSend(settings: SmtpSettings, message: SmtpMessage | null, timeouts = TIMEOUTS): Promise<{ id: string }> {
+export async function smtpSend(settings: SmtpSettings, message: SmtpMessage | null, timeouts = TIMEOUTS, reach: SmtpReach = "public"): Promise<{ id: string }> {
   let conn: Connection;
   try {
-    conn = await open(settings, timeouts.stepMs);
+    conn = await open(settings, timeouts.stepMs, reach);
   } catch (error) {
+    if (error instanceof PrivateAddressError) throw new SmtpError(privateServer(settings.host));
     throw new SmtpError(`Couldn't connect to ${settings.host} on port ${settings.port}. Check the server name and port${error instanceof Error && /timed out/i.test(error.message) ? " (the connection timed out)" : ""}.`);
   }
   let deadline = setTimeout(() => conn.close(), timeouts.stepMs * 2);

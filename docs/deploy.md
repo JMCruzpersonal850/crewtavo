@@ -49,7 +49,9 @@ shows that to owners in red as "full control of your account", and a sign-in ask
 refused the project. Until Railway is connected, the owner sees this step whenever they open
 Crewtavo; **Ask me tomorrow** lets them in for a day, for when Railway is down or someone else
 looks after it (`railwayNeeded` in `apps/api/src/services/railway.ts`). A pasted project token
-counts too.
+counts too. Connecting Railway, either way, and choosing a web address ask for the person's
+Crewtavo password first: with Railway access Crewtavo switches its address by itself, and the
+address is in every link it sends.
 
 **Settings → Hosting** (`apps/api/src/services/hosting.ts`) shows what Railway charges: this month
 so far against what the plan includes, the last day's rate and a forecast for the month at it,
@@ -239,7 +241,7 @@ lists them all).
 
 | Name | Turns on |
 | --- | --- |
-| `APP_URL` | Your own domain (see above; **Settings → Web address** sets it on Railway). Defaults to the instance's address. Postcard campaigns need it to be a public https address: Lob fetches each card's front picture from it while it makes the cards. Lob itself needs nothing here: each business connects its own Lob account under **Apps → Lob**. |
+| `APP_URL` | Your own domain (see above; **Settings → Web address** sets it on Railway). Defaults to the instance's address on Railway and with `npm run instance`; set it yourself anywhere else, since sign-in, reset and invitation links are only made for it. Postcard campaigns need it to be a public https address: Lob fetches each card's front picture from it while it makes the cards. Lob itself needs nothing here: each business connects its own Lob account under **Apps → Lob**. |
 | `ENCRYPTION_KEY` | A separate key for encrypting app tokens and signing client links: 32+ random bytes in base64, or any 32+ characters. Without it, one is derived from the instance's secret. **Keep it stable once set**: changing it disconnects every app and invalidates links already sent to clients. |
 | `ANTHROPIC_API_KEY` (optional `AI_MODEL`) | AI rewrite and SOP answers, with Claude. Companies can also add their own Claude or OpenAI key on the Apps page. |
 | `OPENAI_MODEL` (optional) | The OpenAI model used with a company's own OpenAI key or a person's ChatGPT plan, instead of the one picked on Apps → ChatGPT. There is no server-wide OpenAI key. |
@@ -810,11 +812,15 @@ point here.
 
 Each person signs in to Crewtavo and approves access on `/oauth/consent`. The assistant can then
 look up whatever that person can see, but can't add or change anything until they choose what it
-can change (by area: customers, jobs, the schedule, time, quotes, invoices, pay, setup, team), or
-give it full access, which also lets it delete, with or without money (Settings > AI assistants,
-which everyone has whatever their role). It never gets more than the person's own permissions, and
-it can't change anyone's sign-in or spare keys, connected apps or its own access, or refund or
-delete a payment. Invitation links are emailed by Crewtavo and never returned to the assistant,
+can change (by area: customers, jobs, the schedule, time, prices, quotes, invoices, pay, setup,
+team), or give it full access, which also lets it delete, with or without money (Settings > AI
+assistants, which everyone has whatever their role). Money is what clients pay as well as quotes,
+invoices, payments, pay and promo codes: the price list, a job's lines and billing, extra work, and
+tax, payment terms, minimum charges, late fees and tips. It never gets more than the person's own
+permissions, and it can't change anyone's sign-in or spare keys, connected apps or its own access,
+or refund or delete a payment. It sends quotes and invoices only to the client and their contacts
+on file, in Crewtavo's own words, and invites people, or gives them access back, only as crew
+leads or field crew. Invitation links are emailed by Crewtavo and never returned to the assistant,
 and owners get a notice for every team change an assistant makes. The database holds it to the
 same areas as well, through PostgREST's pre-request setting (`pgrst.db_pre_request` on the
 `authenticator` role, which the migrations set), with triggers for pay rates, payments, team

@@ -455,7 +455,9 @@ select tvx.check((:'cal_bill'::jsonb ->> 'outcome') = 'needs_approval' and (:'ca
 select tvx.check((select subtotal = 200 from public.invoices where id = (:'cal_bill'::jsonb ->> 'invoice_id')::uuid), 'the plan''s price and the extra are on the month''s invoice');
 
 -- ===== AI assistants ================================================================================
-select tvx.check(private.assistant_table_area('visit_extras') = 'jobs' and private.assistant_table_area('job_line_items') = 'jobs' and private.assistant_table_area('visits') = 'schedule',
-  'an assistant that may change jobs may add a visit''s extra work, and the other tables are where they were');
+-- Extra work and a job's lines are what clients pay: Prices, which full access without money leaves
+-- out (20261123100600_assistant_prices_are_money.sql).
+select tvx.check(private.assistant_table_area('visit_extras') = 'prices' and private.assistant_table_area('job_line_items') = 'prices' and private.assistant_table_area('visits') = 'schedule',
+  'an assistant that may change prices may add a visit''s extra work, and the other tables are where they were');
 
 \echo 'All visit extras tests passed.'

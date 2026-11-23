@@ -7,10 +7,10 @@ import type { AppEnv, Env } from "../env";
 import { platformOf } from "../lib/address";
 import { confirmAdminGrant, confirmPassword, EMAILED_SIGN_INS, emailAuthLink, passwordIn, requireCompany, requireUser, signedInWithin } from "../lib/auth";
 import { runInBackground } from "../lib/background";
-import { appUrl, asJson, dbError, HttpError, must, readJson, uuid } from "../lib/http";
+import { appUrl, asJson, dbError, HttpError, must, readJson, signInHome, uuid } from "../lib/http";
 import { renderEmail } from "../lib/email";
 import { allow } from "../lib/limit";
-import { checkMailbox, emailConfigured, loadMailbox, sendEmail, smsConfigured } from "../lib/notify";
+import { checkMailbox, emailConfigured, loadMailbox, mailboxOwnerSet, sendEmail, smsConfigured } from "../lib/notify";
 import { adminClient, publishableKey, type Db } from "../lib/supabase";
 import { connectedPlans } from "../integrations/chatgptPlan";
 import { timeRates } from "../services/payRates";
@@ -758,7 +758,8 @@ account.post("/team/:userId/invite-link", requireUser, requireCompany(ADMINS, "t
   // As with changing their role, only an owner acts for an owner.
   if (member.role === "owner" && role !== "owner") throw new HttpError(403, "Only an owner can do that for another owner.");
   // A link into an account with admin-level access asks for the password, as giving that access does.
-  if (await adminAccess(c.var.db, companyId, member.role, member.role_id)) await confirmAdminGrant(c, await passwordIn(c));
+  const adminAccount = await adminAccess(c.var.db, companyId, member.role, member.role_id);
+  if (adminAccount) await confirmAdminGrant(c, await passwordIn(c));
   const invite = await inviteStatus(c.env, companyId, targetId);
   if (invite.status !== "pending") {
     throw invite.status === "joined"
@@ -768,15 +769,18 @@ account.post("/team/:userId/invite-link", requireUser, requireCompany(ADMINS, "t
 
   const link = await welcomeLink(c.env, appUrl(c), invite.email);
   const profile = (await c.var.db.from("profiles").select("full_name").eq("user_id", targetId).maybeSingle()).data;
-  const sent = await sendInvite(teamScope(c), { email: invite.email, name: profile?.full_name }, link);
+  const sent = await sendInvite(teamScope(c), { email: invite.email, name: profile?.full_name }, link, adminAccount);
   return c.json({ emailed: sent.sent, reason: sent.sent ? null : sent.reason ?? null, link });
 });
 
 /**
  * "Forgot password" and "Email me a sign-in link". The link is sent from the person's company
  * mailbox when it has a working one (or the install's own email, which also takes over if the
- * mailbox fails), so it reaches everyone; without either it falls back to Supabase's mailer.
- * Always answers the same way, so it can't reveal who has an account.
+ * mailbox fails), so it reaches everyone; without either it falls back to Supabase's mailer. An
+ * owner's or admin's link only goes through a mailbox an owner connected, since whoever connects
+ * one can read what it sends (lib/notify.ts mailboxOwnerSet).
+ * Always answers the same way, and at once: the link is made and sent after the answer, so neither
+ * the answer nor how long it takes says who has an account.
  */
 account.post("/auth/email-link", async (c) => {
   const body = await readJson(c, z.object({ email: z.email(), kind: z.enum(["recovery", "magiclink"]) }));
@@ -787,62 +791,73 @@ account.post("/auth/email-link", async (c) => {
   }
   // A sub's stand-in address (no email of their own) is never sent anything.
   if (isPlaceholderEmail(email)) return c.json({ sent: true });
-  const admin = adminClient(c.env);
   // A one-business instance that can't send email says so instead of pretending a link went out.
   // The answer is the same for every address, so it doesn't reveal who has an account.
   if (c.env.CREWTAVO_SINGLE_COMPANY === "1" && !emailConfigured(c.env)) {
-    const { data: mailbox } = await admin.from("integrations").select("company_id").eq("provider", "email").eq("status", "connected").limit(1);
+    const { data: mailbox } = await adminClient(c.env).from("integrations").select("company_id").eq("provider", "email").eq("status", "connected").limit(1);
     if (!mailbox?.length) return c.json({ sent: false, reason: "email_off" });
   }
-  const redirectTo = `${appUrl(c)}/`;
-  const { data: userId } = await admin.rpc("user_id_for_email", { p_email: email });
-  if (!userId) return c.json({ sent: true });
+  // The link opens on APP_URL, never this request's own address, which its sender chose.
+  const home = signInHome(c.env);
+  runInBackground(c, emailSignInLink(c.env, home, email, body.kind));
+  return c.json({ sent: true });
+});
 
-  const { data: memberships } = await admin.from("memberships").select("company_id, company:companies(name, email)").eq("user_id", userId).eq("active", true);
+/** The link POST /api/auth/email-link asked for, made and sent after its answer. Nothing for an address with no account. */
+async function emailSignInLink(env: Env, home: string, email: string, kind: "recovery" | "magiclink") {
+  const admin = adminClient(env);
+  const redirectTo = `${home}/`;
+  const { data: userId } = await admin.rpc("user_id_for_email", { p_email: email });
+  if (!userId) return;
+
+  const { data: memberships } = await admin.from("memberships").select("company_id, role, role_id, company:companies(name, email)").eq("user_id", userId).eq("active", true);
   // A company's own mailbox sends the link only when the person belongs to that one company. With
   // several, any of them could have added this person, and whoever runs a mailbox can read the link.
   const only = memberships?.length === 1 ? memberships[0]! : null;
   const onlyCompany = only?.company as unknown as { name: string; email: string | null } | undefined;
+  // For an owner or an admin, only a mailbox an owner connected (lib/notify.ts mailboxOwnerSet).
+  // Taken as admin-level when it can't be told.
+  const adminAccount = only ? (ADMINS as readonly string[]).includes(only.role) || (await adminAccess(admin, only.company_id, only.role, only.role_id).catch(() => true)) : false;
+  const usable = only && (!adminAccount || (await mailboxOwnerSet(env, only.company_id)));
   // And only while it works: one whose sign-in failed (a changed or revoked app password, a refused
   // Resend key) would just fail again.
-  const mailbox = only ? await loadMailbox(c.env, only.company_id).catch(() => null) : null;
+  const mailbox = only && usable ? await loadMailbox(env, only.company_id).catch(() => null) : null;
   let sender: { id: string | null; name: string; email: string | null } | null = null;
   if (only && onlyCompany && mailbox && mailbox.status !== "error") {
     // Without the install's own email, only Supabase's mailer could take over from the mailbox, and
     // only before the link is made: making one starts its wait (a minute by default) before it will
     // email that person. So the mailbox has to sign in first.
-    if (emailConfigured(c.env) || (await checkMailbox(c.env, only.company_id, mailbox))) {
+    if (emailConfigured(env) || (await checkMailbox(env, only.company_id, mailbox))) {
       sender = { id: only.company_id, name: onlyCompany.name, email: onlyCompany.email };
     }
   }
-  if (!sender && emailConfigured(c.env)) {
+  if (!sender && emailConfigured(env)) {
     sender = { id: null, name: onlyCompany?.name ?? "Crewtavo", email: onlyCompany?.email ?? null };
   }
   if (!sender) {
-    const fallback = body.kind === "recovery"
+    const fallback = kind === "recovery"
       ? await admin.auth.resetPasswordForEmail(email, { redirectTo })
       : await admin.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: redirectTo } });
     if (fallback.error) console.error("Supabase auth email failed", fallback.error.message);
-    return c.json({ sent: true });
+    return;
   }
 
-  const { data, error } = await admin.auth.admin.generateLink({ type: body.kind, email, options: { redirectTo } });
+  const { data, error } = await admin.auth.admin.generateLink({ type: kind, email, options: { redirectTo } });
   if (error || !data.properties?.hashed_token) {
     console.error("Couldn't create an auth link", error);
-    return c.json({ sent: true });
+    return;
   }
-  const link = await emailAuthLink(c.env, appUrl(c), data.properties.hashed_token, body.kind);
-  const text = body.kind === "recovery"
+  const link = await emailAuthLink(env, data.properties.hashed_token, kind);
+  const text = kind === "recovery"
     ? `Someone asked to reset the password for your ${sender.name} account on Crewtavo. Choose a new password here:\n\n${link}\n\nIf that wasn't you, ignore this email. Your password stays the same.`
     : `Here's your link to sign in to ${sender.name} on Crewtavo. It works once and expires soon:\n\n${link}\n\nIf you didn't ask for it, ignore this email.`;
-  const message = { to: email, subject: body.kind === "recovery" ? `Reset your ${sender.name} password` : `Your ${sender.name} sign-in link`, ...renderEmail({ companyName: sender.name, text }), replyTo: sender.email ?? undefined, fromName: sender.name };
-  let result = await sendEmail(c.env, message, sender.id);
+  const message = { to: email, subject: kind === "recovery" ? `Reset your ${sender.name} password` : `Your ${sender.name} sign-in link`, ...renderEmail({ companyName: sender.name, text }), replyTo: sender.email ?? undefined, fromName: sender.name };
+  let result = await sendEmail(env, message, sender.id, { adminAccount });
   // The company mailbox didn't take it: the install's own email still can (Supabase's mailer can't
   // now, see above).
-  if (!result.sent && sender.id && emailConfigured(c.env)) {
+  if (!result.sent && sender.id && emailConfigured(env)) {
     console.error("Auth email not sent from the company mailbox", result.reason);
-    result = await sendEmail(c.env, message, null);
+    result = await sendEmail(env, message, null);
   }
   if (!result.sent) console.error("Auth email not sent", result.reason);
-  return c.json({ sent: true });
-});
+}

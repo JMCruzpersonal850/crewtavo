@@ -1,4 +1,4 @@
-/** Sign in (password, emailed link, Google or a sub's code by text or email), create an account, reset a password, or set a new one. */
+/** Sign in (password, emailed link, Google or a sub's code by text or email), create an account, reset a password, set a new one, or say whether a link for another account switches to it. */
 import { SIGN_IN_CODE_DIGITS, SIGN_IN_CODE_MINUTES } from "@crewtavo/core/subs";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type FormEvent, type ReactNode } from "react";
@@ -720,6 +720,29 @@ export function SetPasswordPage({ kind, onDone, onSignOut, onSignOutElsewhere }:
           {kind === "invite" ? <Button variant="ghost" onClick={onDone}>{t("Skip for now")}</Button> : <Button variant="ghost" icon="arrowLeft" onClick={() => onSignOut().then((signedOut) => signedOut && onDone())}>{t("Back to sign in")}</Button>}
         </div>
       </form>
+    </AuthLayout>
+  );
+}
+
+/**
+ * An emailed sign-in, reset or invitation link opened while someone else is signed in here
+ * (lib/emailLink.ts): it switches only if they say so. Staying is the first choice, and the link's
+ * sign-in is ended then.
+ */
+export function SwitchAccountPage({ current, link, onAnswer }: { current: string; link: string; onAnswer: (switchAccounts: boolean) => void }) {
+  return (
+    <AuthLayout>
+      <div className={styles.flow}>
+        <h1 className={styles.title}>{t("Switch accounts?")}</h1>
+        <p className={styles.sub}>
+          <T text="This link signs in as <b>{link}</b>. You're signed in here as <b>{current}</b>." b={(s) => <strong style={{ overflowWrap: "anywhere" }}>{s}</strong>} link={link} current={current} />
+        </p>
+        <p className={styles.sub}>{t("Only switch if you asked for this link yourself. A link someone else sent you signs you in to their account.")}</p>
+        <div className={styles.acts} data-stack="">
+          <Button variant="primary" autoFocus onClick={() => onAnswer(false)}>{t("Stay signed in")}</Button>
+          <Button variant="ghost" onClick={() => onAnswer(true)}>{t("Switch accounts")}</Button>
+        </div>
+      </div>
     </AuthLayout>
   );
 }

@@ -15,6 +15,7 @@ import { stripeAccess, syncStripeInvoice } from "../integrations/stripe";
 import { firstName, isEmail, renderEmail } from "../lib/email";
 import { asJson, dbError, HttpError, must } from "../lib/http";
 import { clientLinks, sentToClient } from "../lib/links";
+import { NO_LINKS_FOR_ASSISTANTS } from "../lib/noAssistants";
 import { sendEmail, sendSms } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
 import { companyAddress } from "./automations";
@@ -32,6 +33,11 @@ export interface SalesScope {
   baseUrl: string;
   /** The person doesn't see invoices: the office copies they're handed leave out the client's money (lib/links `nm`). */
   noMoney?: boolean;
+  /**
+   * An AI assistant is sending (assistant-tools/quotes.ts, invoices.ts): only to the client's own
+   * email or phone and their contacts' on file (sendTo), and never just for the link (lib/noAssistants.ts).
+   */
+  assistant?: boolean;
 }
 
 export const sendSchema = z.object({
@@ -50,6 +56,25 @@ export const sendSchema = z.object({
   message: z.string().max(4000).optional(),
 });
 export type SendBody = z.infer<typeof sendSchema>;
+
+/**
+ * What an AI assistant's send_quote and send_invoice take: email or text, to the client and their
+ * contacts on file, in Crewtavo's usual words. No address and no words of its own, so text it reads
+ * (a client's note, a website form) can't have it send a quote, or what it read elsewhere, to
+ * anyone else; and no link only, since a link opens Crewtavo without anyone signing in.
+ */
+export const assistantSendSchema = z.object({
+  channel: z.enum(["email", "sms"]).default("email"),
+  recipients: z
+    .array(z.string().trim().max(200))
+    .max(MAX_RECIPIENTS, `Send it to ${MAX_RECIPIENTS} people at most.`)
+    .optional()
+    .describe("Who to send it to, 10 at most: the client's own email or phone, or their contacts' (get_client). Leave out to send to the client and their contacts ticked for emails or texts."),
+});
+
+/** An assistant asked to send to an address that isn't the client's or one of their contacts'. */
+export const notOnFile = (to: string) =>
+  `An AI assistant only sends quotes and invoices to the client and their contacts on file, and ${to} isn't one of them. Send it from Crewtavo instead.`;
 
 type Deliverable = { id: string; number: number | null; client_id: string | null; total?: number; balance_due?: number; recurrence_rule?: string | null; client: { display_name: string; email: string | null; phone: string | null } | null };
 
@@ -205,12 +230,15 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
   const message = (link: string) => `${greeting}\n\n${intro}\n\n${link}\n\nThanks,\n${company.name}`;
   // The client's own link only to their own email or phone on file; any other address gets the office's copy.
   const linkFor = (channel: "email" | "sms", to: string) => (sentToClient(channel, to, record.client) ? links.own : links.office);
-  if (body.channel === "link") return { link: links.office, sent: false, reason: "Link only" };
+  if (body.channel === "link") {
+    if (s.assistant) throw new HttpError(403, NO_LINKS_FOR_ASSISTANTS);
+    return { link: links.office, sent: false, reason: "Link only" };
+  }
   const channel = body.channel;
   const admin = adminClient(s.env);
   const { data: onFile } = await s.db.from("clients").select("id, display_name, email, phone, sms_opt_out_at").eq("id", record.client_id).maybeSingle();
   const client = onFile ?? { id: record.client_id, display_name: record.client?.display_name ?? "This client", email: record.client?.email ?? null, phone: record.client?.phone ?? null, sms_opt_out_at: null };
-  const people = await sendTo(admin, s.companyId, channel, client, body, company.settings);
+  const people = await sendTo(admin, s.companyId, channel, client, body, company.settings, s.assistant === true);
   const delivery =
     channel === "email"
       ? await sendToEach(people, (person) => {
@@ -260,9 +288,10 @@ type SendClient = { id: string; display_name: string; email: string | null; phon
  * the Send dialog ticks and types them, and `to`, the one address older callers give) are the only
  * ones it goes to: every one is checked, and there are MAX_RECIPIENTS at most. With none named: the
  * client's own, and their contacts ticked for emails or texts (services/recipients.ts). Never a
- * number that texted STOP. Refuses, with what to fix, when that leaves nobody.
+ * number that texted STOP. Refuses, with what to fix, when that leaves nobody. `onFileOnly` (an AI
+ * assistant sending) refuses any named address that isn't the client's own or a contact's.
  */
-async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", client: SendClient, body: SendBody, settings: unknown): Promise<Recipient[]> {
+async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", client: SendClient, body: SendBody, settings: unknown, onFileOnly = false): Promise<Recipient[]> {
   const reach = await clientReach(admin, companyId, client, settings);
   const named = uniqueAddresses(channel, [...(body.recipients ?? []), body.to]);
   if (!named.length) {
@@ -279,6 +308,11 @@ async function sendTo(admin: Db, companyId: string, channel: "email" | "sms", cl
     const contact = reach.contacts.find((c) => key(channel === "email" ? c.email : c.phone) === key(to));
     return contact ? { to, name: contact.name, contact_id: contact.id } : { to, name: to, contact_id: null };
   };
+  if (onFileOnly) {
+    const onFileTo = (to: string) => Boolean(key(to)) && (sentToClient(channel, to, client) || reach.contacts.some((c) => key(channel === "email" ? c.email : c.phone) === key(to)));
+    const elsewhere = named.find((to) => !onFileTo(to));
+    if (elsewhere) throw new HttpError(400, notOnFile(elsewhere));
+  }
   if (channel === "email") {
     const wrong = named.find((to) => !isEmail(to));
     if (wrong) throw new HttpError(400, named.length === 1 ? "Add a valid email address for this client first." : `${wrong} isn't a valid email address.`);

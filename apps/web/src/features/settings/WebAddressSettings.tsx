@@ -4,7 +4,8 @@
  * records it needs where their domain is managed; Crewtavo checks them as they go in. With Railway
  * access (Log in with Railway, or a project token) Crewtavo adds the address on Railway and switches
  * over by itself, so the screen leads with that; otherwise the last step is setting APP_URL by hand.
- * GET /api/address says where it stands.
+ * GET /api/address says where it stands. Choosing an address and connecting Railway ask for the
+ * person's password: the address is where every reset, invite and client link points.
  */
 import { ADDRESS_PREFIX, addressUrl, normalizeDomain, prefixedAddress, type AddressChange, type AddressCheck, type AddressOverview, type DnsProvider, type DnsRecordCheck } from "@crewtavo/core/address";
 import { cloudflareTokenUrl, fillStep, GENERIC_DNS_PROVIDER, providerById } from "@crewtavo/core/dns";
@@ -13,6 +14,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode }
 import { Link, useSearchParams } from "react-router-dom";
 import { Button, Spinner } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
+import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
 import { Section } from "@/components/ui/Section";
@@ -22,6 +24,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
+import { PASSWORD_HINT } from "../apps/catalog";
 import styles from "./WebAddressSettings.module.css";
 
 export const WEB_ADDRESS_KEY = ["web-address"];
@@ -410,12 +413,13 @@ function BrowserBar({ address, tone = "new" }: { address: string; tone?: "old" |
   );
 }
 
-/** Log in with Railway: Railway's consent screen, then back to Settings or the setup step. */
+/** Log in with Railway: the person's password, Railway's consent screen, then back to Settings or the setup step. */
 export function ConnectRailway({ returnTo, projectName, label = "Log in with Railway" }: { returnTo: RailwayReturn; projectName: string | null; label?: string }) {
   const queryClient = useQueryClient();
+  const [asking, setAsking] = useState(false);
   const connect = useMutation({
     meta: { inline: true },
-    mutationFn: () => api.post<{ authorization_url: string }>("/railway/connect", { return_to: returnTo }),
+    mutationFn: (password: string) => api.post<{ authorization_url: string }>("/railway/connect", { return_to: returnTo, password }),
     onSuccess: (r) => window.location.assign(r.authorization_url),
     // Railway may have refused to register this instance; the overview then offers the token instead.
     onError: () => queryClient.invalidateQueries({ queryKey: WEB_ADDRESS_KEY }),
@@ -423,13 +427,62 @@ export function ConnectRailway({ returnTo, projectName, label = "Log in with Rai
   return (
     <div className="stack-sm">
       <div className={styles.actions}>
-        <Button variant="primary" icon="arrowRight" loading={connect.isPending || connect.isSuccess} onClick={() => connect.mutate()}>{label}</Button>
+        <Button variant="primary" icon="arrowRight" loading={connect.isPending || connect.isSuccess} onClick={() => { connect.reset(); setAsking(true); }}>{label}</Button>
       </div>
       <span className="set-note">
         On Railway's screen, press Authorize. To give Crewtavo only {projectName ? <strong>{projectName}</strong> : "this project"}, choose Change, then Selected projects, first.
       </span>
-      <FormError error={connect.error} />
+      {!asking && <FormError error={connect.error} />}
+      {asking && (
+        <PasswordDialog
+          title="Log in with Railway"
+          body="With access, Crewtavo can set up your own web address and switch over to it by itself. Railway's screen opens next."
+          action="Continue to Railway"
+          requiredMessage={RAILWAY_PASSWORD}
+          busy={connect.isPending || connect.isSuccess}
+          error={connect.error}
+          onConfirm={(password) => connect.mutate(password)}
+          onClose={() => setAsking(false)}
+        />
+      )}
     </div>
+  );
+}
+
+const ADDRESS_PASSWORD = "Enter your password to change Crewtavo's web address.";
+const RAILWAY_PASSWORD = "Enter your password to connect Railway.";
+
+/** The person's own password, for choosing an address or connecting Railway, which both move where Crewtavo's links point (the API checks it). */
+function YourPassword({ value, onChange, requiredMessage, autoFocus }: { value: string; onChange: (password: string) => void; requiredMessage: string; autoFocus?: boolean }) {
+  return (
+    <Field label="Your Crewtavo password" hint={PASSWORD_HINT} requiredMessage={requiredMessage}>
+      <input className="input" type="password" value={value} onChange={(e) => onChange(e.target.value)} autoComplete="current-password" maxLength={200} required autoFocus={autoFocus} style={{ maxWidth: 320 }} />
+    </Field>
+  );
+}
+
+/** One step that asks for the person's password first; it's cleared once sent, and a wrong one says so here. */
+function PasswordDialog({ title, body, action, requiredMessage, busy, error, onConfirm, onClose }: { title: string; body: string; action: string; requiredMessage: string; busy: boolean; error: unknown; onConfirm: (password: string) => void; onClose: () => void }) {
+  const [password, setPassword] = useState("");
+  return (
+    <Dialog open onClose={onClose} title={title} size="sm">
+      <form
+        className="stack-sm"
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault();
+          onConfirm(password);
+          setPassword("");
+        }}
+      >
+        <div className="muted" style={{ marginTop: -6 }}>{body}</div>
+        <YourPassword value={password} onChange={setPassword} requiredMessage={requiredMessage} autoFocus />
+        <FormError error={error} />
+        <div className="form-actions">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={busy}>{action}</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -456,10 +509,15 @@ export function RailwayDomains({ overview }: { overview: AddressOverview }) {
 
 function RailwayDomainList({ domains }: { domains: Railway["domains"] }) {
   const queryClient = useQueryClient();
+  // The domain picked, while its password is asked for.
+  const [picked, setPicked] = useState<string | null>(null);
   const use = useMutation({
     meta: { inline: true },
-    mutationFn: (domain: string) => api.post<AddressOverview>("/address/start", { domain }),
-    onSuccess: (next) => queryClient.setQueryData(WEB_ADDRESS_KEY, next),
+    mutationFn: ({ domain, password }: { domain: string; password: string }) => api.post<AddressOverview>("/address/start", { domain, password }),
+    onSuccess: (next) => {
+      setPicked(null);
+      queryClient.setQueryData(WEB_ADDRESS_KEY, next);
+    },
   });
   return (
     <>
@@ -470,11 +528,22 @@ function RailwayDomainList({ domains }: { domains: Railway["domains"] }) {
               <strong>{d.domain}</strong>
               <span>{d.verified && d.certificate === "issued" ? "Ready to use" : "Railway is still setting it up. You can choose it now."}</span>
             </span>
-            <Button size="sm" loading={use.isPending && use.variables === d.domain} onClick={() => use.mutate(d.domain)}>Use this domain</Button>
+            <Button size="sm" loading={use.isPending && use.variables?.domain === d.domain} onClick={() => { use.reset(); setPicked(d.domain); }}>Use this domain</Button>
           </li>
         ))}
       </ul>
-      <FormError error={use.error} />
+      {picked && (
+        <PasswordDialog
+          title={`Use ${picked}?`}
+          body="Crewtavo switches over to it once it works, and every link it sends uses it from then on."
+          action="Use this domain"
+          requiredMessage={ADDRESS_PASSWORD}
+          busy={use.isPending}
+          error={use.error}
+          onConfirm={(password) => use.mutate({ domain: picked, password })}
+          onClose={() => setPicked(null)}
+        />
+      )}
     </>
   );
 }
@@ -516,13 +585,16 @@ export function ChooseAddress({ overview, onDone, onDraft, bare = false }: { ove
   const closer = !whole && result?.zone ? `${ADDRESS_PREFIX}.${result.zone}` : null;
   const better = closer && closer !== domain && closer !== currentDomain ? closer : null;
   useEffect(() => onDraft?.(domain && !problem ? domain : null), [domain, problem, onDraft]);
+  // Every link Crewtavo sends will use the address, so choosing it asks for the person's password.
+  const [password, setPassword] = useState("");
   const start = useMutation({
     meta: { inline: true },
-    mutationFn: () => api.post<AddressOverview>("/address/start", { domain }),
+    mutationFn: () => api.post<AddressOverview>("/address/start", { domain, password }),
     onSuccess: (next) => {
       queryClient.setQueryData(WEB_ADDRESS_KEY, next);
       onDone();
     },
+    onSettled: () => setPassword(""),
   });
   const fill = (value: string) => {
     setText(value);
@@ -600,6 +672,7 @@ export function ChooseAddress({ overview, onDone, onDraft, bare = false }: { ove
           )}
         </div>
       )}
+      <YourPassword value={password} onChange={(value) => { setPassword(value); start.reset(); }} requiredMessage={ADDRESS_PASSWORD} />
       <FormError error={start.error} />
       <div className={styles.actions}>
         <Button type="submit" variant="primary" icon="arrowRight" loading={start.isPending} disabled={!domain || Boolean(problem)}>Continue</Button>
@@ -779,9 +852,10 @@ function RailwayStep({ overview, domain }: { overview: AddressOverview; domain: 
 /** `intro`: what a token does where the form is shown (the address switch, unless it says otherwise). */
 export function RailwayTokenForm({ tokensUrl, onLogin, intro }: { tokensUrl: string | null; onLogin?: () => void; intro?: ReactNode }) {
   const [token, setToken] = useState("");
-  const save = useAddressAction((value: string) => api.post<AddressOverview>("/railway/token", { token: value }), { inline: true, success: "Connected to Railway" });
+  const [password, setPassword] = useState("");
+  const save = useAddressAction((value: { token: string; password: string }) => api.post<AddressOverview>("/railway/token", value), { inline: true, success: "Connected to Railway" });
   return (
-    <form className="stack-sm" onSubmit={(e: FormEvent) => { e.preventDefault(); if (token.trim()) save.mutate(token.trim()); }}>
+    <form className="stack-sm" onSubmit={(e: FormEvent) => { e.preventDefault(); if (token.trim()) save.mutate({ token: token.trim(), password }, { onSettled: () => setPassword("") }); }}>
       <span className="set-note">{intro ?? "With a project token, Crewtavo adds the address in Railway for you, then switches over by itself once it works."}</span>
       <ol className={styles.steps}>
         <li>
@@ -796,6 +870,7 @@ export function RailwayTokenForm({ tokensUrl, onLogin, intro }: { tokensUrl: str
       <Field label="Project token">
         <input className="input" type="password" value={token} onChange={(e) => { setToken(e.target.value); save.reset(); }} autoComplete="off" spellCheck={false} maxLength={500} required />
       </Field>
+      <YourPassword value={password} onChange={(value) => { setPassword(value); save.reset(); }} requiredMessage={RAILWAY_PASSWORD} />
       <FormError error={save.error} />
       <div className={styles.actions}>
         <Button type="submit" variant="primary" loading={save.isPending}>Connect</Button>

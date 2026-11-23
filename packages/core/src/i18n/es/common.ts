@@ -571,6 +571,12 @@ export default {
   "Use a different email": "Usar otro correo",
   "That link has expired or was already used. Ask whoever sent it for a new one, or sign in below.": "Ese enlace ya venció o ya se usó. Pídele uno nuevo a quien te lo mandó, o inicia sesión aquí abajo.",
   "Couldn't open that link. Check your connection and try again.": "No se pudo abrir ese enlace. Revisa tu conexión e intenta de nuevo.",
+  "That link has expired or was already used. Ask whoever sent it for a new one.": "Ese enlace ya venció o ya se usó. Pídele uno nuevo a quien te lo mandó.",
+  "an account without an email address": "una cuenta sin dirección de correo",
+  "Switch accounts?": "¿Cambiar de cuenta?",
+  "Switch accounts": "Cambiar de cuenta",
+  "This link signs in as <b>{link}</b>. You're signed in here as <b>{current}</b>.": "Este enlace inicia sesión como <b>{link}</b>. Aquí tienes la sesión abierta como <b>{current}</b>.",
+  "Only switch if you asked for this link yourself. A link someone else sent you signs you in to their account.": "Cambia solo si tú pediste este enlace. Un enlace que te mandó otra persona te deja en su cuenta.",
 
   // What the app says when something doesn't go through (lib/api.ts, lib/files.ts, lib/resumable.ts)
   "Couldn't connect to Crewtavo. Try again in a moment.": "No se pudo conectar con Crewtavo. Intenta de nuevo en un momento.",

@@ -115,10 +115,12 @@ select t_csm.as_user(:'opal', :'details');
 select set_config('request.method', 'POST', true), set_config('request.path', '/rpc/merge_company_settings', true);
 select hooks.before_request();
 select t_csm.check(current_setting('transaction_read_only') = 'off', 'an assistant that may change company details can merge settings');
-select public.merge_company_settings(:'co', '{"working_hours": {"start": "08:00", "end": "17:00", "days": [1, 2, 3, 4, 5, 6]}, "hub_tips": true}');
-select t_csm.check((select public.company_settings(id) -> 'working_hours' = '{"start": "08:00", "end": "17:00", "days": [1, 2, 3, 4, 5, 6]}' and public.company_settings(id) -> 'hub_tips' = 'true'
+select public.merge_company_settings(:'co', '{"working_hours": {"start": "08:00", "end": "17:00", "days": [1, 2, 3, 4, 5, 6]}, "quote_valid_days": 45}');
+select t_csm.check((select public.company_settings(id) -> 'working_hours' = '{"start": "08:00", "end": "17:00", "days": [1, 2, 3, 4, 5, 6]}' and public.company_settings(id) -> 'quote_valid_days' = '45'
   from public.companies where id = :'co'), 'the settings on Settings → Company');
 select t_csm.expect_error(format($q$select public.merge_company_settings(%L, '{"assistants": {"read_only": false}}')$q$, :'co'), 'nothing else the guard keeps from assistants');
+-- Tips, like tax and late fees, go with invoices (20261123100600_assistant_prices_are_money.sql).
+select t_csm.expect_error(format($q$select public.merge_company_settings(%L, '{"hub_tips": true}')$q$, :'co'), 'nor tips, without invoices');
 rollback;
 begin;
 set local role authenticated;

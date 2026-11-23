@@ -336,8 +336,10 @@ select tpc.check((:'p_bree'::jsonb -> 'autopay') = 'null'::jsonb and not exists 
 rollback;
 
 -- ===== AI assistants ================================================================================
-select tpc.check(private.assistant_rpc_area('apply_price_change') = 'jobs' and private.assistant_rpc_area('undo_price_change') = 'jobs'
+-- A price change is what clients pay: Prices, which full access without money leaves out
+-- (20261123100600_assistant_prices_are_money.sql).
+select tpc.check(private.assistant_rpc_area('apply_price_change') = 'prices' and private.assistant_rpc_area('undo_price_change') = 'prices'
   and private.assistant_rpc_area('price_change_preview') is null and private.assistant_rpc_area('edit_invoice') = 'invoices' and private.assistant_rpc_area('remove_late_fee') = 'invoices',
-  'an assistant that may change jobs may make and undo a price change; the preview only answers; the rest are where they were');
+  'an assistant that may change prices may make and undo a price change; the preview only answers; the rest are where they were');
 
 \echo 'All price change tests passed.'

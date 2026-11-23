@@ -3,7 +3,9 @@
  * company's own address. Resend comes first (it works on every Railway plan) with a step-by-step
  * guide; Gmail, Zoho and the other mailboxes take an app password and need no DNS changes. Crewtavo
  * signs in and sends a test before saving. Connecting, changing or disconnecting it asks for the
- * person's own password, since the owners hear about Stripe changes by this email.
+ * person's own password, since the owners hear about Stripe changes by this email, and only an owner
+ * does it: whoever connects a mailbox can read what goes out through it, sign-in links included.
+ * Admins see how it stands and send a test.
  */
 import { emailDomain, isPersonalMailDomain, MAIL_PRESETS, mailPreset, type MailPreset, type MailStep } from "@crewtavo/core/email";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,8 +45,11 @@ interface Mailbox {
   status: "connected" | "error";
   last_error: string | null;
   connected_at: string | null;
+  /** False when someone who isn't an owner connected it: owners' and admins' sign-in links don't go through it. */
+  owner_connected?: boolean;
 }
-interface EmailState { mailbox: Mailbox | null; fallback: "server" | "dev" | null; on_railway?: boolean }
+/** `can_change`: whether this person may connect, change or disconnect it (owners only). */
+interface EmailState { mailbox: Mailbox | null; fallback: "server" | "dev" | null; on_railway?: boolean; can_change?: boolean }
 
 /** Each provider's own logo on a white tile, like the Apps page (see assets/apps/README.md). */
 const LOGOS: Partial<Record<MailPreset["id"], string>> = {
@@ -102,6 +107,8 @@ export function EmailSettings() {
   if (state.isPending) return <Loading label="Loading email settings"><div className="settings-body"><Skeleton width="70%" height={12} /><SectionSkeleton rows={2} /></div></Loading>;
   const { mailbox, fallback, on_railway: onRailway = false } = state.data;
   const preset = mailPreset(mailbox?.preset);
+  // Only an owner connects, changes or disconnects it (routes/email.ts says so for each person).
+  const canChange = state.data.can_change ?? session.role === "owner";
 
   return (
     <>
@@ -135,13 +142,26 @@ export function EmailSettings() {
               {preset.kind === "resend" ? `Resend sends ${preset.dailyLimit}.` : `${preset.label} lets one mailbox send ${preset.dailyLimit}. For big email campaigns, Resend handles more.`}
             </p>
           )}
+          {canChange && mailbox.owner_connected === false && (
+            <div className={`callout callout-info ${styles.gap}`}>
+              <Icon name="info" size={16} />
+              <div className="grow">
+                Someone who isn't an owner connected this email, so sign-in and password reset links for owners and admins don't go out through it. Connect it again yourself to use it for those too.
+              </div>
+            </div>
+          )}
           <FormError error={test.error} />
           <div className={styles.actions}>
             <Button icon="send" loading={test.isPending} onClick={() => test.mutate()}>Send me a test</Button>
-            <Button variant="ghost" icon="edit" onClick={() => setEditing(true)}>{mailbox.status === "error" ? "Connect again" : "Change"}</Button>
-            <span className="grow" />
-            <Button variant="ghost" className={styles.disconnect} loading={disconnect.isPending} onClick={() => setAskDisconnect(true)}>Disconnect</Button>
+            {canChange && (
+              <>
+                <Button variant="ghost" icon="edit" onClick={() => setEditing(true)}>{mailbox.status === "error" || mailbox.owner_connected === false ? "Connect again" : "Change"}</Button>
+                <span className="grow" />
+                <Button variant="ghost" className={styles.disconnect} loading={disconnect.isPending} onClick={() => setAskDisconnect(true)}>Disconnect</Button>
+              </>
+            )}
           </div>
+          {!canChange && <p className={`set-note ${styles.gap}`}>{OWNERS_ONLY}</p>}
           {askDisconnect && (
             <DisconnectWithPassword
               body={fallback === "server" ? "Emails will go out from the address whoever installed Crewtavo set up." : "Quotes, invoices and invites won't be emailed until you connect a mailbox again. You can still copy their links."}
@@ -155,21 +175,30 @@ export function EmailSettings() {
             />
           )}
         </Section>
-      ) : (
+      ) : canChange ? (
         <ConnectForm existing={mailbox} onRailway={onRailway} onCancel={mailbox ? () => setEditing(false) : undefined} onSaved={() => { setEditing(false); refresh(); }} />
+      ) : (
+        <Section level={3} title="Your business's own email isn't connected yet">
+          <p className="set-note">{OWNERS_ONLY}</p>
+        </Section>
       )}
 
       {!mailbox && fallback && (
         <div className="callout callout-info">
           <Icon name="info" size={16} />
           <div className="grow">
-            {fallback === "dev" ? "Test mode: until you connect a mailbox, emails go to the local Mailpit inbox (http://localhost:56324)." : "Until you connect a mailbox, emails go out from the address whoever installed Crewtavo set up."}
+            {fallback === "dev"
+              ? `Test mode: until ${canChange ? "you connect" : "an owner connects"} a mailbox, emails go to the local Mailpit inbox (http://localhost:56324).`
+              : `Until ${canChange ? "you connect" : "an owner connects"} a mailbox, emails go out from the address whoever installed Crewtavo set up.`}
           </div>
         </div>
       )}
     </>
   );
 }
+
+/** What an admin sees in place of the buttons: the API says the same if asked (routes/email.ts). */
+const OWNERS_ONLY = "Only an owner can connect, change or disconnect the company's email, since whoever connects it can read the sign-in links it sends. Ask an owner to do it.";
 
 /** Disconnect's question, with the person's password; it's cleared once sent, and a wrong one says so here. */
 function DisconnectWithPassword({ body, busy, error, onDisconnect, onClose }: { body: string; busy: boolean; error: unknown; onDisconnect: (password: string) => void; onClose: () => void }) {

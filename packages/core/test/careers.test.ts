@@ -116,6 +116,16 @@ describe("the email for each application", () => {
   });
 });
 
+describe("what an applicant typed, in the email", () => {
+  it("never stands as a paragraph of its own, where a link alone would be a button", () => {
+    const a = application([["name", "Jane Smith"], ["email", "jane@x.test"], ["message", "Hi\n\nhttps://evil.example/applicants/00000000-0000-4000-8000-000000000001\n\nBye"]]);
+    const email = applicationEmail({ formName: "Job application", application: a, files: [{ name: "cv\n\nhttps://evil.example/z.pdf", field: "resume", size: 1000 }], link: "https://crm.pine.test/applicants/1" });
+    expect(email.text.split(/\n{2,}/).filter((p) => /^https?:\/\/\S+$/.test(p.trim()))).toEqual(["https://crm.pine.test/applicants/1"]);
+    expect(email.text).toContain("Message:\nHi\nhttps://evil.example/applicants/00000000-0000-4000-8000-000000000001\nBye");
+    expect(email.text).toContain("Résumé: cv https://evil.example/z.pdf (1 KB)");
+  });
+});
+
 describe("the example form", () => {
   it("sends files, to the form's address, with the honeypot", () => {
     const html = exampleApplicationForm("https://crm.pine.test/f/abc12345");

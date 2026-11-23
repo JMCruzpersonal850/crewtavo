@@ -518,7 +518,7 @@ Everything an instance needs is generated. These optional settings turn on extra
 
 | Name | Turns on |
 | --- | --- |
-| `APP_URL` | Your own domain. **Settings → Web address** sets it on Railway. Defaults to the instance's address. |
+| `APP_URL` | Your own domain. **Settings → Web address** sets it on Railway. Defaults to the instance's address on Railway and with `npm run instance`; set it yourself anywhere else, since sign-in, reset and invitation links are only made for it. |
 | `ENCRYPTION_KEY` | A separate key for app tokens and client links (32+ characters). Keep it stable once set: changing it disconnects every app and invalidates links already sent. |
 | `ANTHROPIC_API_KEY`, `AI_MODEL` | AI rewriting and answers from your SOPs, with Claude. Companies can also add their own Claude or OpenAI key on the Apps page. |
 | `OPENAI_MODEL` | The OpenAI model used with a company's own OpenAI key or a person's ChatGPT plan, instead of the one picked on Apps → ChatGPT. There is no server-wide OpenAI key. |

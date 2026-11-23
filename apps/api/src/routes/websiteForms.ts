@@ -128,7 +128,30 @@ function refuse(c: Ctx, json: boolean, status: ContentfulStatusCode, message: st
 }
 
 /** Where people go after sending: the form's _next, its own thank-you page, or Crewtavo's. */
-const thanksPage = (c: Ctx, form: FoundForm, next: string | null) => next ?? form.redirect_url ?? `${appUrl(c)}/f/${form.key}/thanks`;
+const thanksPage = (c: Ctx, form: FoundForm, next: string | null) => ownNext(c, form, next) ?? form.redirect_url ?? `${appUrl(c)}/f/${form.key}/thanks`;
+
+/**
+ * A form's _next, when it goes to the form's own website or this Crewtavo; null otherwise. A form's
+ * own website is one it takes messages from (Only these websites), or with none listed, the one the
+ * message came from or the thank-you page the business set. A form's address doesn't send people on
+ * to any other site, whatever its _next says.
+ */
+function ownNext(c: Ctx, form: FoundForm, next: string | null): string | null {
+  if (!next) return null;
+  const origin = (url: string | null | undefined) => {
+    try {
+      return url ? new URL(url).origin : null;
+    } catch {
+      return null;
+    }
+  };
+  if (origin(next) === origin(appUrl(c))) return next;
+  const sites = form.allowed_sites.length
+    ? form.allowed_sites
+    : [siteHost(c.req.header("origin") ?? c.req.header("referer")), siteHost(form.redirect_url)].filter((host): host is string => Boolean(host));
+  return sites.length && siteAllowed(next, sites) ? next : null;
+}
+
 const sentOk = (c: Ctx, json: boolean, next: string) => (json ? c.json({ ok: true, next }, 200, CORS) : c.redirect(next, 303));
 
 const TOO_MANY = { contact: "Too many messages. Try again later, or call us.", careers: "Too many applications. Try again later, or call us." } as const;

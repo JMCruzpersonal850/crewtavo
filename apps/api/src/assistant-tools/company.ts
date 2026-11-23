@@ -1,13 +1,18 @@
 /**
  * The company's details and the settings on Settings → Company, changed the way that screen changes
  * them (apps/web/src/features/settings/CompanySettings.tsx). The database lets an assistant change
- * these and nothing else about the company (the assistant_areas migration).
+ * these and nothing else about the company (the assistant_areas migration). The ones that decide what
+ * clients pay (payment terms, sales tax, the minimum charge, late fees and tips) are money: they go
+ * with invoices, which "Full access, no money" leaves out (the assistant_prices_are_money migration).
  */
-import { isTimeZoneName, lateFeeSettings, minimumCharge, SEES_ALL_SETTINGS, taxPercent, taxRateFromPercent, workdays } from "@crewtavo/core";
+import { assistantRefusal, isTimeZoneName, lateFeeSettings, minimumCharge, SEES_ALL_SETTINGS, taxPercent, taxRateFromPercent, workdays } from "@crewtavo/core";
 import { z } from "zod";
 import { settingsAs } from "../lib/companySettings";
 import { geocodeAddress } from "../services/external";
-import { changed, companyArg, friendly, one, tool, type ToolContext } from "./tool";
+import { areaAllows, changed, companyArg, friendly, one, tool, type ToolContext } from "./tool";
+
+/** The settings that decide what clients pay, by the names this tool takes them. */
+const MONEY_SETTINGS = ["payment_terms_days", "minimum_charge", "late_fee", "sales_tax_percent", "client_tips"] as const;
 
 type Settings = Record<string, any>;
 
@@ -56,7 +61,7 @@ export const companyTools = {
   }),
   update_company_settings: tool({
     description:
-      "Change the company's details or settings. Send only what changes. A new shop address is found on the map for route planning. Read them first with get_company_settings.",
+      "Change the company's details or settings. Send only what changes. A new shop address is found on the map for route planning. Read them first with get_company_settings. Payment terms, sales tax, the minimum charge, late fees and client tips are money: they need the Invoices and payments area too.",
     input: z.object({
       name: z.string().trim().min(1).max(120).optional(),
       phone: z.string().trim().max(40).nullable().optional(),
@@ -96,6 +101,9 @@ export const companyTools = {
     }),
     area: "company",
     run: async (ctx, a) => {
+      if (MONEY_SETTINGS.some((k) => a[k] !== undefined) && !areaAllows(ctx, "invoices")) {
+        throw new Error(`${assistantRefusal("invoices", false, ctx.access ?? undefined)} Payment terms, sales tax, the minimum charge, late fees and tips go with invoices.`);
+      }
       const c = await current(ctx);
       const previous = (c.settings ?? {}) as Settings;
       if (a.working_hours && a.working_hours.end <= a.working_hours.start) throw new Error("The workday has to end after it starts.");

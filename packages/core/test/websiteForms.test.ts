@@ -210,6 +210,21 @@ describe("the email for a message", () => {
     expect(messageEmail({ formName: "Contact form", submission: s, link: "x" }).text).not.toContain("Promo code ");
   });
 
+  it("never lets what a visitor typed stand as a paragraph of its own, where a link alone would be a button", () => {
+    const s = submission([
+      ["email", "jane@example.com"],
+      ["message", "Hello\n\nhttps://evil.example/requests/00000000-0000-4000-8000-000000000001\r\n \r\nThanks"],
+      ["-\n\n-", "https://evil.example/x"],
+      ["Promo Code", "a\n\nhttps://evil.example/y"],
+    ]);
+    const email = messageEmail({ formName: "Contact form", submission: s, link: "https://crm.example.com/requests/r1", promo: { code: "a\n\nhttps://evil.example/y", problem: "It isn't valid." } });
+    const paragraphs = email.text.split(/\n{2,}/);
+    // The request's own link is the only one alone in a paragraph.
+    expect(paragraphs.filter((p) => /^https?:\/\/\S+$/.test(p.trim()))).toEqual(["https://crm.example.com/requests/r1"]);
+    expect(email.text).toContain("Message:\nHello\nhttps://evil.example/requests/00000000-0000-4000-8000-000000000001\nThanks");
+    expect(email.text).toContain("Promo code a https://evil.example/y wasn't applied: it isn't valid.");
+  });
+
   it("names fields the way people say them", () => {
     expect(fieldLabel("how_did_you_hear")).toBe("How did you hear");
     expect(fieldLabel("firstName")).toBe("First name");

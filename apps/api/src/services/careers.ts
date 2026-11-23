@@ -93,7 +93,8 @@ export async function emailApplication(
 ): Promise<void> {
   const { base, company, form, application } = input;
   const { subject, text } = applicationEmail({ formName: form.name, application, files: input.files, link: `${base}/applicants/${input.applicantId}` });
-  const email = renderEmail({ companyName: company.name, logo: logoImage(base, company.id, company.settings), text });
+  // What the applicant typed is in it: only the application's own link here is a button.
+  const email = renderEmail({ companyName: company.name, logo: logoImage(base, company.id, company.settings), text, base });
   for (const to of form.email_to) {
     const result = await sendEmail(env, { to, subject, text: email.text, html: email.html, replyTo: application.email ?? undefined, fromName: company.name }, company.id);
     if (!result.sent) console.warn(`Careers email to ${to} wasn't sent: ${result.reason ?? "unknown reason"}`);

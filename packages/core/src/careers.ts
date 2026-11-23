@@ -7,7 +7,7 @@
  * they heard about the job. Every other field comes along as an answer under its own name. Files are
  * taken too, when the form sends them (enctype="multipart/form-data"): a résumé, a cover letter.
  */
-import { exampleCheckLines, fieldLabel, fieldRole, readSubmission, spelling, type BotCheck, type FieldValue, type Fields } from "./websiteForms";
+import { exampleCheckLines, fieldLabel, fieldRole, readSubmission, spelling, visitorLine, visitorLines, type BotCheck, type FieldValue, type Fields } from "./websiteForms";
 
 export const APPLICANT_STATUSES = [
   { key: "new", label: "New" },
@@ -211,12 +211,14 @@ export function applicationEmail(input: { formName: string; application: Applica
   const who = a.name ?? a.email ?? a.phone ?? "someone";
   const short: string[] = [];
   const long: string[] = [];
+  // What the applicant typed never stands as a paragraph of its own (visitorLines).
   for (const [name, value] of a.fields) {
-    const shown = Array.isArray(value) ? value.join(", ") : value;
-    if (shown.includes("\n") || shown.length > 80) long.push(`${fieldLabel(name)}:\n${shown}`);
-    else short.push(`${fieldLabel(name)}: ${shown}`);
+    const shown = visitorLines(Array.isArray(value) ? value.join(", ") : value);
+    const label = visitorLine(fieldLabel(name));
+    if (shown.includes("\n") || shown.length > 80) long.push(`${label}:\n${shown}`);
+    else short.push(`${label}: ${shown}`);
   }
-  const attached = files.map((f) => `${fileLabel(f.field)}: ${f.name} (${fileSize(f.size)})`);
+  const attached = files.map((f) => `${visitorLine(fileLabel(f.field))}: ${visitorLine(f.name)} (${fileSize(f.size)})`);
   const first = (a.name ?? "").split(/\s+/)[0];
   return {
     subject: a.subject ?? `New application from ${who}${a.details.position ? ` for ${a.details.position}` : ""}`,

@@ -74,7 +74,7 @@ begin
   return coalesce(new, old);
 end $$;
 revoke all on function private.own_pay_guard() from public;
--- A rate's insert and update are pay_rate_defaults' to hold (20261122000100); its delete is this one's.
+-- A rate's insert and update are pay_rate_defaults' to hold (20261122000100_prices_and_own_pay_stay_with_their_roles.sql); its delete is this one's.
 create trigger own_pay_guard before delete on public.pay_rates
   for each row execute function private.own_pay_guard();
 create trigger own_pay_guard before insert or update or delete on public.job_pay

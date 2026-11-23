@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 import type { Env } from "../src/env";
 import { encryptJson, signToken } from "../src/lib/crypto";
+import { NO_APP_URL } from "../src/lib/http";
 import { clientLink, readClientLink } from "../src/lib/links";
 import { sendWithMailbox } from "../src/lib/notify";
 import { adminClient } from "../src/lib/supabase";
@@ -390,23 +391,37 @@ describe("calendar feed queries", () => {
 });
 
 describe("sign-in links", () => {
+  /** The calls made once the link's work after the answer has settled: none for 50 ms. */
+  async function settled(calls: Call[]) {
+    for (let seen = -1; seen !== calls.length; ) {
+      seen = calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return calls;
+  }
+
   /**
    * Ana is in one company, whose own mailbox is in `status`: Resend with the company's key, which
    * `companySends` says still works, or else the mail server on `smtpPort`. As in GoTrue, Supabase's
-   * mailer won't send to her right after a link was made. Returns the emails that went out.
+   * mailer won't send to her right after a link was made. `role`: hers there (none said: a team
+   * member's); `connectedBy`: whether an owner or an admin connected the mailbox. Returns the emails
+   * that went out.
    */
-  async function emailLink(options: { status: string; companySends?: boolean; smtpPort?: number; env?: Env }) {
+  async function emailLink(options: { status: string; companySends?: boolean; smtpPort?: number; env?: Env; role?: string; connectedBy?: "owner" | "admin" }) {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const companyId = crypto.randomUUID(); // mailboxes are cached by company
     const mailbox = options.smtpPort
       ? { settings: { preset: "custom", kind: "smtp", host: "127.0.0.1", port: options.smtpPort, security: "tls", username: "office@acme.example", from_email: "office@acme.example" }, secret: { password: "app-password" } }
       : { settings: { preset: "resend", kind: "resend", from_email: "office@acme.example" }, secret: { api_key: "re_company" } };
     const ciphertext = await encryptJson(env, mailbox.secret);
+    const connectedBy = options.connectedBy === "admin" ? "user-admin" : "user-owner";
     const calls = serve((call) => {
       if (call.path === "rpc/rate_limit_hit") return true;
       if (call.path === "rpc/user_id_for_email") return "user-1";
-      if (call.path === "memberships") return [{ company_id: companyId, company: { name: "Acme Lawn Care", email: "office@acme.example" } }];
-      if (call.method === "GET" && call.path === "integrations") return [{ status: options.status, settings: mailbox.settings }];
+      // Whether whoever connected the mailbox is an owner there now (lib/notify.ts mailboxOwnerSet).
+      if (call.path === "memberships" && call.url.searchParams.get("role") === "eq.owner") return call.url.searchParams.get("user_id") === "eq.user-owner" ? [{ user_id: "user-owner" }] : [];
+      if (call.path === "memberships") return [{ company_id: companyId, role: options.role ?? "field_crew", role_id: null, company: { name: "Acme Lawn Care", email: "office@acme.example" } }];
+      if (call.method === "GET" && call.path === "integrations") return [{ status: options.status, settings: mailbox.settings, connected_by: connectedBy }];
       if (call.path === "integration_secrets") return [{ ciphertext }];
       if (call.url.pathname === "/auth/v1/admin/generate_link") return { id: "user-1", email: "ana@example.com", hashed_token: "hashed-1", verification_type: "recovery" };
       if (call.url.pathname === "/auth/v1/recover") {
@@ -421,6 +436,7 @@ describe("sign-in links", () => {
     });
     const res = await app.request("/api/auth/email-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "ana@example.com", kind: "recovery" }) }, options.env ?? env);
     expect(await res.json()).toEqual({ sent: true });
+    await settled(calls);
     const emails = calls.filter((c) => c.url.host === "api.resend.com").map((c) => ({ from: c.body.from as string, link: (c.body.text as string).includes("token_hash=hashed-1") }));
     return { emails, calls };
   }
@@ -442,7 +458,7 @@ describe("sign-in links", () => {
   });
 
   it("without the server's email, check the mailbox signs in before making a link, and else use Supabase's mailer", async () => {
-    const closed = net.createServer(); // a mail server that's gone
+    const closed = net.createServer(); // a mail server that's gone (and on this machine, which isn't connected to anyway)
     await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));
     const smtpPort = (closed.address() as net.AddressInfo).port;
     await new Promise((resolve) => closed.close(resolve));
@@ -458,6 +474,58 @@ describe("sign-in links", () => {
     // Supabase's mailer would refuse right after the link, so it isn't asked.
     expect(calls.some((c) => c.url.pathname === "/auth/v1/recover")).toBe(false);
     expect(calls.find((c) => c.method === "PATCH" && c.path === "integrations")?.body).toEqual({ status: "error", last_error: expect.stringContaining("Resend didn't accept this API key") });
+  });
+
+  it("for an owner or an admin, go through the company's mailbox only when an owner connected it", async () => {
+    for (const role of ["owner", "admin"]) {
+      expect((await emailLink({ status: "connected", companySends: true, role, connectedBy: "owner" })).emails, role).toEqual([{ from: company, link: true }]);
+      // An admin connected it: the server's email sends it instead...
+      expect((await emailLink({ status: "connected", companySends: true, role, connectedBy: "admin" })).emails, role).toEqual([{ from: server, link: true }]);
+      // ...or with none, Supabase's own mailer, and the mailbox never gets the link.
+      const { emails, calls } = await emailLink({ status: "connected", companySends: true, role, connectedBy: "admin", env: noServerEmail });
+      expect(emails, role).toEqual([]);
+      expect(calls.some((c) => c.url.pathname === "/auth/v1/admin/generate_link")).toBe(false);
+      expect(calls.find((c) => c.url.pathname === "/auth/v1/recover")?.body).toMatchObject({ email: "ana@example.com" });
+    }
+    // Anyone else's still goes through it, whoever connected it: it may be all the email there is.
+    expect((await emailLink({ status: "connected", companySends: true, role: "office", connectedBy: "admin", env: noServerEmail })).emails).toEqual([{ from: company, link: true }]);
+  });
+
+  it("answer before anyone is looked up, so how long it takes says nothing about who has an account", async () => {
+    let release: () => void = () => undefined;
+    const lookedUp = new Promise<void>((resolve) => (release = resolve));
+    const looked: string[] = [];
+    const after: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/rpc/rate_limit_hit")) return Response.json(true);
+      if (url.pathname.endsWith("/rpc/user_id_for_email")) {
+        // The lookup waits until both answers are in.
+        looked.push(JSON.parse(String(init?.body)).p_email);
+        await lookedUp;
+        return Response.json(null);
+      }
+      after.push(url.href);
+      return Response.json([]);
+    });
+    for (const address of ["ana@example.com", "nobody@example.com"]) {
+      const res = await app.request("/api/auth/email-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: address, kind: "magiclink" }) }, env);
+      expect(await res.json()).toEqual({ sent: true });
+    }
+    await vi.waitFor(() => expect(looked).toEqual(["ana@example.com", "nobody@example.com"]));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Nobody has an account here, so nothing more was asked, and nothing was sent.
+    expect(after).toEqual([]);
+  });
+
+  it("aren't made without the instance's own address, whatever address the request came to", async () => {
+    const calls = serve((call) => (call.path === "rpc/rate_limit_hit" ? true : []));
+    const res = await app.request("https://evil.example/api/auth/email-link", { method: "POST", headers: { "Content-Type": "application/json", Host: "evil.example" }, body: JSON.stringify({ email: "ana@example.com", kind: "recovery" }) }, { ...env, APP_URL: undefined });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe(NO_APP_URL);
+    await settled(calls);
+    expect(calls.some((c) => c.path === "rpc/user_id_for_email")).toBe(false);
   });
 });
 

@@ -39,7 +39,8 @@ export async function emailMessage(
 ): Promise<void> {
   const { base, company, form, submission } = input;
   const { subject, text } = messageEmail({ formName: form.name, submission, link: `${base}/requests/${input.requestId}`, promo: input.promo });
-  const email = renderEmail({ companyName: company.name, logo: logoImage(base, company.id, company.settings), text });
+  // What the visitor typed is in it: only the request's own link here is a button.
+  const email = renderEmail({ companyName: company.name, logo: logoImage(base, company.id, company.settings), text, base });
   for (const to of form.email_to) {
     const result = await sendEmail(env, { to, subject, text: email.text, html: email.html, replyTo: submission.email ?? undefined, fromName: company.name }, company.id);
     if (!result.sent) console.warn(`Website form email to ${to} wasn't sent: ${result.reason ?? "unknown reason"}`);

@@ -5,20 +5,21 @@
  * useSession() available and API calls carry the active company.
  */
 import type { Permission, Role } from "@crewtavo/core/roles";
-import type { Session as AuthSession } from "@supabase/supabase-js";
+import { AuthClient, type Session as AuthSession } from "@supabase/supabase-js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { ShellSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { LoginPage, SetPasswordPage } from "@/features/auth/LoginPage";
+import { LoginPage, SetPasswordPage, SwitchAccountPage } from "@/features/auth/LoginPage";
 import { OnboardingPage } from "@/features/auth/OnboardingPage";
 import { FirstRun, SetupGate } from "@/features/setup/SetupPage";
 import { registerFieldActions } from "@/features/field/fieldActions";
 import { TermsPage } from "@/features/legal/License";
 import { RailwaySetupPage } from "@/features/setup/RailwaySetupPage";
 import { api, ApiError, companyFeatures, loadConfig, setActiveCompany, supabase, type AppConfig } from "./api";
+import { readEmailLink, redeemEmailLink, type Redeemed, type SwitchQuestion } from "./emailLink";
 import { setCurrency } from "./format";
 import { followProfile, forgetLanguageAtSignOut } from "./i18n";
 import { forgetOfflineCache, keepQueuedFieldActions, keepsDayOffline, pendingFieldActions, signOutWarning, startOfflineCache } from "./offline";
@@ -119,19 +120,10 @@ function Centered({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * A one-time link from an email (invite, password reset, sign-in) opens the app with
- * ?token_hash=…&type=… (emailAuthLink in apps/api/src/lib/auth.ts), and the app redeems it here, so it
- * works whatever the Supabase project's Site URL is. Links from Supabase's own mailer arrive with
- * #access_token=…&type=… instead, and supabase-js signs in from those by itself.
- */
-const LINK_TYPES = ["invite", "recovery", "magiclink", "signup", "email"] as const;
+/** A one-time link from an email (invite, password reset, sign-in), read before Supabase clears the URL (lib/emailLink.ts). */
 const emailLink = (() => {
   try {
-    const query = new URLSearchParams(window.location.search);
-    const tokenHash = query.get("token_hash");
-    const type = LINK_TYPES.find((t) => t === query.get("type"));
-    return tokenHash && type ? { tokenHash, type, welcome: query.get("welcome") === "1" } : null;
+    return readEmailLink(window.location.search);
   } catch {
     return null;
   }
@@ -148,23 +140,25 @@ const arrivedVia = (() => {
   }
 })();
 
-let redeeming: Promise<string | null> | null = null;
+let redeeming: Promise<Redeemed> | null = null;
 
-/** Trades the emailed token for a session, once (React runs effects twice in development). Resolves to a problem to show, or null. */
-function redeemEmailLink(): Promise<string | null> {
-  if (!emailLink) return Promise.resolve(null);
-  redeeming ??= supabase()
-    .auth.verifyOtp({ token_hash: emailLink.tokenHash, type: emailLink.type })
-    .then(
-      ({ error }) => (error ? t("That link has expired or was already used. Ask whoever sent it for a new one, or sign in below.") : null),
-      () => t("Couldn't open that link. Check your connection and try again."),
-    )
-    .finally(() => {
-      // The token works once; keep it out of the address bar and history.
-      const url = new URL(window.location.href);
-      for (const key of ["token_hash", "type", "welcome"]) url.searchParams.delete(key);
-      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-    });
+/**
+ * Trades the emailed token for a sign-in, once (React runs effects twice in development), asking
+ * first when someone else is signed in here (lib/emailLink.ts). `ask` shows the question.
+ */
+function openEmailLink(config: AppConfig, ask: (question: SwitchQuestion) => Promise<boolean>): Promise<Redeemed> {
+  if (!emailLink) return Promise.resolve({ problem: null, kept: false });
+  redeeming ??= redeemEmailLink(emailLink, {
+    auth: supabase().auth,
+    // Keeps nothing: the sign-in already here stays as it is unless they choose to switch.
+    apart: () => new AuthClient({ url: `${config.supabaseUrl}/auth/v1`, headers: { apikey: config.supabaseKey, Authorization: `Bearer ${config.supabaseKey}` }, persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "crewtavo-email-link" }),
+    ask,
+  }).finally(() => {
+    // The token works once; keep it out of the address bar and history.
+    const url = new URL(window.location.href);
+    for (const key of ["token_hash", "type", "welcome"]) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  });
   return redeeming;
 }
 
@@ -181,6 +175,10 @@ export function SessionProvider({ children, requireCompany = true }: { children:
   const [companyId, setCompanyId] = useState<string | null>(storedCompany);
   const [settingPassword, setSettingPassword] = useState<"recovery" | "invite" | null>(arrivedVia);
   const [linkProblem, setLinkProblem] = useState<string | null>(null);
+  /** An emailed link for another account than the one signed in here, waiting on the person's answer. */
+  const [switching, setSwitching] = useState<(SwitchQuestion & { answer: (yes: boolean) => void }) | null>(null);
+  /** Whose sign-in this browser keeps isn't settled while an emailed link is being opened. */
+  const openingLink = useRef(Boolean(emailLink));
   /** The person chose to sign out (rather than the app signing them out). */
   const signingOut = useRef(false);
 
@@ -188,9 +186,24 @@ export function SessionProvider({ children, requireCompany = true }: { children:
     if (!config.data) return;
     const client = supabase();
     let lastUser: string | null = null;
-    redeemEmailLink()
-      .then((problem) => {
-        setLinkProblem(problem);
+    const ask = (question: SwitchQuestion) =>
+      new Promise<boolean>((resolve) =>
+        setSwitching({
+          ...question,
+          answer: (yes) => {
+            setSwitching(null);
+            resolve(yes);
+          },
+        }),
+      );
+    openEmailLink(config.data, ask)
+      .then(({ problem, kept }) => {
+        openingLink.current = false;
+        if (kept) {
+          // The person here stays signed in: what the link was for (a new password, say) isn't theirs.
+          setSettingPassword(null);
+          if (problem) toast.error(problem);
+        } else setLinkProblem(problem);
         return client.auth.getSession();
       })
       .then(({ data, error }) => {
@@ -203,6 +216,8 @@ export function SessionProvider({ children, requireCompany = true }: { children:
         if (!session) setSettingPassword(null);
       });
     const { data } = client.auth.onAuthStateChange((event, session) => {
+      // Until an emailed link is settled, the sign-in it brings, or the one it may replace, isn't shown.
+      if (openingLink.current) return;
       setAuth(session);
       if (session) lastUser = session.user.id;
       // A re-sent invite arrives as a recovery link; keep the "set your password" wording.
@@ -359,6 +374,7 @@ export function SessionProvider({ children, requireCompany = true }: { children:
       </SetupGate>
     );
   }
+  if (switching) return <SwitchAccountPage current={switching.current} link={switching.link} onAnswer={switching.answer} />;
   if (!config.data || auth === undefined) return <ShellSkeleton />;
   if (!auth) {
     // A one-business instance: setup steps, or the owner's first account, before the sign-in page.

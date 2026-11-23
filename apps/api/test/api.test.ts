@@ -645,6 +645,20 @@ describe("email rendering", () => {
     expect(renderEmail({ companyName: "Radford Lawn Care", text: "https://ops.example.com/hub/home?session=1&view=autopay" }).html).toContain(">Manage autopay</a>");
   });
 
+  it("makes only links to this Crewtavo into buttons when told its address (an email carrying an outsider's words)", () => {
+    const request = "https://ops.example.com/requests/00000000-0000-4000-8000-000000000001";
+    const lookalike = "https://ops.example.com.evil.example/requests/00000000-0000-4000-8000-000000000002";
+    const { html } = renderEmail({ companyName: "Acme Lawn", text: `Message:\nhi\n\n${lookalike}\n\nhttps://evil.example/login\n\n${request}`, base: "https://ops.example.com" });
+    expect(html.match(/display:inline-block/g)).toHaveLength(1);
+    expect(html).toContain(`href="${request}" style="display:inline-block`);
+    expect(html).toContain(">Open the request</a>");
+    // The others are plain links in the text, written out as they are.
+    expect(html).toContain(`<a href="${lookalike}" style="color:#2c611a;font-weight:600;word-break:break-all">${lookalike}</a>`);
+    expect(html).toContain('<a href="https://evil.example/login" style="color:#2c611a;font-weight:600;word-break:break-all">https://evil.example/login</a>');
+    // Without the address, as before: any link on its own line is a button.
+    expect(renderEmail({ companyName: "Acme Lawn", text: "https://acme.example/spring" }).html).toContain('href="https://acme.example/spring" style="display:inline-block');
+  });
+
   it("shows a one-time code large, on its own, and leaves the plain text as it is", () => {
     const { html, text } = renderEmail({ companyName: "Oscar Roofing", text: "Your code:\n\n042517\n\nNot 042517 here.", code: "042517" });
     expect(html.match(/font-size:32px[^>]*>042517<\/p>/g)).toHaveLength(1);

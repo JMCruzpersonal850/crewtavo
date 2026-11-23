@@ -171,20 +171,58 @@ export async function checkMailbox(env: Env, companyId: string, mailbox: Mailbox
   return result.sent;
 }
 
-export async function sendEmail(env: Env, message: EmailMessage, companyId?: string | null): Promise<SendResult> {
+/**
+ * Whether one of the company's owners connected its mailbox (integrations.connected_by, which every
+ * save in Settings → Email sets), going by who's an owner now: someone who has since stopped being
+ * one doesn't count, and nor does a mailbox whose saver can't be told. Whoever connects a mailbox
+ * can read what goes out through it, so a way into an owner's or admin's account only goes through
+ * one an owner connected (sendEmail's `adminAccount`). Asked afresh each time, never cached.
+ */
+export async function mailboxOwnerSet(env: Env, companyId: string): Promise<boolean> {
+  const admin = adminClient(env);
+  const { data: row, error } = await admin.from("integrations").select("connected_by").eq("company_id", companyId).eq("provider", "email").maybeSingle();
+  if (error || !row?.connected_by) return false;
+  const { data: owner, error: ownerError } = await admin
+    .from("memberships")
+    .select("user_id")
+    .eq("company_id", companyId)
+    .eq("user_id", row.connected_by)
+    .eq("role", "owner")
+    .eq("active", true)
+    .maybeSingle();
+  return !ownerError && Boolean(owner);
+}
+
+export interface SendOptions {
+  /**
+   * The email is a way into an account with admin-level access (a sign-in, reset or invitation link
+   * for an owner or an admin): it goes through the company's mailbox only when an owner connected
+   * it (mailboxOwnerSet), and otherwise through the server's own email, when there is one.
+   */
+  adminAccount?: boolean;
+}
+
+/** Why an owner's or admin's link didn't go through the company's mailbox. Its words never read as a refused sign-in (sendProblem). */
+export const NOT_OWNERS_MAILBOX =
+  "The company's email was connected by someone who isn't an owner, so links into owners' and admins' accounts don't go through it. An owner can connect it again in Settings → Email.";
+
+export async function sendEmail(env: Env, message: EmailMessage, companyId?: string | null, options: SendOptions = {}): Promise<SendResult> {
   // A sub's stand-in address (a sign-in without an email of their own) never gets anything.
   if (isPlaceholderEmail(message.to)) return { sent: false, reason: "They have no email address. Text them instead." };
+  let passedOver = false;
   if (companyId) {
     const mailbox = await loadMailbox(env, companyId).catch(() => null);
-    if (mailbox) {
+    if (mailbox && (!options.adminAccount || (await mailboxOwnerSet(env, companyId)))) {
       const result = await sendWithMailbox(mailbox.settings, mailbox.secret, message);
       await noteMailboxHealth(env, companyId, mailbox, result);
       await noteSending(env, companyId, "email", result);
       return result;
     }
+    passedOver = Boolean(mailbox);
   }
   if ((!env.RESEND_API_KEY || !env.EMAIL_FROM) && env.MAILPIT_URL) return mailpit(env, { ...message, from: env.EMAIL_FROM });
-  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) return { sent: false, reason: "Email isn't set up yet. An admin can connect the company's email in Settings → Email." };
+  if (passedOver && (!env.RESEND_API_KEY || !env.EMAIL_FROM)) return { sent: false, reason: NOT_OWNERS_MAILBOX };
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) return { sent: false, reason: "Email isn't set up yet. An owner can connect the company's email in Settings → Email." };
   const result = await resendSend(env.RESEND_API_KEY, env.EMAIL_FROM, message);
   if (companyId) await noteSending(env, companyId, "email", result);
   return result;

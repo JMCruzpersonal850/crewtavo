@@ -998,6 +998,24 @@ describe("connecting an AI assistant", () => {
     expect(passed).toEqual([JSON.stringify({ action: "deny" })]);
   });
 
+  it("is refused for a sub's sign-in by any spelling of the consent's address", async () => {
+    serve({ tables: { memberships: [{ company_id: CO, user_id: AL, role: "subcontractor", active: true }] }, accounts: {} });
+    passed.length = 0;
+    for (const path of ["/oauth/authorizations/auth-1/consent/", "//oauth/authorizations/auth-1/consent", "/OAuth/Authorizations/auth-1/Consent", "/oauth/authorizations/auth-1/%63onsent"]) {
+      const request = new Request(`https://ops.example.com/auth/v1${path}`, { method: "POST", headers: { Authorization: `Bearer ${tokenFor(AL)}`, "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve" }) });
+      const res = await guardConsent(env, request, "/auth/v1", send);
+      expect(res.status, path).toBe(403);
+    }
+    expect(passed).toEqual([]);
+  });
+
+  it("reads no more of an answer than one could be", async () => {
+    passed.length = 0;
+    const huge = new Request("https://ops.example.com/auth/v1/oauth/authorizations/auth-1/consent", { method: "POST", headers: { Authorization: `Bearer ${tokenFor(OFFICE)}`, "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve", pad: "x".repeat(70 * 1024) }) });
+    expect((await guardConsent(env, huge, "/auth/v1", send)).status).toBe(413);
+    expect(passed).toEqual([]);
+  });
+
   it("goes through for someone on a team", async () => {
     serve({ tables: { memberships: [{ company_id: CO, user_id: OFFICE, role: "office", active: true }, { company_id: OTHER_CO, user_id: OFFICE, role: "subcontractor", active: true }] }, accounts: {} });
     passed.length = 0;

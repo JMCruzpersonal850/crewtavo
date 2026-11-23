@@ -172,6 +172,36 @@ describe("a message from the website's own form", () => {
     expect((await post("email=jane%40example.com&_next=https%3A%2F%2Fgreenlawn.example%2Fsent")).headers.get("location")).toBe("https://greenlawn.example/sent");
   });
 
+  it("sends people on only to the form's own website or this Crewtavo, whatever _next says", async () => {
+    const next = async (to: string, headers: Record<string, string> = {}) => (await post(`email=jane%40example.com&_next=${encodeURIComponent(to)}`, headers)).headers.get("location");
+    // Taking messages from anywhere: the website the message came from (www or not), or this Crewtavo.
+    withForm();
+    expect(await next("https://greenlawn.example/sent")).toBe("https://greenlawn.example/sent");
+    expect(await next("https://crm.greenlawn.example/f/other")).toBe("https://crm.greenlawn.example/f/other");
+    // Anywhere else, the form's own thank-you page instead; the message is still kept.
+    for (const to of ["https://evil.example/login", "https://greenlawn.example.evil.example/", "http://localhost:3000/"]) expect(await next(to), to).toBe(THANKS);
+    // With no page to tell by, only the thank-you page the business set has a say.
+    withForm({ redirect_url: "https://greenlawn.example/thanks" });
+    expect(await next("https://evil.example/", { Origin: "null" })).toBe("https://greenlawn.example/thanks");
+    expect(await next("https://greenlawn.example/sent", { Origin: "null" })).toBe("https://greenlawn.example/sent");
+    // Only these websites: one of them (and their subdomains).
+    withForm({ allowed_sites: ["greenlawn.example"] });
+    expect(await next("https://shop.greenlawn.example/thanks")).toBe("https://shop.greenlawn.example/thanks");
+    expect(await next("https://evil.example/")).toBe(THANKS);
+    // And fetch() hears the same.
+    expect(await (await post({ email: "jane@example.com", _next: "https://evil.example/" }, { Accept: "application/json" })).json()).toEqual({ ok: true, next: THANKS });
+  });
+
+  it("keeps what a visitor typed from becoming a button in the office's email: only the request's own link is one", async () => {
+    withForm();
+    await post({ email: "jane@example.com", message: "Hi\n\nhttps://evil.example/requests/00000000-0000-4000-8000-0000000000e9\n\nThanks" });
+    await Promise.all(current.background);
+    const html = String(current.emails[0]!.html);
+    expect(html.match(/display:inline-block/g)).toHaveLength(1);
+    expect(html).toContain(`href="https://crm.greenlawn.example/requests/${REQUEST_ID}" style="display:inline-block`);
+    expect(html).toContain("Hi<br><a href=\"https://evil.example/requests/00000000-0000-4000-8000-0000000000e9\"");
+  });
+
   it("tells a bot that filled in _gotcha it worked, and keeps nothing", async () => {
     const db = withForm();
     const res = await post("email=bot%40spam.example&_gotcha=http%3A%2F%2Fspam.example");

@@ -11,7 +11,7 @@ import type { AddressInfo } from "node:net";
 import type { HttpBindings } from "@hono/node-server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
-import { EMAIL_CHANGE_STALE, gateway, NO_S3, PASSWORD_LINK_STALE, safeFile, storesFile, unsizedUpload } from "../src/lib/gateway";
+import { EMAIL_CHANGE_STALE, gateway, MAX_AUTH_BODY, MAX_REST_BODY, NO_S3, PASSWORD_LINK_STALE, safeFile, storesFile, unsizedUpload } from "../src/lib/gateway";
 import { NO_AUTH_MAIL, sealAuthToken } from "../src/lib/signInGuard";
 import { BIGGER_THAN_SAID, LINK_RUN_OUT, UPLOADS_PAUSED, type PublicUploads, type UploadRecord } from "../src/lib/publicUploads";
 import { forgetStorageUsage, type StorageSnapshot } from "../src/lib/storageLimits";
@@ -25,6 +25,17 @@ vi.mock("../src/services/storageBucket", async (importOriginal) => ({
 }));
 afterEach(() => {
   pause.on = false;
+});
+
+// The rate limits' counts (lib/limit.ts): every key asked about, and the kinds that are used up.
+const limits = vi.hoisted(() => ({ keys: [] as string[], full: [] as string[] }));
+vi.mock("../src/lib/limit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/limit")>()),
+  allow: async (_env: unknown, key: string) => (limits.keys.push(key), !limits.full.some((kind) => key.startsWith(kind))),
+}));
+afterEach(() => {
+  limits.keys.length = 0;
+  limits.full.length = 0;
 });
 
 const env: Env = { SUPABASE_URL: "http://127.0.0.1:8080", SUPABASE_SECRET_KEY: "sb_secret_test" };
@@ -774,5 +785,71 @@ describe("sign-in links through the gateway", () => {
     expect((await auth("/user", { method: "GET", token: key("authenticated") })).status).toBe(200);
     expect((await auth("/logout", { body: {} })).status).toBe(200);
     expect(reached).toEqual(["POST /token?grant_type=refresh_token", "GET /user", "POST /logout"]);
+  });
+});
+
+describe("what the Data API and Auth take", () => {
+  const SECRET = "super-secret-jwt-token-with-at-least-32-characters-long";
+  const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const key = (role: string) => {
+    const unsigned = `${part({ alg: "HS256", typ: "JWT" })}.${part({ role, iss: "supabase", exp: Math.floor(Date.now() / 1000) + 3600 })}`;
+    return `${unsigned}.${createHmac("sha256", SECRET).update(unsigned).digest("base64url")}`;
+  };
+  const guarded = () => gateway(env, { auth: base, rest: base, storage: base }, { jwtSecret: SECRET });
+  const send = (path: string, init: { length?: number; body?: BodyInit; token?: string } = {}) =>
+    guarded().request(
+      path,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(init.length === undefined ? {} : { "Content-Length": String(init.length) }), ...(init.token ? { Authorization: `Bearer ${init.token}` } : {}) },
+        body: init.body ?? "{}",
+        duplex: "half",
+      } as RequestInit,
+      from,
+    );
+  beforeEach(() => {
+    reached.length = 0;
+  });
+
+  it("turns away a body far bigger than the app ever sends, before the service sees it", async () => {
+    const rest = await send("/rest/v1/clients", { length: MAX_REST_BODY + 1 });
+    expect(rest.status).toBe(413);
+    expect((await rest.json()).message).toBe("That's too much to send at once. Send it in smaller parts.");
+    const auth = await send("/auth/v1/token?grant_type=refresh_token", { length: MAX_AUTH_BODY + 1 });
+    expect(auth.status).toBe(413);
+    expect((await auth.json()).error_code).toBe("request_too_large");
+    expect(reached).toEqual([]);
+  });
+
+  it("counts one that doesn't say its size as it arrives", async () => {
+    expect((await send("/rest/v1/clients", { body: stream(MAX_REST_BODY + 1) as unknown as BodyInit })).status).toBe(413);
+    expect((await send("/auth/v1/oauth/clients/register", { body: stream(MAX_AUTH_BODY + 1) as unknown as BodyInit })).status).toBe(413);
+    // Within the limit it goes through whole.
+    const ok = await send("/rest/v1/clients", { body: stream(1024 * 1024) as unknown as BodyInit });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).bytes).toBe(1024 * 1024);
+  });
+
+  it("takes what the app does send, and anything from this server itself", async () => {
+    const batch = JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ display_name: `Client ${i}`, notes: "x".repeat(5000) })));
+    expect((await send("/rest/v1/clients", { body: batch, length: Buffer.byteLength(batch) })).status).toBe(200);
+    expect((await send("/rest/v1/rpc/import_jobber", { length: MAX_REST_BODY + 1, token: key("service_role") })).status).toBe(200);
+    expect(reached).toEqual(["POST /clients", "POST /rpc/import_jobber"]);
+  });
+
+  it("lets each visitor sign only so many apps up with Auth's OAuth server an hour, by any spelling of its address", async () => {
+    const register = (path = "/auth/v1/oauth/clients/register", token?: string) => send(path, { body: JSON.stringify({ client_name: "Claude", redirect_uris: ["https://claude.ai/api/mcp/auth_callback"] }), token });
+    expect((await register()).status).toBe(200);
+    expect(limits.keys).toEqual([expect.stringMatching(/^oauth-register:ip:/)]);
+    limits.full.push("oauth-register:");
+    for (const path of ["/auth/v1/oauth/clients/register", "/auth/v1/oauth/clients/register/", "/auth/v1/OAuth/Clients/Register", "/auth/v1//oauth/clients/%72egister"]) {
+      const res = await register(path);
+      expect(res.status, path).toBe(429);
+      expect((await res.json()).msg).toBe("Too many apps signed up from here. Try again in an hour.");
+    }
+    // Nothing else of Auth's is counted, and the server itself isn't held to it.
+    expect((await send("/auth/v1/token?grant_type=refresh_token", { body: JSON.stringify({ refresh_token: "r" }) })).status).toBe(200);
+    expect((await register("/auth/v1/oauth/clients/register", key("service_role"))).status).toBe(200);
+    expect(reached).toEqual(["POST /oauth/clients/register", "POST /token?grant_type=refresh_token", "POST /oauth/clients/register"]);
   });
 });

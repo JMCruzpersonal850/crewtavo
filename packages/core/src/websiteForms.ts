@@ -249,14 +249,30 @@ export function fieldLabel(name: string): string {
   return label ? label.charAt(0).toUpperCase() + label.slice(1) : name;
 }
 
+/**
+ * What a visitor typed, as it goes in the office's email: its lines kept and its blank lines dropped,
+ * so none of it stands as a paragraph of its own there, where a link alone in one would be a button
+ * (apps/api/src/lib/email.ts). A job application's email (careers.ts) does the same.
+ */
+export const visitorLines = (value: string) =>
+  value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim())
+    .join("\n");
+
+/** And what a visitor typed that's shown on one line: a field's name, a promo code. */
+export const visitorLine = (value: string) => value.replace(/\s+/g, " ").trim();
+
 /** What became of a message's promo code: ready to apply (no problem), or why it wasn't applied. */
 export type PromoResult = { code: string; problem: string | null } | null;
 
 /** The office email's line for a message's promo code. */
 export function promoLine(promo: PromoResult): string | null {
   if (!promo) return null;
-  if (!promo.problem) return `Promo code ${promo.code}, ready to apply on the quote.`;
-  return `Promo code ${promo.code} wasn't applied: ${promo.problem.charAt(0).toLowerCase()}${promo.problem.slice(1)}`;
+  const code = visitorLine(promo.code);
+  if (!promo.problem) return `Promo code ${code}, ready to apply on the quote.`;
+  return `Promo code ${code} wasn't applied: ${promo.problem.charAt(0).toLowerCase()}${promo.problem.slice(1)}`;
 }
 
 /** The email the people a form names get for each message: its subject and words (lib/email.ts renders them). */
@@ -266,9 +282,10 @@ export function messageEmail(input: { formName: string; submission: Submission; 
   const short: string[] = [];
   const long: string[] = [];
   for (const [name, value] of s.fields) {
-    const shown = Array.isArray(value) ? value.join(", ") : value;
-    if (shown.includes("\n") || shown.length > 80) long.push(`${fieldLabel(name)}:\n${shown}`);
-    else short.push(`${fieldLabel(name)}: ${shown}`);
+    const shown = visitorLines(Array.isArray(value) ? value.join(", ") : value);
+    const label = visitorLine(fieldLabel(name));
+    if (shown.includes("\n") || shown.length > 80) long.push(`${label}:\n${shown}`);
+    else short.push(`${label}: ${shown}`);
   }
   const first = (s.name ?? "").split(/\s+/)[0];
   return {
