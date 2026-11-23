@@ -790,13 +790,24 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
     e.preventDefault();
     if (ready) save.mutate();
   };
-  const saveButton = <Button type="submit" loading={save.isPending} disabled={!ready} style={stripe ? { justifySelf: "start" } : undefined}>{stripe ? "Connect" : "Save"}</Button>;
+  const saveButton = <Button type="submit" variant="primary" loading={save.isPending} disabled={!ready} style={stripe ? { justifySelf: "start" } : undefined}>{stripe ? "Connect" : "Save"}</Button>;
   // Until the company's own Stripe key is in: how to get one from the form Stripe fills in.
   const stripeSteps = stripe && !app.stripe?.own;
   const fal = app.id === "fal";
   const falSteps = fal && app.status !== "connected";
   const openai = app.id === "chatgpt";
   const openaiSteps = openai && app.status !== "connected";
+  // What happens to the key (and, for Stripe, its webhook): above the form, or under Connect while Stripe's setup waits on one.
+  const note = (
+    <p className={kit.note}>
+      {app.id === "anthropic" ? "Crewtavo's writing help, answers from your guides and receipt reading use this key when you add one. " : null}
+      {openai && !openaiSteps ? <>Crewtavo's writing help, answers from your guides and receipt reading use this key. <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Check your OpenAI credit</a>. </> : null}
+      {fal && !falSteps ? <>Find paving is on the measuring map, next to the takeoff items. <a href={FAL_BILLING} target="_blank" rel="noreferrer">Check your fal.ai credit</a>. </> : null}
+      {stripe ? "Crewtavo adds the webhook it needs to your Stripe account. " : null}
+      {app.status === "connected" && app.account_label && (!stripe || app.stripe?.own) ? `Saved: ${app.account_label}.` : "It's stored encrypted and never shown again."}
+      {stripe && app.stripe?.own ? <> To switch keys, <a href={STRIPE_NEW_KEY} target="_blank" rel="noreferrer">get a new one from Stripe</a>.</> : null}
+    </p>
+  );
   return (
     <Section className={kit.panel}
       id="app-setup"
@@ -804,55 +815,46 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
     >
       {stripeSteps && (
         <>
+          {/* The way to Stripe in the step it belongs to, quiet; Connect, which finishes it, is the green button. */}
           <Steps>
-            <Step>Click <strong>Get a key from Stripe</strong> and sign in if Stripe asks. A new key named Crewtavo opens with what it needs already set, so leave the list as it is (most of it stays at None).</Step>
-            <Step>Scroll to the bottom of Stripe's page, click <strong>Create key</strong> and enter the code Stripe sends you.</Step>
-            <Step>Copy the key Stripe shows you, then paste it below.</Step>
+            <Step>
+              <span>Open Stripe and sign in. The key comes set up for Crewtavo, so leave its settings as they are.</span>
+              <a className="btn btn-sm" href={STRIPE_NEW_KEY} target="_blank" rel="noreferrer"><Icon name="external" size={14} />Get a key from Stripe</a>
+            </Step>
+            <Step>At the bottom of Stripe's page, click <strong>Create key</strong> and enter the code Stripe sends.</Step>
+            <Step>Copy the key and paste it below.</Step>
           </Steps>
-          <a className="btn btn-primary" href={STRIPE_NEW_KEY} target="_blank" rel="noreferrer">
-            <Icon name="external" size={16} />
-            Get a key from Stripe
-          </a>
         </>
       )}
       {falSteps && (
         <>
           <p className={kit.note}>About two minutes. fal.ai bills you directly: Find paving costs about half a cent for each thing it looks for, so $5 of credit covers hundreds of lots.</p>
           <Steps>
-            <Step>Click <strong>Get a key from fal.ai</strong> and sign in with Google or GitHub (or make an account).</Step>
+            <Step>
+              <span>Open fal.ai and sign in with Google or GitHub (or make an account).</span>
+              <a className="btn btn-sm" href={FAL_KEYS} target="_blank" rel="noreferrer"><Icon name="external" size={14} />Get a key from fal.ai</a>
+            </Step>
             <Step>Click <strong>Create Key</strong>, name it Crewtavo, keep the <strong>API</strong> scope, and copy the key. fal.ai only shows it once.</Step>
             <Step>Add a few dollars of credit under <a href={FAL_BILLING} target="_blank" rel="noreferrer">Billing</a>.</Step>
             <Step>Paste the key below. Crewtavo checks it with fal.ai before saving, at no cost.</Step>
           </Steps>
-          <a className="btn btn-primary" href={FAL_KEYS} target="_blank" rel="noreferrer">
-            <Icon name="external" size={16} />
-            Get a key from fal.ai
-          </a>
         </>
       )}
       {openaiSteps && (
         <>
           <p className={kit.note}>For the whole company: everyone's drafts, answers from your guides and receipts use this key, and so does anything Crewtavo drafts by itself. OpenAI bills you directly for what's used.</p>
           <Steps>
-            <Step>Click <strong>Get a key from OpenAI</strong> and sign in to OpenAI's API platform (it's separate from a ChatGPT plan).</Step>
+            <Step>
+              <span>Open OpenAI's API platform and sign in (it's separate from a ChatGPT plan).</span>
+              <a className="btn btn-sm" href={OPENAI_KEYS} target="_blank" rel="noreferrer"><Icon name="external" size={14} />Get a key from OpenAI</a>
+            </Step>
             <Step>Click <strong>Create new secret key</strong>, name it Crewtavo, and copy the key. OpenAI only shows it once.</Step>
             <Step>Add credit under <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Billing</a> if the account has none.</Step>
             <Step>Paste the key below. Crewtavo checks it with OpenAI before saving, at no cost.</Step>
           </Steps>
-          <a className="btn btn-primary" href={OPENAI_KEYS} target="_blank" rel="noreferrer">
-            <Icon name="external" size={16} />
-            Get a key from OpenAI
-          </a>
         </>
       )}
-      <p className={kit.note}>
-        {app.id === "anthropic" ? "Crewtavo's writing help, answers from your guides and receipt reading use this key when you add one. " : null}
-        {openai && !openaiSteps ? <>Crewtavo's writing help, answers from your guides and receipt reading use this key. <a href={OPENAI_BILLING} target="_blank" rel="noreferrer">Check your OpenAI credit</a>. </> : null}
-        {fal && !falSteps ? <>Find paving is on the measuring map, next to the takeoff items. <a href={FAL_BILLING} target="_blank" rel="noreferrer">Check your fal.ai credit</a>. </> : null}
-        {stripe ? "Crewtavo adds the webhook it needs to your Stripe account. " : null}
-        {app.status === "connected" && app.account_label && (!stripe || app.stripe?.own) ? `Saved: ${app.account_label}.` : "It's stored encrypted and never shown again."}
-        {stripe && app.stripe?.own ? <> To switch keys, <a href={STRIPE_NEW_KEY} target="_blank" rel="noreferrer">get a new one from Stripe</a>.</> : null}
-      </p>
+      {!stripeSteps && note}
       <form className="stack-sm" onSubmit={submit}>
         <div className="row" style={{ gap: 8 }}>
           <div className="input-group grow">
@@ -878,6 +880,7 @@ export function KeyCard({ app, onSaved }: { app: AppRow; onSaved: () => void }) 
         )}
       </form>
       {save.error && <span className="field-error">{(save.error as Error).message}</span>}
+      {stripeSteps && note}
     </Section>
   );
 }

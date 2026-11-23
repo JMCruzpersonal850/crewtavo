@@ -1149,9 +1149,11 @@ a.who-name:hover { color: var(--ink); text-decoration: underline; text-underline
   .app-rail-item[aria-current="page"] { background: var(--solid); color: var(--on-solid); }
   .app-rail-item[aria-current="page"] .app-rail-count { color: inherit; opacity: 0.7; }
   .app-store-main { gap: 28px; }
-  .app-feature { padding: 20px 20px 0; gap: 18px; border-radius: 16px; background: var(--m-card); border: 0; }
+  .app-feature { padding: 20px; gap: 20px; border-radius: 16px; background: var(--m-card); border: 0; }
+  .app-feature-text { padding-bottom: 0; }
   .app-feature-title { font-size: var(--fs-24); }
-  .app-feature-shot { margin-right: -20px; }
+  /* On a phone the card's edges don't show, so the screenshot running off one of them looked off center: framed and centered instead. */
+  .app-feature-shot { margin: 0; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 14px 32px -20px rgb(15 42 53 / 0.45); }
   .app-collections { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   /* The cards are rows on one rounded card, like a phone's App Store list. */
   .app-grid { grid-template-columns: minmax(0, 1fr); gap: 0; border-radius: 16px; background: var(--m-card); overflow: hidden; }
@@ -1195,6 +1197,8 @@ a.who-name:hover { color: var(--ink); text-decoration: underline; text-underline
   .app-stats { margin-top: 16px; padding: 12px 0; overflow-x: auto; scrollbar-width: none; }
   .app-stats > div { flex: none; padding: 0 18px; }
   /* The ring takes the floating pill's place while installing. */
+  /* While the setup waits on a key or a link, the ring stays up by the name: floating, it sat over the setup's own buttons. */
+  .app-head .install-ring-slot:has(> [data-phase="waiting"]) { position: static; width: auto; height: auto; min-width: 0; background: none; box-shadow: none; }
   .app-head .install-ring-slot { position: fixed; z-index: 15; right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--mobile-nav-height) + 16px + env(safe-area-inset-bottom)); width: 52px; min-width: 0; height: 52px; border-radius: var(--radius-pill); background: var(--menu); box-shadow: 0 12px 26px -10px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.18); }
 }
 /* Install's progress ring (InstallRing.tsx): as tall as the button it replaces, in the middle of where it was. */
@@ -2567,8 +2571,10 @@ button:where(.address-link) { display: inline; margin: 0; padding: 0; border: 0;
 .hub-card-title { margin: 0; font-size: var(--fs-16); font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
 .hub-card-head { display: grid; gap: 2px; }
 .hub-card-head p { margin: 0; font-size: var(--fs-13); color: var(--text-3); }
-.hub-kick { font-size: var(--fs-12); font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--brand-text); }
-.hub-kick[data-tone="danger"] { color: var(--danger); }
+.hub-kick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-13); font-weight: 500; color: var(--text-3); }
+/* Overdue beside an invoice's number (Mercury's bill): a small tinted tag, the rest of the line calm. */
+.hub-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--fill-2); color: var(--text-2); font-size: var(--fs-12); font-weight: 600; }
+.hub-tag[data-tone="danger"] { background: var(--danger-tint); color: var(--danger); }
 .hub-title { font-size: var(--fs-16); font-weight: 600; color: var(--ink); }
 .hub-sub { font-size: var(--fs-14); color: var(--text-3); }
 .hub-late { color: var(--danger); font-weight: 600; }
@@ -2588,6 +2594,27 @@ button:where(.address-link) { display: inline; margin: 0; padding: 0; border: 0;
 .hub-h1 { padding: 0 4px; }
 .hub-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); background: var(--m-card); font-size: var(--fs-13); font-weight: 500; color: var(--text-2); }
 .hub-chip svg { color: var(--quiet); }
+
+/* The client's account wears the business's color across the top (Preply, Jobber): who it's from
+   and the greeting on it, and the first card over its edge. Quotes and invoices keep the white bar. */
+.public-page.hub[data-kind="client"] { overflow-x: clip; }
+.public-page.hub[data-kind="client"] .hub-header { background: var(--brand); border-bottom: 0; }
+.hub[data-kind="client"] .hub-company { color: var(--on-brand); }
+.hub[data-kind="client"] .hub-company-text > span { color: color-mix(in srgb, var(--on-brand) 72%, transparent); }
+.hub[data-kind="client"] .hub-company .tile { background: color-mix(in srgb, var(--on-brand) 16%, transparent); color: var(--on-brand); }
+/* A logo drawn for white paper, on a white tab so it reads on any color. */
+.hub[data-kind="client"] .hub-company .hub-logo { box-sizing: content-box; padding: 4px 8px; border-radius: 10px; background: #fff; }
+.hub[data-kind="client"] .hub-head-btn { border-color: transparent; background: color-mix(in srgb, var(--on-brand) 14%, transparent); color: var(--on-brand); }
+.hub[data-kind="client"] .hub-head-btn:hover { background: color-mix(in srgb, var(--on-brand) 22%, transparent); color: var(--on-brand); }
+.hub[data-kind="client"] .hub-head-btn > svg { color: var(--on-brand); }
+/* The band runs the width of the window from under the header; its bottom is what the first card overlaps. */
+.hub[data-kind="client"] .hub-hello { --wrap-top: 16px; --overlap: 92px; margin: calc(-1 * var(--wrap-top)) calc(50% - 50vw) 0; padding: 14px calc(50vw - 50% + 4px) var(--overlap); background: var(--brand); color: var(--on-brand); }
+.hub[data-kind="client"] .hub-hello h1 { font-size: var(--fs-24); letter-spacing: -0.02em; }
+.hub[data-kind="client"] .hub-chip { background: color-mix(in srgb, var(--on-brand) 14%, transparent); color: var(--on-brand); }
+.hub[data-kind="client"] .hub-chip svg { color: inherit; opacity: 0.8; }
+.hub[data-kind="client"] .hub-hello + .hub-section { margin-top: calc(-1 * var(--overlap, 92px)); }
+.hub[data-kind="client"] .hub-hello + .hub-section > .hub-section-head :is(h2, .hub-link) { color: var(--on-brand); }
+.hub[data-kind="client"] .hub-hello + .hub-section > .hub-card { box-shadow: 0 10px 28px -12px rgb(16 24 40 / 0.22); }
 .hub-section { display: grid; gap: 10px; }
 .hub-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 4px 0; }
 .hub-section-head h2 { margin: 0; font-size: var(--fs-15); font-weight: 700; color: var(--ink); }
@@ -2672,28 +2699,35 @@ button:where(.address-link) { display: inline; margin: 0; padding: 0; border: 0;
 .hub-autopay[data-tone]:has(.hub-autopay-state) .hub-title { color: var(--ink); }
 .hub-autopay[data-tone="warning"] .hub-autopay-state { font-weight: 600; color: var(--warning); }
 .hub-autopay[data-tone="danger"] .hub-autopay-state { font-weight: 600; color: var(--danger); }
-.hub-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.hub-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .hub-acts[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
 .hub-acts > .hub-btn { padding: 0 10px; font-size: var(--fs-14); }
 /* Under a visit's two buttons: Message us and Cancel visit, in quiet words (44px targets from .hub-link). */
-.hub-visit-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; margin-top: 14px; }
-.hub-visit { padding: 16px 18px 18px; }
-.hub-visit-body { display: flex; align-items: flex-start; gap: 14px; }
+.hub-visit-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; }
+.hub-visit { display: grid; gap: 14px; padding: 18px 18px 18px; }
+.hub-visit-when { display: grid; gap: 2px; }
+.hub-visit-when > strong { font-size: var(--fs-22); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.hub-visit-when > span:last-child { font-size: var(--fs-16); font-weight: 500; color: var(--brand-text); }
 .hub-visit-text { display: grid; gap: 2px; align-content: start; min-width: 0; }
-.hub-date { box-sizing: border-box; flex: none; width: 54px; min-height: 62px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; background: var(--brand-tint); color: var(--brand-deep); line-height: 1.1; }
-.hub-date .dow { font-size: var(--fs-11); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-.hub-date .day { font-size: var(--fs-22); font-weight: 700; }
-.hub-date .mon { font-size: var(--fs-11); font-weight: 600; }
-.hub-live { justify-self: start; display: inline-flex; align-items: center; height: 22px; margin-bottom: 4px; padding: 0 9px; border-radius: var(--radius-pill); background: var(--brand-tint); color: var(--brand-deep); font-size: var(--fs-12); font-weight: 600; }
-.hub-crew { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; font-size: var(--fs-14); color: var(--text-2); }
-.hub-crew .faces { display: flex; }
-.hub-crew .face { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--fill-3); color: var(--text-2); font-size: var(--fs-11); font-weight: 700; box-shadow: 0 0 0 2px var(--m-card); }
-.hub-crew .face + .face { margin-left: -6px; }
+.hub-live { justify-self: start; display: inline-flex; align-items: center; height: 22px; margin-bottom: 6px; padding: 0 9px; border-radius: var(--radius-pill); background: var(--brand-tint); color: var(--brand-deep); font-size: var(--fs-12); font-weight: 600; }
+/* Where the visit is on its day: four bars filled in the business's color up to now, the step it's at named in ink. */
+.hub-progress { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.hub-progress li { display: grid; gap: 6px; font-size: var(--fs-12); font-weight: 500; color: var(--text-3); }
+.hub-progress li::before { content: ""; height: 4px; border-radius: 2px; background: var(--fill-3); }
+.hub-progress li[data-done]::before { background: var(--brand); }
+.hub-progress li[aria-current="step"] { font-weight: 700; color: var(--ink); }
+.hub-crew { display: flex; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--row-divider); }
+.hub-crew .faces { display: flex; flex: none; }
+.hub-crew .face { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--brand-tint); color: var(--brand-deep); font-size: var(--fs-14); font-weight: 700; box-shadow: 0 0 0 2px var(--m-card); }
+.hub-crew .face + .face { margin-left: -8px; }
+.hub-crew .who { display: grid; min-width: 0; line-height: 1.3; }
+.hub-crew .who > strong { font-size: var(--fs-15); font-weight: 600; }
+.hub-crew .who > span { font-size: var(--fs-13); color: var(--text-3); }
 .hub-actions { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; }
 .hub-actions[data-count="2"] { --n: 2; }
-.hub-actions button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 78px; padding: 8px; border: 0; border-radius: 16px; background: var(--m-card); font: inherit; font-size: var(--fs-13); font-weight: 600; color: var(--ink); cursor: pointer; transition: background var(--dur-fast); }
+.hub-actions button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 96px; padding: 8px; border: 0; border-radius: 16px; background: var(--m-card); font: inherit; font-size: var(--fs-13); font-weight: 600; color: var(--ink); cursor: pointer; transition: background var(--dur-fast); }
 .hub-actions button:hover { background: var(--fill); }
-.hub-actions svg { color: var(--brand-text); }
+.hub-actions svg { box-sizing: content-box; padding: 10px; border-radius: 50%; background: var(--brand-tint); color: var(--brand-deep); }
 .hub-list { overflow: hidden; }
 .hub-list-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 16px; box-sizing: border-box; color: var(--ink); text-decoration: none; }
 .hub-list-row + .hub-list-row::before { content: ""; position: absolute; top: 0; left: 60px; right: 0; height: 1px; background: var(--row-divider); }
@@ -2704,6 +2738,14 @@ a.hub-list-row:hover { background: var(--fill); color: var(--ink); }
 .hub-list-text > strong { font-size: var(--fs-15); font-weight: 600; }
 .hub-list-text > span { font-size: var(--fs-13); color: var(--text-3); }
 .hub-list-row > svg:last-child { flex: none; color: var(--quiet); }
+/* A finished visit's photos (Walmart's delivery photo): rounded squares under its words, each opening in full. */
+.hub-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.hub-photo { position: relative; display: block; width: 72px; height: 72px; flex: none; overflow: hidden; border-radius: 12px; background: var(--fill-2); }
+.hub-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--dur-fast); }
+.hub-photo:hover img { transform: scale(1.04); }
+.hub-photo-more { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / 0.45); color: #fff; font-size: var(--fs-15); font-weight: 700; }
+@media (min-width: 720px) { .hub-photo { width: 88px; height: 88px; } }
+.hub-list-row:has(.hub-photos) { align-items: flex-start; }
 .hub-checklist { margin-top: 4px; }
 .hub-checklist summary { min-height: 32px; display: flex; align-items: center; font-size: var(--fs-13); font-weight: 600; color: var(--brand-text); cursor: pointer; }
 .hub .hub-refer { --focus-ring: var(--brand-text); display: grid; justify-items: start; gap: 8px; padding: 18px; }
@@ -2890,7 +2932,9 @@ a.hub-list-row:hover { background: var(--fill); color: var(--ink); }
   .hub-todo > :is(.hub-btn, .btn) { justify-self: start; width: auto; min-width: 200px; }
   .hub-acts { display: flex; flex-wrap: wrap; }
   .hub-acts > .hub-btn { width: auto; padding: 0 16px; }
-  .hub-visit-links { justify-content: flex-start; margin-top: 12px; padding-left: 2px; }
+  .hub-visit-links { justify-content: flex-start; padding-left: 2px; }
+  .hub[data-kind="client"] .hub-hello { --wrap-top: 28px; padding-top: 22px; }
+  .hub[data-kind="client"] .hub-hello h1 { font-size: var(--fs-30); }
 }
 @media (min-width: 960px) {
   .hub-layout:not([data-single]) { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px 32px; align-items: start; }

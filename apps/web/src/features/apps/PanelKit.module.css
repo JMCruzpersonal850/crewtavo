@@ -43,10 +43,10 @@
 /* A step with more than words: they stack with a small gap. */
 .step { min-width: 0; }
 /* Its words flow as a sentence (bold and code inside them too); what comes after them goes under, 8px apart. */
-.step > :is(div, p, ul, ol, pre, form, label, select, .btn, button) { max-width: 100%; margin-top: 8px; }
+.step > :is(div, p, ul, ol, pre, form, label, select, :global(.btn), button) { max-width: 100%; margin-top: 8px; }
 .step > :first-child { margin-top: 0; }
 .step > .codeRow + .codeRow { margin-top: 0; }
-.step > :is(.btn, button) { display: flex; width: fit-content; }
+.step > :is(:global(.btn), button) { display: flex; width: fit-content; }
 .step > select { display: block; }
 /* A short list inside a step (the APIs to turn on, the permissions to add). */
 .bullets { display: grid; gap: 2px; margin: 0; padding-left: 18px; }

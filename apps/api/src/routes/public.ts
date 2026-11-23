@@ -82,6 +82,7 @@ import { allow } from "../lib/limit";
 import { LINK_PAUSED, linkCanSend } from "../lib/linkBudget";
 import { clientLink, linkPreview, linksReplaced, readClientLink, REVIEW_TOKEN, type ClientLink, type LinkKind } from "../lib/links";
 import { storedFile } from "../lib/storedFile";
+import { THUMBNAIL_PX, thumbnail } from "../lib/thumbnail";
 import { keptSettings } from "../lib/keptSettings";
 import { adminClient } from "../lib/supabase";
 import { clientIp } from "../lib/visitor";
@@ -1525,6 +1526,13 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   });
   // A done visit's checklists, the ones the business shows clients.
   const checklists = await clientChecklists(admin, companyId, done.data ?? []);
+  // And its photos the office marked OK to share (Marketing), oldest first: a few each, served by
+  // /hub/:token/photos/:id through this link, never as a storage link.
+  const doneIds = (done.data ?? []).map((v) => v.id);
+  const shared = doneIds.length
+    ? (await admin.from("attachments").select("id, owner_id").eq("company_id", companyId).eq("owner_type", "visit").in("owner_id", doneIds).eq("shareable", true).in("content_type", ["image/jpeg", "image/png"]).order("created_at").limit(60)).data ?? []
+    : [];
+  const photosOf = (visitId: string) => shared.filter((p) => p.owner_id === visitId).slice(0, VISIT_PHOTOS).map((p) => p.id);
 
   const base = appUrl(c);
   // The links on the page are minted from this one, so an office copy's stay office copies.
@@ -1568,7 +1576,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
     // One over the limit for their bank account wasn't taken from it: it's theirs to pay, and says why.
     invoices: l.nm ? [] : await Promise.all((invoices.data ?? []).map(async (i) => ({ ...i, autopay: charges.get(i.id)?.status ?? null, yours_to_pay: yours.has(i.id), link: await sign("invoice", i.id) }))),
     visits: (upcoming.data ?? []).map(visit),
-    past_visits: (done.data ?? []).map((v) => ({ ...visit(v), checklists: checklists.get(v.id) ?? [] })),
+    past_visits: (done.data ?? []).map((v) => ({ ...visit(v), checklists: checklists.get(v.id) ?? [], photos: photosOf(v.id) })),
     // "Charged automatically to Visa ending 4242": a Stripe payment on an invoice its autopay charge paid.
     payments: (l.nm ? [] : payments.data ?? []).map((p) => {
       const charge = p.invoice_id ? charges.get(p.invoice_id) : undefined;
@@ -1641,6 +1649,38 @@ publicRoutes.get("/hub/:token/drawings/:file", async (c) => {
   });
   if (!within) throw new HttpError(429, LINK_PAUSED);
   return c.body(bytes, 200, { "Content-Type": type, "Cache-Control": "private, max-age=3600" });
+});
+
+/** A finished visit's photos on the client's account: this many at most, each sent small unless asked for in full. */
+const VISIT_PHOTOS = 6;
+const PHOTO_MAX_BYTES = 25_000_000;
+const PHOTO_FULL_PX = 1600;
+
+// A photo from one of the client's finished visits, through the link to their account: only one the
+// office marked OK to share, on a visit of theirs that's done. Small for the page (?full for one to
+// look at), as a JPEG or PNG, and never as a storage link.
+publicRoutes.get("/hub/:token/photos/:file", async (c) => {
+  const l = await link(c, ["client"]);
+  const id = (c.req.param("file") ?? "").replace(/\.jpg$/i, "");
+  if (!z.uuid().safeParse(id).success) throw new HttpError(404, "Photo not found.");
+  const admin = adminClient(c.env);
+  const photo = must(await admin.from("attachments").select("path, owner_type, owner_id, shareable").eq("company_id", l.c).eq("id", id).maybeSingle(), "Photo not found.");
+  if (photo.owner_type !== "visit" || !photo.shareable) throw new HttpError(404, "Photo not found.");
+  const visit = must(await admin.from("visits").select("status, job:jobs(client_id), request:requests(client_id, asked_starts_at)").eq("company_id", l.c).eq("id", photo.owner_id).maybeSingle(), "Photo not found.");
+  if (visit.status !== "completed" || !clientsVisit(visit, l.id)) throw new HttpError(404, "Photo not found.");
+  const stored = await storedFile(admin, photo.path, PHOTO_MAX_BYTES);
+  const type = stored && (isJpeg(stored) ? "image/jpeg" : isPng(stored) ? "image/png" : null);
+  if (!stored || !type) throw new HttpError(404, "Photo not found.");
+  const small = await thumbnail(stored, type, c.req.query("full") !== undefined ? PHOTO_FULL_PX : THUMBNAIL_PX);
+  // At most a day's worth through one link, as map drawings (lib/linkBudget.ts).
+  const within = await linkCanSend(c.env, `hub-photos:${await sha256Hex(c.req.param("token") ?? "")}`, small.body.length, {
+    company: l.c,
+    title: "A client's visit photos are paused for the day",
+    body: "The Client Hub link to this client's account has sent their visit photos far more times in the last day than a client looks at them, so they're paused until tomorrow; the account itself still opens. If the link went somewhere it shouldn't, reset the client's links from their page.",
+    open: `/clients/${l.id}`,
+  });
+  if (!within) throw new HttpError(429, LINK_PAUSED);
+  return c.body(small.body, 200, { "Content-Type": small.type, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600" });
 });
 
 // The company's logo (services/logo.ts), on the Client Hub and in emails. A logo's file name is

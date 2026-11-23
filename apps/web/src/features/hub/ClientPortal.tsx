@@ -37,6 +37,8 @@ export interface PortalVisit {
   change_requested?: ChangeKind | null;
   /** A done visit's checklists the business shows clients. Servers that don't send them have none. */
   checklists?: ClientChecklist[];
+  /** A done visit's photos the office marked OK to share, by id (served small by /hub/:token/photos/:id). */
+  photos?: string[];
 }
 type ChangeKind = "reschedule" | "cancel";
 export interface ClientView {
@@ -127,15 +129,23 @@ function Section({ title, count, action, children }: { title: string; count?: nu
   );
 }
 
-/** "Thu 27", over "Nov": the visit's day, in the business's color. */
-function DateTile({ date }: { date: string }) {
-  const d = new Date(`${date}T12:00:00Z`);
+/** The visit's day in words, where the business is: "Today", "Tomorrow", or "Sunday, Nov 22". */
+function dayWords(date: string, tz: string): string {
+  const today = dateIn(new Date().toISOString(), tz);
+  if (date === today) return "Today";
+  if (date === new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) return "Tomorrow";
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/** Where a visit is on its day, as delivery apps show it: a bar for each step, filled up to this one. */
+const STEPS = ["Scheduled", "On the way", "Working", "Done"] as const;
+const stepOf = (status: string) => (status === "en_route" ? 1 : status === "in_progress" ? 2 : status === "completed" ? 3 : 0);
+function Progress({ status }: { status: string }) {
+  const at = stepOf(status);
   return (
-    <span className="hub-date" aria-hidden="true">
-      <span className="dow">{d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}</span>
-      <span className="day">{d.getUTCDate()}</span>
-      <span className="mon">{d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })}</span>
-    </span>
+    <ol className="hub-progress" aria-label={`Your visit: ${STEPS[at]}`}>
+      {STEPS.map((s, i) => <li key={s} data-done={i <= at || undefined} aria-current={i === at ? "step" : undefined}>{s}</li>)}
+    </ol>
   );
 }
 
@@ -143,8 +153,26 @@ function Crew({ crew }: { crew: string[] }) {
   if (!crew.length) return null;
   return (
     <span className="hub-crew">
-      <span className="faces">{crew.slice(0, 3).map((n) => <span key={n} className="face">{n.slice(0, 1)}</span>)}</span>
-      {names(crew)}
+      <span className="faces" aria-hidden="true">{crew.slice(0, 3).map((n) => <span key={n} className="face">{n.slice(0, 1)}</span>)}</span>
+      <span className="who"><strong>{names(crew)}</strong><span>Your crew</span></span>
+    </span>
+  );
+}
+
+/** A finished visit's photos: small squares, each opening the photo in full. */
+const photoUrl = (token: string, id: string, full = false) => `/api/hub/${token}/photos/${id}.jpg${full ? "?full" : ""}`;
+function Photos({ token, visit, max = 4 }: { token: string; visit: PortalVisit; max?: number }) {
+  const photos = visit.photos ?? [];
+  if (!photos.length) return null;
+  const more = photos.length - max;
+  return (
+    <span className="hub-photos">
+      {photos.slice(0, max).map((id, i) => (
+        <a key={id} href={photoUrl(token, id, true)} target="_blank" rel="noopener" className="hub-photo">
+          <img src={photoUrl(token, id)} alt={`Photo ${i + 1} from ${visit.title}`} loading="lazy" />
+          {more > 0 && i === max - 1 && <span className="hub-photo-more" aria-hidden="true">+{more}</span>}
+        </a>
+      ))}
     </span>
   );
 }
@@ -154,23 +182,25 @@ interface VisitActions {
   onChange: (visit: PortalVisit, kind: ChangeKind) => void;
 }
 
-function VisitCard({ token, visit, tz, windowMin, phone, onMessage, onChange }: { token: string; visit: PortalVisit; tz: string; windowMin?: number; phone: string | null } & VisitActions) {
-  const live = visit.status === "en_route" ? "On the way" : visit.status === "in_progress" ? "Working now" : visit.change_requested ? "Change requested" : null;
+function VisitCard({ token, visit, tz, windowMin, onMessage, onChange }: { token: string; visit: PortalVisit; tz: string; windowMin?: number } & VisitActions) {
   const online = visit.can_change === true;
+  // On its day (or once the crew is on the way) the visit shows where it is; before then, just when.
+  const onItsDay = visit.scheduled_on === dateIn(new Date().toISOString(), tz) || visit.status === "en_route" || visit.status === "in_progress";
   return (
     <article className="hub-card hub-visit">
-      <div className="hub-visit-body">
-        <DateTile date={visit.scheduled_on} />
-        <div className="hub-visit-text">
-          {live && <span className="hub-live">{live}</span>}
-          <strong className="hub-title">{visit.title}</strong>
-          <span className="hub-sub">{when(visit, tz, windowMin)}</span>
-          {visit.address && <span className="hub-sub">{visit.address}</span>}
-          <Crew crew={visit.crew} />
-          {visit.change_requested && <span className="hub-sub">We'll let you know by email.</span>}
-          {visit.can_change === false && <span className="hub-sub">To change this visit, {phone ? <>call <a href={`tel:${phone}`} className="nowrap">{phone}</a></> : "message us"}.</span>}
-        </div>
+      {/* When first, large (Instacart, Angi): the day, then the time or the arrival window. */}
+      <div className="hub-visit-when">
+        {visit.change_requested && <span className="hub-live">Change requested</span>}
+        <strong>{dayWords(visit.scheduled_on, tz)}</strong>
+        <span>{when(visit, tz, windowMin)}</span>
       </div>
+      {onItsDay && <Progress status={visit.status} />}
+      <div className="hub-visit-text">
+        <span className="hub-title">{visit.title}</span>
+        {visit.address && <span className="hub-sub">{visit.address}</span>}
+        {visit.change_requested && <span className="hub-sub">We'll let you know by email.</span>}
+      </div>
+      <Crew crew={visit.crew} />
       {/* Two buttons (Client-Phone); a message and cancelling, asked for less often, as quiet words under them. */}
       <div className="hub-acts">
         {online && <button type="button" className="hub-btn hub-btn-sm hub-btn-ghost" onClick={() => onChange(visit, "reschedule")}><Icon name="calendar" size={16} />Reschedule</button>}
@@ -198,13 +228,13 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
   const next = data.visits[0];
   const tz = hubZone(data.company);
   // `day` is the date where the company is: a payment at 8:30 PM on Oct 16 in New York is Oct 17 in UTC.
-  const recent = [
+  const recent: Array<{ at: string; day: string; icon: IconName; tone: string; title: string; detail: string; link: string | undefined; visit?: PortalVisit }> = [
     ...data.payments.map((p) => ({
       at: p.received_at, day: dateIn(p.received_at, tz), icon: (p.auto ? "card" : "dollar") as IconName, tone: "good", title: p.invoice ? `Payment on invoice #${p.invoice}` : "Payment received",
       detail: p.auto ? `${formatMoneyCents(p.amount)} charged automatically to ${p.card ?? "your card"}` : `${formatMoneyCents(p.amount)} by ${METHOD[p.method] ?? "payment"}`,
       link: p.invoice ? data.invoices.find((i) => i.number === p.invoice)?.link : undefined,
     })),
-    ...data.past_visits.map((v) => ({ at: v.completed_at ?? `${v.scheduled_on}T12:00:00Z`, day: doneOn(v, tz), icon: "check" as IconName, tone: "good", title: `${v.title} done`, detail: v.crew.length ? `by ${names(v.crew)}` : "Visit complete", link: undefined })),
+    ...data.past_visits.map((v) => ({ at: v.completed_at ?? `${v.scheduled_on}T12:00:00Z`, day: doneOn(v, tz), icon: "check" as IconName, tone: "good", title: `${v.title} done`, detail: v.crew.length ? `by ${names(v.crew)}` : "Visit complete", link: undefined, visit: v })),
     ...data.quotes.filter((q) => q.approved_at).map((q) => ({ at: q.approved_at!, day: dateIn(q.approved_at!, tz), icon: "quote" as IconName, tone: "plain", title: `You approved quote #${q.number}`, detail: q.title, link: q.link })),
     ...data.quotes.filter((q) => q.range?.accepted_at).map((q) => ({ at: q.range!.accepted_at!, day: dateIn(q.range!.accepted_at!, tz), icon: "calendar" as IconName, tone: "plain", title: "You asked for a visit", detail: q.title, link: q.link })),
     ...data.requests.map((r) => ({ at: r.created_at, day: dateIn(r.created_at, tz), icon: "requests" as IconName, tone: "plain", title: `Request #${r.number} received`, detail: r.title, link: undefined })),
@@ -255,12 +285,12 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
         )}
         {owed.map((i) => (
           <article key={i.id} className="hub-card hub-todo">
-            <span className="hub-kick" data-tone={i.status === "overdue" ? "danger" : undefined}>Invoice #{i.number}{i.due_on ? ` · ${i.status === "overdue" ? "was due" : "due"} ${formatDate(i.due_on)}` : ""}</span>
+            <span className="hub-kick">{i.status === "overdue" && <span className="hub-tag" data-tone="danger">Overdue</span>}Invoice #{i.number}{i.due_on ? ` · ${i.status === "overdue" ? "was due" : "due"} ${formatDate(i.due_on)}` : ""}</span>
             <strong className="hub-todo-title">{i.subject ?? "Balance due"}</strong>
             <span className="hub-todo-amount">{formatMoneyCents(i.balance_due)}</span>
             {needsNewCard(i) && <span className="hub-sub">We couldn't charge your card for this one.</span>}
             {yoursToPayNote(i.yours_to_pay, i.balance_due) && <span className="hub-sub">{yoursToPayNote(i.yours_to_pay, i.balance_due)}</span>}
-            <a className="hub-btn hub-btn-sm" href={i.link}>Pay {formatMoneyCents(i.balance_due)}</a>
+            <a className="hub-btn hub-btn-sm" href={i.link}>Pay now</a>
             {needsNewCard(i) && data.autopay && data.autopay.available !== false && <button type="button" className="hub-link" onClick={() => go("autopay")}>Update your card</button>}
           </article>
         ))}
@@ -271,7 +301,7 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
 
       {next && (
         <Section title="Next visit" action={data.visits.length > 1 || data.past_visits.length ? <button type="button" className="hub-link" onClick={() => go("visits")}>All visits</button> : undefined}>
-          <VisitCard token={token} visit={next} tz={tz} windowMin={data.arrival_window_min} phone={data.company.phone} onMessage={onMessage} onChange={onChange} />
+          <VisitCard token={token} visit={next} tz={tz} windowMin={data.arrival_window_min} onMessage={onMessage} onChange={onChange} />
         </Section>
       )}
 
@@ -293,6 +323,7 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
                   <span className="hub-list-text">
                     <strong>{r.title}</strong>
                     <span>{formatDate(r.day)} · {r.detail}</span>
+                    {r.visit && <Photos token={token} visit={r.visit} max={3} />}
                   </span>
                   {r.link && <Icon name="chevronRight" size={16} />}
                 </>
@@ -374,7 +405,7 @@ function Visits({ token, data, back, onMessage, onChange }: { token: string; dat
       <button type="button" className="hub-back" onClick={back}><Icon name="chevronLeft" size={16} />Your account</button>
       <h1 className="hub-h1">Visits</h1>
       <Section title="Coming up" count={data.visits.length}>
-        {data.visits.length === 0 ? <p className="hub-card hub-calm">Nothing scheduled right now.</p> : data.visits.map((v) => <VisitCard key={v.id} token={token} visit={v} tz={tz} windowMin={data.arrival_window_min} phone={data.company.phone} onMessage={onMessage} onChange={onChange} />)}
+        {data.visits.length === 0 ? <p className="hub-card hub-calm">Nothing scheduled right now.</p> : data.visits.map((v) => <VisitCard key={v.id} token={token} visit={v} tz={tz} windowMin={data.arrival_window_min} onMessage={onMessage} onChange={onChange} />)}
       </Section>
       {data.past_visits.length > 0 && (
         <Section title="Done" count={data.past_visits.length}>
@@ -385,6 +416,7 @@ function Visits({ token, data, back, onMessage, onChange }: { token: string; dat
                 <span className="hub-list-text">
                   <strong>{v.title}</strong>
                   <span>{formatDate(doneOn(v, tz))}{v.crew.length ? ` · ${names(v.crew)}` : ""}</span>
+                  <Photos token={token} visit={v} />
                   {v.checklists?.map((cl, i) => (
                     <details key={i} className="hub-checklist">
                       <summary>{cl.name}</summary>

@@ -459,6 +459,46 @@ describe("the crew on the client's home page", () => {
   });
 });
 
+describe("photos from the client's finished visits", () => {
+  const PHOTO = "00000000-0000-4000-8000-0000000000f7";
+  const HIDDEN = "00000000-0000-4000-8000-0000000000f8";
+  const PATH = `${ROOFER}/visit/v-done/a.jpg`;
+  const photo = (over: Row = {}) => ({ id: PHOTO, company_id: ROOFER, owner_type: "visit", owner_id: "v-done", path: PATH, content_type: "image/jpeg", shareable: true, created_at: "2026-11-01T18:00:00Z", ...over });
+  beforeEach(() => {
+    Object.assign(state.tables, {
+      jobs: [{ id: "job-1", company_id: ROOFER, client_id: CLIENT }],
+      visits: [{
+        id: "v-done", company_id: ROOFER, job_id: "job-1", title: "Sealcoat", scheduled_on: "2026-11-01", starts_at: null, ends_at: null, status: "completed", completed_at: "2026-11-01T18:00:00Z",
+        property: null, assignees: [], job: { client_id: CLIENT }, request: null,
+      }],
+      // One the office marked OK to share, and one it didn't.
+      attachments: [photo(), photo({ id: HIDDEN, shareable: false })],
+    });
+    state.files[PATH] = JPEG;
+  });
+
+  it("lists only the ones marked OK to share, on the visit they're from", async () => {
+    const home = await (await hub({ t: "client", id: CLIENT })).json();
+    expect(home.past_visits[0].photos).toEqual([PHOTO]);
+  });
+
+  it("sends one through the client's own link, as the picture it is", async () => {
+    const res = await hub({ t: "client", id: CLIENT }, `/photos/${PHOTO}.jpg`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("sends nothing that isn't shared, isn't theirs, isn't done, or through another kind of link", async () => {
+    expect((await hub({ t: "client", id: CLIENT }, `/photos/${HIDDEN}.jpg`)).status).toBe(404);
+    expect((await hub({ t: "quote", id: QUOTE }, `/photos/${PHOTO}.jpg`)).status).toBe(404);
+    state.tables.visits![0]!.status = "scheduled";
+    expect((await hub({ t: "client", id: CLIENT }, `/photos/${PHOTO}.jpg`)).status).toBe(404);
+    Object.assign(state.tables.visits![0]!, { status: "completed", job: { client_id: "someone-else" } });
+    expect((await hub({ t: "client", id: CLIENT }, `/photos/${PHOTO}.jpg`)).status).toBe(404);
+  });
+});
+
 describe("signing online", () => {
   beforeEach(() => roofer({ range_low: null, range_high: null, range_sent_at: null }));
 

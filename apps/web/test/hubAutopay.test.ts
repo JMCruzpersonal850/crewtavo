@@ -301,12 +301,14 @@ describe("autopay on the client's home", () => {
   it("leaves an invoice being charged out of what's waiting on them, and keeps one that couldn't be", () => {
     const charging = text(page(clientView({ autopay: active, invoices: [owed("i3", 3, "charging"), owed("i5", 5, "processing")] })));
     expect(charging).toContain("All caught up");
-    expect(charging).not.toContain("Pay $45.00");
+    expect(charging).not.toContain("Pay now");
 
     const failed = text(page(clientView({ autopay: active, invoices: [owed("i4", 4, "failed")] })));
     expect(failed).toContain("Waiting on you");
     expect(failed).toContain("We couldn't charge your card for this one.");
-    expect(failed).toContain("Pay $45.00");
+    // The amount once, over the button (Mercury's bill), and the button says what it does.
+    expect(failed).toContain("$45.00");
+    expect(failed).toContain("Pay now");
     expect(failed).toContain("Update your card");
   });
 

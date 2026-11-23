@@ -2,7 +2,7 @@
 /**
  * Loads a demo company for local development and screenshots: a paving business with clients,
  * requests, quotes, a takeoff, jobs, a week of visits and time, invoices and payments, crews,
- * equipment, SOPs and a marketing campaign, and a striping sub
+ * equipment, SOPs and a marketing campaign, photos on the finished visits, and a striping sub
  * (Ray Lines of Precision Striping) with paperwork, paid work, a job offer waiting and a sign-in.
  *
  *   npm run seed:demo            (reads .dev.vars; needs the API running for onboarding)
@@ -106,9 +106,36 @@ async function seedSub(company) {
   await must(db.rpc("send_sub_offer", { p_pay: offer, p_respond_by: new Date(Date.now() + 2 * 86_400_000).toISOString() }), "send the demo sub's offer");
 }
 
+// --- Photos on finished visits, OK to share, so the Client Hub shows them (scripts/demo-photos) ---
+// Each finished visit gets the pictures its work calls for. Skipped while the files aren't there.
+const PHOTOS_FOR = [[/plow/i, ["plowed"]], [/salt/i, ["salted"]], [/stripe/i, ["sealcoat", "striping"]], [/sweep/i, ["striping"]], [/./, ["sealcoat"]]];
+async function seedVisitPhotos(company) {
+  const have = await must(admin.from("attachments").select("id").eq("company_id", company).eq("owner_type", "visit").limit(1), "visit photos");
+  if (have.length) return;
+  const finished = await must(admin.from("visits").select("id, title").eq("company_id", company).eq("status", "completed"), "finished visits");
+  for (const visit of finished) {
+    for (const name of PHOTOS_FOR.find(([pattern]) => pattern.test(visit.title))[1]) {
+      let body;
+      try {
+        body = readFileSync(new URL(`demo-photos/${name}.jpg`, import.meta.url));
+      } catch {
+        return;
+      }
+      const path = `${company}/visit/${visit.id}/${crypto.randomUUID()}.jpg`;
+      await must(admin.storage.from("files").upload(path, body, { contentType: "image/jpeg" }), `upload ${name}.jpg`);
+      const [photo] = await must(
+        admin.from("attachments").insert({ company_id: company, owner_type: "visit", owner_id: visit.id, path, file_name: `${name}.jpg`, content_type: "image/jpeg", size_bytes: body.length, created_by: ownerId }).select("id"),
+        "visit photo",
+      );
+      await must(db.rpc("set_photo_shareable", { p_attachment: photo.id, p_shareable: true }), "photo OK to share");
+    }
+  }
+}
+
 const existing = await must(db.from("memberships").select("company_id").eq("user_id", ownerId), "memberships");
 if (existing.length) {
   await seedSub(existing[0].company_id);
+  await seedVisitPhotos(existing[0].company_id);
   console.log(`Demo company already exists. Sign in as ${EMAIL} / ${PASSWORD}`);
   process.exit(0);
 }
@@ -482,5 +509,6 @@ const priyaRequest = requests.find((r) => r.client_id === byName["Priya Shah"]).
 await must(admin.from("referrals").insert({ company_id: company, referrer_client_id: byName["Jordan Rivera"], referred_client_id: byName["Priya Shah"], request_id: priyaRequest, referred_name: "Priya Shah" }), "referral");
 
 await seedSub(company);
+await seedVisitPhotos(company);
 
 console.log(`Demo company "Acme Paving" ready. Sign in as ${EMAIL} / ${PASSWORD}`);
