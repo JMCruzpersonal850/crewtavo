@@ -1268,6 +1268,8 @@ describe("package pictures", () => {
   it("turns an address away past its hour before reading anything, and past its day, without telling the business", async () => {
     const path = `${ROOFER}/packages/${PICTURE}.jpg`;
     state.files[path] = JPEG;
+    // An owner, who a notice that the business's pictures were paused would go to.
+    state.tables.memberships!.push({ company_id: ROOFER, user_id: "00000000-0000-4000-8000-0000000000d7", active: true, role: "owner" });
     state.rpcs.rate_limit_hit = () => ({ data: false, error: null });
     expect((await picture(PICTURE)).status).toBe(429);
     expect(state.streamed[path]).toBeUndefined();
