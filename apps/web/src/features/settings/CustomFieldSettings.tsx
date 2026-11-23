@@ -22,6 +22,7 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { customFieldsKey, customFieldsQuery, type CustomFieldRow } from "../customFields/CustomFields";
 import { moveSection, nextSort } from "./ContractSettings";
 import { SettingsActions } from "./SettingsKit";
+import { Select } from "@/components/ui/Select";
 
 const RECORDS: Array<[CustomFieldRecord, string]> = [["client", "Clients"], ["property", "Properties"], ["job", "Jobs"], ["quote", "Quotes"], ["invoice", "Invoices"]];
 const TYPES: Array<[CustomFieldType, string]> = [["text", "Text"], ["number", "Number"], ["date", "Date"], ["choice", "Choice"], ["yes_no", "Yes or no"]];
@@ -162,9 +163,9 @@ function FieldDialog({ record, field, others, onClose, onSaved }: { record: Cust
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label="Name"><input className="input" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value.trimStart() })} required maxLength={CUSTOM_FIELD_LIMITS.label} placeholder="Gate code" /></Field>
         <Field label="Type" hint={field && f.type !== field.type ? "Values already filled in keep what was typed." : undefined}>
-          <select className="select" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as CustomFieldType })}>
+          <Select className="select" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as CustomFieldType })}>
             {TYPES.map(([t, label]) => <option key={t} value={t}>{label}</option>)}
-          </select>
+          </Select>
         </Field>
         {f.type === "choice" && <Field label="Choices" hint="Separated by commas."><input className="input" value={f.choices} onChange={(e) => setF({ ...f, choices: e.target.value })} placeholder="Heat pump, Furnace, Boiler" required /></Field>}
         {sent && (

@@ -19,6 +19,8 @@ import { addressLine } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { SaveBar, Suffix, SwitchRow, unsavedCount } from "./SettingsKit";
 import { loadSettings } from "@/lib/companySettings";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 const STEP_LABELS: Record<number, string> = { 1: "1 minute (exact)", 5: "5 minutes, like Google Calendar's app", 15: "15 minutes" };
 
@@ -66,9 +68,9 @@ export function ScheduleSettings() {
     <form className="settings-body" onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
       <Section level={3} title="Calendar">
         <Field label="Time steps" hint="Dragging a visit on the schedule snaps to this. You can always type any time, like 9:03, and any length.">
-          <select className="select set-narrow" value={f.timeStep} onChange={(e) => set("timeStep", Number(e.target.value))}>
+          <Select className="select set-narrow" value={f.timeStep} onChange={(e) => set("timeStep", Number(e.target.value))}>
             {TIME_STEPS.map((s) => <option key={s} value={s}>{STEP_LABELS[s]}</option>)}
-          </select>
+          </Select>
         </Field>
       </Section>
 
@@ -96,10 +98,10 @@ export function ScheduleSettings() {
         </div>
         <div className="set-grid">
           <Field label={<>Average driving speed<span className="sr-only"> (mph)</span></>} hint="For drive times. Around 25–35 in town.">
-            <Suffix unit="mph"><input className="input" type="number" inputMode="numeric" min={5} max={80} value={f.speedMph} onChange={(e) => set("speedMph", Number(e.target.value))} /></Suffix>
+            <Suffix unit="mph"><NumberInput className="input" inputMode="numeric" min={5} max={80} value={f.speedMph} onChange={(e) => set("speedMph", Number(e.target.value))} /></Suffix>
           </Field>
           <Field label={<>Unload and load at each stop<span className="sr-only"> (minutes)</span></>} hint="Added between stops, on top of each visit's length.">
-            <Suffix unit="min"><input className="input" type="number" inputMode="numeric" min={0} max={120} value={f.setupMin} onChange={(e) => set("setupMin", Number(e.target.value))} /></Suffix>
+            <Suffix unit="min"><NumberInput className="input" inputMode="numeric" min={0} max={120} value={f.setupMin} onChange={(e) => set("setupMin", Number(e.target.value))} /></Suffix>
           </Field>
         </div>
       </Section>

@@ -14,6 +14,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { bandsKey } from "./snowData";
 import styles from "./snow.module.css";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 /** A whole number or a decimal typed into a field, or null for an empty one. */
 export const amount = (text: string) => (text.trim() === "" ? null : Number(text));
@@ -42,12 +43,12 @@ export function DepthRows({ rows, onChange, money, what, addLabel }: { rows: Dep
             <div key={i} className={styles.depth}>
               <span className={styles.depthLabel}>Up to</span>
               <div className="input-group">
-                <input className="input" type="number" inputMode="decimal" min={0.1} max={100} step={0.1} value={r.upTo} onChange={(e) => set(i, { upTo: e.target.value })} placeholder="any" aria-label={`${what} ${i + 1}: up to how many inches`} />
+                <NumberInput className="input" inputMode="decimal" min={0.1} max={100} step={0.1} value={r.upTo} onChange={(e) => set(i, { upTo: e.target.value })} placeholder="any" aria-label={`${what} ${i + 1}: up to how many inches`} />
                 <span className="addon addon-right addon-unit">in</span>
               </div>
               <div className="input-group">
                 <span className="addon">{money ? "$" : "×"}</span>
-                <input className="input" type="number" inputMode="decimal" min={0} step={0.01} value={r.value} onChange={(e) => set(i, { value: e.target.value })} aria-label={`${what} ${i + 1}: ${money ? "price" : "times the push price"}`} />
+                <NumberInput className="input" inputMode="decimal" min={0} step={0.01} value={r.value} onChange={(e) => set(i, { value: e.target.value })} aria-label={`${what} ${i + 1}: ${money ? "price" : "times the push price"}`} />
               </div>
               <Button size="sm" variant="ghost" icon="x" className={styles.depthRemove} aria-label={`Remove ${what.toLowerCase()} ${i + 1}`} title="Remove" onClick={() => onChange(rows.filter((_, n) => n !== i))} />
             </div>

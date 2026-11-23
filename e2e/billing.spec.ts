@@ -20,7 +20,7 @@ test("invoice a job, send it, and record the payment", async ({ as, browser, dat
   const invoiceId = page.url().split("/invoices/")[1]!;
   const main = page.getByRole("main");
   await expect(main.getByText("Driveway sealcoat").first()).toBeVisible();
-  await expect(main.getByText("$1,250.00").first()).toBeVisible();
+  await expect(main.getByText("$1,250.00").filter({ visible: true }).first()).toBeVisible();
   await expectAccessible(page, "a draft invoice");
 
   // Sent by email; the dialog shows the client's link.
@@ -37,7 +37,10 @@ test("invoice a job, send it, and record the payment", async ({ as, browser, dat
   await page.getByRole("button", { name: "Record payment" }).click();
   const payment = page.getByRole("dialog", { name: "Record payment" });
   await expect(payment.getByLabel("Amount")).toHaveValue("1250.00");
-  await payment.getByLabel("Method").selectOption("check");
+  // On a computer the method is a list of its own (components/ui/Select), not the browser's.
+  await payment.getByRole("combobox", { name: "Method" }).click();
+  await page.getByRole("option", { name: "Check" }).click();
+  await expect(payment.getByRole("combobox", { name: "Method" })).toHaveText(/Check/);
   await payment.getByLabel("Reference").fill("Check #4417");
   await expectAccessible(page, "the record payment dialog");
   await payment.getByRole("button", { name: "Record $1,250.00" }).click();

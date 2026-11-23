@@ -22,6 +22,7 @@ import { BASES, BASIS_IDS, DEFAULT_SETUP, DEFAULT_WEIGHT, fromArea, parseSetup, 
 import { NumberBox } from "./NumberBox";
 import styles from "./paving.module.css";
 import { loadSettings } from "@/lib/companySettings";
+import { Select } from "@/components/ui/Select";
 
 const PROFIT_WAYS: Array<{ id: ProfitBy; label: string }> = [
   { id: "day", label: "By the day" },
@@ -143,9 +144,9 @@ export function CalculatorSetupPage() {
                     </label>
                     <label className={styles.cell}>
                       <span className={styles.cellLabel}>How it's figured</span>
-                      <select className="select" value={item.basis} aria-label={`${called}: how it's figured`} onChange={(e) => setItem(item.id, { basis: e.target.value as Basis })}>
+                      <Select className="select" value={item.basis} aria-label={`${called}: how it's figured`} onChange={(e) => setItem(item.id, { basis: e.target.value as Basis })}>
                         {BASIS_IDS.map((b) => <option key={b} value={b}>{BASES[b].label}</option>)}
-                      </select>
+                      </Select>
                     </label>
                     <div className={styles.cell}>
                       <span className={styles.cellLabel} aria-hidden="true">Price</span>
@@ -251,10 +252,10 @@ function ItemExtras({ item, onChange }: { item: CalcItem; onChange: (change: Par
     <div className={styles.extras2}>
       <label className={styles.inline}>
         <span className={styles.unit}>Weather rules and checklists treat it as</span>
-        <select className="select input-sm" style={{ width: "auto" }} aria-label={`${item.name || "Item"}: the kind of work it is`} value={item.work ?? ""} onChange={(e) => onChange({ work: isPavingWork(e.target.value) ? e.target.value : null })}>
+        <Select className="select input-sm" style={{ width: "auto" }} aria-label={`${item.name || "Item"}: the kind of work it is`} value={item.work ?? ""} onChange={(e) => onChange({ work: isPavingWork(e.target.value) ? e.target.value : null })}>
           <option value="">Nothing in particular</option>
           {PAVING_WORK_IDS.map((w) => <option key={w} value={w}>{PAVING_WORK[w]}</option>)}
-        </select>
+        </Select>
       </label>
       {item.basis === "depth" && (
         <span className={styles.inline}>

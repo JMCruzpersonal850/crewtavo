@@ -10,10 +10,11 @@
  */
 import type { LineChange } from "@crewtavo/core/estimates";
 import { toCents } from "@crewtavo/core/money";
-import { useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AnimatedNumber, MONEY, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
 import { Spinner } from "@/components/ui/Button";
+import { Combobox, ComboboxPopup } from "@/components/ui/Combobox";
 import { Icon } from "@/components/ui/Icon";
 import { Loading, Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/States";
@@ -219,85 +220,56 @@ function Row({ row, editor, onEdit }: { row: EstimateRow; editor?: EstimateEdito
   );
 }
 
-/** "Something else? Search your price list": type, pick with a tap or the arrow keys and Enter. */
+/**
+ * "Something else? Search your price list": type, then pick with a tap, or the arrow keys and Enter
+ * (Base UI's Combobox; the first match is ready for Enter). The results open in this box, so they
+ * stay in a dialog the list is in and take the iPad's bigger rows.
+ */
 function ServiceSearch({ services, onEstimate, onlyHere, onPick }: { services: readonly EstimateService[]; onEstimate: Set<string>; onlyHere: (service: EstimateService) => string | null; onPick: (service: EstimateService) => void }) {
-  const id = useId();
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
   const matches = useMemo(() => searchServices(services, term).slice(0, 40), [services, term]);
-  const pick = (service: EstimateService) => {
-    onPick(service);
-    setTerm("");
-    setActive(0);
-    setOpen(false);
-  };
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setOpen(true);
-      setActive((i) => Math.min(matches.length - 1, i + 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
-    } else if (e.key === "Enter" && open && matches[active]) {
-      e.preventDefault();
-      pick(matches[active]);
-    } else if (e.key === "Escape" && open) {
-      e.preventDefault();
-      setOpen(false);
-    }
-  };
   const showing = open && (matches.length > 0 || term.trim() !== "");
   return (
-    <div className={styles.search}>
-      <span className={styles.searchIcon} aria-hidden="true"><Icon name="search" size={16} /></span>
-      <input
-        className={`input ${styles.searchInput}`}
-        role="combobox"
-        aria-label="Search your price list"
-        aria-autocomplete="list"
-        aria-expanded={showing}
-        aria-controls={`${id}-list`}
-        aria-activedescendant={showing && matches[active] ? `${id}-${active}` : undefined}
-        autoComplete="off"
-        enterKeyHint="search"
-        placeholder="Something else? Search your price list"
-        value={term}
-        onChange={(e) => {
-          setTerm(e.target.value);
-          setActive(0);
-          setOpen(true);
+    <div ref={setBox} className={styles.search}>
+      <Combobox.Root<EstimateService>
+        items={matches}
+        // searchServices above is the search; every match it gives is shown.
+        filter={null}
+        value={null}
+        onValueChange={(service) => {
+          if (!service) return;
+          onPick(service);
+          setTerm("");
+          setOpen(false);
         }}
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={onKeyDown}
-      />
-      {showing && (
-        <ul id={`${id}-list`} role="listbox" aria-label="Your price list" className={styles.options}>
-          {matches.length === 0 && <li role="presentation" className={styles.noMatch}>Nothing in your price list matches “{term.trim()}”.</li>}
-          {matches.map((s, i) => (
-            <li
-              key={s.id}
-              id={`${id}-${i}`}
-              role="option"
-              aria-selected={i === active}
-              className={styles.option}
-              // Keep the focus in the box, so the tap picks it before the list closes.
-              onMouseDown={(e) => e.preventDefault()}
-              onMouseMove={() => setActive(i)}
-              onClick={() => pick(s)}
-            >
-              <span className={styles.optionText}>
-                <span className={styles.optionName}>{s.name}</span>
-                <span className={styles.optionDetail}>{serviceDetail(s)}</span>
-              </span>
-              {onEstimate.has(s.id) ? <span className="chip chip-green">On it</span> : onlyHere(s) && <span className="chip">{onlyHere(s)}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+        inputValue={term}
+        onInputValueChange={(next, { reason }) => reason !== "item-press" && setTerm(next)}
+        open={showing}
+        onOpenChange={setOpen}
+        openOnInputClick
+        itemToStringLabel={(s) => s.name}
+        isItemEqualToValue={(a, b) => a.id === b.id}
+        autoHighlight
+      >
+        <span className={styles.searchIcon} aria-hidden="true"><Icon name="search" size={16} /></span>
+        <Combobox.Input className={`input ${styles.searchInput}`} aria-label="Search your price list" autoComplete="off" enterKeyHint="search" placeholder="Something else? Search your price list" />
+        <ComboboxPopup container={box} className="picker-popup-fit" label="Your price list">
+          <Combobox.Empty className={styles.noMatch}>{term.trim() && `Nothing in your price list matches “${term.trim()}”.`}</Combobox.Empty>
+          <Combobox.List>
+            {(s: EstimateService) => (
+              <Combobox.Item key={s.id} value={s} className={`${styles.option} picker-option`}>
+                <span className={styles.optionText}>
+                  <span className={styles.optionName}>{s.name}</span>
+                  <span className={styles.optionDetail}>{serviceDetail(s)}</span>
+                </span>
+                {onEstimate.has(s.id) ? <span className="chip chip-green">On it</span> : onlyHere(s) && <span className="chip">{onlyHere(s)}</span>}
+              </Combobox.Item>
+            )}
+          </Combobox.List>
+        </ComboboxPopup>
+      </Combobox.Root>
     </div>
   );
 }

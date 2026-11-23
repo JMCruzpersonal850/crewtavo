@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Loading, Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { api, supabase, unwrap } from "@/lib/api";
@@ -262,10 +263,10 @@ function LeftOffList({ check, showing, onChange }: { check: SendCheck; showing: 
                   <strong>{item.name}</strong>{item.option ? <span className="muted"> · {item.option}</span> : null}
                   <span className={styles.note} style={{ display: "block" }}>{item.reason}</span>
                 </span>
-                <select className="select input-sm" aria-label={`Who sees that ${item.name} is left off`} value={showing.has(key) ? "shown" : "office"} onChange={(e) => onChange(key, e.target.value === "shown")}>
+                <Select className="select input-sm" style={{ flex: "0 1 auto", width: "auto" }} aria-label={`Who sees that ${item.name} is left off`} value={showing.has(key) ? "shown" : "office"} onChange={(e) => onChange(key, e.target.value === "shown")}>
                   <option value="office">Office only</option>
                   <option value="shown">Show as “Not included”</option>
-                </select>
+                </Select>
               </div>
             );
           })}

@@ -525,8 +525,7 @@ a.cite:hover { background: var(--solid); color: var(--on-solid); text-decoration
 .gateWords p { margin: 6px 0 0; font-size: var(--fs-14); line-height: 1.5; color: var(--text-2); }
 .gateForm { display: grid; gap: 12px; }
 .gateField { display: grid; gap: 6px; }
-.gateField > span { font-size: var(--fs-13); font-weight: 600; }
-.gateCode { height: 52px; font-size: var(--fs-22); letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.gateField > :is(span, label) { font-size: var(--fs-13); font-weight: 600; }
 .brandButton.brandButton { border-color: var(--brand); background: var(--brand); color: var(--on-brand); }
 .brandButton.brandButton:hover:not(:disabled) { border-color: var(--brand-hover, var(--brand)); background: var(--brand-hover, var(--brand)); color: var(--on-brand); }
 .gateLinks { display: flex; flex-wrap: wrap; gap: 16px; font-size: var(--fs-14); }
@@ -540,7 +539,6 @@ a.cite:hover { background: var(--solid); color: var(--on-solid); text-decoration
   .sharedBody { padding: 12px 12px 40px; }
   .sharedSheet { padding: 22px 18px 26px; border-radius: 18px; }
   .sharedTitle { font-size: var(--fs-30); }
-  .gateCode { height: 56px; }
   .gateForm :global(.btn-lg) { height: 52px; }
   .gateLinks :global(.link-btn) { min-height: 44px; }
 }

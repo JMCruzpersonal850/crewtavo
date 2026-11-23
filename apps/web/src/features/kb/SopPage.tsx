@@ -41,6 +41,7 @@ import { VersionCompare } from "./VersionCompare";
 import { guideLinks, guideQuery, mustRead, reviewDueAt, ROLE_LABELS, useCategories, useIsEditor, useSopIndex, useTraining } from "./kbData";
 import { msg, t } from "@/lib/i18n";
 import s from "./kb.module.css";
+import { Select } from "@/components/ui/Select";
 
 interface TeamMember { user_id: string; role: string; role_id: string | null; active: boolean; profile: { full_name: string; color: string | null; avatar_url?: string | null } | null }
 
@@ -541,9 +542,9 @@ function HistoryDialog({ pageId, current, names, onClose }: { pageId: string; cu
               {mode === "changes" && all.length > 1 && (
                 <label className={s.compare}>
                   <span>{t("Compared with")}</span>
-                  <select className="select input-sm" value={against ?? ""} onChange={(e) => setAgainst(Number(e.target.value))}>
+                  <Select className="select input-sm" value={against ?? ""} onChange={(e) => setAgainst(Number(e.target.value))}>
                     {all.filter((r) => r.revision !== shown.revision).map((r) => <option key={r.revision} value={r.revision}>{label(r)}</option>)}
-                  </select>
+                  </Select>
                 </label>
               )}
               {comparing ? (

@@ -10,8 +10,8 @@
  *     commit: () => api.notes.remove(note.id).then(() => queryClient.invalidateQueries({ queryKey: key })),
  *   });
  *
- * Not from inside an open dialog: a modal dialog makes everything outside it inert, the toast
- * included, so Undo couldn't be pressed. Ask with confirm() there instead.
+ * From inside an open dialog too: the toasts move into the dialog while it's open (Toaster.tsx),
+ * since a modal dialog leaves everything outside it out of reach, so Undo can still be pressed.
  */
 import type { QueryKey } from "@tanstack/react-query";
 import { errorMessage } from "./errors";

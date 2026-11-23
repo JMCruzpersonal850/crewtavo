@@ -25,6 +25,7 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { undoable } from "@/lib/undo";
 import { EmbedDialog } from "./EmbedDialog";
 import ui from "./BookingAdmin.module.css";
+import { Select } from "@/components/ui/Select";
 
 const KIND: Record<string, string> = { request: "Request form", assessment: "Book an estimate", booking: "Book a service" };
 /** What each kind of form looks like in the list: a request, or a time on the calendar. */
@@ -254,9 +255,9 @@ function FormEditor({ form, taken, link, onEmbed, onDelete, onClose }: { form: F
         <div className="form-grid">
           <Field label="Form name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required /></Field>
           <Field label="Type">
-            <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <Select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
               {Object.entries(KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <Field label="Link" error={clash ? "Another form uses this link" : null} hint={`${window.location.origin}/book/${company.slug}/${finalSlug}`}>
@@ -288,9 +289,9 @@ function FormEditor({ form, taken, link, onEmbed, onDelete, onClose }: { form: F
                 <>
                   <div className={ui.grid2}>
                     <Field label="Visit length" hint="How much time each booking takes on the schedule.">
-                      <select className="select" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+                      <Select className="select" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
                         {(LENGTHS.some(([m]) => m === minutes) ? LENGTHS : [...LENGTHS, [minutes, `${minutes} minutes`] as [number, string]]).map(([m, l]) => <option key={m} value={m}>{l}</option>)}
-                      </select>
+                      </Select>
                     </Field>
                     <Field label="Earliest booking, in days" hint="How many days ahead the first time offered is. 0 lets people book today.">
                       <input className="input" inputMode="numeric" value={leadDays} onChange={(e) => setLeadDays(e.target.value.replace(/\D/g, "").slice(0, 2))} />
@@ -299,10 +300,10 @@ function FormEditor({ form, taken, link, onEmbed, onDelete, onClose }: { form: F
                       <input className="input" inputMode="numeric" value={mostADay} onChange={(e) => setMostADay(e.target.value.replace(/\D/g, "").slice(0, 2))} />
                     </Field>
                     <Field label="Who it books" hint={crewId ? "Times are offered when this crew is free." : "A time is offered only when nothing else on the schedule has it, so nobody is double-booked."}>
-                      <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+                      <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
                         <option value="">No crew: the whole schedule</option>
                         {(crews.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      </Select>
                     </Field>
                   </div>
                   <label className={ui.switchRow}>
@@ -331,9 +332,9 @@ function FormEditor({ form, taken, link, onEmbed, onDelete, onClose }: { form: F
                 <li key={i} className={ui.question}>
                   <span className={ui.num} aria-hidden="true">{i + 1}</span>
                   <input className="input" value={q.label} onChange={(e) => setQ(i, { label: e.target.value })} placeholder="Question" maxLength={200} aria-label={`Question ${i + 1}`} />
-                  <select className={`select ${ui.qType}`} value={q.type} onChange={(e) => setQ(i, { type: e.target.value as QType, options: ["choice", "multi_choice"].includes(e.target.value) ? q.options ?? ["Option 1"] : undefined })} aria-label={`Answer type for question ${i + 1}`}>
+                  <Select className={`select ${ui.qType}`} value={q.type} onChange={(e) => setQ(i, { type: e.target.value as QType, options: ["choice", "multi_choice"].includes(e.target.value) ? q.options ?? ["Option 1"] : undefined })} aria-label={`Answer type for question ${i + 1}`}>
                     {QTYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
+                  </Select>
                   <span className={ui.qMore}>
                     <Menu
                       label={`More actions for question ${i + 1}`}

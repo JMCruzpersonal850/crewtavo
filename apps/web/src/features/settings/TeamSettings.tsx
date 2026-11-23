@@ -17,6 +17,7 @@ import { SectionSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { formatMoneyCents, timeAgo } from "@/lib/format";
@@ -31,6 +32,7 @@ import { AllowanceDialog } from "./StorageSettings";
 import { PASSWORD_HINT } from "../apps/catalog";
 import { SettingsActions } from "./SettingsKit";
 import styles from "./settings.module.css";
+import { languageChoice } from "@/lib/i18n";
 
 export interface Member { user_id: string; role: Role; role_id: string | null; active: boolean; labor_rate: number | null; profile: { full_name: string; email: string | null; color: string | null; avatar_url: string | null; locale?: string | null } | null }
 /** Someone invited who hasn't set up their account yet, and when their latest link went out. */
@@ -160,7 +162,7 @@ export function TeamSettings() {
             <strong>{name}</strong>
             {me && <span className="chip">You</span>}
             {/* Their own choice of language (Settings → Profile → Language): their screens and notices are in it. */}
-            {m.profile?.locale === "es" && <span className="chip" title="Uses Crewtavo in Spanish">Español</span>}
+            {languageChoice() && m.profile?.locale === "es" && <span className="chip" title="Uses Crewtavo in Spanish">Español</span>}
           </div>
           <MetaLine
             className={styles.meta}
@@ -554,11 +556,11 @@ function levelHint(choice: string, roles: ReturnType<typeof useCompanyRoles>["da
 function RolePicker({ value, roles, viewerIsOwner, disabled, label, onChange }: { value: string; roles: ReturnType<typeof useCompanyRoles>["data"]; viewerIsOwner: boolean; disabled?: boolean; label: string; onChange: (choice: string) => void }) {
   const choices = roleChoices(roles, viewerIsOwner);
   return (
-    <select className="select input-sm" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+    <Select className="select input-sm" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={label}>
       {(["Your roles", "Built-in"] as const).map((g) => {
         const items = choices.filter((c) => c.group === g);
         return items.length ? <optgroup key={g} label={g}>{items.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</optgroup> : null;
       })}
-    </select>
+    </Select>
   );
 }

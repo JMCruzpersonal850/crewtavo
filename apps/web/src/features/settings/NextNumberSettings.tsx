@@ -14,6 +14,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import p from "./Prefs.module.css";
 import { changedNumbers, HIGHEST_NUMBER, nextNumberProblem, NUMBER_KINDS, type NextNumber } from "./nextNumbers";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 export function NextNumbers() {
   const { company } = useSession();
@@ -57,9 +58,8 @@ export function NextNumbers() {
             const row = saved.find((s) => s.kind === kind);
             return (
               <Field key={kind} label={label} error={problems[kind]} hint={highest(kind) > 0 ? `The highest used so far is #${highest(kind)}.` : "None made yet."}>
-                <input
+                <NumberInput
                   className="input"
-                  type="number"
                   inputMode="numeric"
                   min={1}
                   max={HIGHEST_NUMBER}

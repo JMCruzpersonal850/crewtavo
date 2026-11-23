@@ -17,6 +17,7 @@ import { api, supabase, unwrap } from "@/lib/api";
 import type { TakeoffRow } from "../../paving/data";
 import { useRefreshProject } from "./data";
 import styles from "./flow.module.css";
+import { Select } from "@/components/ui/Select";
 
 const EDGES = [
   ["eave_ft", "Eaves"],
@@ -116,10 +117,10 @@ function RoofReportDialog({ quote, takeoff, onClose }: { quote: { id: string; pr
             <input className="input" inputMode="decimal" value={draft.size} onChange={(e) => setDraft({ ...draft, size: numeric(e.target.value) })} required autoFocus />
           </Field>
           <Field label="The report gives it in">
-            <select className="select" value={draft.by} onChange={(e) => setDraft({ ...draft, by: e.target.value as ReportDraft["by"] })}>
+            <Select className="select" value={draft.by} onChange={(e) => setDraft({ ...draft, by: e.target.value as ReportDraft["by"] })}>
               <option value="squares">Squares</option>
               <option value="sqft">Square feet</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Predominant pitch" hint="Like 6/12. Flat is 0/12." requiredMessage="Enter the pitch.">
             <input className="input" value={draft.pitch} maxLength={20} placeholder="6/12" onChange={(e) => setDraft({ ...draft, pitch: e.target.value })} required />

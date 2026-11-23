@@ -40,6 +40,7 @@ import { contractPreview, contractSummary, inLibraryOrder, pickSection, placeLab
 import { OwnLetterhead } from "./OwnLetterhead";
 import { SettingsActions, SwitchRow, usePhoneLayout } from "./SettingsKit";
 import styles from "./TemplateSettings.module.css";
+import { Select } from "@/components/ui/Select";
 
 type SectionId = "letterhead" | "details" | "contract" | "signatures" | "footer";
 
@@ -250,16 +251,18 @@ function TemplateEditor({ row, rows, onSelect }: { row: TemplateRow | null; rows
         <div className={styles.tools}>
           <label className={styles.picker}>
             <span>Style</span>
-            <select
+            <Select
               className="select"
               value={row?.id ?? ""}
+              // The size .picker select gives the native one, for the list's button too.
+              style={{ width: "auto", minWidth: 200, maxWidth: "100%" }}
               onChange={async (e) => {
                 const next = e.target.value;
                 if (await leave()) onSelect(next || null);
               }}
             >
               {rows.length ? rows.map((r) => <option key={r.id} value={r.id}>{r.name}{r.is_default ? " (default)" : ""}</option>) : <option value="">Standard (default)</option>}
-            </select>
+            </Select>
           </label>
           <span className={styles.which}>
             {isDefault ? "Used for every estimate and invoice, unless a quote picks another." : "Used on the quotes that pick it. Pick it on a quote, beside its totals."}

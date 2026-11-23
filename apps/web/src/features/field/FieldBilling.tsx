@@ -28,6 +28,7 @@ import { waitingScopeLine, type JobLineAdd } from "./fieldActions";
 import { visitExtrasKey, waitingExtra, type ExtraScopeLine } from "./FieldExtras";
 import { useSignal } from "./OfflineNote";
 import { msg, t } from "@/lib/i18n";
+import { Select } from "@/components/ui/Select";
 
 /**
  * Add work: an item from the price list and how many. The office's price applies, and the crew never
@@ -100,10 +101,10 @@ function AddWorkDialog({ choices, loading, toVisit, onClose, onAdd }: { choices:
       >
         <Field label={t("What")} requiredMessage={t("Choose what you added.")}>
           {loading ? <Skeleton height={44} radius={8} /> : (
-            <select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required autoFocus>
+            <Select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required autoFocus>
               <option value="">{choices?.length ? t("Choose from the price list…") : t("The price list isn't on this phone yet")}</option>
               {choices?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         <Field label={t("How many")} hint={item?.unit} requiredMessage={t("Enter how many.")}>

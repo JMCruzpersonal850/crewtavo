@@ -21,6 +21,7 @@ import { useSession } from "@/lib/session";
 import { perUnit, rateText, readRate, squaresText } from "./pay";
 import { refreshPay, usePayRates, useServices, type PayeeRef, type PayRate } from "./payData";
 import styles from "./Subs.module.css";
+import { Select } from "@/components/ui/Select";
 
 export function RatesCard({ payee, bare }: { payee: PayeeRef; bare?: boolean }) {
   const session = useSession();
@@ -163,10 +164,10 @@ function RateDialog({ payee, rate, onClose }: { payee: PayeeRef; rate: PayRate |
             {services.isPending ? (
               <Skeleton height={38} />
             ) : (
-              <select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required>
+              <Select className="select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} required>
                 <option value="">Choose a service from your price list</option>
                 {choices.map((s) => <option key={s.id} value={s.id}>{s.name}{s.unit ? ` (${s.unit})` : ""}</option>)}
-              </select>
+              </Select>
             )}
           </Field>
         )}

@@ -22,6 +22,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { uploadFile } from "@/lib/files";
 import { formatDate, todayIn } from "@/lib/format";
@@ -159,16 +160,16 @@ export function EquipmentDialog({ equipment, onClose, onSaved }: { equipment: Eq
         </Field>
         <div className="form-grid">
           <Field label="Type">
-            <select className="select" value={f.kind} onChange={(e) => pickKind(e.target.value as EquipmentKind)}>
+            <Select className="select" value={f.kind} onChange={(e) => pickKind(e.target.value as EquipmentKind)}>
               {EQUIPMENT_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Tracks" hint={meterHint}>
-            <select className="select" value={f.meter} onChange={(e) => pickMeter(e.target.value as Meter)}>
+            <Select className="select" value={f.meter} onChange={(e) => pickMeter(e.target.value as Meter)}>
               <option value="hours">Engine hours</option>
               <option value="miles">Miles</option>
               <option value="none">Dates only</option>
-            </select>
+            </Select>
           </Field>
           {f.meter !== "none" && (
             <Field label={f.meter === "miles" ? "Odometer now" : "Hour meter now"} optional>
@@ -179,18 +180,18 @@ export function EquipmentDialog({ equipment, onClose, onSaved }: { equipment: Eq
             </Field>
           )}
           <Field label="Crew" optional>
-            <select className="select" value={f.crew_id} onChange={set("crew_id")}>
+            <Select className="select" value={f.crew_id} onChange={set("crew_id")}>
               <option value="">No crew (shared)</option>
               {crews.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
           {equipment && (
             <Field label="Status">
-              <select className="select" value={f.status} onChange={set("status")}>
+              <Select className="select" value={f.status} onChange={set("status")}>
                 <option value="active">In service</option>
                 <option value="in_shop">In the shop</option>
                 <option value="retired">Retired (sold or scrapped)</option>
-              </select>
+              </Select>
             </Field>
           )}
         </div>
@@ -330,12 +331,12 @@ export function PlanDialog({ equipment, plan, hasHistory, onClose }: { equipment
           <Field label={usesMeter ? "Or every" : "Every"} optional={usesMeter} hint={usesMeter ? "Whichever comes first." : undefined}>
             <span className="row" style={{ gap: 6 }}>
               <input className="input" inputMode="numeric" style={{ width: 80 }} value={f.every_count} onChange={(e) => setF({ ...f, every_count: e.target.value.replace(/\D/g, "").slice(0, 4) })} aria-label="How many" />
-              <select className="select" value={f.every_unit} onChange={(e) => setF({ ...f, every_unit: e.target.value as IntervalUnit })} aria-label="Unit">
+              <Select className="select" value={f.every_unit} onChange={(e) => setF({ ...f, every_unit: e.target.value as IntervalUnit })} aria-label="Unit">
                 <option value="day">days</option>
                 <option value="week">weeks</option>
                 <option value="month">months</option>
                 <option value="year">years</option>
-              </select>
+              </Select>
             </span>
           </Field>
         </div>
@@ -505,10 +506,10 @@ export function LogDialog({
         {kind === "service" && (
           plans.length > 0 ? (
             <Field label={t("What was done")}>
-              <select className="select" value={f.plan_id} onChange={(e) => setF({ ...f, plan_id: e.target.value })}>
+              <Select className="select" value={f.plan_id} onChange={(e) => setF({ ...f, plan_id: e.target.value })}>
                 {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>{p.name}</option>)}
                 <option value="">{t("Something else")}</option>
-              </select>
+              </Select>
             </Field>
           ) : null
         )}
@@ -585,9 +586,9 @@ export function PaperDialog({ equipment, paper, taken, onClose }: { equipment: P
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         {!paper && (
           <Field label="What it is">
-            <select className="select" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} autoFocus>
+            <Select className="select" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} autoFocus>
               {kinds.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         {f.kind === "other" && (

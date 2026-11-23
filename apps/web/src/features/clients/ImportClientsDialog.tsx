@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { parseCsv } from "@/lib/csv";
 import { can, hasRole, useSession } from "@/lib/session";
 import { cancelTask, taskFraction, useTasks } from "@/lib/tasks";
@@ -123,10 +124,10 @@ export function ImportClientsDialog({ onClose }: { onClose: () => void }) {
               {shown.map((t) => (
                 <label key={t.key} className="field">
                   <span>{t.label}</span>
-                  <select className="select" value={mapping[t.key] ?? ""} onChange={(e) => setMapping({ ...mapping, [t.key]: e.target.value === "" ? undefined : Number(e.target.value) })}>
+                  <Select className="select" value={mapping[t.key] ?? ""} onChange={(e) => setMapping({ ...mapping, [t.key]: e.target.value === "" ? undefined : Number(e.target.value) })}>
                     <option value="">Don't import</option>
                     {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
-                  </select>
+                  </Select>
                 </label>
               ))}
             </div>

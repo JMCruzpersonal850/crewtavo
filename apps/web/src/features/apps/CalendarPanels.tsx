@@ -21,6 +21,7 @@ import { toast } from "@/lib/toast";
 import { CALENDAR_FILE_TYPES, pickCalendar, readCalendarFiles } from "./calendarFiles";
 import { CALENDAR_NOUNS } from "./catalog";
 import { dotted, Fold, kit, Row, RowsSkeleton, Step, Steps, SwitchLine } from "./PanelKit";
+import { Select } from "@/components/ui/Select";
 
 export interface CalendarSource {
   id: string;
@@ -214,20 +215,20 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (col
 
 function CrewSelect({ value, onChange, crews }: { value: string; onChange: (crew: string) => void; crews: Array<{ id: string; name: string }> }) {
   return (
-    <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+    <Select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">The whole team</option>
       {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-    </select>
+    </Select>
   );
 }
 
 /** Whose own calendar it is: someone on the team (anyone already set stays, even after they leave), or nobody in particular. */
 function OwnerSelect({ value, onChange, team }: { value: string; onChange: (id: string) => void; team: NonNullable<ReturnType<typeof useTeam>["data"]> }) {
   return (
-    <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+    <Select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">Nobody's in particular</option>
       {team.filter((m) => m.active || m.user_id === value).map((m) => <option key={m.user_id} value={m.user_id}>{m.profile?.full_name || "Team member"}</option>)}
-    </select>
+    </Select>
   );
 }
 const OWNER_HINT = "One person's sits on their row when the schedule shows People, and their busy time counts against them in Find a time.";

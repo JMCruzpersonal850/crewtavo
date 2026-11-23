@@ -17,6 +17,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { signedUrls } from "@/lib/files";
 import { formatDate, formatNumber } from "@/lib/format";
 import { toast } from "@/lib/toast";
+import { Select } from "@/components/ui/Select";
 
 export interface DrawingRow {
   id: string;
@@ -133,18 +134,18 @@ export function ShareDrawing({
         <>
           <label className="field">
             <span>Quote</span>
-            <select className="select" value={drawing.quote_id ?? ""} disabled={update.isPending} onChange={(e) => update.mutate({ quote_id: e.target.value || null })}>
+            <Select className="select" value={drawing.quote_id ?? ""} disabled={update.isPending} onChange={(e) => update.mutate({ quote_id: e.target.value || null })}>
               <option value="">Not on a quote</option>
               {options.data.quotes.map((q) => <option key={q.id} value={q.id}>#{q.number} {q.title}{clientId ? "" : ` · ${name(q) ?? ""}`}</option>)}
-            </select>
+            </Select>
           </label>
           {drawing.quote_id && <ClientSees checked={drawing.show_on_quote} disabled={update.isPending} where="quote" onChange={(on) => update.mutate({ show_on_quote: on })} />}
           <label className="field">
             <span>Invoice</span>
-            <select className="select" value={drawing.invoice_id ?? ""} disabled={update.isPending} onChange={(e) => update.mutate({ invoice_id: e.target.value || null })}>
+            <Select className="select" value={drawing.invoice_id ?? ""} disabled={update.isPending} onChange={(e) => update.mutate({ invoice_id: e.target.value || null })}>
               <option value="">Not on an invoice</option>
               {options.data.invoices.map((i) => <option key={i.id} value={i.id}>#{i.number}{i.subject ? ` ${i.subject}` : ""}{clientId ? "" : ` · ${name(i) ?? ""}`}</option>)}
-            </select>
+            </Select>
           </label>
           {drawing.invoice_id && <ClientSees checked={drawing.show_on_invoice} disabled={update.isPending} where="invoice" onChange={(on) => update.mutate({ show_on_invoice: on })} />}
           {!options.data.quotes.length && !options.data.invoices.length && (

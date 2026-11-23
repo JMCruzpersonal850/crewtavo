@@ -21,7 +21,9 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { Button, cx } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
+import { NumberInput } from "@/components/ui/NumberInput";
 import type { SaveStatusHandle } from "@/components/ui/SaveStatus";
+import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
 import { ApiError, errorMessage, isAuthError, isNetworkError, isRestarting } from "@/lib/errors";
@@ -461,8 +463,13 @@ function NumberField({ value, onCommit, onEdit, onUnchanged, label, step = "any"
   return (
     <span className={prefix ? "input-group" : undefined}>
       {prefix && <span className="addon">{prefix}</span>}
-      <input
-        className="input"
+      {/* A quantity has up and down buttons; a price, like MoneyInput, is typed (its column is too narrow for both). */}
+      <NumberInput
+        steppers={!prefix}
+        step="any"
+        min={0}
+        // How it's shown once left; commit does the rounding that's saved.
+        decimals={step === "0.01" ? 2 : 3}
         aria-label={label}
         aria-describedby={describedBy}
         inputMode="decimal"
@@ -473,7 +480,11 @@ function NumberField({ value, onCommit, onEdit, onUnchanged, label, step = "any"
           onEdit?.();
         }}
         onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        onKeyDown={(e) => {
+          // Never below zero, so a minus sign isn't typed at all.
+          if (e.key === "-") e.preventDefault();
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
         onFocus={(e) => e.target.select()}
         style={{ textAlign: align, paddingLeft: prefix ? 22 : undefined }}
       />
@@ -651,7 +662,7 @@ function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStat
         <div className="opts">
           {promo && <span id={promoHint} className="muted">{promoCodeOf(line.name) ? `Set by promo code ${promoCodeOf(line.name)}.` : "Set by a promo code."} To take it off, remove the line.</span>}
           {place && (
-            <select
+            <Select
               className="select input-sm"
               style={{ width: "auto", maxWidth: "100%", fontSize: 12 }}
               aria-label="Which options it's on"
@@ -665,7 +676,7 @@ function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStat
             >
               <option value="">On every option</option>
               {place.map((o) => <option key={o.id} value={o.id}>{placeName(o.id, place)}</option>)}
-            </select>
+            </Select>
           )}
           {withOptions && (
             <label>

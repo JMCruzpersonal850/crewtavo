@@ -27,6 +27,7 @@ import { checkGooglePlaces } from "../measure/googlePlaces";
 import { SwitchRow } from "./SettingsKit";
 import { AUTO_NAME, checkEsriKey, checkGoogleKey, choiceName, DEFAULT_CHOICES, googleFirst, imageryUsable, mapKeys, teamDefault, type ImageryChoice } from "../measure/imagery";
 import { loadSettings } from "@/lib/companySettings";
+import { Select } from "@/components/ui/Select";
 
 type Provider = "esri" | "google";
 const FIELD: Record<Provider, keyof MapKeys> = { esri: "esri_key", google: "google_key" };
@@ -120,7 +121,7 @@ export function MapsSettings() {
 
       <Section level={3} title={<span id="team-map-title">What Measure opens on</span>} action={<SaveStatus status={choosing.status} />}>
         <div className="set-stack">
-          <select
+          <Select
             className="select set-narrow"
             aria-labelledby="team-map-title"
             aria-describedby="team-map-help"
@@ -132,7 +133,7 @@ export function MapsSettings() {
               const ready = c === "auto" || imageryUsable(c, usableKeys);
               return <option key={c} value={c} disabled={!ready}>{choiceName(c)}{c === "auto" ? " (recommended)" : ready ? "" : " (add a key below)"}</option>;
             })}
-          </select>
+          </Select>
         <p id="team-map-help" className="set-note">
           For everyone on the team. Anyone can still switch from the Imagery button on Measure, and each person can pick their own in Settings › Profile.
           {googleFirst(usableKeys)

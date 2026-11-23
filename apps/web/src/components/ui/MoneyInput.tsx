@@ -1,6 +1,7 @@
 import { toUnits } from "@crewtavo/core/money";
 import { useEffect, useState } from "react";
 import { t } from "@/lib/i18n";
+import { NumberInput } from "./NumberInput";
 
 /**
  * What was typed in a MoneyInput, read as written and rounded to cents, or for a percent to
@@ -17,6 +18,7 @@ export function readAmount(draft: string, { percent, max }: { percent?: boolean;
  * Dollar or percent field that saves on blur or Enter and rejects bad values. `onEdit` hears each
  * keystroke, for a page's "Edited" save status (components/ui/SaveStatus), and
  * `onUnchanged` hears a blur that saves nothing (the same value, or one it turned down).
+ * A NumberInput without its up and down buttons, too narrow for them: the arrow keys still step it.
  */
 export function MoneyInput({ value, onSave, onEdit, onUnchanged, percent, max, width = 120, label }: { value: number; onSave: (v: number) => void; onEdit?: () => void; onUnchanged?: () => void; percent?: boolean; max?: number; width?: number; label?: string }) {
   const [draft, setDraft] = useState(String(value));
@@ -37,9 +39,15 @@ export function MoneyInput({ value, onSave, onEdit, onUnchanged, percent, max, w
   return (
     <span className="input-group" style={{ width }}>
       <span className={percent ? "addon addon-right" : "addon"}>{percent ? "%" : "$"}</span>
-      <input
-        className="input input-sm"
+      <NumberInput
+        className="input-sm"
         style={{ textAlign: "right", paddingLeft: percent ? 10 : 22, paddingRight: percent ? 24 : 10 }}
+        steppers={false}
+        step="any"
+        min={0}
+        max={max}
+        // How it's shown once left; readAmount does the rounding that's saved.
+        decimals={percent ? 4 : 2}
         inputMode="decimal"
         value={draft}
         aria-label={label}
@@ -51,7 +59,11 @@ export function MoneyInput({ value, onSave, onEdit, onUnchanged, percent, max, w
         }}
         onFocus={(e) => e.target.select()}
         onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        onKeyDown={(e) => {
+          // Never below zero, so a minus sign isn't typed at all.
+          if (e.key === "-") e.preventDefault();
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
       />
     </span>
   );

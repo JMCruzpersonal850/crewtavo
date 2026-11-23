@@ -14,6 +14,7 @@ import {
   askFor,
   askForCode,
   askForEmailCode,
+  boxedCode,
   codeDigits,
   codeProblem,
   emailInstead,
@@ -95,6 +96,14 @@ describe("the code", () => {
     expect(codeDigits("123-456")).toBe("123456");
     expect(codeDigits("123456 is your sign-in code for Uniform Roofing on Crewtavo. It runs out in 10 minutes.")).toBe("123456");
     expect(codeDigits("12a")).toBe("12");
+  });
+
+  it("in the boxes, takes the code pasted after a digit already typed", () => {
+    expect(boxedCode("1123456")).toBe("123456");
+    expect(boxedCode("12")).toBe("12");
+    expect(boxedCode("123456")).toBe("123456");
+    // The boxes drop the spaces before they ask; the code still stands apart from the words.
+    expect(boxedCode("042517isyoursign-incodefor4SeasonsLawnonCrewtavo.")).toBe("042517");
   });
 
   it("takes the code, not a company name's digits, from the whole email pasted in", () => {

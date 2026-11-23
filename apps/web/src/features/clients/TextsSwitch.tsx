@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { api, supabase, unwrap } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useSession } from "@/lib/session";
@@ -95,9 +96,9 @@ export function TextsSwitch({ clientId, contactId, name, phone, stop, since, lab
             Crewtavo won't text {phone} again: no reminders, visit notices, on-my-way texts, quotes, invoices or review asks. Emails still go.
           </p>
           <Field label="How did they ask?">
-            <select className="input" value={how} onChange={(e) => setHow(e.target.value as StopHow)}>
+            <Select className="input" value={how} onChange={(e) => setHow(e.target.value as StopHow)}>
               {STOP_HOWS.map((value) => <option key={value} value={value}>{STOP_HOW_LABELS[value]}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Note" optional>
             <input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="What they said, if it helps later" />

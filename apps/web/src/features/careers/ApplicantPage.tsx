@@ -31,6 +31,7 @@ import { storedUndoToast, TRASH_PATH } from "../drive/trash";
 import { WebVisitFacts } from "../marketing/WebVisitRows";
 import { APPLICANT_FIELDS, APPLICANT_TONES, deleteApplicant, fileLinks, filesJson, isWaiting, otherApplications, refreshApplicants, seesApplicants, uploadApplicantFile, type Applicant } from "./applicants";
 import styles from "./Applicants.module.css";
+import { Select } from "@/components/ui/Select";
 
 /** The next step from each status, as the page's main button. */
 const NEXT: Partial<Record<ApplicantStatus, { label: string; icon: IconName; to: ApplicantStatus }>> = {
@@ -207,9 +208,9 @@ function ApplicantDetail() {
             <Section title="Where it stands">
               <Facts>
                 <Fact label="Status">
-                  <select className={`select ${styles.status}`} value={a.status} onChange={(e) => save.mutate({ status: e.target.value as ApplicantStatus })} aria-label="Status">
+                  <Select className={`select ${styles.status}`} value={a.status} onChange={(e) => save.mutate({ status: e.target.value as ApplicantStatus })} aria-label="Status">
                     {APPLICANT_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                  </select>
+                  </Select>
                 </Fact>
                 <Fact label="Since"><span title={formatDate(a.status_changed_at)}>{formatDate(a.status_changed_at)} ({timeAgo(a.status_changed_at)})</span></Fact>
                 <Fact label="Your rating"><Stars value={a.rating} onChange={(rating) => save.mutate({ rating })} /></Fact>

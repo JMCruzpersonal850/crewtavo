@@ -19,6 +19,7 @@ import { useSession } from "@/lib/session";
 import { parseZips } from "./salesAreas";
 import styles from "./settings.module.css";
 import type { Member } from "./TeamSettings";
+import { Select } from "@/components/ui/Select";
 
 const nameOf = (m: Member) => m.profile?.full_name || m.profile?.email || "Team member";
 
@@ -85,10 +86,10 @@ export function SalesAreaSettings() {
           />
         ))}
         <Field label="Everywhere else" hint="A request from a zip nobody covers, or with no address." className={styles.zip}>
-          <select className="select" value={elseUser} onChange={(e) => void saving.track(setElse.mutateAsync(e.target.value))}>
+          <Select className="select" value={elseUser} onChange={(e) => void saving.track(setElse.mutateAsync(e.target.value))}>
             <option value="">Nobody: leave it unassigned</option>
             {people.map((m) => <option key={m.user_id} value={m.user_id}>{nameOf(m)}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
       <FormError error={setZips.error ?? setElse.error} />

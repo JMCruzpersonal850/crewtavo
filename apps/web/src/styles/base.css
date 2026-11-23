@@ -49,8 +49,6 @@ img, svg { flex-shrink: 0; }
 @keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
 @keyframes slide-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-@keyframes sheet-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
-@keyframes sheet-down { to { opacity: 0; transform: translateY(40px); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 
@@ -549,13 +547,11 @@ section + .more-group { margin-top: 14px; }
   @keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes pop-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes slide-up { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes sheet-up { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes sheet-down { to { opacity: 0; } }
   * { scroll-behavior: auto !important; }
   /* Nothing shrinks as it's pressed or lifts as it's hovered. */
   :is(button, a, label, summary, [role="button"], [role="tab"]):active, .mobile-nav :active svg, .app-tile:active .app-icon, .more-tile:active,
   .card-link:hover, .stat-button:hover, .thumb:hover img, .back-link:hover svg, .crumb:hover > svg,
-  .hub-actions button:hover { transform: none !important; }
+  .deal:hover, .category-card:hover, .guide-card:hover, .hub-actions button:hover { transform: none !important; }
   /* Create's x and the current page's pill change at once; a count doesn't pop. */
   .nav-create-dot, .nav-create-dot svg, .nav-pill[data-moving] { transition: none; }
   @keyframes count-pop { to { transform: none; } }

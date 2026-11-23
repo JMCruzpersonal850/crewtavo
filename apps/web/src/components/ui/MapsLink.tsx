@@ -10,6 +10,7 @@ import { MAPS_LABELS, mapsApps, mapsUrl, placeText, rememberApp, rememberedApp, 
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { t } from "@/lib/i18n";
+import { Select } from "./Select";
 
 export function MapsLink({ place, className = "address-link", title, children }: { place: Place; className?: string; title?: string; children: ReactNode }) {
   const [choosing, setChoosing] = useState(false);
@@ -152,7 +153,7 @@ export function MapsAppSetting() {
   return (
     <div className="set-item">
       <span className="set-item-label" id="maps-app-title">{t("Directions")}</span>
-      <select
+      <Select
         className="select"
         aria-labelledby="maps-app-title"
         style={{ maxWidth: 280 }}
@@ -165,7 +166,7 @@ export function MapsAppSetting() {
       >
         <option value="">{t("Ask which app each time")}</option>
         {mapsApps().map((a) => <option key={a} value={a}>{t(MAPS_LABELS[a])}</option>)}
-      </select>
+      </Select>
       <span className="muted small">{t("Tapping an address or Directions opens this app. Saved on this device.")}</span>
     </div>
   );

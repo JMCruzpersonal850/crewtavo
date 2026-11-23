@@ -4,6 +4,7 @@ import { fieldLabel, fieldRole } from "@crewtavo/core/websiteForms";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { ActionBar, DetailColumns, DetailHeader } from "@/components/ui/DetailPage";
@@ -223,7 +224,7 @@ export function RequestPage() {
           // A new one is on its way, nobody's late yet: an amber dot and plain words. Waiting too long is the amber words.
           <EntityStatus kind="request" status={r.status} />,
           waitingDays > 0 && <span className={styles.waiting}><Icon name="clock" size={13} />Waiting {waitingDays} days</span>,
-          r.client && <Link to={`/clients/${r.client.id}`} className={styles.client}>{r.client.display_name}</Link>,
+          r.client && <ClientPreview id={r.client.id}><Link to={`/clients/${r.client.id}`} className={styles.client}>{r.client.display_name}</Link></ClientPreview>,
           <span className={styles.source}><Icon name={(r.website_form_id ? "globe" : SOURCE_ICONS[r.source]) ?? "globe"} size={13} />{requestSource(r)}</span>,
         ]}
         actions={

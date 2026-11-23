@@ -21,6 +21,7 @@ import { hasRole, useSession } from "@/lib/session";
 import { ASSET_FIELDS, ASSET_NAMES, assetDetails, byNewest, warrantyNote, type PropertyAsset, type ServiceVisit } from "./propertyAssets";
 import { t } from "@/lib/i18n";
 import styles from "./clients.module.css";
+import { Select } from "@/components/ui/Select";
 
 const assetsKey = (propertyId: string) => ["property-assets", propertyId];
 
@@ -215,10 +216,10 @@ function AssetDialog({ propertyId, asset, isOffice, visitId, onClose }: { proper
         </div>
         {asset && isOffice && (
           <Field label={t("Status")}>
-            <select className="select" value={f.status} onChange={set("status")}>
+            <Select className="select" value={f.status} onChange={set("status")}>
               <option value="active">{t("In use")}</option>
               <option value="retired">{t("Retired (removed or replaced)")}</option>
-            </select>
+            </Select>
           </Field>
         )}
         <Field label={t("Notes")} optional hint={t("Filter size, refrigerant, quirks.")}><textarea className="textarea" value={f.notes} onChange={set("notes")} maxLength={4000} rows={3} /></Field>

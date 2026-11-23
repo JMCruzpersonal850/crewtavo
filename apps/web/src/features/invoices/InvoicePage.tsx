@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
@@ -52,6 +53,7 @@ import { editOffer } from "./editInvoice";
 import { lateFeeControls } from "./lateFees";
 import { CustomFieldsCard, useCustomFields } from "../customFields/CustomFields";
 import styles from "./invoices.module.css";
+import { Select } from "@/components/ui/Select";
 
 const METHODS: Record<string, string> = { check: "Check", cash: "Cash", card: "Card", ach: "Bank transfer", other: "Other" };
 /** A charge still going, or waiting on someone: the database lets an invoice have one at a time. */
@@ -365,7 +367,7 @@ function InvoicePageScreen() {
         title={`Invoice #${inv.number}`}
         status={<EntityStatus kind="invoice" status={inv.status} />}
         meta={[
-          inv.client && <Link to={`/clients/${inv.client.id}`} className={styles.client}>{inv.client.display_name}</Link>,
+          inv.client && <ClientPreview id={inv.client.id}><Link to={`/clients/${inv.client.id}`} className={styles.client}>{inv.client.display_name}</Link></ClientPreview>,
           inv.job && <Link to={`/jobs/${inv.job.id}`} className={styles.job}>Job #{inv.job.number}: {inv.job.title}</Link>,
           inv.kind === "progress" && <span className="tag">Pay application {inv.pay_app_number}</span>,
           inv.kind === "deposit" && <span className="tag">Deposit</span>,
@@ -891,9 +893,9 @@ function PaymentDialog({ invoice, bank, onClose, onSaved }: { invoice: { id: str
             <span className="input-group"><span className="addon">$</span><input className="input" style={{ paddingLeft: 22 }} inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value.replace(/[^0-9.]/g, ""))} /></span>
           </Field>
           <Field label="Method">
-            <select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
+            <Select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
               {Object.entries(METHODS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Received"><input className="input" type="date" value={date} max={todayIn(session.company.timezone)} onChange={(e) => setDate(e.target.value)} required /></Field>
         </div>

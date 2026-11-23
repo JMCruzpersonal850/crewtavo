@@ -24,6 +24,7 @@ import { hasRole, useSession } from "@/lib/session";
 import { chatKeys, chatOn } from "./data";
 import { Avatar, badgeStyle, ChannelIcon, channelLabel, roleColor } from "./ui";
 import s from "./chat.module.css";
+import { Select } from "@/components/ui/Select";
 
 interface SettingsChannel {
   id: string;
@@ -483,9 +484,9 @@ function AddChannel({ open, onClose, crews, categories, onAdded }: { open: boole
         {preset === "crew" && (
           <Field label="Crew">
             {crews.length ? (
-              <select className="select" value={crew} onChange={(e) => setCrew(e.target.value)}>
+              <Select className="select" value={crew} onChange={(e) => setCrew(e.target.value)}>
                 {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </Select>
             ) : (
               <span className="muted small">No crews yet. Add them in <Link to="/settings?tab=crews">Settings → Crews</Link>; each new crew gets its own channel.</span>
             )}

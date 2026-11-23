@@ -91,7 +91,8 @@ describe("picking rows on a phone", () => {
   it("starts with the boxes put away behind a Select button, which a desktop doesn't show", () => {
     expect(html).toContain('data-mode="off"');
     expect(html).toContain('<button type="button" class="select-bar-mode">Select</button>');
-    expect(html).toMatch(/<li class="il-row il-row-pick" data-pick-off="true">/);
+    // data-hold: holding a finger on the row picks it too (useHoldToPick).
+    expect(html).toMatch(/<li class="il-row il-row-pick" data-pick-off="true" data-hold="">/);
     expect(css).toContain(".select-bar-mode { display: none; }");
     const phone = css.slice(css.indexOf(".select-bar-mode { display: none; }"));
     expect(phone).toContain('.select-bar[data-mode="off"] > .select-bar-all { display: none; }');

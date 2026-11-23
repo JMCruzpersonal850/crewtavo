@@ -2050,6 +2050,9 @@ button.material-result:focus-visible { outline: 2px solid var(--green); outline-
 .set-suffix { position: relative; display: block; }
 .set-suffix > .input { padding-right: 48px; }
 .set-suffix > span { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); font-size: var(--fs-13); font-weight: 400; color: var(--quiet); pointer-events: none; }
+/* A number box's up and down arrows would sit under the unit: the unit stays, and the arrow keys still step it. */
+.set-suffix .number-field-steps { display: none; }
+.set-suffix > .input.number-field { padding-right: 48px; }
 
 /* A switch and its words: the words in ink, a quiet line under them, a quiet link on the right. */
 .set-rows { display: grid; grid-template-columns: minmax(0, 1fr); }

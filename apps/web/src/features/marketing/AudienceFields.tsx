@@ -6,6 +6,7 @@
 import { RECURRING_CHOICES, recurringChoice, withRecurringChoice, type CampaignAudience } from "@crewtavo/core/campaigns";
 import { useQuery } from "@tanstack/react-query";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { TagInput } from "@/components/ui/TagInput";
 import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -60,15 +61,15 @@ export function AudienceFields({ audience, onChange, choices, statusHint = "None
         <TagInput value={(audience.services ?? []).map(labelOf(choices?.services))} onChange={(t) => set({ services: t })} options={choices?.services} placeholder="Any service" />
       </Field>
       <Field label="Recurring work" optional>
-        <select className="select" value={recurringChoice(audience)} onChange={(e) => onChange(withRecurringChoice(audience, e.target.value as ReturnType<typeof recurringChoice>))}>
+        <Select className="select" value={recurringChoice(audience)} onChange={(e) => onChange(withRecurringChoice(audience, e.target.value as ReturnType<typeof recurringChoice>))}>
           {RECURRING_CHOICES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
-        </select>
+        </Select>
       </Field>
       <Field label="No completed visit in the last" optional>
-        <select className="select" value={audience.no_visit_days ?? ""} onChange={(e) => set({ no_visit_days: e.target.value ? Number(e.target.value) : null })}>
+        <Select className="select" value={audience.no_visit_days ?? ""} onChange={(e) => set({ no_visit_days: e.target.value ? Number(e.target.value) : null })}>
           <option value="">Don't filter by visits</option>
           {VISIT_OPTIONS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-        </select>
+        </Select>
       </Field>
     </>
   );

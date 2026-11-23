@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import type { AiState, AppRow, OpenAiState } from "./catalog";
 import { kit } from "./PanelKit";
+import { Select } from "@/components/ui/Select";
 
 const SERVICES: Array<{ service: "claude" | "chatgpt"; label: string; hint: string }> = [
   { service: "claude", label: "Claude", hint: "Your Anthropic key, from Apps → Claude." },
@@ -72,11 +73,11 @@ export function OpenAiModelCard({ app, onChanged }: { app: AppRow; onChanged: ()
         <>
           <p className={kit.note}>The OpenAI model your key uses for Crewtavo's AI. These are the ones OpenAI lists for your key; OpenAI's prices differ by model.</p>
           <div className="row wrap" style={{ gap: 8 }}>
-            <select className="select grow" style={{ maxWidth: 320 }} value={model ?? ""} disabled={pick.isPending} onChange={(e) => pick.mutate(e.target.value)} aria-label="OpenAI model">
+            <Select className="select grow" style={{ maxWidth: 320 }} value={model ?? ""} disabled={pick.isPending} onChange={(e) => pick.mutate(e.target.value)} aria-label="OpenAI model">
               {/* A model picked before that OpenAI no longer lists still shows, so it can be seen and changed. */}
               {model && !state.models.some((m) => m.slug === model) && <option value={model}>{model} (not listed anymore)</option>}
               {state.models.map((m) => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
-            </select>
+            </Select>
             <Button icon="refresh" loading={check.isPending} onClick={() => check.mutate()}>Check for new models</Button>
           </div>
         </>

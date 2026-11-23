@@ -19,6 +19,7 @@ import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { api } from "@/lib/api";
@@ -259,11 +260,11 @@ export function SocialComposer({ open, onClose, state, post, start }: { open: bo
                 <span className="muted small">{picked.length} of {MAX_PHOTOS} at most. Check the photo doesn't show a house number, a car plate or people's faces.</span>
                 {takenOut && <span className="muted small" role="status">{takenOut}</span>}
                 {(jobs.length > 1 || job) && (
-                  <select className="select" style={{ maxWidth: 260 }} aria-label="Job" value={job} onChange={(e) => setJob(e.target.value)}>
+                  <Select className="select" style={{ maxWidth: 260 }} aria-label="Job" value={job} onChange={(e) => setJob(e.target.value)}>
                     <option value="">All jobs</option>
                     {job && !jobs.some(([id]) => id === job) && <option value={job}>This job</option>}
                     {jobs.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-                  </select>
+                  </Select>
                 )}
               </div>
               {photos.isPending ? (

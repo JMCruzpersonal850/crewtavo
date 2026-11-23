@@ -43,6 +43,7 @@ import { automatedBody, automatedRules, campaignTokens, dayChoices, daysError, d
 import { resultsSummary } from "./CampaignResults";
 import { companyAddressLine, EmailPreview, MessageField, SubjectField, TestEmailDialog } from "./EmailEditor";
 import styles from "./Marketing.module.css";
+import { Select } from "@/components/ui/Select";
 
 const TEMPLATE_KEYS = ["reengage_past_clients", "win_back_lost_quotes", "quote_followup"];
 
@@ -349,9 +350,9 @@ function EditEmailDialog({ card, backlog, onClose }: { card: AutomatedCard; back
     <Dialog open onClose={onClose} title={campaign.name} size="lg">
       <form className="stack" onSubmit={submit}>
         <Field label={key === "reengage" ? "No visit in" : key === "win_back" ? "After a quote is marked lost" : "After a quote is sent"} hint={DAYS_HINTS[key]} error={daysError(key, draft.days)}>
-          <select className="select" style={{ maxWidth: 220 }} value={draft.days} onChange={(e) => set({ days: Number(e.target.value) })}>
+          <Select className="select" style={{ maxWidth: 220 }} value={draft.days} onChange={(e) => set({ days: Number(e.target.value) })}>
             {dayChoices(key, draft.days).map((c) => <option key={c.days} value={c.days}>{c.label}</option>)}
-          </select>
+          </Select>
         </Field>
         <SubjectField value={draft.subject} onChange={(subject) => set({ subject })} />
         <MessageField

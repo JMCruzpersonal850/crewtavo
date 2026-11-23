@@ -69,6 +69,7 @@ import { quoteOptionsKey } from "../quotes/options";
 import styles from "./paving.module.css";
 import { worksheetsKey } from "./WorksheetsCard";
 import { loadSettings } from "@/lib/companySettings";
+import { Select } from "@/components/ui/Select";
 
 const UNIT_WORDS: Record<string, string> = { gal: "gal", ton: "tons", "sq yd": "sq yd", "sq ft": "sq ft", ft: "ft", day: "days", ea: "each" };
 /** The standard job types' photos (assets/paving/README.md); one a business adds shows an icon. */
@@ -557,7 +558,7 @@ function LineRow({ line, typed, onValue, onAmount, onPrice }: { line: CalcLine; 
       <div className={styles.lineWhat}>
         <span className={styles.lineName}>{item.name}</span>
         {item.choices?.length ? (
-          <select className="select input-sm" aria-label={`${item.name}: which`} value={String(value)} onChange={(e) => onValue(Number(e.target.value))}>
+          <Select className="select input-sm" aria-label={`${item.name}: which`} value={String(value)} onChange={(e) => onValue(Number(e.target.value))}>
             <option value="0">None</option>
             {item.choices.map((c) => (
               <option key={c.value} value={String(c.value)}>
@@ -566,7 +567,7 @@ function LineRow({ line, typed, onValue, onAmount, onPrice }: { line: CalcLine; 
               </option>
             ))}
             {value > 0 && !choice && <option value={String(value)}>Other: {value}</option>}
-          </select>
+          </Select>
         ) : area || item.basis === "haul" ? (
           <label className={styles.lineCheck}>
             <input type="checkbox" checked={value > 0} onChange={(e) => onValue(e.target.checked ? 1 : 0)} />

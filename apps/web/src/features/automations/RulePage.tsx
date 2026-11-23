@@ -50,6 +50,8 @@ import { can, hasRole, useSession } from "@/lib/session";
 import { useClientTags } from "../clients/ClientForm";
 import styles from "./Automations.module.css";
 import { RunHistory, type RuleRow } from "./AutomationsPage";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 interface Draft {
   name: string;
@@ -294,7 +296,7 @@ function RulePageScreen() {
         <Section title="Steps" flush>
           <div className="rule-flow">
             <Step icon="bolt" title="When">
-              <select className="select" value={draft.trigger} onChange={(e) => {
+              <Select className="select" value={draft.trigger} onChange={(e) => {
                 const next = triggerDef(e.target.value);
                 // Who can be told about it may be fewer (a sub's offer or autopay: the office only).
                 const actions = draft.actions.map((a) => (a.type === "notify" && next?.notifyRoles ? { ...a, roles: (a.roles ?? []).filter((r) => next.notifyRoles!.includes(r)) } : a));
@@ -310,7 +312,7 @@ function RulePageScreen() {
                     {triggers.filter((t) => t.group === group).map((t) => <option key={t.verb} value={t.verb}>{t.label}</option>)}
                   </optgroup>
                 ))}
-              </select>
+              </Select>
               {draft.trigger === "client.inactive" && (
                 <p className={styles.note}>Checked each morning at 10. Set the number of days under Only if.</p>
               )}
@@ -331,18 +333,18 @@ function RulePageScreen() {
             {trigger?.delayable && (
               <Step icon="clock" title="Wait">
                 <div className="rule-line">
-                  <select className="select" value={draft.delay_minutes ? "later" : "now"} onChange={(e) => set({ delay_minutes: e.target.value === "now" ? 0 : 3 * 1440 })} aria-label="When to run">
+                  <Select className="select" value={draft.delay_minutes ? "later" : "now"} onChange={(e) => set({ delay_minutes: e.target.value === "now" ? 0 : 3 * 1440 })} aria-label="When to run">
                     <option value="now">Run right away</option>
                     <option value="later">Wait first</option>
-                  </select>
+                  </Select>
                   {draft.delay_minutes > 0 && (
                     <>
-                      <input className="input" type="number" min={1} max={365} style={{ maxWidth: 90 }} value={delay.amount} aria-label="Wait amount" onChange={(e) => set({ delay_minutes: Math.max(1, Math.min(525600, Number(e.target.value) || 1)) * UNIT_MINUTES[delay.unit] })} />
-                      <select className="select" style={{ maxWidth: 140 }} value={delay.unit} aria-label="Wait unit" onChange={(e) => set({ delay_minutes: Math.max(1, delay.amount) * UNIT_MINUTES[e.target.value as keyof typeof UNIT_MINUTES] })}>
+                      <NumberInput className="input" min={1} max={365} style={{ maxWidth: 90 }} value={delay.amount} aria-label="Wait amount" onChange={(e) => set({ delay_minutes: Math.max(1, Math.min(525600, Number(e.target.value) || 1)) * UNIT_MINUTES[delay.unit] })} />
+                      <Select className="select" style={{ maxWidth: 140 }} value={delay.unit} aria-label="Wait unit" onChange={(e) => set({ delay_minutes: Math.max(1, delay.amount) * UNIT_MINUTES[e.target.value as keyof typeof UNIT_MINUTES] })}>
                         <option value="minutes">minutes</option>
                         <option value="hours">hours</option>
                         <option value="days">days</option>
-                      </select>
+                      </Select>
                     </>
                   )}
                 </div>
@@ -435,16 +437,16 @@ function ConditionRow({ subject, value, invalid, onChange, onRemove }: { subject
   const asList = Array.isArray(value.value) ? value.value : String(value.value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return (
     <div className="rule-line" data-invalid={invalid || undefined}>
-      <select className="select" value={def.field} aria-label="Field" onChange={(e) => {
+      <Select className="select" value={def.field} aria-label="Field" onChange={(e) => {
         const f = fields.find((x) => x.field === e.target.value)!;
         const firstChoice = f.kind === "status" ? statusChoices(subject)[0].value : f.choices?.[0]?.value ?? "";
         onChange({ field: f.field, op: f.ops[0], value: f.kind === "tags" ? [] : f.kind === "days" ? 365 : firstChoice });
       }}>
         {fields.map((f) => <option key={f.field} value={f.field}>{f.label}</option>)}
-      </select>
-      <select className="select" style={{ maxWidth: 150 }} value={value.op} aria-label="Comparison" onChange={(e) => onChange({ ...value, op: e.target.value as ConditionOp, value: e.target.value === "in" ? asList : Array.isArray(value.value) ? value.value[0] ?? "" : value.value })}>
+      </Select>
+      <Select className="select" style={{ maxWidth: 150 }} value={value.op} aria-label="Comparison" onChange={(e) => onChange({ ...value, op: e.target.value as ConditionOp, value: e.target.value === "in" ? asList : Array.isArray(value.value) ? value.value[0] ?? "" : value.value })}>
         {def.ops.map((op) => <option key={op} value={op}>{OP_LABELS[op]}</option>)}
-      </select>
+      </Select>
       {def.kind === "tags" ? (
         <span style={{ flex: "1 1 200px" }}><TagInput value={asList} onChange={(t) => onChange({ ...value, value: t })} suggestions={tags.data} placeholder="Tag" /></span>
       ) : choices && multi ? (
@@ -455,12 +457,12 @@ function ConditionRow({ subject, value, invalid, onChange, onRemove }: { subject
           })}
         </span>
       ) : choices ? (
-        <select className="select" value={String(value.value)} aria-label="Value" onChange={(e) => onChange({ ...value, value: e.target.value })}>
+        <Select className="select" value={String(value.value)} aria-label="Value" onChange={(e) => onChange({ ...value, value: e.target.value })}>
           {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
+        </Select>
       ) : def.kind === "days" ? (
         <span className="row" style={{ flex: "0 1 180px", gap: 6 }}>
-          <input className="input" type="number" min={30} max={730} style={{ maxWidth: 100 }} value={String(value.value ?? "")} aria-label="Days"
+          <NumberInput className="input" min={30} max={730} style={{ maxWidth: 100 }} value={String(value.value ?? "")} aria-label="Days"
             onChange={(e) => onChange({ ...value, value: e.target.value === "" ? "" : Math.round(Number(e.target.value)) })} />
           <span className="muted small">days</span>
         </span>
@@ -595,9 +597,9 @@ function ActionEditor({ index, count, subject, verb, campaign = false, value, on
         <div className="form-grid">
           <Field label="Task"><input ref={titleRef} className="input" value={value.title} maxLength={200} onFocus={() => setTarget("title")} onChange={(e) => onChange({ ...value, title: e.target.value })} placeholder="Call {{client.name}} about quote #{{number}}" /></Field>
           <Field label="Due">
-            <select className="select" value={value.days_from_now} onChange={(e) => onChange({ ...value, days_from_now: Number(e.target.value) })}>
+            <Select className="select" value={value.days_from_now} onChange={(e) => onChange({ ...value, days_from_now: Number(e.target.value) })}>
               {[0, 1, 2, 3, 5, 7, 14, 30].map((d) => <option key={d} value={d}>{d === 0 ? "Same day" : d === 1 ? "Next day" : `In ${d} days`}</option>)}
-            </select>
+            </Select>
           </Field>
           <div style={{ gridColumn: "1 / -1" }}><Tokens verb={verb} forTask target={titleRef} onInsert={(text) => onChange({ ...value, title: text })} /></div>
         </div>
@@ -609,11 +611,11 @@ function ActionEditor({ index, count, subject, verb, campaign = false, value, on
             <div className="callout callout-info"><Icon name="info" size={16} /><div className="grow">Marketing is off, so this action is skipped.</div></div>
           )}
           <Field label="Send by">
-            <select className="select" value={value.channel} onChange={(e) => onChange({ ...value, channel: e.target.value as "email" | "sms" | "both" })}>
+            <Select className="select" value={value.channel} onChange={(e) => onChange({ ...value, channel: e.target.value as "email" | "sms" | "both" })}>
               <option value="email">Email</option>
               <option value="sms">Text message</option>
               <option value="both">Text and email</option>
-            </select>
+            </Select>
           </Field>
           <p className={styles.note}>Uses your <Link to="/marketing?tab=reviews">review settings</Link>, and asks each client at most once every 6 months.</p>
         </>
@@ -633,10 +635,10 @@ function ActionEditor({ index, count, subject, verb, campaign = false, value, on
       {value.type === "invite_autopay" && (
         <>
           <Field label="Send by">
-            <select className="select" value={value.channel} onChange={(e) => onChange({ ...value, channel: e.target.value as "email" | "sms" })}>
+            <Select className="select" value={value.channel} onChange={(e) => onChange({ ...value, channel: e.target.value as "email" | "sms" })}>
               <option value="email">Email</option>
               <option value="sms">Text message</option>
-            </select>
+            </Select>
           </Field>
           <p className={styles.note}>Skipped for clients already on autopay or invited in the last week. Uses your <Link to="/settings?tab=payments">autopay settings</Link>.</p>
         </>
@@ -644,9 +646,9 @@ function ActionEditor({ index, count, subject, verb, campaign = false, value, on
 
       {value.type === "update_status" && (
         <Field label="Change it to">
-          <select className="select" value={value.status} onChange={(e) => onChange({ ...value, status: e.target.value })}>
+          <Select className="select" value={value.status} onChange={(e) => onChange({ ...value, status: e.target.value })}>
             {(STATUS_ACTION_CHOICES[subject] ?? []).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+          </Select>
         </Field>
       )}
     </div>

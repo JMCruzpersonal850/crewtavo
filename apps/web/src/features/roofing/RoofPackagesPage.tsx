@@ -92,6 +92,8 @@ import {
 } from "./packages";
 import styles from "./RoofPackagesPage.module.css";
 import { loadSettings } from "@/lib/companySettings";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 const FORMAT = { whole: formatMoney, cents: formatMoneyCents };
 const money = (n: number) => moneyText(n, FORMAT);
@@ -385,9 +387,9 @@ function RangeCard({ save }: { save: SaveStatusHandle }) {
             <MoneyInput percent max={100} width={110} value={shown.pct} onSave={(v) => change({ range_pct: v })} />
           </Field>
           <Field label="Round to">
-            <select className="select" value={shown.round} onChange={(e) => change({ range_round: Number(e.target.value) })} disabled={saveRange.isPending}>
+            <Select className="select" value={shown.round} onChange={(e) => change({ range_round: Number(e.target.value) })} disabled={saveRange.isPending}>
               {RANGE_ROUNDING.map((r) => <option key={r} value={r}>{formatMoney(r)}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
       ) : (
@@ -846,21 +848,21 @@ function PackageEditor({ pkg, packages, services, editable, roofing, onSelect, s
         )}
         {editable && roofing ? (
           <Field label="The roof" hint={roofHint}>
-            <select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => e.target.value && run(savePackage, { patch: { roof_service_id: e.target.value } })}>
+            <Select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => e.target.value && run(savePackage, { patch: { roof_service_id: e.target.value } })}>
               {!pkg.roof_service_id && <option value="">Pick the roof…</option>}
               {(roofChoices.length ? roofChoices : services.filter((s) => s.active)).map((s) => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (turned off)"}</option>)}
-            </select>
+            </Select>
           </Field>
         ) : editable ? (
           <Field label="Main service" optional hint={mainHint}>
-            <select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => run(savePackage, { patch: { roof_service_id: e.target.value || null } })}>
+            <Select className="select" value={pkg.roof_service_id ?? ""} onChange={(e) => run(savePackage, { patch: { roof_service_id: e.target.value || null } })}>
               <option value="">None</option>
               {[...new Set(mainChoices.map((s) => s.category?.trim() || "Other"))].map((c) => (
                 <optgroup key={c} label={c}>
                   {mainChoices.filter((s) => (s.category?.trim() || "Other") === c).map((s) => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (turned off)"}</option>)}
                 </optgroup>
               ))}
-            </select>
+            </Select>
           </Field>
         ) : null}
       </div>
@@ -1224,7 +1226,7 @@ function TypicalRoofPart({ pkg, byId, prices, save }: { pkg: RoofPackage; byId: 
         editable ? (
           <label className={styles.squares}>
             Typical roof
-            <input className="input input-sm" type="number" inputMode="numeric" min={1} max={TYPICAL_SQUARES_MAX} step={1} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={saveDraft} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+            <NumberInput className="input input-sm" inputMode="numeric" min={1} max={TYPICAL_SQUARES_MAX} step={1} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={saveDraft} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
             squares
           </label>
         ) : undefined
@@ -1415,7 +1417,7 @@ function AlwaysRow({
           item && editable ? (
             <label className={styles.count}>
               Count it, starts at
-              <input className="input input-sm" type="number" inputMode="decimal" min={1} step={1} value={count} onChange={(e) => setCount(e.target.value)} onBlur={saveCount} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+              <NumberInput className="input input-sm" inputMode="decimal" min={1} step={1} value={count} onChange={(e) => setCount(e.target.value)} onBlur={saveCount} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
             </label>
           ) : (
             `Count it${item?.quantity ? ` (starts at ${item.quantity})` : ""}`

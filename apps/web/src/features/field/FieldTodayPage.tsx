@@ -40,7 +40,7 @@ import { SpanishOffer } from "./SpanishOffer";
 import { featureOn } from "@/components/shell/nav";
 import { FIELD_SCOPE } from "@/lib/offline";
 import { toast } from "@/lib/toast";
-import { intlLocale, msg, t } from "@/lib/i18n";
+import { intlLocale, languageChoice, msg, t } from "@/lib/i18n";
 
 type Visit = MyDayVisit;
 
@@ -111,7 +111,7 @@ export function FieldTodayPage() {
       <FieldHeader kicker={new Date().toLocaleDateString(intlLocale(), { weekday: "long", month: "long", day: "numeric", timeZone: tz })} title={t("My day")} />
 
       <OfflineNote />
-      <SpanishOffer />
+      {languageChoice() && <SpanishOffer />}
       {!hasRole(session, "admin", "office", "estimator") && <InstallAppCard />}
       {/* The clock at the property, when the company has it on: what the phone asks as they get there and leave. */}
       <GeofenceCard onStatus={(visit, status) => void statusTap.tap(visit, status)} />

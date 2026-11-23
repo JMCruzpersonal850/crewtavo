@@ -20,12 +20,14 @@ import { EmptyState } from "@/components/ui/States";
 import { statusText } from "@/components/ui/StatusPill";
 import { api, supabase, unwrap } from "@/lib/api";
 import { formatDate, formatMoney, formatMoneyCents, formatNumber, todayIn } from "@/lib/format";
+import { errorMessage } from "@/lib/errors";
 import { useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { failureText, invoiceInChunks, type BatchResult } from "./batch";
 import { chargeBusy, chargeInChunks, chargeLiveText, chargeOutcomeText, chargeSummary, chargeTotal, type ChargeableInvoice, type ChargeResult } from "./charges";
 import { invoiceTotals, readyJobs, type ReadyJob } from "./totals";
 import styles from "./invoices.module.css";
+import { Select } from "@/components/ui/Select";
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
@@ -248,9 +250,9 @@ function BatchDialog({ jobs, onClose }: { jobs: ReadyJob[]; onClose: () => void 
             Add logged hours and materials
           </label>
           {work && rates.data && (rates.data.length ? (
-            <select className="select input-sm" style={{ width: "auto" }} value={rate?.id ?? ""} onChange={(e) => setRateId(e.target.value)} aria-label="Bill hours at">
+            <Select className="select input-sm" style={{ width: "auto" }} value={rate?.id ?? ""} onChange={(e) => setRateId(e.target.value)} aria-label="Bill hours at">
               {rates.data.map((r) => <option key={r.id} value={r.id}>Hours at {r.name} · {formatMoneyCents(Number(r.unit_price))}/{r.unit}</option>)}
-            </select>
+            </Select>
           ) : (
             <span className="muted small">To bill hours, add an item sold by the hour (unit hr), like Labor, to your price list.</span>
           ))}
@@ -277,6 +279,8 @@ function BatchDialog({ jobs, onClose }: { jobs: ReadyJob[]; onClose: () => void 
   );
 }
 
+const notSent = (skipped: Array<{ number: number; reason: string }>) => skipped.map((s) => `Invoice #${s.number}: ${s.reason}`).join(". ");
+
 /**
  * Remind the past due, all at once, by email: the action on the Past due group's heading, so it draws
  * as green words there. "Remind both" for two. Nothing without email, or with nobody owing.
@@ -284,10 +288,17 @@ function BatchDialog({ jobs, onClose }: { jobs: ReadyJob[]; onClose: () => void 
 export function RemindAllButton({ ids }: { ids: string[] }) {
   const { config } = useSession();
   const remind = useMutation({
-    mutationFn: () => api.post<{ sent: number; skipped: Array<{ number: number; reason: string }> }>("/invoices/remind", { invoice_ids: ids }),
+    // One toast says it's sending and then how it went, failing included.
+    meta: { inline: true },
+    mutationFn: () =>
+      toast.promise(api.post<{ sent: number; skipped: Array<{ number: number; reason: string }> }>("/invoices/remind", { invoice_ids: ids }), {
+        loading: { title: `Sending ${plural(ids.length, "reminder")}…`, tone: "invoice" },
+        success: (r) => (r.sent ? { title: `${plural(r.sent, "reminder")} sent`, tone: "invoice" } : r.skipped.length ? { kind: "error", title: `${r.skipped.length} not sent`, description: notSent(r.skipped) } : null),
+        error: (e) => ({ title: "Reminders not sent", description: errorMessage(e) }),
+      }),
+    // Some went and some didn't: the ones that didn't get their own toast.
     onSuccess: (r) => {
-      if (r.sent) toast.success(`${plural(r.sent, "reminder")} sent`, { tone: "invoice" });
-      if (r.skipped.length) toast.error(`${r.skipped.length} not sent`, { description: r.skipped.map((s) => `Invoice #${s.number}: ${s.reason}`).join(". ") });
+      if (r.sent && r.skipped.length) toast.error(`${r.skipped.length} not sent`, { description: notSent(r.skipped) });
     },
   });
   if (!ids.length || !config.features.email) return null;

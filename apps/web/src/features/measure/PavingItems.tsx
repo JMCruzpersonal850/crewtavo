@@ -10,6 +10,7 @@ import { useState } from "react";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { formatNumber } from "@/lib/format";
 
 export type AreaUnit = "sqft" | "sqyd";
@@ -120,7 +121,7 @@ export function ItemSelect({ kind, value, label, onChange }: { kind: Section["ki
   const geometry = kind === "Area" ? "area" : kind === "Length" ? "line" : kind === "Count" ? "count" : null;
   if (!geometry) return null;
   return (
-    <select className="select measure-edge" value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-label={`Takeoff item for ${label}`}>
+    <Select className="select measure-edge" value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-label={`Takeoff item for ${label}`}>
       <option value="">No takeoff item</option>
       {PAVING_GROUPS.map((group) => {
         const options = PAVING_ITEMS.filter((i) => i.group === group && i.geometry === geometry);
@@ -130,7 +131,7 @@ export function ItemSelect({ kind, value, label, onChange }: { kind: Section["ki
           </optgroup>
         ) : null;
       })}
-    </select>
+    </Select>
   );
 }
 

@@ -26,6 +26,7 @@ import { AllowanceDialog, GbInput } from "./StorageSettings";
 import { SettingsActions, SwitchRow } from "./SettingsKit";
 import styles from "./settings.module.css";
 import { YourPassword } from "./TeamSettings";
+import { Select } from "@/components/ui/Select";
 
 // The team's levels. A custom role is never a sub's (the database refuses it).
 const LEVELS = STAFF.filter((r) => r !== "owner");
@@ -214,10 +215,10 @@ export function RoleDialog({ role, existing, storage, onClose }: { role: Company
               </div>
             </fieldset>
             <Field className="role-extra" label="Job description" optional hint="The guide that says what this job is. It and every guide it links to are the job's training: people with this role have to read them all, and it shows how far each person is.">
-              <select className="select" value={guideId} onChange={(e) => { setGuideId(e.target.value); save.reset(); }}>
+              <Select className="select" value={guideId} onChange={(e) => { setGuideId(e.target.value); save.reset(); }}>
                 <option value="">None</option>
                 {(guides.data?.pages ?? []).map((g) => <option key={g.id} value={g.id}>{g.title}{g.status === "draft" ? " (draft)" : ""}</option>)}
-              </select>
+              </Select>
             </Field>
             {storage && (
               <Field className="role-extra" label="Storage limit for everyone with this role" optional hint="For each person with this role who has no limit of their own: it stops what they add to Drive, plans and guides. Leave it empty for no limit.">

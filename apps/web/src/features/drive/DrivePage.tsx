@@ -20,6 +20,7 @@ import googleLogo from "@/assets/apps/google.svg";
 import { featureOn } from "@/components/shell/nav";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 import { Icon } from "@/components/ui/Icon";
 import { InboxGroup, InboxList, InboxRow, ListFoot, MetaLine, RowAge } from "@/components/ui/InboxList";
 import { Menu, type MenuEntry } from "@/components/ui/Menu";
@@ -878,7 +879,7 @@ function FolderRow({ folder, where }: { folder: DriveFolder; where: boolean }) {
   const inside = a.tree.children.get(folder.id)?.length ?? 0;
   const zone = `folder:${folder.id}`;
   return (
-    <li className={`${styles.row}${where ? "" : ` ${styles.rowNoWhere}`}`} data-drop={a.dropOn === zone || undefined} {...a.dropProps(zone, { key: folder.id, target: { folder_id: folder.id }, where: folder.name })}>
+    <ContextMenu render={<li />} items={a.folderMenu(folder)} className={`${styles.row}${where ? "" : ` ${styles.rowNoWhere}`}`} data-drop={a.dropOn === zone || undefined} {...a.dropProps(zone, { key: folder.id, target: { folder_id: folder.id }, where: folder.name })}>
       <span className={styles.icon} data-kind="folder" aria-hidden="true"><Icon name="folder" size={17} /></span>
       <div className={styles.rowBody}>
         <Link className="il-link" to={folder.parent_id ? `/drive?folder=${folder.id}` : "/drive"}>
@@ -890,7 +891,7 @@ function FolderRow({ folder, where }: { folder: DriveFolder; where: boolean }) {
       <span className={styles.more}>
         <Menu triggerClassName="btn btn-sm btn-ghost btn-icon" label={`Actions for ${folder.name}`} title={folder.name} align="end" items={a.folderMenu(folder)} />
       </span>
-    </li>
+    </ContextMenu>
   );
 }
 
@@ -904,7 +905,7 @@ function FileRow({ file: f, where, preview }: { file: DriveFile; where: "records
   // Who sees it, and whether it's kept as it was: by the name on a computer, on the quiet line on a phone (Mobile-Business.dc.html), first so a long line cuts the date instead.
   const tags = [onRecord && !f.crew_visible && "Office only", !onRecord && f.crew_visible && "Crew leads see it", f.archived && "Archived"].filter((x): x is string => Boolean(x));
   return (
-    <li className={`${styles.row}${where ? "" : ` ${styles.rowNoWhere}`}`}>
+    <ContextMenu render={<li />} items={a.fileMenu(f)} className={`${styles.row}${where ? "" : ` ${styles.rowNoWhere}`}`}>
       <FileIcon file={f} preview={preview} />
       <div className={styles.rowBody}>
         <Link
@@ -937,7 +938,7 @@ function FileRow({ file: f, where, preview }: { file: DriveFile; where: "records
       <span className={styles.more}>
         <Menu triggerClassName="btn btn-sm btn-ghost btn-icon" label={`Actions for ${f.title}`} title={f.title} align="end" items={a.fileMenu(f)} />
       </span>
-    </li>
+    </ContextMenu>
   );
 }
 

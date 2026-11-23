@@ -8,6 +8,7 @@ import { Section } from "@/components/ui/Section";
 import { copyText } from "@/lib/clipboard";
 import { embedCode, nextEmbedCode } from "./embed";
 import styles from "./EmbedDialog.module.css";
+import { Select } from "@/components/ui/Select";
 
 /**
  * A site builder and where the code goes in it. A site built by a developer gets DeveloperSteps
@@ -108,9 +109,9 @@ export function EmbedDialog({ name, url, onClose }: { name: string; url: string;
         <Section level={3} title="Where to paste it">
           <div className={styles.part}>
             <Field label="Your website is on">
-              <select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
+              <Select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
                 {BUILDERS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-              </select>
+              </Select>
             </Field>
             {builder.steps ? (
               <ol className={styles.steps} role="list" aria-label={`Steps for ${builder.label}`}>

@@ -14,6 +14,7 @@ import { supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { t } from "@/lib/i18n";
 import styles from "./CustomFields.module.css";
+import { Select } from "@/components/ui/Select";
 
 export interface CustomFieldRow {
   id: string;
@@ -67,11 +68,11 @@ function CustomFieldControl({ field: f, value, onChange, className }: { field: C
   if (f.type === "choice" || f.type === "yes_no") {
     const options: Array<[string, string]> = f.type === "yes_no" ? [["yes", t("Yes")], ["no", t("No")]] : (f.choices ?? []).map((c) => [c, c]);
     return (
-      <select className={cx("select", className)} value={value} onChange={(e) => onChange(e.target.value)}>
+      <Select className={cx("select", className)} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{t("Not set")}</option>
         {options.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
         {value && !options.some(([v]) => v === value) && <option value={value}>{value}</option>}
-      </select>
+      </Select>
     );
   }
   return (

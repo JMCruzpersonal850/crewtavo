@@ -27,6 +27,7 @@ import { undoable } from "@/lib/undo";
 import { LOGGED_MATERIALS_RULE } from "./jobCosts";
 import styles from "./jobMoney.module.css";
 import { intlLocale, t } from "@/lib/i18n";
+import { Select } from "@/components/ui/Select";
 
 const UNITS = ["ton", "yd³", "gal", "load", "bag", "ea", "lf", "sq yd"];
 const qty = (n: number) => new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 3 }).format(n);
@@ -286,7 +287,7 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label={t("Material")}>
           {choices.isPending ? <Skeleton height="var(--control)" radius={8} /> : (
-            <select className="select" value={choice} onChange={(e) => pick(e.target.value)}>
+            <Select className="select" value={choice} onChange={(e) => pick(e.target.value)}>
               <option value="">{t("Something else (type it below)")}</option>
               {!!onJob.data?.length && (
                 <optgroup label={t("On this job")}>
@@ -298,16 +299,16 @@ export function MaterialDialog({ jobId, visitId, onClose, onSaved }: { jobId: st
                   {choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
                 </optgroup>
               ) : choices.data?.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.unit})</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         {!choice && <Field label={t("What was it")} requiredMessage={t("Say what material it was.")}><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} placeholder={t("Surface mix, #57 stone, sealer…")} required /></Field>}
         <div className="form-grid">
           <Field label={t("How much")} requiredMessage={t("Enter how much was used.")}><input className="input" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.]/g, ""))} required autoFocus /></Field>
           <Field label={t("Unit")}>
-            <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
+            <Select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
               {[...new Set([unit, ...UNITS])].map((u) => <option key={u}>{u}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label={t("Ticket number")} optional><input className="input" value={ticket} onChange={(e) => setTicket(e.target.value)} maxLength={60} /></Field>
           <Field label={t("Supplier or plant")} optional><input className="input" value={supplier} onChange={(e) => setSupplier(e.target.value)} maxLength={120} /></Field>

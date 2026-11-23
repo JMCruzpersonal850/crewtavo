@@ -28,6 +28,7 @@ import { ServicePicture } from "../roofing/visit/ServicePicture";
 import { ImportPriceListDialog } from "./ImportPriceList";
 import { SettingsActions } from "./SettingsKit";
 import styles from "./PriceList.module.css";
+import { Select } from "@/components/ui/Select";
 
 /** A depth typed for an item: the inches, null for none, or undefined when it isn't a depth (services.default_depth_in takes over 0 up to 48). */
 export function itemDepth(text: string): number | null | undefined {
@@ -297,10 +298,10 @@ function ServiceRow({ service: s, canEdit, onChange, onFormula, onDelete }: {
         <span className={styles.cellLabel} aria-hidden="true">Formula</span>
         <input className={`input input-sm ${styles.formula}`} defaultValue={s.formula ?? ""} disabled={!canEdit} placeholder="None" maxLength={300} onBlur={(e) => onFormula(s.id, e.target.value, s.formula)} aria-label="Formula" />
         {s.formula && (
-          <select className={`select input-sm ${styles.small}`} value={s.formula_target} disabled={!canEdit} onChange={(e) => onChange({ id: s.id, patch: { formula_target: e.target.value } })} aria-label="Formula sets">
+          <Select className={`select input-sm ${styles.small}`} value={s.formula_target} disabled={!canEdit} onChange={(e) => onChange({ id: s.id, patch: { formula_target: e.target.value } })} aria-label="Formula sets">
             <option value="quantity">Sets the quantity</option>
             <option value="unit_price">Sets the price</option>
-          </select>
+          </Select>
         )}
         {usesDepth(s.formula) && (
           <label className={styles.depth} title="The depth this item's formula starts with when a drawing fills a quote. Each line's depth is shown to confirm then.">

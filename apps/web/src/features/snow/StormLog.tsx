@@ -22,6 +22,7 @@ import { useSession } from "@/lib/session";
 import { inches } from "./snowData";
 import { workText } from "./storm";
 import styles from "./snow.module.css";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 const FIELDS =
   "job_id, snow_date, kind, forecast_in, actual_in, actual_by, pushes, job:jobs!inner(number, title, client:clients(display_name), property:properties(line1, city), financials:job_financials(contract_total)), visits:snow_visits(visit:visits(id, title, status, invoice_id))";
@@ -151,8 +152,8 @@ function StormRow({ storm: e }: { storm: Storm }) {
       meta={[
         <span className={styles.fell}>
           <span className="input-group">
-            <input
-              className="input" type="number" inputMode="decimal" min={0} max={100} step={0.1} value={fell} placeholder="—" aria-label={`What fell at ${name(e)} on ${formatDate(e.snow_date)}, in inches`}
+            <NumberInput
+              className="input" inputMode="decimal" min={0} max={100} step={0.1} value={fell} placeholder="—" aria-label={`What fell at ${name(e)} on ${formatDate(e.snow_date)}, in inches`}
               onChange={(ev) => setFell(ev.target.value)} onBlur={() => changed && save.mutate()} onKeyDown={(ev) => ev.key === "Enter" && changed && save.mutate()}
             />
             <span className="addon addon-right addon-unit">in</span>

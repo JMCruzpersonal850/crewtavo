@@ -29,6 +29,7 @@ import { useSession } from "@/lib/session";
 import { owedFor, PAY_COLUMNS, payRows, pieceJobs, waitingFor, type PayPerson } from "./payCsv";
 import { inEnglish } from "@/lib/i18n";
 import styles from "./Timesheets.module.css";
+import { Select } from "@/components/ui/Select";
 
 type PersonPay = PayPerson;
 interface Summary { from: string; to: string; period_id: string | null; status: string; people: PersonPay[]; hours: number; hourly_amount: number; piece_amount: number; amount: number; overtime_hours: number; overtime_note: string | null; unapproved_hours: number; running_clocks: number }
@@ -236,9 +237,9 @@ function MarkPaidDialog({ summary, people, onClose, onSaved }: { summary: Summar
     <Dialog open onClose={onClose} title="Mark paid" description={`${people.length} ${people.length === 1 ? "person" : "people"}, ${formatMoney(total)}. Record this after you've paid them: Crewtavo doesn't send money. Their time and piece pay in this period are then locked.`}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         <Field label="How they were paid">
-          <select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
+          <Select className="select" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
             {METHODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Reference" optional hint="A check number or your payroll run's ID."><input className="input" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={200} /></Field>
         <Field label="Paid on"><input className="input" type="date" value={paidOn} onChange={(e) => e.target.value && setPaidOn(e.target.value)} /></Field>

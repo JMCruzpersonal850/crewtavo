@@ -29,6 +29,7 @@ import { MaterialSearch } from "../../materials/MaterialSearch";
 import { packagesKey, type PriceListService, type RoofPackage } from "../packages";
 import styles from "./catalog.module.css";
 import { listed, usesOf } from "./uses";
+import { Select } from "@/components/ui/Select";
 
 /** The newest of the price list's links to one item: its last price and what ABC said. */
 const newest = (links: readonly ServiceMaterial[]) => [...links].sort((a, b) => (b.priced_at ?? "").localeCompare(a.priced_at ?? ""))[0]!;
@@ -227,17 +228,17 @@ function ReplaceForm({ links, services, item, onBack, onDone }: { links: Service
       <div className={styles.replaceFields}>
         {units.length > 1 && (
           <Field label="Priced by the">
-            <select className="select" value={uom} onChange={(e) => { setUom(e.target.value); setAmounts(Object.fromEntries(links.map((l) => [l.id, amountFor(l, e.target.value)]))); }}>
+            <Select className="select" value={uom} onChange={(e) => { setUom(e.target.value); setAmounts(Object.fromEntries(links.map((l) => [l.id, amountFor(l, e.target.value)]))); }}>
               {units.map((u) => <option key={u.code} value={u.code}>{u.name}{u.role === "stocking" ? " (how it's ordered)" : ""}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         {item.dimensional && (
           <Field label="Length">
-            <select className="select" required value={chosenLength ?? ""} onChange={(e) => setLength(Number(e.target.value) || null)} disabled={!lengths.length}>
+            <Select className="select" required value={chosenLength ?? ""} onChange={(e) => setLength(Number(e.target.value) || null)} disabled={!lengths.length}>
               {!lengths.length && <option value="">{detail.isPending ? "Loading lengths…" : "No lengths listed"}</option>}
               {lengths.map((l) => <option key={l} value={l}>{formatNumber(l, 2)} ft</option>)}
-            </select>
+            </Select>
           </Field>
         )}
       </div>

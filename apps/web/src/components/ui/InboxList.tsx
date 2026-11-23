@@ -14,12 +14,15 @@
  */
 import { createContext, Fragment, useContext, useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { copyText } from "@/lib/clipboard";
 import { formatDateTime } from "@/lib/format";
 import { intlLocale, t } from "@/lib/i18n";
 import { initials } from "./Avatar";
 import { cx } from "./Button";
+import { ContextMenu } from "./ContextMenu";
 import { Icon, type IconName } from "./Icon";
-import type { Selection } from "./Selection";
+import type { MenuEntry } from "./menuModel";
+import { useHoldToPick, type Selection } from "./Selection";
 
 /** What a group heading says about its rows: amber for waiting too long, red for gone wrong, green for ready. */
 export type GroupTone = "warning" | "danger" | "good";
@@ -34,12 +37,34 @@ const ListLabel = createContext<string | undefined>(undefined);
 export function InboxList({ label, children, foot, stale, inset, className }: { label: string; children: ReactNode; foot?: ReactNode; stale?: boolean; inset?: boolean; className?: string }) {
   return (
     <ListLabel.Provider value={label}>
-      <div className={cx("il", inset && "il-inset", stale && "is-stale", className)} aria-busy={stale || undefined}>
+      {/* A mouse's right-click on a row (rowMenu); on a phone, holding a row picks it instead (InboxRow). */}
+      <ContextMenu className={cx("il", inset && "il-inset", stale && "is-stale", className)} aria-busy={stale || undefined} touch={false} items={rowMenu}>
         {children}
         {foot}
-      </div>
+      </ContextMenu>
     </ListLabel.Provider>
   );
+}
+
+/**
+ * Right-click on a row that opens a page: open it, here or in a new tab, pick it where it has a box,
+ * or copy its link. A link in the row to somewhere else (a client's name) keeps the browser's own
+ * menu, so its "Open in new tab" and "Copy link" are for where it goes, not for the row.
+ */
+function rowMenu(target: Element): MenuEntry[] | null {
+  const row = target.closest(".il-row");
+  const link = row?.querySelector<HTMLAnchorElement>("a.il-link[href]");
+  if (!row || !link) return null;
+  const other = target.closest("a[href]");
+  if (other && other !== link) return null;
+  const box = row.querySelector<HTMLInputElement>("input[data-pick]");
+  return [
+    { label: t("Open"), icon: "arrowRight", onSelect: () => link.click() },
+    { label: t("Open in a new tab"), icon: "external", onSelect: () => window.open(link.href, "_blank", "noopener") },
+    { label: box?.checked ? t("Deselect") : t("Select"), icon: box?.checked ? "x" : "check", hidden: !box, onSelect: () => box?.click() },
+    { separator: true },
+    { label: t("Copy link"), icon: "link", onSelect: () => void copyText(link.href, t("Link copied")) },
+  ];
 }
 
 /**
@@ -117,6 +142,7 @@ export type InboxRowProps = InboxRowTarget & {
 export function InboxRow({ to, replace, onClick, title, number, badge, subject, meta, aside, avatar, square, unread, actions, selection, id, selectLabel, state, current, className, children }: InboxRowProps) {
   const face = avatar === false ? null : typeof avatar === "string" || avatar === undefined ? initials(typeof avatar === "string" ? avatar : typeof title === "string" ? title : "") : avatar;
   const picked = selection && id ? selection.has(id) : false;
+  const hold = useHoldToPick(selection && id ? selection : undefined);
   const dot = unread ? (typeof unread === "string" ? unread : t("Unread")) : null;
   const lines = (
     <>
@@ -136,10 +162,11 @@ export function InboxRow({ to, replace, onClick, title, number, badge, subject, 
       data-current={current || undefined}
       // A phone shows the boxes only once Select is pressed or something is picked (components.css); a desktop also under the pointer or the keyboard.
       data-pick-off={(selection && !selection.active) || undefined}
+      {...hold}
     >
       {selection && id && (
         <label className="il-check">
-          <input type="checkbox" aria-label={selectLabel ?? t("Select")} checked={picked} onChange={() => selection.toggle(id)} />
+          <input type="checkbox" data-pick={id} aria-label={selectLabel ?? t("Select")} checked={picked} onChange={() => selection.toggle(id)} />
         </label>
       )}
       {dot && <span className="il-unread" aria-hidden="true" title={dot} />}

@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { Button, cx } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Dialog } from "@/components/ui/Dialog";
@@ -99,6 +100,7 @@ import { PaymentScheduleCard } from "./PaymentSchedule";
 import { DiscountRows } from "./PromoRow";
 import { SendDialog } from "./SendDialog";
 import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
+import { Select } from "@/components/ui/Select";
 
 export { SendDialog } from "./SendDialog";
 
@@ -766,7 +768,7 @@ export function QuotePage() {
           q.status === "lost" && q.lost_reason,
           q.status === "sent" && q.sent_at && !ranged && `Sent ${timeAgo(q.sent_at)}`,
           <SaveStatus status={save.status} />,
-          q.client && <Link to={`/clients/${q.client.id}`} className={styles.client}>{q.client.display_name}</Link>,
+          q.client && <ClientPreview id={q.client.id}><Link to={`/clients/${q.client.id}`} className={styles.client}>{q.client.display_name}</Link></ClientPreview>,
           q.property && addressLine(q.property),
         ]}
         actions={
@@ -796,7 +798,7 @@ export function QuotePage() {
             {canSell && !isTemplate && templateRows.length > 1 && (
               <Section title="Document style">
                 <div className={styles.styleField}>
-                  <select
+                  <Select
                     id="quote-template"
                     className="select"
                     aria-label="Document style"
@@ -810,7 +812,7 @@ export function QuotePage() {
                     }}
                   >
                     {templateRows.map((t) => <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (default)" : ""}</option>)}
-                  </select>
+                  </Select>
                   <span id="quote-template-note" className={styles.quiet}>{frozen ? "It keeps the look it was signed with." : "How it looks printed, as a PDF and on the client's link."}</span>
                 </div>
               </Section>
@@ -1303,9 +1305,9 @@ function LostDialog({ onClose, onSave }: { onClose: () => void; onSave: (reason:
         }}
       >
         <Field label="Reason">
-          <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
+          <Select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
             {LOST_REASONS.map((r) => <option key={r}>{r}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label="Note" optional><input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} /></Field>
         <div className="form-actions">

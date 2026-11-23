@@ -1,5 +1,4 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react";
-import { useEffect, useState } from "react";
 
 /**
  * Animates a list's rows as they're added, removed or reordered (AutoAnimate): put the ref on the
@@ -38,23 +37,4 @@ export function afterExit(el: Element, done: () => void, fallback = 250): () => 
   };
   el.addEventListener("transitionend", finish);
   return cancel;
-}
-
-/**
- * Whether something React shows and hides should be in the page: true while it's open and for `ms`
- * after it closes, so its exit animation can play first. Mark it leaving while it's on its way out:
- *   const shown = usePresence(open);
- *   {shown && <div className="sheet" data-leaving={!open || undefined} />}
- */
-export function usePresence(open: boolean, ms = 200): boolean {
-  const [present, setPresent] = useState(open);
-  useEffect(() => {
-    if (open) {
-      setPresent(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setPresent(false), ms);
-    return () => window.clearTimeout(timer);
-  }, [open, ms]);
-  return open || present;
 }

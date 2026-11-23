@@ -29,6 +29,7 @@ import { snowJobs } from "../snow/snowData";
 import { ChangePricesDialog } from "./ChangePricesDialog";
 import { NewJobDialog, useCrews } from "./JobDialogs";
 import styles from "./jobs.module.css";
+import { Select } from "@/components/ui/Select";
 
 /**
  * Each tab's job_state values: an active job's is late, today, upcoming, unscheduled or paused, another
@@ -557,11 +558,11 @@ function AssignCrewDialog({ jobs, onClose, onDone }: { jobs: Array<{ id: string;
     <Dialog open onClose={onClose} title="Assign a crew" description={`For the ${plural(jobs.length, "job")} picked. New visits go to this crew.`}>
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (changing.length) assign.mutate(); }}>
         <Field label="Crew">
-          <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)} required>
+          <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)} required>
             <option value="" disabled>Choose a crew</option>
             <option value="none">No crew</option>
             {crews.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </Select>
         </Field>
         {crewId && changing.length < jobs.length && (
           <span className="muted small" role="status">

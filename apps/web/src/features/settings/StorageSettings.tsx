@@ -38,6 +38,7 @@ import {
 import p from "./Prefs.module.css";
 import { SaveBar, SwitchRow } from "./SettingsKit";
 import styles from "./StorageSettings.module.css";
+import { Select } from "@/components/ui/Select";
 
 const count = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
 /** What the company's limit turns away once storage is full (STORAGE_FIELD_FOLDERS never are). */
@@ -416,9 +417,9 @@ function FilesCard() {
       </fieldset>
       <div className={`set-grid ${styles.gap}`}>
         <Field label="Each video can be up to" className="set-full" hint="A minute of phone video is often 100 MB or more, and each one is downloaded in full every time someone plays it. Other files can be up to 200 MB. Visit and quote photos are never turned away, so crews can always finish a job.">
-          <select className="select set-narrow" value={f.videoMaxBytes} disabled={busy} onChange={(e) => save.mutate({ videoMaxBytes: Number(e.target.value) })}>
+          <Select className="select set-narrow" value={f.videoMaxBytes} disabled={busy} onChange={(e) => save.mutate({ videoMaxBytes: Number(e.target.value) })}>
             {[...new Set([...VIDEO_SIZE_CHOICES, f.videoMaxBytes])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{formatBytes(n)}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
       <FormError error={save.error} />

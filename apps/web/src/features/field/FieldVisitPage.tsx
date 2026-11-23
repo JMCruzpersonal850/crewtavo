@@ -28,6 +28,7 @@ import { Note } from "@/components/ui/Note";
 import { BackLink, Crumb, useDocumentTitle } from "@/components/ui/PageHeader";
 import { SaveStatus, useSaveStatus, type SaveState } from "@/components/ui/SaveStatus";
 import { Facts, Section } from "@/components/ui/Section";
+import { Select } from "@/components/ui/Select";
 import { DetailSkeleton, SectionSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import { PageError } from "@/components/ui/States";
 import { EntityStatus, StatusPill } from "@/components/ui/StatusPill";
@@ -43,6 +44,7 @@ import { hasRole, isSub, keepsTime, useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { IN_TRASH } from "../drive/trash";
 import { ShareToggle, shareToggleState } from "../marketing/ShareToggle";
+import { galleryOf, usePhotoGallery } from "../files/PhotoGallery";
 import { undoable } from "@/lib/undo";
 import { CustomFieldFacts, useCustomFields } from "../customFields/CustomFields";
 import { ExpenseDialog } from "../jobs/ExpensesCard";
@@ -731,10 +733,10 @@ const Checklist = forwardRef<
       className="visit-checklist"
     >
       {!card.fixed && !done && (others.length > 1 || another) && (
-        <select className="select check-pick" value={templateId} onChange={(e) => choose(e.target.value)} aria-label={t("Choose a checklist")}>
+        <Select className="select check-pick" value={templateId} onChange={(e) => choose(e.target.value)} aria-label={t("Choose a checklist")}>
           <option value="">{t("Choose a checklist…")}</option>
           {others.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        </Select>
       )}
       {items.length > 0 && (
         <div ref={root} className="check-list">
@@ -753,10 +755,10 @@ const Checklist = forwardRef<
                 </>
               ) : item.type === "choice" ? (
                 <label className="field check-field"><span>{item.label}{item.required && <Required />}</span>
-                  <select className="select" value={String(answers[item.key] ?? "")} disabled={done} onChange={(e) => set(item.key, e.target.value)}>
+                  <Select className="select" value={String(answers[item.key] ?? "")} disabled={done} onChange={(e) => set(item.key, e.target.value)}>
                     <option value="">{t("Choose…")}</option>
                     {item.options?.map((o) => <option key={o}>{o}</option>)}
-                  </select>
+                  </Select>
                 </label>
               ) : item.type === "signature" ? (
                 <SignatureAnswer label={item.label} required={item.required} value={answers[item.key]} disabled={done} onChange={(next) => set(item.key, next)} />
@@ -935,6 +937,9 @@ function PhotoPicker({ photos, compact, ids }: { photos: VisitPhotos; compact?: 
 function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: boolean }) {
   const session = useSession();
   const grid = useListAnimation<HTMLDivElement>();
+  // Tapping a photo opens it in the gallery with the others; the ones still on the phone aren't links.
+  const gallery = usePhotoGallery();
+  const inGallery = galleryOf(photos.photos, (p) => p.caption ?? p.file_name);
   const count = photos.photos.length + photos.waiting.length;
   // OK to share is only offered while Marketing is installed, never to subs (ShareToggle).
   const sharing = photos.photos.some((p) => shareToggleState(session, p, clientOptOut) === "ready");
@@ -946,7 +951,7 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
         {photos.loading && [0, 1, 2].map((i) => <Skeleton key={i} height={96} radius={10} />)}
         {photos.photos.map((p) => (
           <div key={p.id} className="thumb">
-            {p.url ? <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.caption ?? p.file_name} loading="lazy" /></a> : <span className="muted small">{t("Unavailable")}</span>}
+            {p.url ? <a href={p.url} target="_blank" rel="noreferrer" onClick={gallery.opener(inGallery, p.id)}><img src={p.url} alt={p.caption ?? p.file_name} loading="lazy" /></a> : <span className="muted small">{t("Unavailable")}</span>}
             {photos.canRemove(p) && <button type="button" className="thumb-x" aria-label={t("Remove photo")} onClick={() => photos.remove(p)}><Icon name="x" size={12} bold /></button>}
             <ShareToggle photo={p} clientOptOut={clientOptOut} onShown={(shareable) => photos.showShareable(p.id, shareable)} />
             {/* Drawn on: shown with the drawing, the photo as taken a tap away. */}
@@ -963,6 +968,7 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
         : unsupported === 1 ? t("The photo marked Can't share can't be marked OK to share: only JPEG and PNG photos can be posted.") : t("The photos marked Can't share can't be marked OK to share: only JPEG and PNG photos can be posted.")}</p>}
       {count > 0 && clientOptOut && shareToggleState(session, { content_type: "image/jpeg" }) !== "hidden" && <p className="field-hint">{t("This client asked us not to post photos of their property.")}</p>}
       <PhotoPicker photos={photos} ids={{ add: "visit-add-photos", draw: "visit-draw-photo" }} />
+      {gallery.dialog}
     </Section>
   );
 }

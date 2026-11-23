@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { FileViewer } from "@/features/files/FileViewer";
 import { refreshStorage, useStorageFull } from "@/features/settings/storage";
 import { Section } from "@/components/ui/Section";
@@ -333,10 +334,10 @@ export function PlanCard({ plan, canAdd, hasPlace }: { plan: PlanOnMap; canAdd: 
           {list.length > 0 && (
             <label className="field">
               <span>Plan</span>
-              <select className="select" value="" disabled={Boolean(plan.loading)} onChange={(e) => { const f = list.find((p) => p.id === e.target.value); if (f) void plan.choose(f); }}>
+              <Select className="select" value="" disabled={Boolean(plan.loading)} onChange={(e) => { const f = list.find((p) => p.id === e.target.value); if (f) void plan.choose(f); }}>
                 <option value="">{plan.loading ? "Opening the plan…" : "Choose a plan…"}</option>
                 {list.map((p) => <option key={p.id} value={p.id}>{p.title}{p.revision ? ` · ${p.revision}` : ""}</option>)}
-              </select>
+              </Select>
             </label>
           )}
           {plans.data && !list.length && hasPlace && <EmptyState inline title="No plans for this property or quote yet" />}
@@ -364,9 +365,9 @@ export function PlanCard({ plan, canAdd, hasPlace }: { plan: PlanOnMap; canAdd: 
           {shown.image.pages > 1 && (
             <label className="field">
               <span>Page</span>
-              <select className="select" value={shown.page} disabled={Boolean(plan.loading) || Boolean(plan.step)} onChange={(e) => void plan.page(Number(e.target.value))}>
+              <Select className="select" value={shown.page} disabled={Boolean(plan.loading) || Boolean(plan.step)} onChange={(e) => void plan.page(Number(e.target.value))}>
                 {Array.from({ length: shown.image.pages }, (_, i) => <option key={i} value={i + 1}>Page {i + 1}</option>)}
-              </select>
+              </Select>
             </label>
           )}
           {!plan.step && (

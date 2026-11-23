@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { supabase, unwrap } from "@/lib/api";
 import { formatDate, formatMoneyCents } from "@/lib/format";
@@ -123,9 +124,9 @@ export function AddWorkDialog({ invoiceId, jobId, onClose, skipEmpty = false }: 
             <div className={styles.pickHead}>
               <h3 id={`${invoiceId}-hours`} className={styles.pickTitle}>Hours</h3>
               {data.rates.length > 0 && (
-                <select className="select input-sm" style={{ width: "auto" }} value={rate?.id ?? ""} onChange={(e) => setRateId(e.target.value)} aria-label="Bill hours at">
+                <Select className="select input-sm" style={{ width: "auto" }} value={rate?.id ?? ""} onChange={(e) => setRateId(e.target.value)} aria-label="Bill hours at">
                   {data.rates.map((r) => <option key={r.id} value={r.id}>{r.name} · {formatMoneyCents(Number(r.unit_price))}/{r.unit}</option>)}
-                </select>
+                </Select>
               )}
             </div>
             {!data.rates.length && <span className="muted small">To bill hours, add an item sold by the hour (unit hr), like Labor, to your price list.</span>}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field, FormChecks, FormError } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { addDaysIso, todayIn } from "@/lib/format";
 import { useSession } from "@/lib/session";
@@ -87,10 +88,10 @@ export function NewQuoteDialog({ open, onClose, onCreated, initialClient = null,
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (client && (template || title.trim())) create.mutate(); }}>
         {(templates.data?.length ?? 0) > 0 && (
           <Field label="Start from" hint="A quote template brings its lines, options, contract sections and message.">
-            <select className="select" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            <Select className="select" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
               <option value="">A blank quote</option>
               {templates.data!.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         <Field label="Client" requiredMessage="Pick a client, or type a name to add a new one.">

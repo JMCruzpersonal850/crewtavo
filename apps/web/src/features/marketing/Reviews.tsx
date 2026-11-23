@@ -64,6 +64,7 @@ import { hasNumbers, hasReviews, showsList, type GoogleState } from "./googleRev
 import styles from "./Presence.module.css";
 import { ReviewCompare } from "./ReviewCompare";
 import { useSettingsSaver } from "./useSettingsSaver";
+import { Select } from "@/components/ui/Select";
 
 /** Email, Text, Both: the same order wherever a review ask's channel is picked. */
 const CHANNELS: Array<{ value: AskChannel; label: string }> = [
@@ -247,9 +248,9 @@ function AskAutomatically({ rules, google }: { rules: AskRuleRow[]; google: Goog
             <div className={styles.full}><CustomRule rule={afterRule!} /></div>
           ) : (
             <Field label="Ask when" hint={WHEN_HINTS[form.when]}>
-              <select className="select" value={form.when} disabled={disabled} onChange={(e) => set({ when: e.target.value as AskWhen })}>
+              <Select className="select" value={form.when} disabled={disabled} onChange={(e) => set({ when: e.target.value as AskWhen })}>
                 {ASK_WHEN.map((w) => <option key={w.verb} value={w.verb}>{w.label}</option>)}
-              </select>
+              </Select>
             </Field>
           )}
           {channelShown && (
@@ -285,9 +286,9 @@ function AskAutomatically({ rules, google }: { rules: AskRuleRow[]; google: Goog
                 <input type="checkbox" checked={form.recurring} disabled={disabled} onChange={(e) => set({ recurring: e.target.checked })} />
                 Ask after the
               </label>
-              <select className="select" style={{ width: "auto" }} aria-label="Visit to ask after" value={form.visits} disabled={disabled || !form.recurring} onChange={(e) => set({ visits: Number(e.target.value) })}>
+              <Select className="select" style={{ width: "auto" }} aria-label="Visit to ask after" value={form.visits} disabled={disabled || !form.recurring} onChange={(e) => set({ visits: Number(e.target.value) })}>
                 {Array.from({ length: MAX_RECURRING_VISITS }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{ordinal(n)} visit</option>)}
-              </select>
+              </Select>
             </div>
           </Field>
         )}
@@ -301,10 +302,10 @@ function AskAutomatically({ rules, google }: { rules: AskRuleRow[]; google: Goog
               ))}
             </div>
             {[0, 1].filter((i) => i < form.reminders).map((i) => (
-              <select key={i} className="select" style={{ width: "auto" }} aria-label={i === 0 ? "First reminder" : "Second reminder"} value={form.days[i]} disabled={disabled}
+              <Select key={i} className="select" style={{ width: "auto" }} aria-label={i === 0 ? "First reminder" : "Second reminder"} value={form.days[i]} disabled={disabled}
                 onChange={(e) => set({ days: (i === 0 ? [Number(e.target.value), form.days[1]] : [form.days[0], Number(e.target.value)]) as [number, number] })}>
                 {Array.from({ length: MAX_REMINDER_DAYS }, (_, d) => d + 1).map((d) => <option key={d} value={d}>{d === 1 ? "1 day" : `${d} days`} after</option>)}
-              </select>
+              </Select>
             ))}
           </div>
         </Field>

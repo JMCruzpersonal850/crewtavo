@@ -111,6 +111,9 @@ export function CommandPalette() {
   // the plain table lookups need it without the characters their filters use.
   const typed = useDeferredValue(query.trim());
   const term = searchTerm(typed);
+  // Two letters before it looks, except a number: "#7" or "7" is job, quote or invoice 7, and a small
+  // business's numbers start at 1.
+  const searchable = term.length >= 2 || /^#?\d+$/.test(typed);
   // For the shortcuts, which listen from the first render on.
   const latest = useRef({ session, navigate });
   latest.current = { session, navigate };
@@ -180,7 +183,7 @@ export function CommandPalette() {
 
   const results = useQuery({
     queryKey: ["global-search", session.company.id, typed],
-    enabled: open && term.length >= 2,
+    enabled: open && searchable,
     placeholderData: keepPreviousData,
     staleTime: 15_000,
     meta: { silent: true },
@@ -268,7 +271,9 @@ export function CommandPalette() {
     // Out of its group, a section of Settings says so.
     const best = local.filter((i) => i.title.toLowerCase().startsWith(q)).map((i) => ({ ...i, group: msg("Best match"), subtitle: i.subtitle ?? (i.group === msg("Settings") ? t("Settings") : undefined) }));
     // Grouped by kind, the kinds in the order they were found.
-    const found = results.data ?? [];
+    // What the last search found stays up while the next one runs, but not once too little is typed
+    // to search at all (back to one letter): those results were for something else.
+    const found = searchable ? (results.data ?? []) : [];
     const records: Item[] = [...new Set(found.map((r) => r.kind))].flatMap((kind) => found.filter((r) => r.kind === kind)).map((r) => ({
       id: `${r.kind}-${r.id}`,
       group: KIND_GROUP[r.kind],
@@ -279,7 +284,7 @@ export function CommandPalette() {
     }));
     return [...best, ...records, ...local.filter((i) => !best.some((b) => b.id === i.id))];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, results.data, apps.data, session.company.id, session.role, session.permissions]);
+  }, [query, searchable, results.data, apps.data, session.company.id, session.role, session.permissions]);
 
   useEffect(() => setIndex(0), [query]);
   useEffect(() => {
@@ -300,7 +305,7 @@ export function CommandPalette() {
   };
 
   let lastGroup = "";
-  const searching = term.length >= 2 && results.isFetching;
+  const searching = searchable && results.isFetching;
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.group, (counts.get(item.group) ?? 0) + 1);
   const bold = (text: string) => marks(text, words).map(([part, hit], k) => (hit ? <b key={k}>{part}</b> : part));
@@ -343,7 +348,7 @@ export function CommandPalette() {
           <div className="palette-list" id="palette-list" role="listbox" aria-label={t("Search")} ref={list}>
             {items.length === 0 && (
               <div className="palette-empty">
-                {term.length < 2 ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}
+                {!searchable ? t("Keep typing…") : results.isFetching ? t("Searching…") : t("No results for “{query}”", { query: query.trim() })}
               </div>
             )}
             {items.map((item, i) => {

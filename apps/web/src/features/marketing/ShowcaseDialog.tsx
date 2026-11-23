@@ -26,6 +26,7 @@ import { photoLinks } from "@/lib/photoMarkup";
 import { useSession } from "@/lib/session";
 import { UsingChatGptPlan } from "@/features/apps/UsingChatGptPlan";
 import styles from "./Presence.module.css";
+import { Select } from "@/components/ui/Select";
 
 interface Pick {
   attachment_id: string;
@@ -212,9 +213,9 @@ export function ShowcaseDialog({ jobId, visitId = null, showcaseId = null, onClo
                       </div>
                       {pick ? (
                         <>
-                          <select className={cx("select", styles.roleSelect)} value={pick.role} disabled={published} onChange={(e) => setPick(p.id, { role: e.target.value as ShowcaseRole })} aria-label="Before or after">
+                          <Select className={cx("select", styles.roleSelect)} value={pick.role} disabled={published} onChange={(e) => setPick(p.id, { role: e.target.value as ShowcaseRole })} aria-label="Before or after">
                             {SHOWCASE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                          </select>
+                          </Select>
                           {p.marked_path && <label className={cx("checkbox", styles.thumbCheck)}><input type="checkbox" checked={pick.use_marked} disabled={published} onChange={(e) => setPick(p.id, { use_marked: e.target.checked })} />Drawn-on copy</label>}
                         </>
                       ) : (

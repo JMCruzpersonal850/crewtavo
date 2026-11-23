@@ -272,8 +272,8 @@ a.tag:hover { border-color: var(--border-strong); color: var(--ink); }
 /* An example in an empty field is read like any other words: --text-3 is 5.2:1 on a field in the light theme (--text-4 was 3.0:1). */
 .input::placeholder, .textarea::placeholder { color: var(--text-3); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--border-strong); }
-.select { appearance: none; -webkit-appearance: none; padding-right: 30px; background: var(--page) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235f6f76' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center; }
-:root.dark .select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23b5b3ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+.select { appearance: none; -webkit-appearance: none; padding-right: 30px; background: var(--page) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256' fill='%235f6f76'%3E%3Cpath d='M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z'/%3E%3C/svg%3E") no-repeat right 10px center; }
+:root.dark .select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256' fill='%23b5b3ad'%3E%3Cpath d='M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z'/%3E%3C/svg%3E"); }
 .textarea { height: auto; min-height: 84px; padding: 8px 10px; resize: vertical; line-height: 1.45; }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--green); box-shadow: var(--ring); }
 /* Kept apart, since a browser that doesn't know :user-invalid or :has() drops every selector in the rule. */
@@ -298,6 +298,25 @@ a.tag:hover { border-color: var(--border-strong); color: var(--ink); }
 }
 /* The colour only: the background shorthand would reset a select's chevron to repeat (dark mode) or drop it (light). */
 .input:disabled, .select:disabled, .textarea:disabled { background-color: var(--fill); color: var(--text-3); cursor: not-allowed; }
+/* A list whose rows a finger holds to pick (useHoldToPick): holding doesn't select their words instead. */
+@media (pointer: coarse) { tbody[data-hold] tr, .il-row[data-hold] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
+/*
+ * A code typed one digit to a box (CodeField): boxes like fields, the caret and focus in green. They
+ * share the width there is, up to 52px each; with no width of their own (an input's is about 150px),
+ * they never make a narrow screen's form wider than the screen.
+ */
+.code-field { display: flex; gap: 8px; min-width: 0; }
+.code-slot {
+  flex: 1 1 0; width: 0; min-width: 0; max-width: 52px; height: 56px; padding: 0; border: 1px solid var(--button-border); border-radius: var(--radius-control);
+  background: var(--surface); color: var(--ink); caret-color: var(--green); box-shadow: var(--shadow-xs);
+  text-align: center; font: inherit; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.code-slot:hover { border-color: var(--border-strong); }
+.code-slot:focus { outline: none; border-color: var(--green); box-shadow: var(--ring); }
+.code-slot[data-filled] { border-color: var(--border-strong); }
+.code-slot[aria-invalid="true"] { border-color: var(--danger); }
+.code-slot:disabled { background: var(--fill); color: var(--text-3); }
 .input-sm { height: var(--control-sm); font-size: var(--fs-13); }
 .input-group { position: relative; display: flex; align-items: center; }
 .input-group > .input { padding-left: 32px; }
@@ -667,9 +686,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   .dialog-head { padding: 20px 16px 0 20px; }
   .dialog-head h2 { font-size: var(--fs-20); }
   .dialog .form-actions { background: var(--m-sheet); }
-  /* A bottom sheet: up from below, and back down. */
+  /*
+   * A bottom sheet: up from below, and back down. Its header is a handle that pulls it down
+   * (Dialog.tsx): it follows the finger by --pull, and once let go far enough it leaves from there to
+   * all the way down. The grip shows where to take hold. (@starting-style comes after the open rule,
+   * or the open rule would win and it would no longer slide up.)
+   */
   .dialog { transform: translateY(40px); }
+  /*
+   * Moved only while it's held or let go to close: at rest an open sheet has no transform, which
+   * would make it the frame for the menus, lists and tooltips put inside it (lib layer.ts) and cut
+   * them off at its edges.
+   */
+  .dialog[open][data-pulling], .dialog[open][data-pulled] { transform: translateY(var(--pull, 0px)); }
   @starting-style { .dialog[open] { transform: translateY(40px); } }
+  .dialog[data-pulling] { transition: none; }
+  .dialog[data-pulled]:not([open]) { transform: translateY(100%); }
+  .dialog-head { position: relative; padding-top: 24px; touch-action: none; }
+  .dialog-head::before { content: ""; position: absolute; top: 8px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: var(--radius-pill); background: var(--border-strong); }
   /* Even sides on a sheet, where the buttons stretch edge to edge (the desktop's right side lines up with the close button). */
   .dialog .form-actions { padding: 12px 20px calc(14px + env(safe-area-inset-bottom)); }
   .dialog .form-actions .btn { flex: 1; }
@@ -681,9 +715,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 
 /* ---------- Toasts ---------- */
 /*
- * components/ui/Toaster.tsx places each toast with translate and scale (kept apart from the transform
- * that entering, leaving and swiping use): two or more stack with the newest in front, and fan out into
- * a list while the toaster is hovered or focused. The bottom inset clears the task island (--island-space).
+ * components/ui/Toaster.tsx (Base UI's Toast) places each toast with translate and scale (kept apart
+ * from the transform that entering, leaving and swiping use): two or more stack with the newest in
+ * front, and fan out into a list while the toaster is hovered or focused. The bottom inset clears the
+ * task island (--island-space).
  */
 .toaster { position: fixed; inset: auto max(20px, env(safe-area-inset-right)) calc(max(20px, env(safe-area-inset-bottom)) + var(--island-space, 0px)) auto; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; width: min(380px, calc(100vw - 32px)); z-index: 200; transition: bottom var(--dur) var(--ease-out); }
 .toaster:not(:popover-open):not([data-fallback]) { display: none; }
@@ -693,6 +728,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   transition: translate var(--dur-enter) var(--ease-enter), scale var(--dur-enter) var(--ease-enter), opacity var(--dur) var(--ease-out), transform var(--dur-enter) var(--ease-spring);
 }
 .toast > * { transition: opacity var(--dur) var(--ease-out); }
+.toast .toast-content { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; }
 /* Older toasts behind the front one: its height, faded, their content hidden until the stack fans out. */
 .toast[data-behind] { overflow: hidden; }
 .toast[data-behind] > * { opacity: 0; }
@@ -700,7 +736,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .toast[data-behind="2"] { opacity: 0.7; }
 .toast[data-behind="3"] { opacity: 0; pointer-events: none; }
 /* Entering and leaving are Web Animations in Toaster.tsx, since raising the toaster again would replay CSS ones. */
-.toast[data-leaving] { pointer-events: none; }
+.toast[data-ending-style] { pointer-events: none; }
 .toast[data-swiping] { transition: none; }
 @media (pointer: coarse) { .toast { touch-action: pan-y; } }
 .toast .toast-icon { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-top: 0; color: #fff; }
@@ -708,6 +744,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
 .toast[data-kind="error"] .toast-icon { background: #d9443a; }
 .toast[data-kind="info"] .toast-icon { background: #3474d4; }
 .toast[data-kind="warning"] .toast-icon { background: #b8730a; }
+/* Waiting on something (toast.promise): a spinner until it turns into how it went. */
+.toast[data-kind="loading"] .toast-icon { background: color-mix(in srgb, currentColor 16%, transparent); }
 /* A toast about a request, quote, job or invoice takes its workflow color. */
 .toast[data-tone="request"] .toast-icon { background: var(--req); }
 .toast[data-tone="quote"] .toast-icon { background: var(--quote); }
@@ -748,15 +786,25 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
   z-index: 50; opacity: 0; transform: translateY(-4px) scale(0.97);
   transition-property: opacity, transform, overlay, display; transition-duration: 140ms; transition-timing-function: var(--ease-exit); transition-behavior: allow-discrete;
 }
-.menu:popover-open { opacity: 1; transform: none; transition-duration: var(--dur); transition-timing-function: var(--ease-enter); }
-.menu:not(:popover-open) { pointer-events: none; }
+.menu[popover] { position: fixed; margin: 0; inset: auto; z-index: 50; transition-property: opacity, transform, overlay, display; transition-behavior: allow-discrete; }
+.menu:popover-open, .menu[data-open] { opacity: 1; transform: none; transition-duration: var(--dur); transition-timing-function: var(--ease-enter); }
+.menu[popover]:not(:popover-open), .menu[data-ending-style] { pointer-events: none; }
 @starting-style { .menu:popover-open { opacity: 0; transform: translateY(-4px) scale(0.97); } }
 /* A flyout comes out sideways from its item. */
 .menu-flyout { transform: translateX(-4px); }
 @starting-style { .menu-flyout:popover-open { opacity: 0; transform: translateX(-4px); } }
 .menu-flyout[data-side="left"] { transform: translateX(4px); }
 @starting-style { .menu-flyout[data-side="left"]:popover-open { opacity: 0; transform: translateX(4px); } }
+/*
+ * A right-click menu (ContextMenu.tsx) is Base UI's: its positioner places it, above the sticky header
+ * and the tab bar, no taller than the room it has, coming from where it's anchored.
+ */
+.menu-positioner { z-index: 50; outline: 0; }
+.menu-positioner > .menu { position: static; max-height: min(440px, var(--available-height, 70vh)); transform-origin: var(--transform-origin); outline: 0; }
+.menu-positioner > .menu[data-starting-style], .menu-positioner > .menu[data-ending-style] { opacity: 0; transform: translateY(-4px) scale(0.97); }
+.menu[data-instant] { transition-duration: 0s; }
 @media (prefers-reduced-motion: reduce) {
+  .menu-positioner > .menu[data-starting-style], .menu-positioner > .menu[data-ending-style] { transform: none; }
   .menu, .menu-flyout, .menu-flyout[data-side="left"] { transform: none; }
   @starting-style { .menu:popover-open, .menu-flyout:popover-open, .menu-flyout[data-side="left"]:popover-open { transform: none; } }
 }
@@ -1384,6 +1432,10 @@ a.strip-link:hover, button.strip-link:hover { color: inherit; text-decoration: n
   .m-grouped .sec:not(.sec-flush) > .sec-body > .empty-inline { margin: 0; padding: 14px 0; }
   .m-grouped .rel-row-link:active { box-shadow: -16px 0 0 var(--fill-2), 16px 0 0 var(--fill-2); }
 }
+/* Base UI's rows (a right-click menu's) are divs: they take a click like buttons, their words aren't picked up by a drag, and the row the arrow keys are on shows as hovered. */
+.menu-positioner .menu-item { cursor: pointer; -webkit-user-select: none; user-select: none; }
+.menu-item[data-highlighted] { background: var(--menu-hi); color: var(--ink); }
+.menu-item[data-disabled] { opacity: 0.45; cursor: not-allowed; background: none; }
 
 /* ---------- Skeletons ---------- */
 .skeleton-wrap { animation: fade-in var(--dur) ease-out 90ms both; }

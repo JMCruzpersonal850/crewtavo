@@ -19,6 +19,7 @@ import { timeAgo } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import styles from "./AnalyticsPanel.module.css";
 import { CodeBlock, CodeRow, kit, Step, Steps } from "./PanelKit";
+import { Select } from "@/components/ui/Select";
 
 /** What Check found on the website (routes/analytics.ts). */
 export interface WebsiteCheck {
@@ -230,9 +231,9 @@ export function AnalyticsPanel() {
         <p className={kit.text}>It goes on every page, in the part of the page called the head. It loads from your own Crewtavo, uses no cookies and keeps nothing that tells who a visitor is.</p>
         <CodeRow value={line} name={builder.id === "godaddy" ? "The line for GoDaddy" : "The line to paste"} done="Line copied" />
         <Field label="Your website is on" className={styles.builder}>
-          <select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
+          <Select className="select" value={builder.id} onChange={(e) => setBuilderId(e.target.value)}>
             {BUILDERS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </select>
+          </Select>
         </Field>
         {builder.id === "developer" ? (
           <DeveloperSteps line={data.snippet} />

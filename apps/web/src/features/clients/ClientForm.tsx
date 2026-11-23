@@ -7,6 +7,8 @@ import { Field, FormChecks, FormError } from "@/components/ui/Field";
 import { initials } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { Menu, type MenuEntry } from "@/components/ui/Menu";
+import { NumberInput } from "@/components/ui/NumberInput";
+import { Select } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { statusText } from "@/components/ui/StatusPill";
 import { TagInput } from "@/components/ui/TagInput";
@@ -104,9 +106,9 @@ function ClientFieldset({ value, onChange, clientId, current, error }: { value: 
           <datalist id="lead-sources">{LEAD_SOURCES.map((s) => <option key={s} value={s} />)}</datalist>
         </Field>
         <Field label="Status">
-          <select className="select" value={value.status} onChange={set("status")}>
+          <Select className="select" value={value.status} onChange={set("status")}>
             {(["lead", "active", "archived"] as const).map((s) => <option key={s} value={s}>{statusText("client", s)}</option>)}
-          </select>
+          </Select>
         </Field>
       </div>
       <Field label="Tags">
@@ -263,7 +265,7 @@ export function EditClientDialog({
           <h3>Invoices</h3>
           <div className="form-grid">
             <Field label="Due after (days)" optional hint={`Empty: your usual ${businessTerms === 0 ? "due on receipt" : `${businessTerms} days`}. 0 means due on receipt.`}>
-              <input className="input" type="number" min={0} max={365} value={terms} onChange={(e) => setTerms(e.target.value)} />
+              <NumberInput className="input" min={0} max={365} value={terms} onChange={(e) => setTerms(e.target.value)} />
             </Field>
             {exempt && <Field label="Exemption number or note" optional><input className="input" value={exemptNote} onChange={(e) => setExemptNote(e.target.value)} maxLength={200} placeholder="Certificate number" /></Field>}
           </div>
@@ -393,9 +395,9 @@ export function PropertySelect({ clientId, value, onChange }: { clientId: string
   if (properties.isPending) return <Skeleton height={38} radius={8} />;
   if (!properties.data?.length) return <p className="muted small" style={{ margin: 0 }}>No service address on file.</p>;
   return (
-    <select className="select" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+    <Select className="select" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
       {properties.data.map((p) => <option key={p.id} value={p.id}>{p.label ? `${p.label} · ` : ""}{addressLine(p)}</option>)}
       <option value="">No specific property</option>
-    </select>
+    </Select>
   );
 }

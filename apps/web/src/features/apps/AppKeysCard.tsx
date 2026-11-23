@@ -17,6 +17,7 @@ import { api, supabase, unwrap } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { AppRow } from "./catalog";
 import { CodeRow, Fold, kit, Step, Steps } from "./PanelKit";
+import { Select } from "@/components/ui/Select";
 
 const INTUIT_DEVELOPER = "https://developer.intuit.com/";
 const GOOGLE_CLOUD = "https://console.cloud.google.com/";
@@ -292,9 +293,9 @@ function KeysForm({ app, initial, onSaved, onCancel }: { app: AppRow; initial: N
         <Steps>
           <Step>
             <span>Pick where your Zoho account is. When you're in Zoho Books, the address shows it: <strong>books.zoho.eu</strong> is Europe.</span>
-            <select className="select" style={{ maxWidth: 280 }} value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Where your Zoho account is">
+            <Select className="select" style={{ maxWidth: 280 }} value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Where your Zoho account is">
               {ZOHO_REGIONS.map((r) => <option key={r.tld} value={r.tld}>{r.label} (books.{r.tld})</option>)}
-            </select>
+            </Select>
           </Step>
           <Step>
             <span>Open Zoho's API Console, click <strong>Add Client</strong> (or <strong>Get Started</strong>) and choose <strong>Server-based Applications</strong>.</span>

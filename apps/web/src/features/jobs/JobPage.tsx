@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { featureOn } from "@/components/shell/nav";
 import { AnimatedNumber, MONEY_CENTS } from "@/components/ui/AnimatedNumber";
+import { ClientPreview } from "@/components/ui/ClientPreview";
 import { Button, cx } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { DetailColumns, DetailHeader } from "@/components/ui/DetailPage";
@@ -413,7 +414,7 @@ export function JobPage() {
         status={<EntityStatus kind="job" status={j.job_state ?? j.status} />}
         meta={[
           `Job #${j.number}`,
-          j.client && <Link to={`/clients/${j.client.id}`}>{j.client.display_name}</Link>,
+          j.client && <ClientPreview id={j.client.id}><Link to={`/clients/${j.client.id}`}>{j.client.display_name}</Link></ClientPreview>,
           place,
           j.kind === "recurring" && (j.recurrence_rule ? repeatText(j.recurrence_rule) : "Recurring"),
           // Every client needs a card on file, and this one has none they agreed to that can be charged.

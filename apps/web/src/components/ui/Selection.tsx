@@ -4,7 +4,7 @@
  * The logic, and writing them in chunks, is lib/bulk.ts.
  */
 import type { QueryKey } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { inChunks, mergeResults, pageState, pickedOnPage, reportBulk, toggleAll, toggleOne, type BulkResult, type BulkWords } from "@/lib/bulk";
 import { queryClient } from "@/lib/queryClient";
 import type { ToastTone } from "@/lib/toast";
@@ -65,10 +65,70 @@ export function SelectAllCell({ selection, label }: { selection: Selection; labe
 /** A row's box. A click on it, or near it, picks the row rather than opening it. */
 export function SelectCell({ selection, id, label }: { selection: Selection; id: string; label: string }) {
   return (
-    <td className="select-cell" onClick={(e) => e.stopPropagation()}>
+    <td className="select-cell" data-pick={id} onClick={(e) => e.stopPropagation()}>
       <label><input type="checkbox" aria-label={label} checked={selection.has(id)} onChange={() => selection.toggle(id)} /></label>
     </td>
   );
+}
+
+/** How long a finger rests on a row before it's picked, and how far it can wander meanwhile. */
+const HOLD_MS = 500;
+const HOLD_SLOP = 10;
+/** How long after a hold picked a row the tap that ended it is ignored, rather than opening the row. */
+const HOLD_TAP = 800;
+
+/**
+ * On a touch screen, holding a finger on a row picks it (or puts it back), as a phone's own lists do,
+ * with a short buzz where the phone can; a tap still opens it, and a scroll or a drag is left alone.
+ * Spread on a table's <tbody> or an InboxRow: the row is the one with a box ([data-pick]). Only touches count, and
+ * nothing here stops or cancels an ordinary click, so a mouse, a keyboard and the boxes and links in
+ * the rows work as before. The tap that ends a hold, and the phone's own long-press menu, are kept
+ * from doing anything else.
+ */
+export function useHoldToPick(selection: Selection | undefined) {
+  const hold = useRef<{ x: number; y: number; timer: number } | null>(null);
+  const pickedAt = useRef(0);
+  const cancel = () => {
+    if (hold.current) window.clearTimeout(hold.current.timer);
+    hold.current = null;
+  };
+  useEffect(() => cancel, []);
+  const justPicked = () => Date.now() - pickedAt.current < HOLD_TAP;
+  if (!selection) return {};
+  return {
+    // For components.css: a held row's words aren't selected, nor the phone's copy menu shown.
+    "data-hold": "",
+    onPointerDown(e: ReactPointerEvent) {
+      cancel();
+      // A new touch: whatever a hold before it was keeping from opening has passed.
+      pickedAt.current = 0;
+      if (e.pointerType !== "touch" || !e.isPrimary) return;
+      const id = (e.target as Element).closest("tr, .il-row")?.querySelector<HTMLElement>("[data-pick]")?.dataset.pick;
+      if (!id) return;
+      const timer = window.setTimeout(() => {
+        hold.current = null;
+        selection.toggle(id);
+        pickedAt.current = Date.now();
+        navigator.vibrate?.(10);
+      }, HOLD_MS);
+      hold.current = { x: e.clientX, y: e.clientY, timer };
+    },
+    onPointerMove(e: ReactPointerEvent) {
+      const h = hold.current;
+      if (h && Math.hypot(e.clientX - h.x, e.clientY - h.y) > HOLD_SLOP) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onContextMenu(e: ReactMouseEvent) {
+      if (hold.current || justPicked()) e.preventDefault();
+    },
+    onClickCapture(e: ReactMouseEvent) {
+      if (!justPicked()) return;
+      pickedAt.current = 0;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+  };
 }
 
 /**

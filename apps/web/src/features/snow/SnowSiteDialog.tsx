@@ -21,6 +21,8 @@ import { useCrews } from "../jobs/JobDialogs";
 import { bandsKey, customer, loadBands, loadPushPrice, nameOf, PRIORITIES, tiersOf, type Member, type Site } from "./snowData";
 import { amount, depthRow, DepthRows, readDepths, within } from "./SnowPrices";
 import styles from "./snow.module.css";
+import { Select } from "@/components/ui/Select";
+import { NumberInput } from "@/components/ui/NumberInput";
 
 export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; team: Member[]; onClose: () => void }) {
   const { company } = useSession();
@@ -128,19 +130,19 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
           <div className={cx("form-grid form-grid-3", styles.three)}>
             <Field label="Plow at" hint="Inches forecast from 6pm through the next day.">
               <div className="input-group">
-                <input className="input" type="number" inputMode="decimal" min={0.1} max={48} step={0.1} value={trigger} onChange={(e) => setTrigger(e.target.value)} required />
+                <NumberInput className="input" inputMode="decimal" min={0.1} max={48} step={0.1} value={trigger} onChange={(e) => setTrigger(e.target.value)} required />
                 <span className="addon addon-right addon-unit">in</span>
               </div>
             </Field>
             <Field label="Salt at" optional hint="Less snow than that, and for ice or a refreeze.">
               <div className="input-group">
-                <input className="input" type="number" inputMode="decimal" min={0.1} max={48} step={0.1} value={salt} onChange={(e) => setSalt(e.target.value)} placeholder="No salting" />
+                <NumberInput className="input" inputMode="decimal" min={0.1} max={48} step={0.1} value={salt} onChange={(e) => setSalt(e.target.value)} placeholder="No salting" />
                 <span className="addon addon-right addon-unit">in</span>
               </div>
             </Field>
             <Field label="Push again every" optional hint="In a long storm, past the trigger.">
               <div className="input-group">
-                <input className="input" type="number" inputMode="decimal" min={0.1} max={48} step={0.1} value={repeat} onChange={(e) => setRepeat(e.target.value)} placeholder="One push" />
+                <NumberInput className="input" inputMode="decimal" min={0.1} max={48} step={0.1} value={repeat} onChange={(e) => setRepeat(e.target.value)} placeholder="One push" />
                 <span className="addon addon-right addon-unit">in</span>
               </div>
             </Field>
@@ -154,15 +156,15 @@ export function SnowSiteDialog({ site, team, onClose }: { site: Site | null; tea
               <input className="input" type="time" value={clearBy} onChange={(e) => setClearBy(e.target.value)} />
             </Field>
             <Field label="Priority" hint="Who's told about first.">
-              <select className="select" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
+              <Select className="select" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
                 {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Crew" hint="Its lead and members are told.">
-              <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+              <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
                 <option value="">No crew</option>
                 {(crews.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <Field label="Other people on it" hint="A sub, or anyone on no crew who works this property. They're told too, and put on the visit when you schedule it. A sub is also asked whether they can go out.">

@@ -17,6 +17,7 @@ import { Loading, SectionSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Face } from "@/components/ui/Avatar";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { addDaysIso, formatMoney, formatTime, todayIn } from "@/lib/format";
@@ -402,9 +403,9 @@ function TimeEntryDialog({ entry, team, defaultDate, onClose, onSaved }: { entry
       <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
         {isOffice && !entry && (
           <Field label={t("Person")}>
-            <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            <Select className="select" value={userId} onChange={(e) => setUserId(e.target.value)}>
               {people.map((m) => <option key={m.user_id} value={m.user_id}>{m.profile?.full_name || t("Team member")}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         <Field label={t("Date")}><input className="input" type="date" value={date} max={todayIn(tz)} onChange={(e) => setDate(e.target.value)} required /></Field>
@@ -413,9 +414,9 @@ function TimeEntryDialog({ entry, team, defaultDate, onClose, onSaved }: { entry
           <Field label={t("End")} hint={length > 0 ? (end <= start ? t("{hours} hours (ends the next day)", { hours: length.toFixed(2) }) : t("{hours} hours", { hours: length.toFixed(2) })) : undefined}><input className="input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required /></Field>
         </div>
         <Field label={t("Type")}>
-          <select className="select" value={category} onChange={(e) => setCategory(e.target.value as TimerCategory)}>
+          <Select className="select" value={category} onChange={(e) => setCategory(e.target.value as TimerCategory)}>
             {(Object.keys(CATEGORY_LABELS) as TimerCategory[]).map((c) => <option key={c} value={c}>{t(CATEGORY_LABELS[c])}</option>)}
-          </select>
+          </Select>
         </Field>
         <Field label={t("Note")} optional><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} placeholder={t("Forgot to clock in at the Shah job")} /></Field>
         {entry && (

@@ -17,6 +17,7 @@ import { useSession } from "@/lib/session";
 import { AbcPicture } from "./AbcPicture";
 import { searchFor, type CatalogItem, type CatalogUom } from "./data";
 import { MaterialSearch } from "./MaterialSearch";
+import { Select } from "@/components/ui/Select";
 
 export interface PickerService { id: string; name: string; unit: string }
 
@@ -75,17 +76,17 @@ export function AddMaterial({ service, item, lineQuantity, onBack, onAdded }: { 
       <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
         {units.length > 1 && (
           <Field label="Priced by the">
-            <select className="select" value={uom} onChange={(e) => { setUom(e.target.value); setPerUnit(suggestPerUnit(`${item.name} ${item.family ?? ""}`, e.target.value, service.unit).per_unit); }}>
+            <Select className="select" value={uom} onChange={(e) => { setUom(e.target.value); setPerUnit(suggestPerUnit(`${item.name} ${item.family ?? ""}`, e.target.value, service.unit).per_unit); }}>
               {units.map((u) => <option key={u.code} value={u.code}>{u.name}{u.role === "stocking" ? " (how it's ordered)" : ""}</option>)}
-            </select>
+            </Select>
           </Field>
         )}
         {item.dimensional && (
           <Field label="Length">
-            <select className="select" required value={chosenLength ?? ""} onChange={(e) => setLength(Number(e.target.value) || null)} disabled={!lengths.length}>
+            <Select className="select" required value={chosenLength ?? ""} onChange={(e) => setLength(Number(e.target.value) || null)} disabled={!lengths.length}>
               {!lengths.length && <option value="">{detail.isPending ? "Loading lengths…" : "No lengths listed"}</option>}
               {lengths.map((l) => <option key={l} value={l}>{formatNumber(l, 2)} ft</option>)}
-            </select>
+            </Select>
           </Field>
         )}
       </div>

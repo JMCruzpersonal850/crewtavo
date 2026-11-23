@@ -100,6 +100,7 @@ import { loadSubs, useSubPaperwork } from "../subs/subsData";
 import { RowsSkeleton } from "./JobMaterials";
 import styles from "./jobMoney.module.css";
 import { ChangePriceDialog, SendOfferDialog } from "./OfferDialogs";
+import { Select } from "@/components/ui/Select";
 
 /** A visit as the job page has it. */
 export interface JobVisit { id: string; title: string; status: string; scheduled_on: string | null; completed_at: string | null; assignees: Array<{ user_id: string }> }
@@ -315,10 +316,10 @@ function AddPayDialog({ job, visits, pays, payees, areas, elsewhere, onClose, on
           hint={kind === "sub" && elsewhere ? "Subs with their paperwork in order come first. It covers the same visits as the offer that ended." : undefined}
         >
           {loadingChoices ? <Skeleton height="var(--control)" radius={8} /> : (
-            <select className="select" value={payeeId} onChange={(e) => { setPayeeId(e.target.value); setCovered(startCovered); }}>
+            <Select className="select" value={payeeId} onChange={(e) => { setPayeeId(e.target.value); setCovered(startCovered); }}>
               <option value="">{kind === "sub" ? "Choose a sub" : "Choose someone"}</option>
               {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         {kind === "sub" && !loadingChoices && choices.length === 0 && (

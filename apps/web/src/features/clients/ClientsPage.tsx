@@ -29,6 +29,7 @@ import { NewClientDialog, useClientTags } from "./ClientForm";
 import styles from "./clients.module.css";
 import { ContactMessagesNotice } from "./ContactMessages";
 import { ImportClientsDialog } from "./ImportClientsDialog";
+import { Select } from "@/components/ui/Select";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -522,16 +523,16 @@ function AutopayInvitesDialog({ onClose }: { onClose: () => void }) {
       <form onSubmit={submit}>
         <div className="form-grid">
           <Field label="Who">
-            <select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <Select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
               <option value="">All active clients not on autopay</option>
               {tags.data?.map((t) => <option key={t} value={t}>Active clients tagged {t}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Send by">
-            <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as "email" | "sms")}>
+            <Select className="select" value={channel} onChange={(e) => setChannel(e.target.value as "email" | "sms")}>
               <option value="email" disabled={!features.email}>Email</option>
               <option value="sms" disabled={!features.sms}>Text</option>
-            </select>
+            </Select>
           </Field>
         </div>
         <span className="muted small" role="status">
@@ -589,9 +590,9 @@ function TagClientsDialog({ mode, clients, onClose, onDone }: { mode: "add" | "r
               <datalist id={listId}>{known.data?.map((t) => <option key={t} value={t} />)}</datalist>
             </>
           ) : (
-            <select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <Select className="select" value={tag} onChange={(e) => setTag(e.target.value)}>
               {present.map((t) => <option key={t} value={t}>{t} · {plural(clients.filter((c) => has(c, t)).length, "client")}</option>)}
-            </select>
+            </Select>
           )}
         </Field>
         {name && left > 0 && (

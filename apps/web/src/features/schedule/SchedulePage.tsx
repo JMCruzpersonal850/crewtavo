@@ -48,6 +48,7 @@ import { eventOnRow, movePeople, onRow, peopleRows } from "./people";
 import { filterLine } from "./filterLine";
 import { spanDays, stepMonth, weekStart, type Span } from "./range";
 import { intlLocale, msg, t } from "@/lib/i18n";
+import { Select } from "@/components/ui/Select";
 
 const ScheduleMap = lazy(() => import("./ScheduleMap").then((m) => ({ default: m.ScheduleMap })));
 
@@ -1133,10 +1134,10 @@ function ShiftDialog({ defaultDate, crews, allCrews, onClose }: { defaultDate: s
             <input ref={(el) => el?.setCustomValidity(fromDate && fromDate === toDate ? t("Pick a different day.") : "")} className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} required />
           </Field>
           <Field label={t("Crew")}>
-            <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+            <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
               {allCrews && <option value="">{t("All crews")}</option>}
               {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <FormError error={shift.error} />
@@ -1181,10 +1182,10 @@ function BulkVisitsDialog({ defaultDate, crews, onClose }: { defaultDate: string
         <div className="form-grid">
           <Field label={t("Date")}><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></Field>
           <Field label={t("Crew")}>
-            <select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
+            <Select className="select" value={crewId} onChange={(e) => setCrewId(e.target.value)}>
               <option value="">{t("Each job's default crew")}</option>
               {crews.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="visit-pick-tools">

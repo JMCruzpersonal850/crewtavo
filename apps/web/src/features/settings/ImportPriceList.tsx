@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { FormError } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 import { supabase, unwrap } from "@/lib/api";
 import { parseCsv } from "@/lib/csv";
 import { useSession } from "@/lib/session";
@@ -107,10 +108,10 @@ export function ImportPriceListDialog({ existing, onClose }: { existing: string[
               {COLUMNS.map((c) => (
                 <label key={c.key} className="field">
                   <span>{c.label}</span>
-                  <select className="select" value={mapping[c.key] ?? ""} onChange={(e) => setMapping({ ...mapping, [c.key]: e.target.value === "" ? undefined : Number(e.target.value) })}>
+                  <Select className="select" value={mapping[c.key] ?? ""} onChange={(e) => setMapping({ ...mapping, [c.key]: e.target.value === "" ? undefined : Number(e.target.value) })}>
                     <option value="">Don't import</option>
                     {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
-                  </select>
+                  </Select>
                 </label>
               ))}
             </div>

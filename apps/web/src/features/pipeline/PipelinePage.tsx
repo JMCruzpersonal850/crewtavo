@@ -10,10 +10,15 @@
  * Desktop: the stages as quiet lanes on the page, each card a client, #number, what it's for, its
  * money and how long since it last changed. Phone (max-width 900px): the stages as chips over an
  * inbox list of that stage, not a board that scrolls sideways.
+ *
+ * Once a move is saved and the board reads again, the card glides from its old lane to its new one
+ * and the cards around it close up or make room (Motion's layout animations), unless the person
+ * prefers less motion.
  */
 import type { Json } from "@crewtavo/core/database";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useState, type DragEvent, type ReactNode } from "react";
+import { LazyMotion, MotionConfig, domMax, m } from "motion/react";
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { confirm } from "@/components/ui/Confirm";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -110,6 +115,11 @@ const cardName = (c: Card) => c.client || c.title;
 const money = (c: Card) => (c.value == null ? null : c.from ? `From ${formatMoney(c.value)}` : formatMoney(c.value));
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const waiting = (status: string) => status === "sent" || status === "changes_requested";
+
+/** The same card in whichever column it's in, so Motion can carry it from one to the other. */
+const cardKey = (c: Pick<Card, "kind" | "id">) => `${c.kind}-${c.id}`;
+/** Settles quickly with a small overshoot, like the app's other springs (lib/spring.ts). */
+const GLIDE = { type: "spring", bounce: 0.18, visualDuration: 0.38 } as const;
 
 export function PipelinePage() {
   const { company, profile } = useSession();
@@ -243,6 +253,12 @@ export function PipelinePage() {
     const items = cards.filter((c) => c.kind === col.kind && col.statuses.includes(c.status)).sort((a, b) => a.updated.localeCompare(b.updated));
     return { ...col, items, total: items.reduce((s, c) => s + (c.value ?? 0), 0) };
   });
+  // The cards on the board when it last drew: one new to it (a quote just started) fades in, while one
+  // that only changed column glides there. Nothing fades in the first time the board draws.
+  const drawn = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (data.data) drawn.current = new Set(data.data.cards.map(cardKey));
+  }, [data.data]);
   const openValue = cards.reduce((s, c) => s + (c.value ?? 0), 0);
   const quoteCount = cards.filter((c) => c.kind === "quote").length;
   const winRate = data.data && data.data.won.count + data.data.lost.count ? Math.round((data.data.won.count / (data.data.won.count + data.data.lost.count)) * 100) : null;
@@ -258,7 +274,7 @@ export function PipelinePage() {
   const shown = lanes.find((l) => l.key === stage)!;
 
   return (
-    <>
+    <BoardMotion>
       <BackLink to="/quotes">Quotes</BackLink>
       {/* The hint shows while the board loads too, so the page doesn't shift when it arrives; not over an empty pipeline. */}
       <PageHeader title="Sales board" lede={data.isPending || cards.length > 0 ? <span className="pipe-hint">Drag a card to its next stage, or use its menu.</span> : undefined} />
@@ -293,26 +309,32 @@ export function PipelinePage() {
             <EmptyState icon="pipeline" title="Nothing in the pipeline yet">New requests and open quotes show up here as they come in.</EmptyState>
           ) : (
             <>
-              <div className="board" role="group" aria-label="Sales board">
+              {/* The board scrolls sideways, so Motion measures its scroll too. */}
+              <m.div className="board" role="group" aria-label="Sales board" layoutScroll>
                 {lanes.map((lane) => (
                   <Lane key={lane.key} label={lane.label} count={lane.items.length} total={lane.total} zone={zone(lane.key)}>
-                    {lane.items.map((c) => (
-                      <DealCard
-                        key={c.id}
-                        card={c}
-                        showStatus={c.status !== lane.statuses[0]}
-                        dragging={dragging?.id === c.id}
-                        actions={actions(c)}
-                        onDragStart={() => setDragging(c)}
-                        onDragEnd={() => {
-                          setDragging(null);
-                          setOver(null);
-                        }}
-                      />
-                    ))}
+                    {lane.items.map((c) => {
+                      const card = cardKey(c);
+                      return (
+                        // A wrapper carries the motion: Motion would take the card's own (HTML) drag events as its gestures.
+                        <m.div key={card} layout="position" layoutId={card} transition={GLIDE} initial={drawn.current && !drawn.current.has(card) ? { opacity: 0, scale: 0.96 } : false} animate={{ opacity: 1, scale: 1 }}>
+                          <DealCard
+                            card={c}
+                            showStatus={c.status !== lane.statuses[0]}
+                            dragging={dragging?.id === c.id}
+                            actions={actions(c)}
+                            onDragStart={() => setDragging(c)}
+                            onDragEnd={() => {
+                              setDragging(null);
+                              setOver(null);
+                            }}
+                          />
+                        </m.div>
+                      );
+                    })}
                   </Lane>
                 ))}
-              </div>
+              </m.div>
 
               <div className="pipe-phone">
                 <Toolbar filters={<FilterTabs label="Stage" value={stage} onChange={pickStage} options={lanes.map((l) => ({ value: l.key, label: l.label, count: l.items.length || undefined }))} />} />
@@ -353,7 +375,16 @@ export function PipelinePage() {
         </div>
       )}
       {sending && <SendDialog kind="quote" id={sending.id} number={sending.number} email={sending.email} phone={sending.phone} onClose={() => setSending(null)} onSent={refresh} />}
-    </>
+    </BoardMotion>
+  );
+}
+
+/** Motion for the board: its layout animations (domMax, since the smaller domAnimation set has none), still when the person prefers less motion. */
+function BoardMotion({ children }: { children: ReactNode }) {
+  return (
+    <MotionConfig reducedMotion="user">
+      <LazyMotion features={domMax}>{children}</LazyMotion>
+    </MotionConfig>
   );
 }
 

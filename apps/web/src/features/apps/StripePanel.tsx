@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { importRunning, STRIPE_NEW_KEY, type AppRow } from "./catalog";
 import { kit } from "./PanelKit";
+import { Select } from "@/components/ui/Select";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -82,12 +83,12 @@ export function StripePanel({ app, onChanged }: { app: AppRow; onChanged: () => 
           <span className="app-status" role="status"><span className="spinner" style={{ width: 14, height: 14 }} aria-hidden="true" />Importing… {counts ? plural(counts.invoices, "invoice") : ""} so far</span>
         ) : (
           <div className="row wrap" style={{ gap: 8 }}>
-            <select className="select grow" style={{ maxWidth: 320 }} value={since} onChange={(e) => setSince(e.target.value)} aria-label="Import from">
+            <Select className="select grow" style={{ maxWidth: 320 }} value={since} onChange={(e) => setSince(e.target.value)} aria-label="Import from">
               <option value={`${year}-01-01`}>This year</option>
               <option value={`${year - 1}-01-01`}>Since January {year - 1}</option>
               <option value={`${year - 2}-01-01`}>Since January {year - 2}</option>
               <option value="">Everything</option>
-            </select>
+            </Select>
             <Button icon="download" loading={start.isPending} onClick={() => start.mutate()}>{state ? "Import again" : "Import"}</Button>
           </div>
         )}

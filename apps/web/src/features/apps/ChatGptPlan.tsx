@@ -24,6 +24,7 @@ import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { toast } from "@/lib/toast";
 import { kit, Row, Step, Steps, SwitchLine } from "./PanelKit";
+import { Select } from "@/components/ui/Select";
 
 export interface PlanStatus {
   status: "connected" | "disconnected";
@@ -241,10 +242,10 @@ export function ChatGptPlanCard({ where, level = where === "settings" ? 3 : 2 }:
           <p className={note}>Whoever runs this Crewtavo server set the model to <strong>{plan.model}</strong> (OPENAI_MODEL), so it isn't picked here.</p>
         ) : (
           <Field label="Model">
-            <select className="select" style={{ maxWidth: 320 }} value={picked ?? ""} disabled={model.isPending || models.isPending} onChange={(e) => model.mutate(e.target.value)} aria-label="Model your ChatGPT plan uses">
+            <Select className="select" style={{ maxWidth: 320 }} value={picked ?? ""} disabled={model.isPending || models.isPending} onChange={(e) => model.mutate(e.target.value)} aria-label="Model your ChatGPT plan uses">
               {picked && !plan.models.some((m) => m.slug === picked) && <option value={picked}>{picked} (not listed anymore)</option>}
               {plan.models.map((m) => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
-            </select>
+            </Select>
           </Field>
         )
       )}

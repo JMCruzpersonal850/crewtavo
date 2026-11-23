@@ -20,7 +20,7 @@ import { PhotoButtons } from "./ProfilePhoto";
 import { SaveBar } from "./SettingsKit";
 import { SignatureCard } from "./SignatureCard";
 import { SpareKeysCard } from "./SpareKeysCard";
-import { msg, t } from "@/lib/i18n";
+import { languageChoice, msg, t } from "@/lib/i18n";
 
 const COLORS = ["#0f2a35", "#3b7d23", "#3474d4", "#c9852a", "#d2445c", "#8b5cf6", "#0e7490", "#57534e"];
 
@@ -100,7 +100,7 @@ export function ProfileSettings() {
       <Section level={3} title={t("Appearance and language")}>
         <div className="set-items">
           <Appearance />
-          <LanguageCard />
+          {languageChoice() && <LanguageCard />}
         </div>
       </Section>
       <Section level={3} title={t("Maps and directions")}>
