@@ -25,6 +25,8 @@ $$;
 grant execute on all functions in schema tpu to authenticated, service_role;
 
 \set ann '5e000000-0000-4000-8000-000000000001'
+-- The file that arrives and is recorded: named as the server names a request's files.
+\set kept '5e000000-0000-4000-8000-0000000000f1'
 
 insert into auth.users (id, email, raw_user_meta_data) values (:'ann', 'ann@birch.test', '{"full_name": "Ann Owner"}');
 
@@ -34,6 +36,8 @@ select tpu.as_user(:'ann');
 select public.create_company('Birch Lawn', 'general') as co \gset
 insert into public.sop_pages (company_id, title, body_html) values (:'co', 'Edging a bed', '<p>Cut a clean line.</p>') returning id as guide \gset
 insert into public.sop_shares (page_id, company_id) values (:'guide', :'co');
+insert into public.clients (company_id, display_name) values (:'co', 'Cal Client') returning id as client \gset
+insert into public.requests (company_id, client_id, title) values (:'co', :'client', 'Patio drainage') returning id as request \gset
 commit;
 
 -- ---------------------------------------------------------------------------------------------
@@ -42,7 +46,7 @@ commit;
 
 set role service_role;
 insert into public.upload_links (path, company_id, kind, max_bytes, expires_at) values
-  (:'co' || '/plans/kept.pdf', :'co', 'form', 5000, now() - interval '1 minute'),
+  (:'co' || '/plans/' || :'kept' || '.pdf', :'co', 'form', 5000, now() - interval '1 minute'),
   (:'co' || '/plans/stray.pdf', :'co', 'form', 5000, now() - interval '2 minutes'),
   (:'co' || '/subs/s1/stray.jpg', :'co', 'paperwork', 9000, now() - interval '3 minutes'),
   (:'co' || '/plans/later.pdf', :'co', 'form', 5000, now() + interval '1 hour');
@@ -53,7 +57,7 @@ select tpu.check(tpu.error_of(format('insert into public.upload_links (path, com
 select tpu.check(tpu.error_of(format('insert into public.upload_links (path, company_id, kind, max_bytes, expires_at) values (%L, %L, ''form'', 0, now())', :'co' || '/plans/y.pdf', :'co')) like '23514:%',
   'a link''s file has a size');
 -- One of them arrived and was recorded on the request's Plans and files.
-insert into public.plan_files (company_id, title, path, file_name, created_by) values (:'co', 'Site plan', :'co' || '/plans/kept.pdf', 'kept.pdf', null);
+insert into public.plan_files (company_id, request_id, title, path, file_name, created_by) values (:'co', :'request', 'Site plan', :'co' || '/plans/' || :'kept' || '.pdf', 'site plan.pdf', null);
 reset role;
 
 begin;

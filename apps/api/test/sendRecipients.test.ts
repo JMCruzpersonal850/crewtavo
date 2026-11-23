@@ -61,7 +61,15 @@ function stubDb(tables: Record<string, unknown>): Db {
   };
   return { from } as unknown as Db;
 }
-const scope = (settings: Record<string, unknown> = {}, who = client) => ({ db: stubDb({ companies: { ...company, settings }, clients: who, invoices: invoice }), env, companyId: CO, baseUrl: "https://ops.example.com" });
+/**
+ * The person's own client, and the company's settings on the server's: the browser's role doesn't
+ * read companies.settings (20261123100100_prices_and_settings_for_the_office.sql), so deliver reads
+ * the company with the server's key.
+ */
+const scope = (settings: Record<string, unknown> = {}, who = client) => {
+  server.tables = { ...server.tables, companies: { ...company, settings } };
+  return { db: stubDb({ clients: who, invoices: invoice }), env, companyId: CO, baseUrl: "https://ops.example.com" };
+};
 const refusal = async (work: Promise<unknown>) => {
   const error = await work.then(() => null, (e: unknown) => e);
   expect(error).toBeInstanceOf(HttpError);

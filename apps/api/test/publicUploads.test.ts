@@ -113,7 +113,10 @@ describe("upload links' records", () => {
     expect(calls[0]!.method).toBe("GET");
     serve(() => []);
     expect(await publicUploadsFrom(env).find(`${CO}/plans/x.pdf`)).toBeNull();
-    serve(() => Response.json({ message: "the database is busy" }, { status: 503 }));
+    // supabase-js asks again after a read's 503, three times, after what Retry-After says (else 1, 2
+    // and 4 seconds): here at once, and it still throws once those run out.
+    const busy = serve(() => Response.json({ message: "the database is busy" }, { status: 503, headers: { "Retry-After": "0" } }));
     await expect(publicUploadsFrom(env).find(`${CO}/plans/x.pdf`)).rejects.toThrow("the database is busy");
+    expect(busy).toHaveLength(4);
   });
 });

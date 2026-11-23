@@ -447,6 +447,7 @@ describe("POST /api/public/documents/<name>.pdf", () => {
 
 describe("a PDF made on a thread of its own, as the built server makes it", () => {
   const out = fileURLToPath(new URL("../../../dist/test/pdf-worker/", import.meta.url));
+  const thread = () => pathToFileURL(`${out}pdf-worker.mjs`);
 
   beforeAll(async () => {
     // Bundled as scripts/build-server.mjs bundles it, next to a package.json that says where the PDF's
@@ -463,16 +464,25 @@ describe("a PDF made on a thread of its own, as the built server makes it", () =
       banner: { js: "import { createRequire as __testCreateRequire } from 'node:module'; const require = __testCreateRequire(import.meta.url);" },
     });
     writeFileSync(`${out}package.json`, `${JSON.stringify({ private: true, imports: { "#standard-fonts/*": "pdfkit/standard-fonts/*" } })}\n`);
-    setPdfWorker(pathToFileURL(`${out}pdf-worker.mjs`));
+    setPdfWorker(thread());
   }, 120_000);
   afterAll(() => setPdfWorker(null));
 
   it("makes the same PDF there, with its pictures from the business's storage", async () => {
+    // The same document made on this thread, to compare with.
+    setPdfWorker(null);
+    const here = await sheets(ownLetterhead(true), long);
+    setPdfWorker(thread());
+    stored.asked.length = 0;
+
     const pages = await sheets(ownLetterhead(true), long);
     expect(pages.length).toBeGreaterThan(1);
     pages.forEach((page, i) => expect(has(page, `Page ${i + 1} of ${pages.length}`)).toBe(true));
-    expect(has(pages[0]!, "Arrington Paving")).toBe(true);
+    // The business's own letterhead is a picture, so its name is in the words from the second sheet on.
+    expect(has(pages[0]!, "Alex Morgan")).toBe(true);
+    expect(has(pages[1]!, "Arrington Paving · Invoice No. 1042 continued")).toBe(true);
     expect(pages[0]!.pictures).toHaveLength(2);
+    expect(pages.map((p) => [p.width, p.height, p.text, p.pictures])).toEqual(here.map((p) => [p.width, p.height, p.text, p.pictures]));
     expect(stored.asked.sort()).toEqual([`${COMPANY_ID}/letterhead/${TOP}.png`, `${COMPANY_ID}/letterhead/${BOTTOM}.png`].sort());
   }, 60_000);
 

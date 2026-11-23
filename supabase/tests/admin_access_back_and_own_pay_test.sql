@@ -29,6 +29,10 @@ $$;
 create function t1122a.password_ok(p_company uuid, p_target uuid) returns void language sql security definer set search_path = '' as $$
   select public.admin_grant_allow(auth.uid(), p_company, p_target)
 $$;
+-- A member's pay rate, as saved: the browser's role doesn't read the column (20261017000800_pay_rate_privacy.sql).
+create function t1122a.rate(p_company uuid, p_user uuid) returns numeric language sql stable security definer set search_path = '' as $$
+  select m.labor_rate from public.memberships m where m.company_id = p_company and m.user_id = p_user
+$$;
 grant execute on all functions in schema t1122a to authenticated, service_role;
 
 \set olive '11220000-0000-4000-8000-000000000201'
@@ -122,12 +126,11 @@ select t1122a.as_user(:'ari');
 select t1122a.check(t1122a.error_of(format('update public.memberships set labor_rate = 99 where company_id = %L and user_id = %L', :'co', :'ari'))
     = '42501: Ask an owner to change your own role, access or pay', 'an admin can''t change their own pay rate');
 update public.memberships set labor_rate = 31 where company_id = :'co' and user_id = :'opal';
-select t1122a.check((select labor_rate = 31 from public.memberships where company_id = :'co' and user_id = :'opal'), 'but sets the office''s, as before');
+select t1122a.check(t1122a.rate(:'co', :'opal') = 31, 'but sets the office''s, as before');
 select t1122a.as_user(:'olive');
 update public.memberships set labor_rate = 45 where company_id = :'co' and user_id = :'olive';
 update public.memberships set labor_rate = 40 where company_id = :'co' and user_id = :'ari';
-select t1122a.check((select labor_rate = 45 from public.memberships where company_id = :'co' and user_id = :'olive')
-    and (select labor_rate = 40 from public.memberships where company_id = :'co' and user_id = :'ari'),
+select t1122a.check(t1122a.rate(:'co', :'olive') = 45 and t1122a.rate(:'co', :'ari') = 40,
   'the owner sets their own and an admin''s');
 commit;
 
@@ -174,5 +177,5 @@ rollback;
 -- The server sets anyone's.
 update public.memberships set labor_rate = 50 where company_id = :'co' and user_id = :'ari';
 update public.pay_rates set rate = 55 where id = :'opal_rate';
-select t1122a.check((select labor_rate = 50 from public.memberships where company_id = :'co' and user_id = :'ari') and (select rate = 55 from public.pay_rates where id = :'opal_rate'),
+select t1122a.check(t1122a.rate(:'co', :'ari') = 50 and (select rate = 55 from public.pay_rates where id = :'opal_rate'),
   'and the server sets anyone''s');

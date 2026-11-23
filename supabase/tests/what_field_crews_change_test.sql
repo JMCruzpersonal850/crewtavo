@@ -217,7 +217,13 @@ insert into public.equipment_logs (company_id, equipment_id, kind, done_on, note
 insert into public.job_materials (company_id, job_id, name, quantity, unit) values (:'co', :'job', 'Seed', 1, 'bag') returning id as gus_mat \gset
 insert into public.messages (company_id, client_id, channel, direction, body) values (:'co', :'client', 'note', 'internal', 'Gus''s note') returning id as gus_note \gset
 commit;
-insert into public.chat_channels (company_id, name) values (:'co', 'mow-crew') returning id as channel \gset
+-- Chat on (the owner turns it on, as in Apps), and the Mow crew's own channel, which its crew sees.
+begin;
+set local role authenticated;
+select t1122f.as_user(:'olive');
+select public.chat_set_enabled(:'co', true);
+commit;
+select id as channel from public.chat_channels where company_id = :'co' and crew_id = :'crew' \gset
 insert into public.chat_messages (company_id, channel_id, author_id, body) values (:'co', :'channel', :'olive', 'Rain tomorrow') returning id as post \gset
 insert into public.chat_reactions (company_id, channel_id, message_id, user_id, kind) values (:'co', :'channel', :'post', :'cy', 'seen'), (:'co', :'channel', :'post', :'gus', 'seen');
 -- Gus leaves the team.

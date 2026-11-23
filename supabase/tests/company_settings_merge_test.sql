@@ -73,7 +73,7 @@ select t_csm.check((select (public.company_settings(id) ->> 'payment_terms_days'
 select t_csm.check((select public.company_settings(id) -> 'branding' = jsonb_build_object('color', '#3b7d23', 'logo', :'logo')
   and public.company_settings(id) -> 'clock' = '{"record_location": false, "breaks": "short_paid", "remind_after_hours": 10}' from public.companies where id = :'co'),
   'an object is merged into the one saved: the logo and the clock''s other settings stay');
-select t_csm.check((select (c.settings - array['payment_terms_days', 'minimum_charge', 'branding', 'clock', 'late_fee', 'weather_rules'])
+select t_csm.check((select (public.company_settings(c.id) - array['payment_terms_days', 'minimum_charge', 'branding', 'clock', 'late_fee', 'weather_rules'])
   = (b.settings - array['payment_terms_days', 'minimum_charge', 'branding', 'clock', 'late_fee', 'weather_rules']) from public.companies c, before b where c.id = :'co'),
   'and nothing else changes');
 select public.merge_company_settings(:'co', '{"late_fee": null}');

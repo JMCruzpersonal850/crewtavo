@@ -28,14 +28,14 @@ describe("moving where Crewtavo's links point", () => {
     const html = render(createElement(ChooseAddress, { overview: OVERVIEW, onDone: () => undefined }));
     expect(html).toContain("Choose your address");
     expect(html).toContain("Your Crewtavo password");
-    expect(html).toContain('autocomplete="current-password"');
+    expect(html).toMatch(/<input[^>]*type="password"[^>]*autoComplete="current-password"[^>]*required=""/);
   });
 
   it("and with a Railway project token", () => {
     const html = render(createElement(RailwayTokenForm, { tokensUrl: null }));
     expect(html).toContain("Project token");
     expect(html).toContain("Your Crewtavo password");
-    expect(html).toContain('autocomplete="current-password"');
+    expect(html).toMatch(/<input[^>]*type="password"[^>]*autoComplete="current-password"[^>]*required=""/);
   });
 
   it("asks once Log in with Railway is pressed, before Railway's screen opens", () => {

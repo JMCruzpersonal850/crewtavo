@@ -1611,22 +1611,30 @@ describe("when a crew on its way should arrive", () => {
   const NOW = Date.parse("2026-10-17T15:00:00Z");
   const home = { lat: 37.13, lng: -80.41 };
   const visit = { scheduled_on: "2026-10-17", crew_id: "crew-1", property: home };
-  /** The visit, the company (25 mph) and the crew's last finished visit that day (`previous`). */
+  /**
+   * The visit, the company (25 mph, through company_settings(): the browser's role doesn't read the
+   * column) and the crew's last finished visit that day (`previous`).
+   */
   const world = (previous: unknown, own: object = visit) =>
-    fakeDb((q) => {
-      if (verb(q) === "update") return { data: [{ id: "visit-1", scheduled_on: "2026-10-17", starts_at: null, crew_id: "crew-1", status: "en_route" }] };
-      if (q.table === "companies") return { data: { settings: { schedule: { speed_mph: 25 } } } };
-      return { data: call(q, "neq") ? previous : { status: "scheduled", completed_at: null, ...own } };
-    });
+    fakeDb(
+      (q) => {
+        if (verb(q) === "update") return { data: [{ id: "visit-1", scheduled_on: "2026-10-17", starts_at: null, crew_id: "crew-1", status: "en_route" }] };
+        return { data: call(q, "neq") ? previous : { status: "scheduled", completed_at: null, ...own } };
+      },
+      (fn, args) => (fn === "company_settings" && args.p_company === COMPANY ? { data: { schedule: { speed_mph: 25 } } } : {}),
+    );
   const minutesTo = (at: string | null) => (at ? (Date.parse(at) - NOW) / 60_000 : null);
 
   it("is the drive from where the phone was, timed as routes time drives", async () => {
-    const { db, queries } = world(null);
+    const { db, queries, rpcs } = world(null);
     const phone = { lat: 37.18, lng: -80.41 };
     const at = await arrivalTime(db, COMPANY, "visit-1", phone, "u1", NOW);
     expect(minutesTo(at)).toBeCloseTo(driveBetween(phone, home, 25).minutes, 3);
     expect(etaWords(at, NOW)).toBe(" and should arrive in about 10 minutes");
     expect(queries.some((q) => call(q, "neq"))).toBe(false);
+    // The speed is read as the crew member reads the settings, not from the column.
+    expect(rpcs).toEqual([{ fn: "company_settings", args: { p_company: COMPANY } }]);
+    expect(queries.some((q) => q.table === "companies")).toBe(false);
   });
 
   it("without the phone's place, is the drive from the crew's last visit finished that day", async () => {
