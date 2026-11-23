@@ -14,7 +14,7 @@ import { isPersonalMailDomain, isPlaceholderEmail } from "@crewtavo/core/email";
 import type { Env } from "../env";
 import { decryptJson } from "./crypto";
 import { reportError } from "./monitoring";
-import { smtpSend, SmtpError, type SmtpSettings } from "./smtp";
+import { smtpReach, smtpSend, SmtpError, type SmtpReach, type SmtpSettings } from "./smtp";
 import { adminClient } from "./supabase";
 import { companyTwilio, postMessage, twilioFor, type TwilioAccount } from "./twilio";
 
@@ -136,15 +136,18 @@ const smtpOf = (settings: MailboxSettings, secret: MailboxSecret): SmtpSettings 
   host: settings.host!, port: settings.port!, security: settings.security ?? "tls", username: settings.username!, password: secret.password ?? "",
 });
 
-/** Send through a mailbox's settings (also used by Settings → Email to test before saving). */
-export async function sendWithMailbox(settings: MailboxSettings, secret: MailboxSecret, message: EmailMessage): Promise<SendResult> {
+/**
+ * Send through a mailbox's settings (also used by Settings → Email to test before saving). `reach`
+ * is smtpReach(env): a mail server on a private network only when the server allows that one.
+ */
+export async function sendWithMailbox(settings: MailboxSettings, secret: MailboxSecret, message: EmailMessage, reach: SmtpReach = "public"): Promise<SendResult> {
   const fromName = settings.from_name || message.fromName || null;
   if (settings.kind === "resend") {
     return resendSend(secret.api_key ?? "", fromAddress(fromName, settings.from_email), message);
   }
   const smtp = smtpOf(settings, secret);
   try {
-    const { id } = await smtpSend(smtp, { from: { name: fromName, email: settings.from_email }, to: message.to, subject: message.subject, text: message.text, html: message.html, replyTo: message.replyTo, headers: message.headers });
+    const { id } = await smtpSend(smtp, { from: { name: fromName, email: settings.from_email }, to: message.to, subject: message.subject, text: message.text, html: message.html, replyTo: message.replyTo, headers: message.headers }, undefined, reach);
     return { sent: true, id };
   } catch (error) {
     if (error instanceof SmtpError) return { sent: false, reason: error.message };
@@ -160,7 +163,7 @@ export async function checkMailbox(env: Env, companyId: string, mailbox: Mailbox
   if (mailbox.settings.kind !== "smtp") return true;
   let result: SendResult = { sent: true };
   try {
-    await smtpSend(smtpOf(mailbox.settings, mailbox.secret), null);
+    await smtpSend(smtpOf(mailbox.settings, mailbox.secret), null, undefined, smtpReach(env));
   } catch (error) {
     if (!(error instanceof SmtpError)) throw error;
     result = { sent: false, reason: error.message };
@@ -213,7 +216,7 @@ export async function sendEmail(env: Env, message: EmailMessage, companyId?: str
   if (companyId) {
     const mailbox = await loadMailbox(env, companyId).catch(() => null);
     if (mailbox && (!options.adminAccount || (await mailboxOwnerSet(env, companyId)))) {
-      const result = await sendWithMailbox(mailbox.settings, mailbox.secret, message);
+      const result = await sendWithMailbox(mailbox.settings, mailbox.secret, message, smtpReach(env));
       await noteMailboxHealth(env, companyId, mailbox, result);
       await noteSending(env, companyId, "email", result);
       return result;

@@ -257,6 +257,7 @@ lists them all).
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Bot protection on public booking and referral forms. |
 | `CREWTAVO_SCHEDULER` | Set to `off` on extra replicas of `crewtavo`, so background tasks run in one place. |
 | `CREWTAVO_VISITOR_IP` | Only when something other than Railway's edge or one web server is in front of Crewtavo: where visitors' addresses come from (see [Visitors' addresses](#visitors-addresses)). |
+| `CREWTAVO_SMTP_PRIVATE_HOSTS` | Self-hosting only, when the business sends email through a mail server on your own network (an office relay at `192.168.1.10`, a mail container beside Crewtavo): its name or address, exactly as the business types it in **Settings → Email**, separated by commas, e.g. `192.168.1.10,mail.office.lan`. Without it, Settings → Email only connects to mail servers on the internet, so nobody can use it to look around the network Crewtavo runs on; only the servers listed here are let through. |
 | `CREWTAVO_BIND` | Docker only: the address port 8080 answers on. Defaults to `127.0.0.1`, the computer itself, which is all a web server there needs; read [Visitors' addresses](#visitors-addresses) before changing it. |
 | `CREWTAVO_SENTRY_DSN` | Error tracking for the API and the web app (see below). Unset turns it off. |
 | `CREWTAVO_SENTRY_WEB_DSN` | Optional: send the web app's errors to a separate project. Defaults to `CREWTAVO_SENTRY_DSN`. |
@@ -333,7 +334,7 @@ the Sentry project's security settings so the server never infers them.
   which block SMTP): the screen walks through making a free Resend account, adding the domain and creating a
   Sending access API key, with a button to each page. Or, self-hosted or on Railway Pro, connect the business
   mailbox (Gmail, Google Workspace, Zoho, Microsoft 365, Yahoo, iCloud or any SMTP server) with an app password.
-  Crewtavo sends you a test before saving. Quotes, invoices, reminders, team invites, password resets and team
+  A mail server on your own network needs `CREWTAVO_SMTP_PRIVATE_HOSTS` (above). Crewtavo sends you a test before saving. Quotes, invoices, reminders, team invites, password resets and team
   notifications then go out from that address. (Until it's connected, invites show a link to copy and text instead.)
 - **Settings → People and Roles**: invite the team. Starter roles: General manager, Office manager
   (invoices and payroll), Operations manager, Foreman (runs their own crew, no prices) and Employee.

@@ -21,7 +21,7 @@ import { encryptJson } from "../lib/crypto";
 import { renderEmail } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson } from "../lib/http";
 import { emailConfigured, forgetMailbox, loadMailbox, mailboxOwnerSet, sendEmail, sendingWorks, sendWithMailbox, type MailboxSecret, type MailboxSettings } from "../lib/notify";
-import { smtpSend, SmtpError } from "../lib/smtp";
+import { smtpReach, smtpSend, SmtpError } from "../lib/smtp";
 import { adminClient } from "../lib/supabase";
 import { logoImage } from "../services/logo";
 import { tellOwners } from "./apps";
@@ -133,7 +133,7 @@ email.put("/email", ...requireEmailOwner, async (c) => {
     secret = { password };
     // Sign in first: a wrong password should say so plainly, before anything is saved.
     try {
-      await smtpSend({ host, port, security, username, password }, null);
+      await smtpSend({ host, port, security, username, password }, null, undefined, smtpReach(c.env));
     } catch (error) {
       const message = error instanceof SmtpError ? error.message : "Couldn't sign in to the mail server.";
       throw new HttpError(400, c.env.RAILWAY_PROJECT_ID && /^Couldn't connect/.test(message) ? message + RAILWAY_SMTP : message);
@@ -149,7 +149,7 @@ email.put("/email", ...requireEmailOwner, async (c) => {
       ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), c.var.companyId, company.settings), text: `This is a test from Crewtavo.\n\nQuotes, invoices, reminders and team notifications for ${company.name} will now be sent from ${settings.from_email}. Replies go to ${company.email || settings.from_email}.` }),
       replyTo: company.email ?? undefined,
       fromName: company.name,
-    });
+    }, smtpReach(c.env));
     if (!result.sent) throw new HttpError(400, result.reason ?? "The test email wasn't sent.");
   }
 

@@ -7,7 +7,7 @@ import dns from "node:dns";
 import net from "node:net";
 import tls from "node:tls";
 import { describe, expect, it, vi } from "vitest";
-import { privateServer, smtpSend, SmtpError, type SmtpTimeouts } from "../src/lib/smtp";
+import { privateServer, smtpReach, smtpSend, SmtpError, type SmtpReach, type SmtpTimeouts } from "../src/lib/smtp";
 
 // The client trusts the test certificate below (and only it), so certificates are still checked.
 // Each connection is given it, which works on every Node version (setting the default ones needs 22.19).
@@ -90,12 +90,12 @@ async function mailServer(options: { afterStartTls?: string; authDelayMs?: numbe
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as net.AddressInfo).port;
-  const send = (timeouts?: SmtpTimeouts) =>
+  const send = (timeouts?: SmtpTimeouts, reach: SmtpReach = "any") =>
     smtpSend(
       { host: "localhost", port, security: "starttls", username: "office@acme.example", password: "app-password" },
       { from: { name: "Acme", email: "office@acme.example" }, to: "ana@example.com", subject: "Your quote", text: "Hello" },
       timeouts,
-      "any",
+      reach,
     ).finally(() => server.close());
   return { state, send };
 }
@@ -166,6 +166,50 @@ describe("which mail servers a mailbox reaches", () => {
       callback(null, [{ address: "172.18.0.3", family: 4 }])) as unknown as typeof dns.lookup);
     try {
       const error = await smtpSend(settings("db"), null).catch((e: unknown) => e);
+      expect((error as SmtpError).message).toBe(privateServer("db"));
+      expect(lookup).toHaveBeenCalled();
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  it("reads the private mail servers the server allows exactly as listed, and none when unset", () => {
+    expect(smtpReach({})).toBe("public");
+    expect(smtpReach({ CREWTAVO_SMTP_PRIVATE_HOSTS: " , " })).toBe("public");
+    expect(smtpReach({ CREWTAVO_SMTP_PRIVATE_HOSTS: " 192.168.1.10, Mail.Office.LAN.\n[fd00::25] " })).toEqual({ privateHosts: ["192.168.1.10", "mail.office.lan", "fd00::25"] });
+  });
+
+  it("sends through a private mail server the server allows (CREWTAVO_SMTP_PRIVATE_HOSTS)", async () => {
+    const { state, send } = await mailServer();
+    // Written as someone might type it; the mailbox says "localhost".
+    expect((await send(undefined, smtpReach({ CREWTAVO_SMTP_PRIVATE_HOSTS: "mail.office.lan, LOCALHOST." }))).id).toMatch(/@acme\.example>$/);
+    expect(state.messages).toBe(1);
+  });
+
+  it("still refuses every other private server when some are allowed, by name, by address, or by where a name leads", async () => {
+    const reach = smtpReach({ CREWTAVO_SMTP_PRIVATE_HOSTS: "192.168.1.10,localhost" });
+    let reached = 0;
+    const server = net.createServer((socket) => {
+      reached++;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      // localhost is allowed, but not its address written out, nor the rest of the network.
+      for (const host of ["127.0.0.1", "10.0.0.5", "192.168.1.11", "169.254.169.254", "auth.railway.internal"]) {
+        const error = await smtpSend(settings(host, port), null, undefined, reach).catch((e: unknown) => e);
+        expect((error as SmtpError).message, host).toBe(privateServer(host));
+      }
+      expect(reached).toBe(0);
+    } finally {
+      server.close();
+    }
+    const lookup = vi.spyOn(dns, "lookup").mockImplementation(((_host: string, _options: unknown, callback: (error: null, addresses: Array<{ address: string; family: number }>) => void) =>
+      callback(null, [{ address: "192.168.1.10", family: 4 }])) as unknown as typeof dns.lookup);
+    try {
+      // A name that isn't listed is checked as it's looked up, even when it leads to an allowed address.
+      const error = await smtpSend(settings("db"), null, undefined, reach).catch((e: unknown) => e);
       expect((error as SmtpError).message).toBe(privateServer("db"));
       expect(lookup).toHaveBeenCalled();
     } finally {
