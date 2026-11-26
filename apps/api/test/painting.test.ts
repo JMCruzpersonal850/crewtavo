@@ -3,19 +3,41 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 
 // Stand-ins for the signed-in person's Supabase client and the service-role client, as paving's
-// tests use: tables of rows that eq-filter, with insert adding rows.
+// tests use: tables of rows that eq-filter, with insert adding rows. Phase 2 also updates,
+// deletes and reads single rows (products, packages, quote options), so the stand-in does those.
 type Row = Record<string, unknown>;
-const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, rpcs: [] as Array<[string, unknown]> }));
+const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, rpcs: [] as Array<[string, unknown]>, seq: 0 }));
 vi.mock("../src/lib/supabase", () => {
   const client = () => ({
     auth: { getClaims: async () => ({ data: { claims: { sub: "viewer" } }, error: null }) },
     rpc: async (name: string, args: unknown) => (state.rpcs.push([name, args]), { data: true, error: null }),
     from: (table: string) => {
       const filters: Array<(row: Row) => boolean> = [];
+      let mode: "select" | "update" | "delete" = "select";
+      let patch: Row | null = null;
+      const inserted: Row[] = [];
       const rows = () => (state.tables[table] ?? []).filter((row) => filters.every((keep) => keep(row)));
-      const add = (list: Row | Row[]) => {
-        state.tables[table] = [...(state.tables[table] ?? []), ...[list].flat()];
-        return Promise.resolve({ data: null, error: null });
+      const execute = (): Row[] => {
+        if (inserted.length) return inserted;
+        if (mode === "update" && patch) {
+          const hit = rows();
+          for (const row of hit) Object.assign(row, patch);
+          return hit;
+        }
+        if (mode === "delete") {
+          const gone = new Set(rows());
+          state.tables[table] = (state.tables[table] ?? []).filter((row) => !gone.has(row));
+          return [];
+        }
+        return rows();
+      };
+      const doInsert = (list: Row | Row[]) => {
+        for (const row of [list].flat()) {
+          const full = { id: `00000000-0000-4000-8000-${String(++state.seq).padStart(12, "0")}`, ...row };
+          state.tables[table] = [...(state.tables[table] ?? []), full];
+          inserted.push(full);
+        }
+        return builder;
       };
       const builder: Record<string, unknown> = {
         select: () => builder,
@@ -25,10 +47,16 @@ vi.mock("../src/lib/supabase", () => {
         neq: (column: string, value: unknown) => (filters.push((row) => row[column] !== value), builder),
         in: (column: string, values: unknown[]) => (filters.push((row) => values.includes(row[column])), builder),
         not: () => builder,
-        insert: add,
-        upsert: add,
-        maybeSingle: () => Promise.resolve({ data: rows()[0] ?? null, error: null }),
-        then: (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve({ data: rows(), error: null }).then(resolve, reject),
+        insert: doInsert,
+        upsert: doInsert,
+        update: (next: Row) => ((mode = "update"), (patch = next), builder),
+        delete: () => ((mode = "delete"), builder),
+        maybeSingle: () => Promise.resolve({ data: execute()[0] ?? null, error: null }),
+        single: () => {
+          const hit = execute();
+          return Promise.resolve(hit.length === 1 ? { data: hit[0], error: null } : { data: null, error: { message: "not exactly one row" } });
+        },
+        then: (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve({ data: execute(), error: null }).then(resolve, reject),
       };
       return builder;
     },
@@ -48,8 +76,13 @@ const env = {
 } as Env;
 const PAINTER = "00000000-0000-4000-8000-0000000000c1";
 const LANDSCAPER = "00000000-0000-4000-8000-0000000000c2";
-const send = (companyId: string, path: string, body?: unknown) =>
-  app.request(`/api${path}`, { method: "POST", headers: { Authorization: "Bearer <redacted>", "X-Company-Id": companyId, "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) }, env);
+const QUOTE = "00000000-0000-4000-8000-0000000000e1";
+const SVC_WALLS = "00000000-0000-4000-8000-000000000051";
+const call = (companyId: string, method: string, path: string, body?: unknown) =>
+  app.request(`/api${path}`, { method, headers: { Authorization: "Bearer <redacted>", "X-Company-Id": companyId, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, env);
+const send = (companyId: string, path: string, body?: unknown) => call(companyId, "POST", path, body);
+const get = (companyId: string, path: string) => call(companyId, "GET", path);
+const put = (companyId: string, path: string, body: unknown) => call(companyId, "PUT", path, body);
 
 function company(id: string, trade_preset: string) {
   state.tables = {
@@ -58,6 +91,11 @@ function company(id: string, trade_preset: string) {
     companies: [{ id, trade_preset }],
     services: [{ company_id: id, name: "Interior walls", sort: 0 }],
     custom_field_definitions: [],
+    paint_products: [],
+    paint_packages: [],
+    quotes: [],
+    quote_line_items: [],
+    quote_options: [],
   };
 }
 
@@ -88,5 +126,116 @@ describe("painting back-fill", () => {
     expect(((await res.json()) as { error: string }).error).toMatch(/only for a painting business/);
     expect(state.tables.services).toEqual([{ company_id: LANDSCAPER, name: "Interior walls", sort: 0 }]);
     expect(state.tables.custom_field_definitions).toEqual([]);
+  });
+});
+
+describe("painting numbers (phase 2)", () => {
+  it("start at the blueprint's defaults and save per company", async () => {
+    company(PAINTER, "painting");
+    const res = await get(PAINTER, "/painting/settings");
+    expect(res.status).toBe(200);
+    const { settings } = (await res.json()) as { settings: Record<string, number> };
+    expect(settings).toEqual({ subInteriorRate: 2, subExteriorRate: 5, laborRate: 80, materialMarkupPct: 30, defaultMarginPct: 30, overheadPct: 15, warrantyReservePct: 2.5 });
+
+    const saved = await put(PAINTER, "/painting/settings", { settings: { ...settings, defaultMarginPct: 35 } });
+    expect(saved.status).toBe(200);
+    const again = (await (await get(PAINTER, "/painting/settings")).json()) as { settings: Record<string, number> };
+    expect(again.settings.defaultMarginPct).toBe(35);
+    const row = state.tables.companies.find((c) => c.id === PAINTER)!;
+    expect((row.settings as { painting: { defaultMarginPct: number } }).painting.defaultMarginPct).toBe(35);
+  });
+
+  it("refuses every painting surface to a company that isn't a painting business", async () => {
+    company(LANDSCAPER, "landscaping");
+    const attempts = [
+      get(LANDSCAPER, "/painting/settings"),
+      put(LANDSCAPER, "/painting/settings", { settings: { subInteriorRate: 2, subExteriorRate: 5, laborRate: 80, materialMarkupPct: 30, defaultMarginPct: 30, overheadPct: 15, warrantyReservePct: 2.5 } }),
+      get(LANDSCAPER, "/painting/products"),
+      get(LANDSCAPER, "/painting/packages"),
+      send(LANDSCAPER, "/painting/setup", {}),
+    ];
+    for (const res of await Promise.all(attempts)) expect(res.status).toBe(403);
+    expect(state.tables.paint_products).toEqual([]);
+    expect(state.tables.paint_packages).toEqual([]);
+  });
+});
+
+describe("painting products and packages (phase 2)", () => {
+  it("seeds the blueprint's products and Josue's real packages, once", async () => {
+    company(PAINTER, "painting");
+    const res = await send(PAINTER, "/painting/setup", {});
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ products_created: 4, packages_created: 12 });
+
+    const { products } = (await (await get(PAINTER, "/painting/products")).json()) as { products: Array<Record<string, unknown>> };
+    expect(products.find((p) => p.name === "Interior Acrylic Latex")).toMatchObject({ cost_per_gallon: 42, coverage_per_gallon: 400, markup_pct: 30 });
+    expect(products.find((p) => p.name === "ProClassic Trim")).toMatchObject({ scope: "trim", cost_per_gallon: 55 });
+
+    const { packages } = (await (await get(PAINTER, "/painting/packages")).json()) as { packages: Array<Record<string, unknown>> };
+    expect(packages).toHaveLength(12);
+    const t1Better = packages.find((p) => p.set_name === "Interior Painting: Standard / Premium / Ultimate" && p.tier === "better")!;
+    expect(t1Better).toMatchObject({ product_name: "Sherwin-Williams Duration", product_id: null, markup_pct: 15, warranty: "3-year workmanship warranty", is_default: true });
+    const extBest = packages.find((p) => p.set_name === "Exterior Painting" && p.tier === "best")!;
+    expect(extBest.warranty_months).toBe(60);
+    expect(extBest.product_id).toBeTruthy(); // Duration Exterior has a blueprint cost, so Best links to it.
+    expect(extBest.highlights).toContain("Free annual touch-up visit");
+    const t5Better = packages.find((p) => String(p.set_name).includes("(Standard Package)") && p.tier === "better")!;
+    expect(t5Better.is_enabled).toBe(false); // A tier Lead Control has off seeds off.
+
+    const again = await send(PAINTER, "/painting/setup", {});
+    expect(await again.json()).toEqual({ products_created: 0, packages_created: 0 });
+  });
+
+  it("adds, changes and removes a product", async () => {
+    company(PAINTER, "painting");
+    const made = await send(PAINTER, "/painting/products", { name: "Emerald Exterior", scope: "exterior", cost_per_gallon: 62, markup_pct: 30, coverage_per_gallon: 350 });
+    expect(made.status).toBe(201);
+    const { product } = (await made.json()) as { product: { id: string } };
+    const changed = await put(PAINTER, `/painting/products/${product.id}`, { name: "Emerald Exterior", scope: "exterior", cost_per_gallon: 64, markup_pct: 30, coverage_per_gallon: 350 });
+    expect(changed.status).toBe(200);
+    expect(state.tables.paint_products.find((p) => p.id === product.id)).toMatchObject({ cost_per_gallon: 64 });
+    const removed = await call(PAINTER, "DELETE", `/painting/products/${product.id}`);
+    expect(removed.status).toBe(200);
+    expect(state.tables.paint_products.some((p) => p.id === product.id)).toBe(false);
+  });
+});
+
+describe("offering paint packages on a proposal (phase 2)", () => {
+  it("turns the proposal's lines into Hub options, repriced per tier", async () => {
+    company(PAINTER, "painting");
+    await send(PAINTER, "/painting/setup", {});
+    state.tables.services.push({ id: SVC_WALLS, company_id: PAINTER, name: "Interior walls", category: "Interior", active: true, sort: 0 });
+    state.tables.quotes.push({ id: QUOTE, company_id: PAINTER, status: "draft", option_id: null });
+    state.tables.quote_line_items.push(
+      { id: "line-walls", company_id: PAINTER, quote_id: QUOTE, option_id: null, service_id: SVC_WALLS, name: "Master Bedroom walls", description: null, quantity: 740, unit: "sq ft", unit_price: 3.16, unit_cost: null, material_cost: null, taxable: true, optional: false, selected: true, formula: null, sort: 0 },
+      { id: "line-extra", company_id: PAINTER, quote_id: QUOTE, option_id: null, service_id: null, name: "Accent wall", description: null, quantity: 1, unit: "job", unit_price: 250, unit_cost: null, material_cost: null, taxable: true, optional: true, selected: true, formula: null, sort: 1 },
+    );
+    const { packages } = (await (await get(PAINTER, "/painting/packages")).json()) as { packages: Array<Record<string, unknown>> };
+    const set = packages.filter((p) => p.set_name === "Interior Painting: Standard / Premium / Ultimate");
+    const better = set.find((p) => p.tier === "better")!;
+
+    const res = await send(PAINTER, `/painting/${QUOTE}/packages`, { package_ids: set.map((p) => p.id) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { options: Array<{ paint_package_id: string }>; default_package_id: string };
+    expect(body.options).toHaveLength(3);
+    expect(body.default_package_id).toBe(better.id);
+
+    const options = state.tables.quote_options.filter((o) => o.quote_id === QUOTE);
+    expect(options).toHaveLength(3);
+    expect(options.every((o) => o.paint_package_id && !("package_id" in o && o.package_id))).toBe(true);
+    const betterOption = options.find((o) => o.paint_package_id === better.id)!;
+    expect(state.tables.quote_line_items.find((l) => l.id === "line-walls")!.option_id).toBe(betterOption.id);
+    expect(state.tables.quote_line_items.find((l) => l.id === "line-extra")!.option_id).toBeNull();
+    const goodOption = options.find((o) => o.paint_package_id === set.find((p) => p.tier === "good")!.id)!;
+    const goodWalls = state.tables.quote_line_items.find((l) => l.option_id === goodOption.id && l.name === "Master Bedroom walls")!;
+    expect(goodWalls).toBeTruthy();
+    expect(Number(goodWalls.unit_price)).not.toBe(3.16);
+    expect(Number(goodWalls.unit_price)).toBeGreaterThan(0);
+    const quote = state.tables.quotes.find((q) => q.id === QUOTE)!;
+    expect(quote.paint_package_id).toBe(better.id);
+    expect(quote.option_id).toBe(betterOption.id);
+
+    const again = await send(PAINTER, `/painting/${QUOTE}/packages`, { package_ids: [better.id] });
+    expect(again.status).toBe(409);
   });
 });

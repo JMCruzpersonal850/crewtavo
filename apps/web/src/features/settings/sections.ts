@@ -4,12 +4,13 @@
  * what it connects to, and about (where it's hosted, and its terms). Search (the command palette) lists the same ones, with the words people type when
  * they're looking for them, Jobber's too.
  */
+import { isPaintingTrade } from "@crewtavo/core/painting";
 import { featureOn } from "@/components/shell/nav";
 import type { IconName } from "@/components/ui/Icon";
 import { msg } from "@/lib/i18n";
 import { can, hasRole, isSub, type Session } from "@/lib/session";
 
-export type SettingsTab = "profile" | "company" | "payments" | "schedule" | "address" | "hosting" | "storage" | "team" | "roles" | "crews" | "sales-areas" | "prices" | "templates" | "contracts" | "checklists" | "custom-fields" | "client-notifications" | "email" | "calendars" | "assistants" | "maps" | "data" | "license" | "weather";
+export type SettingsTab = "profile" | "company" | "payments" | "schedule" | "address" | "hosting" | "storage" | "team" | "roles" | "crews" | "sales-areas" | "prices" | "templates" | "contracts" | "checklists" | "custom-fields" | "client-notifications" | "email" | "calendars" | "assistants" | "maps" | "data" | "license" | "weather" | "painting";
 export type SettingsItem = { label: string; icon: IconName; keywords: string } & ({ tab: SettingsTab } | { to: string });
 
 export function settingsGroups(session: Session): Array<{ title: string; items: SettingsItem[] }> {
@@ -42,6 +43,8 @@ export function settingsGroups(session: Session): Array<{ title: string; items: 
         canSell && { tab: "prices", label: "Price list", icon: "list", keywords: "services products prices rates costs catalog formulas materials import products & services" },
         // Roofing → Packages with Roofing installed, as roofing/data.ts packagesPath (not imported: it brings the presets into search).
         sellsPackages && { to: featureOn(session.company?.settings, "roofing_app") ? "/roofing/packages" : "/packages", label: "Packages", icon: "package", keywords: "packages bundles tiers good better best options choices pictures photos highlights warranty sell offer roof systems" },
+        // Painting is a trade, not an app: its numbers, paints and packages live here, and only a painting business ever sees the tab.
+        managesSettings && isPaintingTrade(session.company?.trade_preset) && { tab: "painting", label: "Painting", icon: "palette", keywords: "painting paint products gallons coverage markup margin subcontractor sub rates labor overhead warranty reserve packages good better best sherwin duration superpaint" },
         managesSettings && { tab: "templates", label: "Document style", icon: "palette", keywords: "estimate template quote proposal invoice template letterhead logo color font lettering terms warranty signature signatures license insurance insurer footer print pdf paper look" },
         managesSettings && { tab: "contracts", label: "Contract terms", icon: "file", keywords: "contract builder terms and conditions clauses sections disclaimers fine print agreement warranty payment right to cancel liens permits initials fill-ins legal attorney" },
         managesSettings && { tab: "custom-fields", label: "Custom fields", icon: "table", keywords: "custom fields extra fields your own fields gate code permit number unit model clients properties jobs quotes invoices" },

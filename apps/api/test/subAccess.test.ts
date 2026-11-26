@@ -255,13 +255,13 @@ const NOT_SIGNED_IN_ROUTES = [
   "GET /api/config", "GET /api/health", "GET /api/presets", "GET /api/setup", "POST /api/setup/owner",
   "POST /api/auth/email-link", "POST /api/auth/recover", ...PUBLIC_SUB_ROUTES,
   // Callbacks and webhooks, each checked its own way.
-  "GET /api/apps/:provider/callback", "GET /api/railway/callback", "POST /api/webhooks/twilio", "POST /api/webhooks/stripe", "POST /api/webhooks/stripe/:company",
+  "GET /api/apps/:provider/callback", "GET /api/railway/callback", "POST /api/webhooks/twilio", "POST /api/webhooks/stripe", "POST /api/webhooks/stripe/:company", "POST /api/webhooks/quo", "POST /api/webhooks/square/:company",
   // Pages for people without an account, behind signed links: a sub's paperwork, the Client Hub,
   // booking forms, logos, unsubscribing, reviews, referrals and calendar feeds; and the pictures on
   // estimates (letterheads, packages, price list items), each under a name never reused.
   "GET /api/public/paperwork/:token", "POST /api/public/paperwork/:token/uploads", "POST /api/public/paperwork/:token/files",
   "GET /api/hub/:token", "POST /api/hub/:token/approve", "POST /api/hub/:token/request-changes", "POST /api/hub/:token/accept-range", "POST /api/hub/:token/promo",
-  "DELETE /api/hub/:token/promo", "POST /api/hub/:token/pay", "POST /api/hub/:token/message", "GET /api/hub/:token/drawings/:file", "GET /api/hub/:token/photos/:file", "GET /api/hub/:token/visits/:file",
+  "DELETE /api/hub/:token/promo", "POST /api/hub/:token/pay", "POST /api/hub/:token/pay-square", "POST /api/hub/:token/message", "GET /api/hub/:token/drawings/:file", "GET /api/hub/:token/photos/:file", "GET /api/hub/:token/visits/:file",
   "GET /api/hub/:token/visits/:id/slots", "POST /api/hub/:token/visits/:id/change",
   "POST /api/hub/:token/request", "POST /api/hub/:token/autopay/setup", "POST /api/hub/:token/autopay/finish", "POST /api/hub/:token/autopay/confirm",
   "POST /api/hub/:token/autopay/off", "POST /api/hub/:token/tip", "POST /api/hub/:token/print-ticket", "POST /api/public/forms/:company/:form/promo", "GET /api/public/forms/:company/:form", "GET /api/public/forms/:company/:form/openings", "POST /api/public/forms/:company/:form",

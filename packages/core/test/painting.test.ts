@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { docWord, evaluateFormula, isPaintingTrade, PAINTING_TRADE, PRESETS, presetCustomFields, presetSummaries, presetWeatherRules, weatherRuleSummary } from "../src";
+import {
+  DEFAULT_PAINT_PRODUCTS,
+  DEFAULT_PAINT_SETTINGS,
+  docWord,
+  evaluateFormula,
+  isPaintingTrade,
+  paintProposalMath,
+  paintSettingsFrom,
+  PAINTING_TRADE,
+  PRESETS,
+  presetCustomFields,
+  presetSummaries,
+  presetWeatherRules,
+  productSellPerGallon,
+  weatherRuleSummary,
+  type PaintProduct,
+} from "../src";
+
+const product = (name: string): PaintProduct & { key: string } => {
+  const found = DEFAULT_PAINT_PRODUCTS.find((p) => p.name === name)!;
+  return { ...found, key: name };
+};
 
 describe("the painting preset", () => {
   const painting = PRESETS.painting;
@@ -83,5 +104,95 @@ describe("painting's gate and its word for the document", () => {
     expect(docWord("landscaping", true)).toBe("Quotes");
     expect(docWord(null)).toBe("Quote");
     expect(docWord(undefined, true)).toBe("Quotes");
+  });
+});
+
+describe("painting's numbers (from the Lead Control blueprint)", () => {
+  it("starts from Ocean Crest's settings", () => {
+    expect(DEFAULT_PAINT_SETTINGS).toEqual({ subInteriorRate: 2, subExteriorRate: 5, laborRate: 80, materialMarkupPct: 30, defaultMarginPct: 30, overheadPct: 15, warrantyReservePct: 2.5 });
+    expect(DEFAULT_PAINT_PRODUCTS.map((p) => [p.name, p.costPerGallon, p.coveragePerGallon])).toEqual([
+      ["Interior Acrylic Latex", 42, 400],
+      ["Exterior Acrylic Latex", 48, 320],
+      ["ProClassic Trim", 55, 350],
+      ["Duration Exterior", 48, 350],
+    ]);
+    expect(productSellPerGallon(DEFAULT_PAINT_PRODUCTS[0]!)).toBe(54.6);
+  });
+
+  it("reads stored settings over the defaults and ignores junk", () => {
+    expect(paintSettingsFrom(null)).toEqual(DEFAULT_PAINT_SETTINGS);
+    expect(paintSettingsFrom("nope")).toEqual(DEFAULT_PAINT_SETTINGS);
+    expect(paintSettingsFrom({ subInteriorRate: 2.25, defaultMarginPct: 24, laborRate: "80" })).toEqual({ ...DEFAULT_PAINT_SETTINGS, subInteriorRate: 2.25, defaultMarginPct: 24 });
+  });
+});
+
+describe("the painting proposal math", () => {
+  const settings = DEFAULT_PAINT_SETTINGS;
+
+  it("prices an interior room the Lead Control way (PROP-0022's master bedroom shape)", () => {
+    // 740 sq ft of wall (17 x 20 x 10 ft), 2 coats of Interior Acrylic Latex.
+    const math = paintProposalMath([{ room: "Master Bedroom", scope: "interior", quantity: 740, coats: 2, product: product("Interior Acrylic Latex") }], settings);
+    expect(math.laborCost).toBe(1480); // 740 sq ft at the $2.00 interior sub rate
+    expect(math.gallonsByProduct).toEqual({ "Interior Acrylic Latex": 4 }); // 3.7 raw, rounded up for the room
+    expect(math.materialCost).toBe(218.4); // 4 gal x $42 x 1.30 markup
+    expect(math.directCost).toBe(1698.4);
+    expect(math.overheadCost).toBe(254.76); // 15%
+    expect(math.warrantyReserveCost).toBe(42.46); // 2.5%
+    expect(math.totalCost).toBe(1995.62);
+    expect(math.price).toBe(2850.89); // cost / (1 - 30% margin)
+    expect(math.profit).toBe(855.27);
+    expect(math.marginPct).toBe(30);
+    expect(math.surfaces[0]!.unitPrice).toBe(3.85);
+  });
+
+  it("rounds gallons up per room, not once per job", () => {
+    const walls = (room: string) => ({ room, scope: "interior" as const, quantity: 100, coats: 2, product: product("Interior Acrylic Latex") });
+    const math = paintProposalMath([walls("Bedroom"), walls("Office")], settings);
+    // Half a gallon raw in each room still buys a gallon for each room.
+    expect(math.gallonsByProduct).toEqual({ "Interior Acrylic Latex": 2 });
+    expect(math.materialCost).toBe(109.2);
+    const oneRoom = paintProposalMath([{ room: "Both", scope: "interior", quantity: 200, coats: 2, product: product("Interior Acrylic Latex") }], settings);
+    expect(oneRoom.gallonsByProduct).toEqual({ "Interior Acrylic Latex": 1 });
+  });
+
+  it("prices flat-fee surfaces and employee hours without paint", () => {
+    const math = paintProposalMath(
+      [
+        { scope: "exterior", quantity: 1, flatFeePerUnit: 650 }, // a garage door
+        { scope: "interior", quantity: 4, laborHoursPerUnit: 0.35 }, // window trim, employee mode
+      ],
+      settings,
+    );
+    expect(math.laborCost).toBe(650 + 4 * 0.35 * 80);
+    expect(math.materialCost).toBe(0);
+    expect(math.gallonsByProduct).toEqual({});
+  });
+
+  it("prices an exterior room with two products (PROP-0024's stucco room shape)", () => {
+    const math = paintProposalMath(
+      [
+        { room: "House", scope: "exterior", quantity: 400, coats: 2, product: { ...product("Interior Acrylic Latex"), coveragePerGallon: 300 } },
+        { room: "House", scope: "exterior", quantity: 70, coats: 2, product: product("Duration Exterior") },
+        { room: "House", scope: "exterior", quantity: 2, flatFeePerUnit: 150 },
+        { room: "House", scope: "exterior", quantity: 90, coats: 2, product: product("Interior Acrylic Latex") },
+      ],
+      settings,
+    );
+    expect(math.laborCost).toBe(2000 + 350 + 300 + 450); // every surface at the $5.00 exterior sub rate or its fee
+    // Walls (textured, 300/gal) and the tray ceiling (400/gal) share a product in one room:
+    // 2.67 + 0.45 raw gallons round up together to 4; the trim's 0.4 raw rounds up to 1.
+    expect(math.gallonsByProduct).toEqual({ "Interior Acrylic Latex": 4, "Duration Exterior": 1 });
+    expect(math.materialCost).toBe(218.4 + 62.4);
+    expect(math.directCost).toBe(3100 + 280.8);
+    expect(math.price).toBe(5674.91); // (direct x 1.175) / (1 - 30%)
+    expect(math.marginPct).toBe(30);
+  });
+
+  it("lets the person quoting move the margin, and never divides by zero", () => {
+    const input = [{ scope: "interior" as const, quantity: 100, coats: 2, product: product("Interior Acrylic Latex") }];
+    const at24 = paintProposalMath(input, settings, 24);
+    expect(at24.marginPct).toBe(24);
+    expect(at24.price).toBeLessThan(paintProposalMath(input, settings).price);
+    expect(() => paintProposalMath(input, settings, 100)).not.toThrow();
   });
 });
