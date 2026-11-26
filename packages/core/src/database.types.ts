@@ -1324,14 +1324,14 @@ isOneToOne: false
                   ]
                 },"invoices": {
                   Row: {
-                    "amount_paid": number,"balance_due": number,"billing_month": string | null,"client_id": string,"company_id": string,"created_at": string,"created_by": string | null,"credit_amount": number,"custom_fields": NonNullable<Json>,"discount_amount": number,"due_on": string | null,"id": string,"issued_on": string,"job_id": string | null,"kind": string,"late_fee_at": string | null,"minimum_charge": number | null,"no_late_fee": boolean,"notes": string | null,"number": number | null,"owed_again_at": string | null,"past_due_notice_pending": boolean,"pay_app_number": number | null,"promo_code_id": string | null,"retainage_amount": number,"retainage_pct": number,"sent_at": string | null,"source_id": string | null,"status": string,"subject": string | null,"subtotal": number,"tax_amount": number,"tax_rate": number,"total": number,"updated_at": string,"written_off_at": string | null
+                    "amount_paid": number,"balance_due": number,"billing_month": string | null,"client_id": string,"company_id": string,"created_at": string,"created_by": string | null,"credit_amount": number,"custom_fields": NonNullable<Json>,"discount_amount": number,"due_on": string | null,"id": string,"issued_on": string,"job_id": string | null,"kind": string,"late_fee_at": string | null,"minimum_charge": number | null,"no_late_fee": boolean,"notes": string | null,"number": number | null,"owed_again_at": string | null,"past_due_notice_pending": boolean,"pay_app_number": number | null,"pay_provider": string | null,"promo_code_id": string | null,"retainage_amount": number,"retainage_pct": number,"sent_at": string | null,"source_id": string | null,"status": string,"subject": string | null,"subtotal": number,"tax_amount": number,"tax_rate": number,"total": number,"updated_at": string,"written_off_at": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount_paid"?: number,"balance_due"?: number,"billing_month"?: string | null,"client_id": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"credit_amount"?: number,"custom_fields"?: NonNullable<Json>,"discount_amount"?: number,"due_on"?: string | null,"id"?: string,"issued_on"?: string,"job_id"?: string | null,"kind"?: string,"late_fee_at"?: string | null,"minimum_charge"?: number | null,"no_late_fee"?: boolean,"notes"?: string | null,"number"?: number | null,"owed_again_at"?: string | null,"past_due_notice_pending"?: boolean,"pay_app_number"?: number | null,"promo_code_id"?: string | null,"retainage_amount"?: number,"retainage_pct"?: number,"sent_at"?: string | null,"source_id"?: string | null,"status"?: string,"subject"?: string | null,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"total"?: number,"updated_at"?: string,"written_off_at"?: string | null
+                    "amount_paid"?: number,"balance_due"?: number,"billing_month"?: string | null,"client_id": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"credit_amount"?: number,"custom_fields"?: NonNullable<Json>,"discount_amount"?: number,"due_on"?: string | null,"id"?: string,"issued_on"?: string,"job_id"?: string | null,"kind"?: string,"late_fee_at"?: string | null,"minimum_charge"?: number | null,"no_late_fee"?: boolean,"notes"?: string | null,"number"?: number | null,"owed_again_at"?: string | null,"past_due_notice_pending"?: boolean,"pay_app_number"?: number | null,"pay_provider"?: string | null,"promo_code_id"?: string | null,"retainage_amount"?: number,"retainage_pct"?: number,"sent_at"?: string | null,"source_id"?: string | null,"status"?: string,"subject"?: string | null,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"total"?: number,"updated_at"?: string,"written_off_at"?: string | null
                   }
                   Update: {
-                    "amount_paid"?: number,"balance_due"?: number,"billing_month"?: string | null,"client_id"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"credit_amount"?: number,"custom_fields"?: NonNullable<Json>,"discount_amount"?: number,"due_on"?: string | null,"id"?: string,"issued_on"?: string,"job_id"?: string | null,"kind"?: string,"late_fee_at"?: string | null,"minimum_charge"?: number | null,"no_late_fee"?: boolean,"notes"?: string | null,"number"?: number | null,"owed_again_at"?: string | null,"past_due_notice_pending"?: boolean,"pay_app_number"?: number | null,"promo_code_id"?: string | null,"retainage_amount"?: number,"retainage_pct"?: number,"sent_at"?: string | null,"source_id"?: string | null,"status"?: string,"subject"?: string | null,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"total"?: number,"updated_at"?: string,"written_off_at"?: string | null
+                    "amount_paid"?: number,"balance_due"?: number,"billing_month"?: string | null,"client_id"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"credit_amount"?: number,"custom_fields"?: NonNullable<Json>,"discount_amount"?: number,"due_on"?: string | null,"id"?: string,"issued_on"?: string,"job_id"?: string | null,"kind"?: string,"late_fee_at"?: string | null,"minimum_charge"?: number | null,"no_late_fee"?: boolean,"notes"?: string | null,"number"?: number | null,"owed_again_at"?: string | null,"past_due_notice_pending"?: boolean,"pay_app_number"?: number | null,"pay_provider"?: string | null,"promo_code_id"?: string | null,"retainage_amount"?: number,"retainage_pct"?: number,"sent_at"?: string | null,"source_id"?: string | null,"status"?: string,"subject"?: string | null,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"total"?: number,"updated_at"?: string,"written_off_at"?: string | null
                   }
                   Relationships: [
                     {
@@ -3496,6 +3496,32 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     }
                   ]
+                },"square_payments": {
+                  Row: {
+                    "amount": number,"company_id": string,"created_at": string,"currency": string,"fee_amount": number,"id": string,"idempotency_key": string | null,"invoice_id": string | null,"location_id": string | null,"square_payment_id": string | null,"status": string,"tip_amount": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount"?: number,"company_id": string,"created_at"?: string,"currency"?: string,"fee_amount"?: number,"id"?: string,"idempotency_key"?: string | null,"invoice_id"?: string | null,"location_id"?: string | null,"square_payment_id"?: string | null,"status"?: string,"tip_amount"?: number,"updated_at"?: string
+                  }
+                  Update: {
+                    "amount"?: number,"company_id"?: string,"created_at"?: string,"currency"?: string,"fee_amount"?: number,"id"?: string,"idempotency_key"?: string | null,"invoice_id"?: string | null,"location_id"?: string | null,"square_payment_id"?: string | null,"status"?: string,"tip_amount"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "square_payments_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "square_payments_company_id_invoice_id_fkey"
+      columns: ["company_id","invoice_id"]
+isOneToOne: false
+      referencedRelation: "invoices"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
                 },"stale_public_files": {
                   Row: {
                     "company_id": string,"created_at": string,"id": number,"path": string
@@ -3748,6 +3774,26 @@ isOneToOne: false
                   Relationships: [
                     {
       foreignKeyName: "unknown_texts_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"upload_links": {
+                  Row: {
+                    "company_id": string,"created_at": string,"expires_at": string,"kind": string,"max_bytes": number,"path": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"created_at"?: string,"expires_at": string,"kind": string,"max_bytes": number,"path": string
+                  }
+                  Update: {
+                    "company_id"?: string,"created_at"?: string,"expires_at"?: string,"kind"?: string,"max_bytes"?: number,"path"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "upload_links_company_id_fkey"
       columns: ["company_id"]
 isOneToOne: false
       referencedRelation: "companies"
@@ -4779,6 +4825,11 @@ isOneToOne: false
                            },
 "expire_sub_offers":
 { Args: Record<PropertyKey, never>; Returns: number
+                           },
+"expired_upload_links":
+{ Args: { "p_limit"?: number }; Returns: {
+              "company_id": string,"links": number,"paths": (string)[]
+            }[]
                            },
 "finish_automation_run":
 { Args: { "p_error"?: string,"p_id": number,"p_result": Json,"p_status": string,"p_token": string }; Returns: boolean

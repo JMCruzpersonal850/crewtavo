@@ -48,6 +48,7 @@ import { ApiError } from "@/lib/api";
 import { dateIn, formatDate, formatMoney, formatMoneyCents, setCurrency, todayIn } from "@/lib/format";
 import { sanitizeContractHtml } from "@/lib/html";
 import { ClientPortal, hubZone, MessageDialog, type ClientView, type PortalVisit } from "./ClientPortal";
+import { SquarePayForm } from "./SquarePayForm";
 import { CARD_REQUIRED } from "./HubAutopay";
 import { HubReviews } from "./HubReviews";
 import {
@@ -1672,17 +1673,32 @@ function InvoiceHub({ token, data, onChanged, printing }: { token: string; data:
                     <TipChoices percents={[0, ...TIP_PERCENTS]} base={balance} choice={tipChoice} onChoice={setTipChoice} custom={customTip} onCustom={setCustomTip} />
                   </section>
                 )}
-                {/* On a phone, kept in a bar at the bottom of the screen. */}
-                <div className="hub-bar no-print" data-pinned="">
-                  {tip > 0 && (
-                    <div className="hub-bar-total">
-                      <span>With a {formatMoneyCents(tip)} tip</span>
-                      <strong>{formatMoneyCents(balance + tip)}</strong>
+                {data.pay_provider === "square" && data.square ? (
+                  // Paid through Square: the card form is on this page, not a hosted one.
+                  <SquarePayForm
+                    square={data.square}
+                    amountCents={Math.round((balance + tip) * 100)}
+                    tip={tip}
+                    currency={(data.company as { currency?: string | null }).currency ?? "USD"}
+                    clientName={inv.client?.display_name}
+                    pay={(body) => hubFetch<{ status: string }>(`${token}/pay-square`, body)}
+                    onPaid={onChanged}
+                  />
+                ) : (
+                  <>
+                    {/* On a phone, kept in a bar at the bottom of the screen. */}
+                    <div className="hub-bar no-print" data-pinned="">
+                      {tip > 0 && (
+                        <div className="hub-bar-total">
+                          <span>With a {formatMoneyCents(tip)} tip</span>
+                          <strong>{formatMoneyCents(balance + tip)}</strong>
+                        </div>
+                      )}
+                      <Button variant="primary" size="lg" block loading={pay.isPending} onClick={() => pay.mutate()}>Pay {formatMoneyCents(balance + tip)} by card or bank</Button>
+                      <span className="hub-secure"><Icon name="lock" size={13} />Secure checkout on Stripe</span>
                     </div>
-                  )}
-                  <Button variant="primary" size="lg" block loading={pay.isPending} onClick={() => pay.mutate()}>Pay {formatMoneyCents(balance + tip)} by card or bank</Button>
-                  <span className="hub-secure"><Icon name="lock" size={13} />Secure checkout on Stripe</span>
-                </div>
+                  </>
+                )}
               </>
             ) : (
               <p className="hub-card hub-pad hub-note">To pay, contact {data.company.name}{data.company.phone ? ` at ${data.company.phone}` : ""}.</p>

@@ -55,6 +55,8 @@ export interface AppRow {
   twilio?: TwilioState | null;
   /** Quo: whose account texts go from, and the address Quo needs for incoming texts (routes/apps.ts). */
   quo?: QuoState | null;
+  /** Square: whose account client payments go through, and the address Square needs for payment updates (routes/apps.ts). */
+  square?: SquareState | null;
   /** Lob, once connected: whether its key is a test key (nothing mailed) or a live one. */
   lob?: { mode: "test" | "live" | null } | null;
   /** ChatGPT, once the company's OpenAI key is saved: the model it uses and the ones to pick from. */
@@ -108,6 +110,26 @@ export interface QuoState {
   /** The address Quo sends incoming texts to for this Crewtavo, to paste into Quo's webhook settings. */
   webhook_url: string;
   /** This Crewtavo has a public https address, which Quo needs to reach it. */
+  reachable: boolean;
+}
+
+export interface SquareState {
+  /** The company connected its own Square account; payments are taken at `location_name`. */
+  own: boolean;
+  /** Payments go through the Square account the server was set up with (the company hasn't connected its own). */
+  server: boolean;
+  /** The developer app's Application ID (not a secret: the browser's card form uses it too). */
+  application_id: string | null;
+  /** The location payments are taken at (Square's id for it, and its name). */
+  location_id: string | null;
+  location_name: string | null;
+  /** Which side of Square the token belongs to. */
+  environment: "sandbox" | "production" | null;
+  /** Clients pay with Square now (Settings → Payments, or the most recently connected provider). */
+  active: boolean;
+  /** The address Square sends payment updates to for this company, to paste into the webhook subscription. */
+  webhook_url: string;
+  /** This Crewtavo has a public https address, which Square needs to reach it. */
   reachable: boolean;
 }
 
@@ -823,6 +845,21 @@ export const APP_INFO: Record<string, AppInfo> = {
     connectsWith: "Your Quo account",
     website: "https://www.quo.com/",
     open: "/messages",
+  },
+  square: {
+    developer: "Square",
+    tagline: "Card payments through the Square you already use",
+    about:
+      "Clients pay invoices and deposits by card without leaving their client page, through your own Square account — no moving to Stripe. Connect Square with a free developer app (the same login as your Square account): paste its Application ID and access token, and Crewtavo checks them with Square before saving and reads back your locations for you to pick from. Start on the sandbox side with test cards; connect production when it's real money. Deposits, tips, the fee Square kept and payouts are recorded the same way Stripe's are, and you choose in Settings → Payments which provider clients pay with — invoices already sent keep the provider they went out with.",
+    highlights: [
+      { icon: "card", title: "Pay in the page", text: "The card form sits on the client's invoice page; the card never touches Crewtavo's server." },
+      { icon: "dollar", title: "Deposits and tips", text: "A quote's deposit is paid the same way, and a tip rides as its own amount, as Square keeps it." },
+      { icon: "check", title: "Sandbox first", text: "Test the whole flow with Square's test cards before a real dollar moves." },
+    ],
+    access: ["Take card payments at the location you pick", "Read your locations, to check the token and offer the picker", "Receive payment updates at the webhook you make in Square", "Nothing else: it can't see your Square invoices, items or bank account"],
+    connectsWith: "Your Square account",
+    website: "https://squareup.com/",
+    open: "/invoices",
   },
   sveltia: {
     developer: "Sveltia",

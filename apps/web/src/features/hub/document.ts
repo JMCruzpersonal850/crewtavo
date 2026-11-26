@@ -294,6 +294,10 @@ export interface InvoiceView {
   processing?: boolean;
   /** Made in Stripe, so it's paid exactly as billed there (no promo codes). */
   from_stripe?: boolean;
+  /** The provider this invoice is paid with (locked on it when it was sent). Older servers leave it out: Stripe's flow. */
+  pay_provider?: "stripe" | "square" | null;
+  /** When it's paid through Square: what the card form on this page needs. The token never appears here. */
+  square?: { application_id: string | null; location_id: string | null; environment: "sandbox" | "production" | null } | null;
   /** It has its job's promo code on a line already, so no other code goes on it. Older servers leave it out. */
   promo_line?: boolean;
   /** Whether a tip can be added (the business has tips on, and the invoice wasn't made in Stripe). Off, no tip choice is shown anywhere. */

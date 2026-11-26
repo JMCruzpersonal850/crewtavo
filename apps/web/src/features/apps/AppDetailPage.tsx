@@ -56,6 +56,7 @@ import { SCREENSHOTS, type Screenshot } from "./screenshots";
 import { StripePanel } from "./StripePanel";
 import { TeamChatPanel, useTeamChatSwitch } from "./TeamChatPanel";
 import { QuoPanel } from "./QuoPanel";
+import { SquarePanel } from "./SquarePanel";
 import { TwilioPanel } from "./TwilioPanel";
 import { useTradeAppSwitch } from "./tradeApps";
 import { WebsiteFormsPanel, useWebsiteFormsSwitch } from "./WebsiteFormsPanel";
@@ -105,7 +106,7 @@ function statusOf(app: AppRow, installed: boolean): { label: string; tone: Tone 
 
 /** Signed in or a key added: what /apps/:id/disconnect takes away. Stripe or Twilio set up for the server isn't the company's to remove. */
 const hasAccount = (app: AppRow) =>
-  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own) && !(app.id === "twilio" && !app.twilio?.own) && !(app.id === "quo" && !app.quo?.own);
+  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own) && !(app.id === "twilio" && !app.twilio?.own) && !(app.id === "quo" && !app.quo?.own) && !(app.id === "square" && !app.square?.own);
 
 /** Where Open goes: a page in Crewtavo, or the app itself. */
 const openTarget = (app: AppRow, info: AppInfo) => (app.id === "stripe" && !app.stripe?.own ? "/payouts" : (info.open ?? info.website));
@@ -356,7 +357,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
           {!phase && <div><dt>Status</dt><dd><StatusPill label={status.label} tone={status.tone} /></dd></div>}
           <div><dt>Made by</dt><dd>{info.developer}</dd></div>
           {app.category !== "Team" && <div><dt>Category</dt><dd>{categoryName(app.category)}</dd></div>}
-          {installed && ((app.id === "stripe" && !app.stripe?.own) || (app.id === "twilio" && !app.twilio?.own) || (app.id === "quo" && !app.quo?.own)) && <div><dt>Account</dt><dd>Set up for this server</dd></div>}
+          {installed && ((app.id === "stripe" && !app.stripe?.own) || (app.id === "twilio" && !app.twilio?.own) || (app.id === "quo" && !app.quo?.own) || (app.id === "square" && !app.square?.own)) && <div><dt>Account</dt><dd>Set up for this server</dd></div>}
         </dl>
       </header>
 
@@ -451,6 +452,8 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
               <TwilioPanel app={app} onChanged={refresh} />
             ) : app.id === "quo" ? (
               <QuoPanel app={app} onChanged={refresh} />
+            ) : app.id === "square" ? (
+              <SquarePanel app={app} onChanged={refresh} />
             ) : app.id === "lob" ? (
               <LobPanel app={app} onChanged={refresh} />
             ) : app.id === "chatgpt" ? (
@@ -479,7 +482,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
             {app.auth === "link" && <LinkCalendarsPanel app={app.id} appName={app.name} steps={info.steps} />}
             {(app.id === "anthropic" || app.id === "chatgpt") && <AiServiceChoice ai={ai} onChanged={refresh} />}
             {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
-            {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "quo" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
+            {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "quo" && app.id !== "square" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
             {app.id === "chatgpt" && app.status !== "disconnected" && <OpenAiModelCard app={app} onChanged={refresh} />}
             {app.id === "chatgpt" && <ChatGptPlanCard where="app" />}
             {app.id === "chatgpt" && <TeamPlansSwitch />}
@@ -487,6 +490,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
             {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
             {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
             {app.id === "quo" && <QuoPanel app={app} onChanged={refresh} />}
+            {app.id === "square" && <SquarePanel app={app} onChanged={refresh} />}
             {app.id === "website_analytics" && <AnalyticsPanel />}
             {app.id === "website_forms" && <WebsiteFormsPanel />}
             {app.id === "careers" && <WebsiteFormsPanel kind="careers" />}
@@ -656,6 +660,7 @@ function uninstallBody(app: AppRow, counts: { calendars: number; teamPlans?: boo
   }
   if (app.id === "twilio") return `Texts stop going out from your number, and your Twilio account's keys are removed from Crewtavo. Nothing already sent is deleted, and your Twilio account isn't changed. ${again}`;
   if (app.id === "quo") return `Texts stop going out from your Quo number, and your Quo API key is removed from Crewtavo. Nothing already sent is deleted, and your Quo account isn't changed — the webhook in Quo can be deleted there too. ${again}`;
+  if (app.id === "square") return `Clients can't pay through Square anymore, and your Square access token is removed from Crewtavo. Payments already taken stay recorded, and your Square account isn't changed — the webhook subscription in Square can be deleted there too. Invoices already sent to be paid through Square keep pointing at it until they're paid or resent. ${again}`;
   if (app.auth === "site") return `Website comes out of the menu. Your website, its editor and everything on it stay as they are. ${again}`;
   return `Crewtavo stops using it right away. Nothing already here is deleted. ${again}`;
 }
