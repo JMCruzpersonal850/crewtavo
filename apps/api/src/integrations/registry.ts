@@ -28,7 +28,7 @@ import type { Env } from "../env";
 import { DIALOG, GRAPH_VERSION, META_SCOPES } from "./metaConfig";
 
 /** Apps with a row in integrations (and maybe integration_secrets). */
-export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "anthropic" | "chatgpt" | "fal" | "railway" | "abc_supply" | "lob" | "open_meteo";
+export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "twilio" | "quo" | "anthropic" | "chatgpt" | "fal" | "railway" | "abc_supply" | "lob" | "open_meteo";
 /** Apps whose calendars are added by link. They're also the calendar_sources.app values (with google_calendar). */
 export type LinkApp = "zoho_calendar" | "outlook_calendar" | "apple_calendar" | "ics_calendar";
 export type AppId = Provider | LinkApp | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "snow" | "sveltia";
@@ -286,6 +286,18 @@ export const CATALOG: CatalogEntry[] = [
     docs: "https://www.twilio.com/docs/messaging",
     // A company connects its own Twilio account (its Account SID, Auth Token and number: lib/twilio.ts);
     // a deployment can also set one for everyone.
+    available: () => true,
+  },
+  {
+    id: "quo",
+    name: "Quo",
+    category: "Messaging",
+    description: "Text messages from your Quo number: reminders, on-my-way texts and two-way conversations.",
+    auth: "api_key",
+    docs: "https://www.quo.com/docs",
+    // A company connects its own Quo account (its API key and the number texts go from: lib/quo.ts);
+    // a deployment can also set one for everyone. Quo was called OpenPhone; its API still lives at
+    // api.openphone.com.
     available: () => true,
   },
   {
