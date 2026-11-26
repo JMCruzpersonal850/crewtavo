@@ -15,6 +15,7 @@ import { renderEmail } from "../lib/email";
 import { endConnection, teamConnections } from "../lib/assistants";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
 import { emailReady, sendEmail, sendingWorks } from "../lib/notify";
+import { checkQuo, forgetQuo, QuoProblem, serverQuo, type QuoSettings } from "../lib/quo";
 import { checkTwilio, companyTwilio, forgetTwilio, serverTwilio, setSmsWebhook, TwilioProblem, type TwilioSettings } from "../lib/twilio";
 import { adminClient, type Db } from "../lib/supabase";
 import { aiChoice, askerOf, complete, countAiAsk, teamPlans, type OpenAiSettings } from "../services/ai";
@@ -119,6 +120,13 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   if (!twilioRow) byProvider.delete("twilio");
   if (serverTexts) byProvider.set("twilio", { provider: "twilio", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
   const twilio = twilioState(appUrl(c), twilioRow ? (twilioRow.settings as unknown as TwilioSettings) : null, serverTexts);
+  // Quo: the company's own account (its API key and the number texts go from), or the server's for
+  // companies that haven't connected theirs.
+  const quoRow = integrations.find((r) => r.provider === "quo" && r.status !== "disconnected");
+  const serverQuoTexts = !quoRow && Boolean(serverQuo(c.env));
+  if (!quoRow) byProvider.delete("quo");
+  if (serverQuoTexts) byProvider.set("quo", { provider: "quo", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
+  const quo = quoState(appUrl(c), quoRow ? (quoRow.settings as unknown as QuoSettings) : null, serverQuoTexts);
   // Lob: whether its key is a test key (cards made but never mailed) or a live one.
   const lobRow = integrations.find((r) => r.provider === "lob" && r.status !== "disconnected");
   const lob = lobRow ? { mode: (lobRow.settings as unknown as LobSettings | null)?.mode ?? null } : null;
@@ -161,6 +169,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.id === "stripe" ? { ...(stripe ? { stripe } : {}), owners_emailed: ownersEmailed } : {}),
         ...(entry.id === "abc_supply" && abc ? { supplier: abc } : {}),
         ...(entry.id === "twilio" ? { twilio } : {}),
+        ...(entry.id === "quo" ? { quo } : {}),
         ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
@@ -175,6 +184,27 @@ type IntegrationRow = { status: string; settings: unknown } | undefined;
 
 /** Where Twilio sends a number's incoming texts for this Crewtavo. */
 const twilioWebhook = (base: string) => `${base}/api/webhooks/twilio`;
+
+/** Where Quo sends a number's incoming texts for this Crewtavo. */
+const quoWebhook = (base: string) => `${base}/api/webhooks/quo`;
+
+/**
+ * Quo on its app page: whether texts go from the company's own account (`own`, with its number)
+ * or the server's (`server`), and the address to give Quo for incoming texts. Unlike Twilio,
+ * Crewtavo can't set the address on the number itself: the person connecting pastes it into Quo
+ * (Settings → Webhooks), so there's no "webhook is set" to read back. Quo only reaches a public
+ * https address.
+ */
+function quoState(base: string, own: QuoSettings | null, server: boolean) {
+  return {
+    own: Boolean(own),
+    server,
+    from_number: own?.from_number ?? null,
+    phone_number_id: own?.phone_number_id ?? null,
+    webhook_url: quoWebhook(base),
+    reachable: base.startsWith("https://"),
+  };
+}
 
 /**
  * Twilio on its app page: whether texts go from the company's own account (`own`, with its number)
@@ -426,6 +456,7 @@ apps.post("/apps/:provider/disconnect", requireUser, requireCompany(ADMINS, "app
   if (who && was) runInBackground(c, noteStripeChange(c, who, { before: was.label, after: null, from: was.id, to: null, moved: null }));
   // Texts go from the server's account again, if it has one, from the next one on.
   if (provider === "twilio") forgetTwilio(c.var.companyId);
+  if (provider === "quo") forgetQuo(c.var.companyId);
   return c.json({ provider, status: "disconnected", ...(provider === "google_business" ? { removed } : {}), ...(shared ? { revoked: false } : {}) });
 });
 
@@ -694,6 +725,67 @@ apps.post("/apps/twilio/webhook", requireUser, requireCompany(ADMINS, "apps"), a
   const { error } = await admin.from("integrations").update({ settings: asJson(next) }).match({ company_id: c.var.companyId, provider: "twilio" });
   if (error) throw dbError(error);
   return c.json({ twilio: twilioState(base, next, false) });
+});
+
+/**
+ * Quo: check an API key and list the workspace's numbers, for the connect form's number picker.
+ * Nothing is saved: the key is checked again when the number picked is connected (below).
+ */
+apps.post("/apps/quo/check", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(c, z.object({ api_key: z.string().trim().min(1, "Paste your Quo API key.").max(200) }));
+  try {
+    const checked = await checkQuo(body);
+    return c.json({ numbers: checked.numbers });
+  } catch (error) {
+    if (error instanceof QuoProblem) throw new HttpError(400, error.message);
+    throw error;
+  }
+});
+
+/**
+ * Quo: the company's own account, so texting works from the Quo number it already has. The API
+ * key is checked with Quo first (its numbers are read, which costs nothing) and the number picked
+ * has to be one of them. The key is kept encrypted and never returned. The webhook signing key is
+ * the person's to give, from the webhook they make in Quo for incoming texts: with it, Crewtavo
+ * checks that the texts that arrive were really sent by Quo.
+ */
+apps.put("/apps/quo/account", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(
+    c,
+    z.object({
+      api_key: z.string().trim().min(1, "Paste your Quo API key.").max(200),
+      phone_number_id: z.string().trim().min(1, "Pick the number texts go from.").max(60),
+      webhook_key: z.string().trim().max(200).optional(),
+    }),
+  );
+  let number;
+  try {
+    const checked = await checkQuo(body);
+    number = checked.numbers.find((n) => n.id === body.phone_number_id);
+  } catch (error) {
+    if (error instanceof QuoProblem) throw new HttpError(400, error.message);
+    throw error;
+  }
+  if (!number) throw new HttpError(400, "That number isn't in this Quo workspace anymore. Check the key again and pick from the numbers it shows.");
+  const admin = adminClient(c.env);
+  const settings: QuoSettings = { phone_number_id: number.id, from_number: number.number };
+  const { error } = await admin.from("integrations").upsert({
+    company_id: c.var.companyId,
+    provider: "quo",
+    status: "connected",
+    account_label: `Quo · ${phoneDisplay(number.number)}`.slice(0, 200),
+    external_account_id: number.id,
+    settings: asJson(settings),
+    connected_by: c.var.userId,
+    connected_at: new Date().toISOString(),
+    last_error: null,
+  });
+  if (error) throw dbError(error);
+  await saveSecret(c.env, admin, c.var.companyId, "quo", { api_key: body.api_key, ...(body.webhook_key ? { extra: { webhook_key: body.webhook_key } } : {}) });
+  forgetQuo(c.var.companyId);
+  // A warning that texts weren't going out was about the account before this one.
+  await sendingWorks(c.env, c.var.companyId, "sms");
+  return c.json({ provider: "quo", status: "connected", quo: quoState(appUrl(c), settings, false) });
 });
 
 const PASSWORD = z.object({ password: z.string().min(1).max(200) });

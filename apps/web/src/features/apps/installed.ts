@@ -11,7 +11,7 @@ export function isInstalled(app: AppRow): boolean {
   // Calendars added by link, Google's by secret address too; Stripe and Twilio, also when the server
   // set them up; ChatGPT for someone who connected their own plan, or at a company that lets its
   // team connect theirs, with or without a company key.
-  if (app.calendars || app.stripe || app.twilio?.own || app.twilio?.server || app.my_plan || app.team_plans) return true;
+  if (app.calendars || app.stripe || app.twilio?.own || app.twilio?.server || app.quo?.own || app.quo?.server || app.my_plan || app.team_plans) return true;
   // A Twilio key saved before accounts could be connected never sent anything.
   if (app.id === "twilio") return false;
   // "connector": what Claude and ChatGPT were on a server from before their keys were all they are here.
