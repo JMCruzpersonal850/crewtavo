@@ -5,7 +5,8 @@
  *   2. the server's Resend account (RESEND_API_KEY, EMAIL_FROM), if whoever installed it set one;
  *   3. in development, the local Mailpit inbox (MAILPIT_URL).
  * SMS uses Twilio over REST: the company's own account when it connected one (Apps → Twilio), else
- * the server's (lib/twilio.ts). When nothing is set up, sends are skipped and the caller gets
+ * the server's (lib/twilio.ts) — or Quo, for a company that connected its own Quo account
+ * (Apps → Quo, lib/quo.ts), which outranks Twilio for that company. When nothing is set up, sends are skipped and the caller gets
  * { sent: false } plus the reason; the UI can then offer the link to copy instead.
  * How each send for a company went is noted (noteSending), so its owners and admins hear on the bell
  * and by push when its email or texts stop going out, and not only on Settings → Email.
@@ -16,6 +17,7 @@ import { decryptJson } from "./crypto";
 import { reportError } from "./monitoring";
 import { smtpReach, smtpSend, SmtpError, type SmtpReach, type SmtpSettings } from "./smtp";
 import { adminClient } from "./supabase";
+import { companyQuo, postQuoMessage, serverQuo, type QuoAccount } from "./quo";
 import { companyTwilio, postMessage, twilioFor, type TwilioAccount } from "./twilio";
 
 export interface SendResult {
@@ -111,8 +113,8 @@ export async function anyMailbox(env: Env): Promise<boolean | null> {
 
 /** Is there a server-wide way to send (Resend for the whole install, or Mailpit in development)? */
 export const emailConfigured = (env: Env) => Boolean((env.RESEND_API_KEY && env.EMAIL_FROM) || env.MAILPIT_URL);
-/** The same for texts: the server's own Twilio account (or Mailpit in development). A company may have its own: smsReady. */
-export const smsConfigured = (env: Env) => Boolean((env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) || env.MAILPIT_URL);
+/** The same for texts: the server's own Twilio or Quo account (or Mailpit in development). A company may have its own: smsReady. */
+export const smsConfigured = (env: Env) => Boolean((env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) || (env.QUO_API_KEY && env.QUO_PHONE_NUMBER_ID) || env.MAILPIT_URL);
 
 /** Can this company send email (its own mailbox, or the server's)? */
 export async function emailReady(env: Env, companyId?: string | null): Promise<boolean> {
@@ -120,8 +122,9 @@ export async function emailReady(env: Env, companyId?: string | null): Promise<b
   return emailConfigured(env);
 }
 
-/** Can this company send texts (its own Twilio account, or the server's)? */
+/** Can this company send texts (its own Twilio or Quo account, or the server's)? */
 export async function smsReady(env: Env, companyId?: string | null): Promise<boolean> {
+  if (companyId && (await companyQuo(env, companyId).catch(() => null))) return true;
   if (companyId && (await companyTwilio(env, companyId).catch(() => null))) return true;
   return smsConfigured(env);
 }
@@ -413,11 +416,64 @@ async function mailpit(env: Env, message: EmailMessage & { from?: string }): Pro
  */
 export async function sendSms(env: Env, message: { to: string; body: string; company?: string | null }, companyId?: string | null): Promise<SendResult> {
   const whose = companyId ?? message.company ?? null;
+  // Whose number a text goes from, in order: the company's own Quo (Apps → Quo), then Twilio as
+  // before (the company's own, else the server's), then the server's Quo for companies with neither.
+  const ownQuo = whose ? await companyQuo(env, whose).catch(() => null) : null;
+  if (ownQuo) {
+    const result = await textOutQuo(env, ownQuo, message);
+    if (whose) await noteQuoHealth(env, whose, ownQuo, result);
+    if (companyId) await noteSending(env, companyId, "sms", result, true);
+    return result;
+  }
   const account = await twilioFor(env, whose);
+  if (!account) {
+    const quo = serverQuo(env);
+    if (quo) {
+      const result = await textOutQuo(env, quo, message);
+      if (companyId) await noteSending(env, companyId, "sms", result, false);
+      return result;
+    }
+  }
   const result = await textOut(env, account, message);
   if (account?.own && whose) await noteTwilioHealth(env, whose, account, result);
   if (companyId) await noteSending(env, companyId, "sms", result, Boolean(account?.own));
   return result;
+}
+
+/**
+ * Show a company's own Quo account that stopped accepting its key on its Apps page, and clear it
+ * once a text goes through again (noteTwilioHealth, for Quo).
+ */
+async function noteQuoHealth(env: Env, companyId: string, account: QuoAccount, result: SendResult) {
+  const refused = !result.sent && sendProblem(result) === "sign_in";
+  const next = result.sent ? "connected" : refused ? "error" : account.status;
+  if (!next || next === account.status) return;
+  account.status = next;
+  await adminClient(env)
+    .from("integrations")
+    .update({ status: next, last_error: result.sent ? null : (result.reason ?? "").slice(0, 500) })
+    .eq("company_id", companyId)
+    .eq("provider", "quo");
+}
+
+async function textOutQuo(env: Env, account: QuoAccount | null, message: { to: string; body: string }): Promise<SendResult> {
+  if (!account && env.MAILPIT_URL) {
+    const digits = message.to.replace(/[^0-9]/g, "") || "unknown";
+    return mailpit(env, { to: `sms-${digits}@sms.local`, subject: `Text to ${message.to}`, text: message.body });
+  }
+  if (!account) return { sent: false, reason: "Texting isn't set up yet. An admin can connect a Quo account in Apps → Quo." };
+  const response = await postQuoMessage(account, message);
+  if (!response) return { sent: false, reason: "Couldn't reach the text provider. Try again." };
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))) as { message?: string };
+    return {
+      sent: false,
+      status: response.status,
+      reason: `The text provider refused it (${response.status}${detail.message ? `: ${detail.message}` : ""}).`,
+    };
+  }
+  const body = (await response.json().catch(() => ({}))) as { data?: { id?: string } };
+  return { sent: true, id: body.data?.id };
 }
 
 /**
