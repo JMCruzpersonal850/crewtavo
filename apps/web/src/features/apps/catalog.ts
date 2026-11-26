@@ -53,6 +53,8 @@ export interface AppRow {
   meta?: MetaState;
   /** Twilio: whose account texts go from, and where the number's incoming texts go (routes/apps.ts). */
   twilio?: TwilioState | null;
+  /** Quo: whose account texts go from, and the address Quo needs for incoming texts (routes/apps.ts). */
+  quo?: QuoState | null;
   /** Lob, once connected: whether its key is a test key (nothing mailed) or a live one. */
   lob?: { mode: "test" | "live" | null } | null;
   /** ChatGPT, once the company's OpenAI key is saved: the model it uses and the ones to pick from. */
@@ -92,6 +94,20 @@ export interface TwilioState {
   /** Where the number sends incoming texts now, when that's somewhere else. */
   other_webhook: string | null;
   /** This Crewtavo has a public https address, which Twilio needs to reach it. */
+  reachable: boolean;
+}
+
+export interface QuoState {
+  /** The company connected its own Quo account; `from_number` is the number texts go from. */
+  own: boolean;
+  /** Texts go from the Quo account the server was set up with (the company hasn't connected its own). */
+  server: boolean;
+  from_number: string | null;
+  /** Quo's id for the sending number (PN...). */
+  phone_number_id: string | null;
+  /** The address Quo sends incoming texts to for this Crewtavo, to paste into Quo's webhook settings. */
+  webhook_url: string;
+  /** This Crewtavo has a public https address, which Quo needs to reach it. */
   reachable: boolean;
 }
 
@@ -791,6 +807,21 @@ export const APP_INFO: Record<string, AppInfo> = {
     access: ["Send texts from your number", "Receive replies, and stop texting anyone who texts STOP", "Set where your number sends incoming texts, only when you ask"],
     connectsWith: "Your Twilio account",
     website: "https://www.twilio.com/",
+    open: "/messages",
+  },
+  quo: {
+    developer: "Quo",
+    tagline: "Texts from the number you already use",
+    about:
+      "Send visit reminders and on-my-way texts, and keep two-way conversations with clients in Messages, from the Quo number your clients already know. Connect your own Quo account with an API key from Quo (Workspace Settings → API): Crewtavo checks the key with Quo before saving, you pick which of your numbers texts go from, and replies come back through a webhook you make in Quo with the address Crewtavo gives you. Quo bills you directly for what you send. Quo was called OpenPhone; it's the same service.",
+    highlights: [
+      { icon: "bell", title: "Reminders", text: "The day before, so clients leave the gate open." },
+      { icon: "truck", title: "On my way", text: "One tap from the field when a crew heads out." },
+      { icon: "messages", title: "Conversations", text: "Replies land in Messages for the whole office." },
+    ],
+    access: ["Send texts from your Quo number", "Receive replies, and stop texting anyone who texts STOP", "Nothing else: it can't see your calls, recordings or other numbers' messages"],
+    connectsWith: "Your Quo account",
+    website: "https://www.quo.com/",
     open: "/messages",
   },
   sveltia: {
