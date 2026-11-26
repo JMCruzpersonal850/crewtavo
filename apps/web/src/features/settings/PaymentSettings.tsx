@@ -114,6 +114,47 @@ export function autopayBody(f: PaymentForm) {
   return { enabled: f.enabled, terms, timing: f.timing, days, max_amount: max, receipts: f.receipts, jobs_default: f.jobs_default, card_required: f.card_required };
 }
 
+/** GET /apps/pay-provider (routes/apps.ts): the company's choice, what it comes to, and what's connected. */
+interface PayProviderChoice {
+  setting: "stripe" | "square" | null;
+  active: "stripe" | "square" | null;
+  stripe: boolean;
+  square: boolean;
+}
+
+/**
+ * Which provider clients pay with, when both are connected: the company's choice, saved as
+ * it's made. Without a choice the one connected most recently is active, which the select
+ * shows. Invoices already sent keep the provider they went out with — this is only about
+ * new ones — and saved cards stay with the provider they were saved under.
+ */
+function PayProviderSection() {
+  const choice = useQuery({ queryKey: ["pay-provider"], queryFn: () => api.get<PayProviderChoice>("/apps/pay-provider") });
+  const choose = useMutation({
+    meta: { inline: true, success: "Saved" },
+    mutationFn: (provider: "stripe" | "square") => api.put<PayProviderChoice>("/apps/pay-provider", { provider }),
+    onSuccess: () => choice.refetch(),
+  });
+  const data = choice.data;
+  if (!data || !data.stripe || !data.square) return null;
+  return (
+    <Section level={3} title="Clients pay with">
+      <p className="set-note">
+        Both Stripe and Square are connected. Clients pay new invoices through the one you choose here; an invoice already sent keeps the provider it went out with, so switching never strands one.
+      </p>
+      <div className="set-grid">
+        <Field label="Clients pay with">
+          <select className="select" value={data.active ?? "stripe"} disabled={choose.isPending} onChange={(e) => choose.mutate(e.target.value as "stripe" | "square")}>
+            <option value="stripe">Stripe</option>
+            <option value="square">Square</option>
+          </select>
+        </Field>
+      </div>
+      <FormError error={choose.error} />
+    </Section>
+  );
+}
+
 export function PaymentSettings() {
   const session = useSession();
   const { company } = session;
@@ -153,6 +194,7 @@ export function PaymentSettings() {
 
   return (
     <>
+      <PayProviderSection />
       <Section level={3} title="What autopay needs">
         <p className="set-note">
           Clients save a card or bank account once, from their client page, and agree to your terms. Each finished visit is then billed and charged to it, with a receipt. A charge that fails goes out with the Pay link, as invoices do now.

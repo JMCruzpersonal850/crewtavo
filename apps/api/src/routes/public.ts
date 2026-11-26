@@ -23,6 +23,8 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { handleStripeEvent, hubPayment, stripeAccess, stripeCheckout, type WebhookRoute } from "../integrations/stripe";
+import { chargeSquareInvoice, handleSquareEvent, payProviderForInvoice, squareAccess, squareHubPayment } from "../integrations/square";
+import { verifySquareSignature } from "../services/square";
 import { kickAutomations, runInBackground } from "../lib/background";
 import {
   addressLines,
@@ -623,7 +625,7 @@ publicRoutes.get("/hub/:token", async (c) => {
     await admin
       .from("invoices")
       .select(
-        "id, number, kind, status, subject, notes, issued_on, due_on, late_fee_at, no_late_fee, subtotal, discount_amount, credit_amount, tax_amount, total, retainage_amount, amount_paid, balance_due, client_id, job_id, billing_month, promo:promo_codes(code, kind, value, description), credits:referral_credits(amount, note, created_at), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), job:jobs(property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, roof_package_id, option:quote_options!quotes_option_fkey(name, warranty))), lines:invoice_line_items(name, description, quantity, unit, unit_price, sort, discount_quote_id), payments(amount, tip_amount, received_at), custom_fields",
+        "id, number, kind, status, subject, notes, issued_on, due_on, late_fee_at, no_late_fee, subtotal, discount_amount, credit_amount, tax_amount, total, retainage_amount, amount_paid, balance_due, client_id, job_id, billing_month, pay_provider, promo:promo_codes(code, kind, value, description), credits:referral_credits(amount, note, created_at), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), job:jobs(property:properties(line1, city, region, postal_code), quote:quotes!jobs_company_id_quote_id_fkey(approval, option_id, roof_package_id, option:quote_options!quotes_option_fkey(name, warranty))), lines:invoice_line_items(name, description, quantity, unit, unit_price, sort, discount_quote_id), payments(amount, tip_amount, received_at), custom_fields",
       )
       .eq("company_id", l.c)
       .eq("id", l.id)
@@ -643,6 +645,13 @@ publicRoutes.get("/hub/:token", async (c) => {
     invoiceChecklists(admin, l.c, invoice),
     admin.from("companies").select("settings->late_fee").eq("id", l.c).maybeSingle(),
   ]);
+  // The provider this invoice is paid with: the one locked on it when it was sent, else the
+  // company's active one (integrations/square.ts). A Square invoice is paid in this page, with
+  // Square's card form, not on a hosted page: `square` below carries what the form needs.
+  const provider = await payProviderForInvoice(c.env, admin, l.c, invoice);
+  const square = provider === "square" ? await squareHubPayment(c.env, admin, l.c, invoice.id) : null;
+  const payEnabled = provider === "square" ? Boolean(square?.enabled) : online.enabled;
+  const payProcessing = provider === "square" ? Boolean(square?.processing) : online.processing;
   // The late fee that could still go on this invoice (core lateFeeCouldApply, as add_late_fees
   // decides it), so the client is told about it before one is added. Read fresh: a business that
   // turns late fees off stops saying so at once.
@@ -667,7 +676,7 @@ publicRoutes.get("/hub/:token", async (c) => {
   // billing address and the job's address only go into the words, never out on their own). Its
   // {Option} and {Warranty} are those of the estimate the job came from (contracts.ts invoiceFill).
   // Its custom fields go only as hubFields shows them.
-  const { client, job, lines: lineRows, custom_fields: _values, job_id: _job, billing_month: _month, kind: _kind, late_fee_at: _feeAt, no_late_fee: _noFee, ...billed } = invoice;
+  const { client, job, lines: lineRows, custom_fields: _values, job_id: _job, billing_month: _month, kind: _kind, late_fee_at: _feeAt, no_late_fee: _noFee, pay_provider: _locked, ...billed } = invoice;
   const fill = await invoiceFill(admin, l.c, job?.quote);
   const facts = invoiceInput(invoice, client, job?.property ?? null, company, template, fill);
   const contract = await invoiceContract(admin, l.c, template, facts);
@@ -679,9 +688,12 @@ publicRoutes.get("/hub/:token", async (c) => {
     drawings,
     // Not while the saved card is being charged for it: paying by hand then could charge twice. Nor
     // once it's written off: the office chose not to collect what's left.
-    can_pay: !l.pv && online.enabled && !online.processing && Number(invoice.balance_due) > 0 && invoice.status !== "written_off" && auto.autopay?.status !== "charging",
-    processing: online.processing,
+    can_pay: !l.pv && payEnabled && !payProcessing && Number(invoice.balance_due) > 0 && invoice.status !== "written_off" && auto.autopay?.status !== "charging",
+    processing: payProcessing,
     from_stripe: online.imported,
+    // The provider this invoice is paid with, and what Square's card form needs when it's Square.
+    pay_provider: provider,
+    square: square?.enabled ? { application_id: square.application_id, location_id: square.location_id, environment: square.environment } : null,
     late_fee: lateFee,
     // "Paid automatically with Visa ending 4242", "Paid. Pay automatically next time?", and the tip after an automatic charge.
     autopay: auto.autopay,
@@ -817,6 +829,11 @@ publicRoutes.post("/hub/:token/approve", async (c) => {
  * online: no online payments (the office is told on the bell that it's owed), or no deposit.
  */
 async function collectDeposit(c: Parameters<typeof appUrl>[0], admin: ReturnType<typeof adminClient>, l: ClientLink): Promise<{ url: string | null; link: string } | null> {
+  // TODO(square phase C): this gate and the stripeCheckout below are Stripe-shaped — a deposit
+  // is paid on Stripe's hosted page, whose address this returns. Generalize to "an online
+  // payment provider is active" (integrations/square.ts activePayProvider): a Square deposit
+  // invoice is paid from its own Hub page's card form, so for a Square company this should
+  // answer the deposit's link with no `url`, exactly as the no-online-payments case does.
   const online = Boolean(await stripeAccess(c.env, admin, l.c));
   const { data: invoiceId, error } = await admin.rpc("hub_deposit_invoice", { p_company: l.c, p_quote: l.id, p_online: online });
   if (error) {
@@ -963,6 +980,12 @@ publicRoutes.post("/hub/:token/pay", async (c) => {
   }
   const body = await readJson(c, z.object({ tip: z.number().min(0).max(100_000).default(0) }).default({ tip: 0 }));
   const admin = adminClient(c.env);
+  // A Square invoice is paid with the card form on the page (pay-square below), never here:
+  // this route's answer is a hosted page's address, which Square doesn't have.
+  const { data: invoiceRow } = await admin.from("invoices").select("id, status, pay_provider").eq("company_id", l.c).eq("id", l.id).maybeSingle();
+  if (invoiceRow && (await payProviderForInvoice(c.env, admin, l.c, invoiceRow)) === "square") {
+    throw new HttpError(409, "This invoice is paid with the card form on this page.");
+  }
   const { tips } = await invoiceTips(c, admin, l.c, l.id);
   const tipCents = Math.round(body.tip * 100);
   // Tips were turned off (or the invoice was made in Stripe) after the page loaded: the amount they
@@ -977,6 +1000,48 @@ publicRoutes.post("/hub/:token/pay", async (c) => {
     console.error("Stripe checkout failed", error);
     throw new HttpError(502, "Online payments aren't working right now. Try again in a few minutes, or contact us to pay.");
   }
+});
+
+/**
+ * Pay from the Client Hub through Square: the card form on the page tokenized the card with
+ * Square's SDK, and this charges the token for what's owed (plus the tip chosen). The answer
+ * is the payment's state, not an address: the page reloads and shows the invoice as it stands.
+ * `attempt` is the page's id for this try, so a try whose answer was lost replays instead of
+ * charging twice (integrations/square.ts).
+ */
+publicRoutes.post("/hub/:token/pay-square", async (c) => {
+  const l = await link(c);
+  if (l.t !== "invoice" || l.pv) throw new HttpError(400, "Only invoices can be paid.");
+  if (!(await allow(c.env, `pay:ip:${clientIp(c)}`, 20, 10 * 60)) || !(await allow(c.env, `pay:invoice:${l.id}`, 10, 10 * 60))) {
+    throw new HttpError(429, "Too many tries. Wait a few minutes and try again.");
+  }
+  const body = await readJson(
+    c,
+    z.object({
+      source_id: z.string().trim().min(1).max(200),
+      verification_token: z.string().trim().max(200).optional(),
+      tip: z.number().min(0).max(100_000).default(0),
+      attempt: z.string().trim().min(8).max(100),
+    }),
+  );
+  const admin = adminClient(c.env);
+  const { data: invoiceRow } = await admin.from("invoices").select("id, status, pay_provider").eq("company_id", l.c).eq("id", l.id).maybeSingle();
+  if (!invoiceRow) throw new HttpError(404, "Invoice not found.");
+  if ((await payProviderForInvoice(c.env, admin, l.c, invoiceRow)) !== "square") {
+    throw new HttpError(409, "This invoice isn't paid through Square.");
+  }
+  const { tips } = await invoiceTips(c, admin, l.c, l.id);
+  const tipCents = Math.round(body.tip * 100);
+  if (tipCents > 0 && !tips) throw new HttpError(409, "Tips aren't offered here anymore. Check the amount and pay again.");
+  if (await chargingNow(admin, l.c, l.id)) throw new HttpError(409, CHARGING_NOW);
+  const result = await chargeSquareInvoice(c.env, admin, l.c, l.id, {
+    sourceId: body.source_id,
+    verificationToken: body.verification_token,
+    tipCents,
+    attempt: body.attempt,
+  });
+  if (result.status === "completed") kickAutomations(c, l.c);
+  return c.json({ status: result.status });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1350,6 +1415,34 @@ publicRoutes.post("/webhooks/stripe/:company", async (c) => {
   if (!uuid.safeParse(companyId).success) throw new HttpError(404, "Not found");
   const access = await stripeAccess(c.env, adminClient(c.env), companyId);
   return stripeWebhook(c, { companyId }, access?.own ? access.webhookSecret : undefined);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Square webhooks
+// ---------------------------------------------------------------------------------------------
+
+// Payment updates for one company (integrations/square.ts). The subscription is made by hand
+// in the Square Developer Dashboard — Square can't provision one by API — and its signature
+// key is kept with the connection. The signature covers the notification address itself plus
+// the body, so the address is rebuilt exactly as the Apps page shows it (appUrl, as Twilio's
+// webhook check in routes/messages.ts rebuilds its own) and a delivery for any other address
+// is refused.
+publicRoutes.post("/webhooks/square/:company", async (c) => {
+  const companyId = c.req.param("company");
+  if (!uuid.safeParse(companyId).success) throw new HttpError(404, "Not found");
+  const admin = adminClient(c.env);
+  const access = await squareAccess(c.env, admin, companyId);
+  const signatureKey = access?.own ? access.account.webhookKey : undefined;
+  if (!access || !signatureKey) throw new HttpError(501, "Square webhooks aren't configured.");
+  const payload = await c.req.text();
+  const notificationUrl = `${appUrl(c)}/api/webhooks/square/${companyId}`;
+  if (!(await verifySquareSignature(signatureKey, notificationUrl, payload, c.req.header("x-square-hmacsha256-signature")))) {
+    throw new HttpError(400, "Bad signature.");
+  }
+  const booked = await handleSquareEvent(c.env, admin, companyId, JSON.parse(payload));
+  if (booked) kickAutomations(c, companyId);
+  await admin.from("integrations").update({ last_sync_at: new Date().toISOString(), last_error: null }).match({ company_id: companyId, provider: "square" });
+  return c.json({ received: true });
 });
 
 // ---------------------------------------------------------------------------------------------

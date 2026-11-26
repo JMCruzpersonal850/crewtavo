@@ -18,6 +18,7 @@ import metaLogo from "@/assets/apps/meta.svg";
 import outlookLogo from "@/assets/apps/outlook.svg";
 import quickbooksLogo from "@/assets/apps/quickbooks.svg";
 import stripeLogo from "@/assets/apps/stripe.svg";
+import squareLogo from "@/assets/apps/square.svg";
 import sveltiaLogo from "@/assets/apps/sveltia.svg";
 import quoLogo from "@/assets/apps/quo.svg";
 import twilioLogo from "@/assets/apps/twilio.svg";
@@ -46,6 +47,7 @@ const LOGOS: Record<string, string> = {
   quickbooks: quickbooksLogo,
   zoho_books: zohoLogo,
   stripe: stripeLogo,
+  square: squareLogo,
   abc_supply: abcSupplyLogo,
   twilio: twilioLogo,
   quo: quoLogo,

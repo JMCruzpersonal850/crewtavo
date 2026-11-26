@@ -16,6 +16,9 @@ import { endConnection, teamConnections } from "../lib/assistants";
 import { appUrl, asJson, dbError, HttpError, isoDate, must, readJson, uuid } from "../lib/http";
 import { emailReady, sendEmail, sendingWorks } from "../lib/notify";
 import { checkQuo, forgetQuo, QuoProblem, serverQuo, type QuoSettings } from "../lib/quo";
+import { checkSquare, forgetSquare, serverSquare, SquareProblem, type SquareSettings } from "../lib/square";
+import { squareEnvironment } from "../services/square";
+import { payProviderChoice, setPayProvider } from "../integrations/square";
 import { checkTwilio, companyTwilio, forgetTwilio, serverTwilio, setSmsWebhook, TwilioProblem, type TwilioSettings } from "../lib/twilio";
 import { adminClient, type Db } from "../lib/supabase";
 import { aiChoice, askerOf, complete, countAiAsk, teamPlans, type OpenAiSettings } from "../services/ai";
@@ -127,6 +130,15 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
   if (!quoRow) byProvider.delete("quo");
   if (serverQuoTexts) byProvider.set("quo", { provider: "quo", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
   const quo = quoState(appUrl(c), quoRow ? (quoRow.settings as unknown as QuoSettings) : null, serverQuoTexts);
+  // Square: the company's own account (its app, token and the location payments are taken at),
+  // or the server's for companies that haven't connected theirs. Which provider clients pay
+  // with is the company's choice, defaulting to the one connected most recently.
+  const squareRow = integrations.find((r) => r.provider === "square" && r.status !== "disconnected");
+  const serverSquarePayments = !squareRow && Boolean(serverSquare(c.env));
+  if (!squareRow) byProvider.delete("square");
+  if (serverSquarePayments) byProvider.set("square", { provider: "square", status: "connected", account_label: "Set up for this server", connected_at: null, last_sync_at: null, last_error: null });
+  const payChoice = await payProviderChoice(c.env, adminClient(c.env), c.var.companyId).catch(() => null);
+  const square = squareState(appUrl(c), c.var.companyId, squareRow ? (squareRow.settings as unknown as SquareSettings) : null, serverSquarePayments, payChoice?.active === "square");
   // Lob: whether its key is a test key (cards made but never mailed) or a live one.
   const lobRow = integrations.find((r) => r.provider === "lob" && r.status !== "disconnected");
   const lob = lobRow ? { mode: (lobRow.settings as unknown as LobSettings | null)?.mode ?? null } : null;
@@ -170,6 +182,7 @@ apps.get("/apps", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
         ...(entry.id === "abc_supply" && abc ? { supplier: abc } : {}),
         ...(entry.id === "twilio" ? { twilio } : {}),
         ...(entry.id === "quo" ? { quo } : {}),
+        ...(entry.id === "square" ? { square } : {}),
         ...(entry.id === "lob" ? { lob } : {}),
         ...(entry.id === "google_business" ? { google_business: business } : {}),
         ...(entry.id === "meta" ? { meta } : {}),
@@ -187,6 +200,32 @@ const twilioWebhook = (base: string) => `${base}/api/webhooks/twilio`;
 
 /** Where Quo sends a number's incoming texts for this Crewtavo. */
 const quoWebhook = (base: string) => `${base}/api/webhooks/quo`;
+
+/** Where Square sends a company's payment updates for this Crewtavo. */
+const squareWebhook = (base: string, companyId: string) => `${base}/api/webhooks/square/${companyId}`;
+
+/**
+ * Square on its app page: whether payments go through the company's own account (`own`, with
+ * its location and which side of Square it's on) or the server's (`server`), the address to
+ * give Square for payment updates, and whether clients pay with Square now (the company's
+ * choice in Settings → Payments, or the most recently connected provider). Unlike Stripe,
+ * whose webhook Crewtavo makes itself, Square's subscription is made by hand in the Square
+ * Developer Dashboard: the panel walks through it, so there's no "webhook is set" to read
+ * back. Square only reaches a public https address.
+ */
+function squareState(base: string, companyId: string, own: SquareSettings | null, server: boolean, active: boolean) {
+  return {
+    own: Boolean(own),
+    server,
+    application_id: own?.application_id ?? null,
+    location_id: own?.location_id ?? null,
+    location_name: own?.location_name ?? null,
+    environment: own?.environment ?? null,
+    active,
+    webhook_url: squareWebhook(base, companyId),
+    reachable: base.startsWith("https://"),
+  };
+}
 
 /**
  * Quo on its app page: whether texts go from the company's own account (`own`, with its number)
@@ -457,6 +496,7 @@ apps.post("/apps/:provider/disconnect", requireUser, requireCompany(ADMINS, "app
   // Texts go from the server's account again, if it has one, from the next one on.
   if (provider === "twilio") forgetTwilio(c.var.companyId);
   if (provider === "quo") forgetQuo(c.var.companyId);
+  if (provider === "square") forgetSquare(c.var.companyId);
   return c.json({ provider, status: "disconnected", ...(provider === "google_business" ? { removed } : {}), ...(shared ? { revoked: false } : {}) });
 });
 
@@ -788,6 +828,103 @@ apps.put("/apps/quo/account", requireUser, requireCompany(ADMINS, "apps"), async
   return c.json({ provider: "quo", status: "connected", quo: quoState(appUrl(c), settings, false) });
 });
 
+/**
+ * Square: check an access token and list the account's locations, for the connect form's
+ * location picker. Nothing is saved: the token is checked again when the location picked is
+ * connected (below). A token only answers on its own side of Square (sandbox or production),
+ * which the form picks.
+ */
+apps.post("/apps/square/check", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(
+    c,
+    z.object({
+      access_token: z.string().trim().min(1, "Paste your Square access token.").max(300),
+      environment: z.enum(["sandbox", "production"]).default("sandbox"),
+    }),
+  );
+  try {
+    const checked = await checkSquare(body);
+    return c.json({ locations: checked.locations });
+  } catch (error) {
+    if (error instanceof SquareProblem) throw new HttpError(400, error.message);
+    throw error;
+  }
+});
+
+/**
+ * Square: the company's own account, so clients pay through the Square it already uses. The
+ * token is checked with Square first (its locations are read, which costs nothing) and the
+ * location picked has to be one of them. The token is kept encrypted and never returned. The
+ * webhook signature key is the person's to give, from the subscription they make in Square's
+ * Developer Dashboard for payment updates: with it, Crewtavo checks that the updates it
+ * receives were really sent by Square. Connecting Square makes it the provider clients pay
+ * with (the most recently connected is the default; Settings → Payments can choose Stripe
+ * again, and open invoices keep the provider they were sent with either way).
+ */
+apps.put("/apps/square/account", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(
+    c,
+    z.object({
+      application_id: z.string().trim().min(1, "Paste your app's Application ID.").max(100),
+      access_token: z.string().trim().min(1, "Paste your Square access token.").max(300),
+      environment: z.enum(["sandbox", "production"]).default("sandbox"),
+      location_id: z.string().trim().min(1, "Pick the location payments are taken at.").max(100),
+      webhook_key: z.string().trim().max(300).optional(),
+    }),
+  );
+  let location;
+  try {
+    const checked = await checkSquare(body);
+    location = checked.locations.find((l) => l.id === body.location_id);
+  } catch (error) {
+    if (error instanceof SquareProblem) throw new HttpError(400, error.message);
+    throw error;
+  }
+  if (!location) throw new HttpError(400, "That location isn't in this Square account anymore. Check the token again and pick from the locations it shows.");
+  const admin = adminClient(c.env);
+  const settings: SquareSettings = {
+    application_id: body.application_id,
+    location_id: location.id,
+    location_name: location.name,
+    environment: squareEnvironment(body.environment),
+  };
+  const { error } = await admin.from("integrations").upsert({
+    company_id: c.var.companyId,
+    provider: "square",
+    status: "connected",
+    account_label: `Square · ${location.name}`.slice(0, 200),
+    external_account_id: location.id,
+    settings: asJson(settings),
+    connected_by: c.var.userId,
+    connected_at: new Date().toISOString(),
+    last_error: null,
+  });
+  if (error) throw dbError(error);
+  await saveSecret(c.env, admin, c.var.companyId, "square", { access_token: body.access_token, ...(body.webhook_key ? { extra: { webhook_key: body.webhook_key } } : {}) });
+  forgetSquare(c.var.companyId);
+  await setPayProvider(admin, c.var.companyId, "square").catch((error) => console.error("Couldn't make Square the payment provider", error));
+  return c.json({ provider: "square", status: "connected", square: squareState(appUrl(c), c.var.companyId, settings, false, true) });
+});
+
+/**
+ * Settings → Payments: which provider clients pay with. The choice is the company's; without
+ * one, the provider connected most recently is active. Open invoices keep the provider they
+ * were sent with — this is only about new ones.
+ */
+apps.get("/apps/pay-provider", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  return c.json(await payProviderChoice(c.env, adminClient(c.env), c.var.companyId));
+});
+
+apps.put("/apps/pay-provider", requireUser, requireCompany(ADMINS, "apps"), async (c) => {
+  const body = await readJson(c, z.object({ provider: z.enum(["stripe", "square"]) }));
+  const admin = adminClient(c.env);
+  const choice = await payProviderChoice(c.env, admin, c.var.companyId);
+  if (body.provider === "square" && !choice.square) throw new HttpError(409, "Connect Square first, on the Apps page.");
+  if (body.provider === "stripe" && !choice.stripe) throw new HttpError(409, "Connect Stripe first, on the Apps page.");
+  await setPayProvider(admin, c.var.companyId, body.provider);
+  return c.json(await payProviderChoice(c.env, admin, c.var.companyId));
+});
+
 const PASSWORD = z.object({ password: z.string().min(1).max(200) });
 
 /** The Stripe account the company's own key reaches now (its name as Crewtavo shows it, and its acct_ id), or null without one. */
@@ -885,6 +1022,9 @@ apps.put("/apps/:provider/key", requireUser, requireCompany(ADMINS, "apps"), asy
     const who = await confirmPassword(c, (await readJson(c, PASSWORD)).password, "stripe-key", 10);
     const was = await stripeAccount(admin, c.var.companyId);
     const { settled, change, ...connected } = await connectStripe(c.env, admin, { companyId: c.var.companyId, userId: c.var.userId, key: body.api_key, baseUrl: appUrl(c) });
+    // Connecting (or reconnecting) Stripe makes it the provider clients pay with, as the most
+    // recently connected one is the default; Settings → Payments can choose Square again.
+    await setPayProvider(admin, c.var.companyId, "stripe").catch((error) => console.error("Couldn't make Stripe the payment provider", error));
     runInBackground(c, settled);
     runInBackground(c, noteStripeChange(c, who, { before: was?.label ?? null, after: connected.account_label, ...change }));
     return c.json({ provider, status: "connected", ...connected });

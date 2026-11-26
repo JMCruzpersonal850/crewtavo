@@ -86,6 +86,14 @@ export interface Env {
 
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Square, the server's own account for companies that haven't connected theirs (lib/square.ts). */
+  SQUARE_ACCESS_TOKEN?: string;
+  /** The Square developer app's Application ID (the browser's card form needs it; it isn't a secret). */
+  SQUARE_APPLICATION_ID?: string;
+  /** The server account's location payments are taken at (Square's id for it). */
+  SQUARE_LOCATION_ID?: string;
+  /** The server account's Square environment: "sandbox" or "production" (production when unset). */
+  SQUARE_ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   TWILIO_ACCOUNT_SID?: string;
