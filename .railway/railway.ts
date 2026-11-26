@@ -18,7 +18,7 @@
 import { defineRailway, github, group, image, preserve, project, service, volume } from "railway/iac";
 
 // The public repository the template builds from; change it to deploy your own fork.
-const REPO = "jviars/crewtavo";
+const REPO = "JMCruzpersonal850/crewtavo";
 
 export default defineRailway(() => {
   const dbData = volume("db-data");
