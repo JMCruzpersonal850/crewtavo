@@ -20,6 +20,7 @@ import { isEmail, renderEmail } from "../lib/email";
 import { appUrl, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { sentToClient } from "../lib/links";
 import { sendEmail, sendSms } from "../lib/notify";
+import { inboundQuo, quoMessageFromPayload, verifyQuoSignature } from "../lib/quo";
 import { inboundAccounts } from "../lib/twilio";
 import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
@@ -149,4 +150,48 @@ messages.post("/webhooks/twilio", async (c) => {
   const touched = await receiveText(admin, { from: form.From!, body, sid: form.MessageSid ?? null, keyword, phrase }, account.companies);
   for (const company of touched) kickAutomations(c, company);
   return c.text("<Response/>", 200, { "Content-Type": "text/xml" });
+});
+
+/**
+ * Incoming texts from Quo (set this URL on a webhook for the number in Quo: Settings → Webhooks,
+ * or POST /v1/webhooks/messages with the message.received event). Quo sends JSON, the message in
+ * data.object. Whose text it is comes from the number that was texted: a company's own Quo
+ * connection that sends from it, or the server's Quo (lib/quo.ts inboundQuo). When the company
+ * kept its webhook's signing key with its connection, the delivery's openphone-signature is
+ * checked against it and a delivery it didn't sign is refused; without a key there's nothing to
+ * check against, so the docs ask for one. Other events (message.delivered) are acknowledged and
+ * left: delivery state isn't tracked here yet.
+ */
+messages.post("/webhooks/quo", async (c) => {
+  const raw = await c.req.text();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    throw new HttpError(400, "Not JSON.");
+  }
+  const type = (payload as { type?: string } | null)?.type;
+  if (type !== "message.received") return c.json({ ok: true, ignored: type ?? null });
+  const message = quoMessageFromPayload(payload);
+  if (!message) return c.json({ ok: true, ignored: "message.received" });
+  const admin = adminClient(c.env);
+  const inbound = await inboundQuo(c.env, admin, message);
+  if (!inbound.companies?.length && inbound.companies !== null) throw new HttpError(501, "Texting isn't configured for that number.");
+  if (inbound.webhookKeys.length) {
+    const signature = c.req.header("openphone-signature") ?? "";
+    let signed = false;
+    for (const key of inbound.webhookKeys) if (await verifyQuoSignature(key, signature, raw)) signed = true;
+    if (!signed) throw new HttpError(403, "Bad signature.");
+  }
+  const body = message.body.slice(0, 10_000);
+  const from = phoneKey(message.from);
+  if (!from || !body) return c.json({ ok: true });
+  // STOP or START as words (Quo has no carrier opt-out field like Twilio's): the keyword itself,
+  // or words that plainly ask to stop, honoured the same way as on the Twilio webhook.
+  const word = smsKeyword(body);
+  const phrase = !word && asksToStopTexts(body);
+  const keyword = phrase ? "stop" : word;
+  const touched = await receiveText(admin, { from: message.from, body, sid: message.sid, keyword, phrase }, inbound.companies);
+  for (const company of touched) kickAutomations(c, company);
+  return c.json({ ok: true });
 });

@@ -91,6 +91,14 @@ export interface Env {
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_FROM_NUMBER?: string;
+  /** Quo (formerly OpenPhone), the server's own account for companies that haven't connected theirs (lib/quo.ts). */
+  QUO_API_KEY?: string;
+  /** Quo's id for the server's number (PN...): texts are sent with it as `from`. */
+  QUO_PHONE_NUMBER_ID?: string;
+  /** The server's Quo number itself, in E.164, for matching the texts that come in to it. */
+  QUO_FROM_NUMBER?: string;
+  /** The signing key of the server account's message webhook in Quo, when it has one. */
+  QUO_WEBHOOK_KEY?: string;
   /** Development only: deliver email and texts to a local Mailpit inbox (e.g. http://localhost:56324). */
   MAILPIT_URL?: string;
   TURNSTILE_SITE_KEY?: string;
