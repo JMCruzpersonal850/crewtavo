@@ -20,7 +20,7 @@ import { isEmail, renderEmail } from "../lib/email";
 import { appUrl, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
 import { sentToClient } from "../lib/links";
 import { sendEmail, sendSms } from "../lib/notify";
-import { inboundQuo, quoMessageFromPayload, verifyQuoSignature } from "../lib/quo";
+import { inboundQuo, quoMessageFromPayload, verifyQuoDelivery } from "../lib/quo";
 import { inboundAccounts } from "../lib/twilio";
 import { adminClient } from "../lib/supabase";
 import { companyAddress } from "../services/automations";
@@ -154,13 +154,16 @@ messages.post("/webhooks/twilio", async (c) => {
 
 /**
  * Incoming texts from Quo (set this URL on a webhook for the number in Quo: Settings → Webhooks,
- * or POST /v1/webhooks/messages with the message.received event). Quo sends JSON, the message in
- * data.object. Whose text it is comes from the number that was texted: a company's own Quo
- * connection that sends from it, or the server's Quo (lib/quo.ts inboundQuo). When the company
- * kept its webhook's signing key with its connection, the delivery's openphone-signature is
- * checked against it and a delivery it didn't sign is refused; without a key there's nothing to
- * check against, so the docs ask for one. Other events (message.delivered) are acknowledged and
- * left: delivery state isn't tracked here yet.
+ * or the API, with the message.received event). Quo sends JSON; which generation the webhook
+ * belongs to decides the shape — legacy deliveries carry the message in data.object and an
+ * openphone-signature header, new ones carry it in data.resource/data.context with the
+ * Standard Webhooks headers (lib/quo.ts) — and both are read and checked. Whose text it is
+ * comes from the number that was texted: a company's own Quo connection that sends from it,
+ * or the server's Quo (lib/quo.ts inboundQuo). When the company kept its webhook's signing
+ * key with its connection, the delivery's signature is checked against it and a delivery it
+ * didn't sign is refused; without a key there's nothing to check against, so the docs ask
+ * for one. Other events (message.delivered) are acknowledged and left: delivery state isn't
+ * tracked here yet.
  */
 messages.post("/webhooks/quo", async (c) => {
   const raw = await c.req.text();
@@ -178,9 +181,14 @@ messages.post("/webhooks/quo", async (c) => {
   const inbound = await inboundQuo(c.env, admin, message);
   if (!inbound.companies?.length && inbound.companies !== null) throw new HttpError(501, "Texting isn't configured for that number.");
   if (inbound.webhookKeys.length) {
-    const signature = c.req.header("openphone-signature") ?? "";
+    const headers = {
+      legacy: c.req.header("openphone-signature"),
+      id: c.req.header("webhook-id"),
+      timestamp: c.req.header("webhook-timestamp"),
+      signature: c.req.header("webhook-signature"),
+    };
     let signed = false;
-    for (const key of inbound.webhookKeys) if (await verifyQuoSignature(key, signature, raw)) signed = true;
+    for (const key of inbound.webhookKeys) if (await verifyQuoDelivery(key, headers, raw)) signed = true;
     if (!signed) throw new HttpError(403, "Bad signature.");
   }
   const body = message.body.slice(0, 10_000);

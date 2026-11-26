@@ -20,10 +20,14 @@ You need to be an owner or admin of the Quo workspace, and an owner or admin in 
    **Settings → Webhooks**, click **Create webhook**, paste the address the Quo page shows
    (it ends in `/api/webhooks/quo`) and choose the **message.received** event for your number.
 4. In that webhook's details, click **⋯ → Reveal signing secret** and keep the key in
-   Crewtavo under **Apps → Quo → Change account**. With it, Crewtavo checks the signature Quo
-   puts on every delivery (`openphone-signature`, HMAC-SHA256) and refuses texts it didn't
-   sign. Without it, incoming texts are accepted unchecked — add it before relying on this
-   number for real clients.
+   Crewtavo under **Apps → Quo → Change account**. Copy it exactly as Quo shows it — on a
+   webhook made in the current Quo app it starts with `whsec_`; on an older one it's a plain
+   base64 key, and Crewtavo accepts either as-is. With it, Crewtavo checks the signature Quo
+   puts on every delivery (HMAC-SHA256 — the `webhook-signature` headers on new webhooks, the
+   `openphone-signature` header on legacy ones; both are checked, since which kind a webhook
+   sends is fixed when the webhook is made) and refuses texts it didn't sign. Without it,
+   incoming texts are accepted unchecked — add it before relying on this number for real
+   clients.
 
 In the US, Quo also requires your workspace's carrier registration to be complete before
 texts sent through the API go out; Quo walks you through that in its own settings.
