@@ -43,6 +43,8 @@ export interface PortalVisit {
 type ChangeKind = "reschedule" | "cancel";
 export interface ClientView {
   kind: "client";
+  /** What this business calls its quotes ("Proposal" for a painting business, "Quote" otherwise) — the server sends the word, never the trade. Left out by older servers. */
+  doc_word?: string;
   company: { name: string; phone: string | null; email: string | null; website: string | null; timezone?: string | null; branding?: { color?: string } | null; privacy_url?: string | null };
   /** Minutes after a visit's start the crew may arrive (0: no window). Servers that don't send it give none. */
   arrival_window_min?: number;
@@ -281,7 +283,7 @@ function Home({ token, data, go, onMessage, onChange }: { token: string; data: C
             </article>
           ) : (
             <article key={q.id} className="hub-card hub-todo">
-              <span className="hub-kick">Quote #{q.number}{q.status === "changes_requested" ? " · you asked for changes" : q.valid_until ? ` · valid until ${formatDate(q.valid_until)}` : ""}</span>
+              <span className="hub-kick">{data.doc_word ?? "Quote"} #{q.number}{q.status === "changes_requested" ? " · you asked for changes" : q.valid_until ? ` · valid until ${formatDate(q.valid_until)}` : ""}</span>
               <strong className="hub-todo-title">{q.title}</strong>
               {q.options && <span className="hub-sub">{q.options.count} options, from {formatMoneyCents(q.options.from)}</span>}
               {!q.options && q.total !== null && <span className="hub-todo-amount">{formatMoneyCents(q.total)}{q.per_visit ? <span className="hub-sub"> per visit</span> : null}</span>}

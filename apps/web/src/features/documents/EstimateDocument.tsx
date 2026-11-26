@@ -137,9 +137,9 @@ const LINE_HEAD = (
  * "Estimate"); "Terms and conditions" and the sections above the signatures are a level under it,
  * the sections on the terms pages two.
  */
-function paperOf(template: TemplateSettings, company: DocumentCompany, data: DocumentData, level = 2): Paper {
+function paperOf(template: TemplateSettings, company: DocumentCompany, data: DocumentData, level = 2, estimateWord?: string): Paper {
   const estimate = data.kind === "estimate";
-  const kind = estimate ? "Estimate" : "Invoice";
+  const kind = estimate ? (estimateWord ?? "Estimate") : "Invoice";
   const color = documentColor(template, company.settings);
   const own = ownLetterhead(template);
   const fullSheet = printsFullSheet(own);
@@ -156,7 +156,7 @@ function paperOf(template: TemplateSettings, company: DocumentCompany, data: Doc
   const tables: Record<string, PieceTable> = {};
   const add = (piece: Piece) => pieces.push(piece);
 
-  add({ key: "parties", node: <Parties data={data} level={level} />, space: 0 });
+  add({ key: "parties", node: <Parties data={data} level={level} kindWord={kind} />, space: 0 });
   if (data.title || (data.facts?.length ?? 0) > 0) {
     add({
       key: "strip",
@@ -414,7 +414,7 @@ function Initials({ section }: { section: DocumentSection }) {
   );
 }
 
-function Parties({ data, level }: { data: DocumentData; level: number }) {
+function Parties({ data, level, kindWord }: { data: DocumentData; level: number; kindWord?: string }) {
   const estimate = data.kind === "estimate";
   return (
     <div className={styles.parties}>
@@ -424,7 +424,7 @@ function Parties({ data, level }: { data: DocumentData; level: number }) {
         {data.client.lines.length > 0 && <div className={styles.clientLines}>{data.client.lines.map((line, i) => <div key={i}>{line}</div>)}</div>}
       </div>
       <div className={styles.heading}>
-        <div className={styles.kind} role="heading" aria-level={level}>{estimate ? "Estimate" : "Invoice"}</div>
+        <div className={styles.kind} role="heading" aria-level={level}>{estimate ? (kindWord ?? "Estimate") : "Invoice"}</div>
         <div className={styles.meta}>
           {data.number != null && <div>No. {data.number}</div>}
           {data.date && <div>{longDate(data.date)}</div>}
@@ -555,8 +555,8 @@ export function documentBlocks(template: TemplateSettings, company: DocumentComp
  * DocumentSheet or PrintableDocument, which measure it) says what goes on each; without one,
  * everything is on one page.
  */
-export function EstimateDocument({ template, company, data, className, layout, firstPageOnly = false, headingLevel = 2 }: EstimateDocumentProps) {
-  const paper = paperOf(template, company, data, headingLevel);
+export function EstimateDocument({ template, company, data, className, layout, firstPageOnly = false, headingLevel = 2, estimateWord }: EstimateDocumentProps) {
+  const paper = paperOf(template, company, data, headingLevel, estimateWord);
   const pages = fits(layout, paper.pieces) ? layout : [onePage(paper.pieces)];
   return (
     <article className={cx(styles.doc, className)} style={paper.vars} data-full-sheet={flag(paper.fullSheet)} aria-label={paper.label}>
@@ -1111,7 +1111,7 @@ export type DocumentSheetProps = Omit<EstimateDocumentProps, "layout"> & {
  * The pages as sheets of paper, one under the other, scaled down to fit their column (never up).
  * `firstPageOnly` shows just the first, for a thumbnail.
  */
-export function DocumentSheet({ className, template, company, data, firstPageOnly = false, headingLevel, onPages }: DocumentSheetProps) {
+export function DocumentSheet({ className, template, company, data, firstPageOnly = false, headingLevel, onPages, estimateWord }: DocumentSheetProps) {
   const outer = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const paper = usePaper(template, company, data);
@@ -1138,7 +1138,7 @@ export function DocumentSheet({ className, template, company, data, firstPageOnl
     <div ref={outer} className={cx(styles.sheet, className)} data-pages={pages}>
       <div className={styles.frame} style={{ width: PAGE_WIDTH * scale, height: height * scale }}>
         <div className={styles.stack} style={{ transform: `scale(${scale})` }}>
-          <EstimateDocument template={template} company={company} data={data} layout={paper.layout} firstPageOnly={firstPageOnly} headingLevel={headingLevel} />
+          <EstimateDocument template={template} company={company} data={data} layout={paper.layout} firstPageOnly={firstPageOnly} headingLevel={headingLevel} estimateWord={estimateWord} />
         </div>
       </div>
       {paper.measurer}
@@ -1150,7 +1150,7 @@ export function DocumentSheet({ className, template, company, data, firstPageOnl
 // In print
 // ---------------------------------------------------------------------------------------------
 
-export type PrintableDocumentProps = Pick<EstimateDocumentProps, "template" | "company" | "data" | "className">;
+export type PrintableDocumentProps = Pick<EstimateDocumentProps, "template" | "company" | "data" | "className" | "estimateWord">;
 
 /**
  * The document, hidden on screen, and the only thing on the page when this screen prints (the
@@ -1163,7 +1163,7 @@ export type PrintableDocumentProps = Pick<EstimateDocumentProps, "template" | "c
  *
  * Marked `data-paginated` once its pages are final (usePaper's settled); printDocument waits for it.
  */
-export function PrintableDocument({ template, company, data, className }: PrintableDocumentProps) {
+export function PrintableDocument({ template, company, data, className, estimateWord }: PrintableDocumentProps) {
   const paper = usePaper(template, company, data);
   // Up to be printed as a PDF (pdfPrint.ts) while it's here.
   useEffect(() => printableOnPage({ template, company, data }), [template, company, data]);
@@ -1186,7 +1186,7 @@ export function PrintableDocument({ template, company, data, className }: Printa
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
   body > :not(.${styles.printRoot}) { display: none !important; }
 }`}</style>
-          <EstimateDocument template={template} company={company} data={data} layout={paper.layout} className={className} />
+          <EstimateDocument template={template} company={company} data={data} layout={paper.layout} className={className} estimateWord={estimateWord} />
         </div>,
         document.body,
       )}

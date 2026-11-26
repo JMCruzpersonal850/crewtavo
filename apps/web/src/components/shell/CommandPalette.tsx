@@ -24,7 +24,7 @@ import { getRecents } from "@/lib/recent";
 import { can, hasRole, useSession } from "@/lib/session";
 import { Spinner } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
-import { createItems, NAV_GROUPS, navVisible, OTHER_SCREENS, shortcutTarget } from "./nav";
+import { createItems, NAV_GROUPS, navLabel, navVisible, OTHER_SCREENS, shortcutTarget } from "./nav";
 import { keywordHint, marks } from "./paletteMatch";
 import { english, getLocale, msg, t } from "@/lib/i18n";
 
@@ -240,7 +240,7 @@ export function CommandPalette() {
     const screens: Item[] = SCREENS
       .filter((n) => navVisible(session, n))
       // Found by its name in either language ("agenda" or "schedule").
-      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(n.label), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, kbd: n.go ? keys("G", n.go) : undefined, run: () => go(n.to) }));
+      .map((n) => ({ id: `go-${n.to}`, group: msg("Go to"), icon: n.icon, title: t(navLabel(session, n)), keywords: `${english(n.label)} ${n.to} ${n.keywords ?? ""}`, kbd: n.go ? keys("G", n.go) : undefined, run: () => go(n.to) }));
     screens.push({ id: "go-settings", group: msg("Go to"), icon: "settings", title: t("Settings"), keywords: "preferences options setup", run: () => go("/settings") });
     // Their section's name and "Settings" go last, after commas, so the words that found a row are its own (paletteMatch.ts).
     const settings: Item[] = settingsGroups(session).flatMap((g) =>

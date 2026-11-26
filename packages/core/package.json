@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./geo": "./src/geo.ts",
     "./paving": "./src/paving.ts",
+    "./painting": "./src/painting.ts",
     "./presets": "./src/presets.ts",
     "./roofPlanes": "./src/roofPlanes.ts",
     "./roofing": "./src/roofing.ts",

@@ -12,6 +12,7 @@
  * the option records.
  */
 import { depositFor } from "@crewtavo/core/contracts";
+import { docWord, isPaintingTrade } from "@crewtavo/core/painting";
 import { shownCustomFields } from "@crewtavo/core/customFields";
 import { usesDepth } from "@crewtavo/core/formulas";
 import type { Json, TablesUpdate } from "@crewtavo/core/database";
@@ -404,8 +405,10 @@ export function QuotePage() {
   const templates = useTemplates();
   // The look it prints with: the template it was signed on once it's signed, else the one it's set to.
   const { template } = useQuoteTemplate(q ?? NO_QUOTE);
-  useDocumentTitle(q ? (q.is_template ? q.title : `Quote #${q.number}`) : "Quote");
-  useRememberRecent(session.company.id, q ? { kind: "quote", id: q.id, title: q.title, subtitle: q.is_template ? "Quote template" : `Quote #${q.number} · ${q.client?.display_name ?? ""}`, path: `/quotes/${q.id}` } : null);
+  // What this business calls the document (a painting business's Proposals; core painting.ts).
+  const doc = docWord(session.company.trade_preset);
+  useDocumentTitle(q ? (q.is_template ? q.title : `${doc} #${q.number}`) : doc);
+  useRememberRecent(session.company.id, q ? { kind: "quote", id: q.id, title: q.title, subtitle: q.is_template ? "Quote template" : `${doc} #${q.number} · ${q.client?.display_name ?? ""}`, path: `/quotes/${q.id}` } : null);
 
   const history = useQuery({
     queryKey: ["quote", id, "history"],
@@ -760,10 +763,10 @@ export function QuotePage() {
   return (
     <>
       <DetailHeader
-        crumb={isTemplate ? { to: "/quotes?status=templates", label: "Templates" } : { to: "/quotes", label: "Quotes" }}
+        crumb={isTemplate ? { to: "/quotes?status=templates", label: "Templates" } : { to: "/quotes", label: docWord(session.company.trade_preset, true) }}
         title={<h1 className="page-title">{editable ? <TitleInput value={q.title} onEdit={save.edited} onUnchanged={unchanged} onSave={(title) => saveField({ title })} /> : q.title}</h1>}
         meta={[
-          isTemplate ? "Quote template · new quotes start from it, and it's never sent" : `Quote #${q.number}`,
+          isTemplate ? "Quote template · new quotes start from it, and it's never sent" : `${docWord(session.company.trade_preset)} #${q.number}`,
           !isTemplate && <EntityStatus kind="quote" status={q.status} />,
           q.status === "lost" && q.lost_reason,
           q.status === "sent" && q.sent_at && !ranged && `Sent ${timeAgo(q.sent_at)}`,
@@ -780,7 +783,7 @@ export function QuotePage() {
           ))
         }
         more={canSell ? more : undefined}
-        moreTitle={isTemplate ? q.title : `Quote #${q.number}`}
+        moreTitle={isTemplate ? q.title : `${docWord(session.company.trade_preset)} #${q.number}`}
       />
 
       <DetailColumns
@@ -1097,7 +1100,7 @@ function QuotePaper({ quote: q, options, viewed, sheet, print }: { quote: QuoteR
             </p>
           )}
           {onScreen.current ? (
-            <DocumentSheet template={onScreen.current.template} company={company} data={onScreen.current.data} />
+            <DocumentSheet template={onScreen.current.template} company={company} data={onScreen.current.data} estimateWord={isPaintingTrade(session.company.trade_preset) ? "Proposal" : undefined} />
           ) : (
             <Skeleton height="auto" radius={4} style={{ aspectRatio: "8.5 / 11" }} />
           )}

@@ -92,6 +92,11 @@ export const TRADE_TERMS: Record<string, string> = {
   paving: DEFAULT_TERMS,
   roofing_exteriors: DEFAULT_TERMS,
   landscaping: DEFAULT_TERMS,
+  // Painting bills like a project: a deposit to book, the rest at the final walkthrough.
+  painting:
+    "Payment: a deposit to get on the schedule, and the rest when the work is done and you've walked it with us.\n" +
+    "Changes: anything not listed here is extra, and only with your OK.\n" +
+    "Our work: we stand behind our workmanship, plus the manufacturer's warranty on the paint.",
   // Repair trades bill when the work is done, like general.
   plumbing: GENERAL_TERMS,
   hvac: GENERAL_TERMS,

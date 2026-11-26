@@ -1,0 +1,480 @@
+{
+  "checklists": [
+    {
+      "items": [
+        {
+          "key": "walkthrough_colors_confirmed",
+          "label": "Walkthrough done, colors and sheen confirmed with the client",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "floors_furniture_protected",
+          "label": "Floors and furniture protected, masking done",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "prep_done",
+          "label": "Prep done: patched, sanded and caulked",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "primed",
+          "label": "Primer on where it needs it",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "coat_1",
+          "label": "First coat on",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "coat_2",
+          "label": "Second coat on",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "touch_ups",
+          "label": "Touch-ups done and tape pulled",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "final_walkthrough",
+          "label": "Final walkthrough with the client",
+          "required": true,
+          "type": "signature"
+        },
+        {
+          "key": "after_photos",
+          "label": "After photos",
+          "required": true,
+          "type": "photo"
+        }
+      ],
+      "name": "Paint job — interior",
+      "services": [
+        "Interior walls",
+        "Ceilings",
+        "Trim",
+        "Baseboards, 3 in",
+        "Baseboards, 5 in",
+        "Window trim",
+        "Tray ceiling",
+        "Doors",
+        "Cabinets"
+      ]
+    },
+    {
+      "items": [
+        {
+          "key": "walkthrough_colors_confirmed",
+          "label": "Walkthrough done, colors and sheen confirmed with the client",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "washed_and_dry",
+          "label": "Surfaces washed and fully dry",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "landscaping_protected",
+          "label": "Plants, windows and fixtures protected, masking done",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "prep_done",
+          "label": "Prep done: scraped, patched, sanded and caulked",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "primed",
+          "label": "Primer on bare wood and repairs",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "coat_1",
+          "label": "First coat on",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "coat_2",
+          "label": "Second coat on",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "touch_ups",
+          "label": "Touch-ups done and tape pulled",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "final_walkthrough",
+          "label": "Final walkthrough with the client",
+          "required": true,
+          "type": "signature"
+        },
+        {
+          "key": "after_photos",
+          "label": "After photos",
+          "required": true,
+          "type": "photo"
+        }
+      ],
+      "name": "Paint job — exterior",
+      "services": [
+        "Exterior walls and siding",
+        "Exterior trim",
+        "Shutters",
+        "Front door",
+        "Garage door",
+        "Pressure washing"
+      ]
+    },
+    {
+      "items": [
+        {
+          "key": "containment_set",
+          "label": "Work area contained with plastic sheeting, signs posted",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "wet_methods",
+          "label": "Wet methods used for scraping and sanding, no dry scraping",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "hepa_cleanup",
+          "label": "Cleanup done with HEPA vacuum and wet washing",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "waste_bagged",
+          "label": "Debris bagged and sealed for disposal",
+          "required": true,
+          "type": "check"
+        },
+        {
+          "key": "lead_safe_signoff",
+          "label": "Lead-safe sign-off",
+          "required": true,
+          "type": "signature"
+        }
+      ],
+      "name": "Lead-safe work practices (pre-1978)"
+    }
+  ],
+  "custom_fields": [
+    {
+      "key": "paint_color",
+      "label": "Paint color (name and code)",
+      "records": [
+        "quote",
+        "job"
+      ],
+      "show_in_portal": true,
+      "show_on_pdf": true,
+      "type": "text"
+    },
+    {
+      "choices": [
+        "Flat",
+        "Eggshell",
+        "Satin",
+        "Semi-gloss",
+        "Gloss"
+      ],
+      "key": "sheen",
+      "label": "Sheen",
+      "records": [
+        "quote",
+        "job"
+      ],
+      "show_in_portal": true,
+      "show_on_pdf": true,
+      "type": "choice"
+    },
+    {
+      "key": "product_brand",
+      "label": "Product / brand",
+      "records": [
+        "quote",
+        "job"
+      ],
+      "show_in_portal": true,
+      "show_on_pdf": true,
+      "type": "text"
+    },
+    {
+      "key": "built_before_1978",
+      "label": "Built before 1978 — lead-safe",
+      "records": [
+        "quote",
+        "job"
+      ],
+      "type": "yes_no"
+    }
+  ],
+  "description": "Interior and exterior painting: repaints, cabinets, trim, drywall repair and prep, priced by the surface.",
+  "formulas": [
+    {
+      "formula": "area_sqft",
+      "name": "Measured area"
+    },
+    {
+      "formula": "length_ft",
+      "name": "Measured length"
+    }
+  ],
+  "id": "painting",
+  "intake_forms": [
+    {
+      "kind": "request",
+      "lead_time_days": 1,
+      "name": "Painting estimate request",
+      "questions": [
+        {
+          "key": "address",
+          "label": "Property address",
+          "required": true,
+          "type": "address"
+        },
+        {
+          "key": "inside_or_outside",
+          "label": "Interior, exterior, or both?",
+          "options": [
+            "Interior",
+            "Exterior",
+            "Both"
+          ],
+          "required": true,
+          "type": "choice"
+        },
+        {
+          "key": "areas",
+          "label": "What are we painting?",
+          "options": [
+            "Living areas",
+            "Bedrooms",
+            "Kitchen",
+            "Bathrooms",
+            "Cabinets",
+            "Whole exterior",
+            "Trim and doors",
+            "Something else"
+          ],
+          "required": true,
+          "type": "multi_choice"
+        },
+        {
+          "key": "condition",
+          "label": "Anything peeling, stained or damaged we should know about?",
+          "required": false,
+          "type": "long_text"
+        },
+        {
+          "key": "timing",
+          "label": "When would you like it done?",
+          "options": [
+            "As soon as possible",
+            "This season",
+            "Just planning"
+          ],
+          "required": false,
+          "type": "choice"
+        },
+        {
+          "key": "photos",
+          "label": "Photos of the areas",
+          "required": false,
+          "type": "photos"
+        }
+      ],
+      "requires_approval": true,
+      "slug": "painting-estimate-request"
+    }
+  ],
+  "name": "Painting",
+  "services": [
+    {
+      "name": "Trip charge",
+      "category": "Prep and repairs",
+      "unit": "visit",
+      "unit_price": 75
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured area",
+      "name": "Interior walls",
+      "unit": "sq ft",
+      "unit_cost": 1.35,
+      "unit_price": 2.5
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured area",
+      "name": "Ceilings",
+      "unit": "sq ft",
+      "unit_cost": 1.1,
+      "unit_price": 2
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured length",
+      "name": "Trim",
+      "unit": "ft",
+      "unit_cost": 1.3,
+      "unit_price": 2.5
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured length",
+      "name": "Baseboards, 3 in",
+      "unit": "ft",
+      "unit_cost": 0.9,
+      "unit_price": 1.75
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured length",
+      "name": "Baseboards, 5 in",
+      "unit": "ft",
+      "unit_cost": 1.15,
+      "unit_price": 2.25
+    },
+    {
+      "category": "Interior",
+      "name": "Window trim",
+      "unit": "ea",
+      "unit_cost": 22,
+      "unit_price": 45
+    },
+    {
+      "category": "Interior",
+      "name": "Tray ceiling",
+      "unit": "ea",
+      "unit_cost": 80,
+      "unit_price": 150
+    },
+    {
+      "category": "Interior",
+      "name": "Doors",
+      "unit": "ea",
+      "unit_cost": 45,
+      "unit_price": 85
+    },
+    {
+      "category": "Interior",
+      "name": "Cabinets",
+      "unit": "ea",
+      "unit_cost": 30,
+      "unit_price": 55
+    },
+    {
+      "category": "Exterior",
+      "formula_name": "Measured area",
+      "name": "Exterior walls and siding",
+      "unit": "sq ft",
+      "unit_cost": 1.5,
+      "unit_price": 2.75
+    },
+    {
+      "category": "Exterior",
+      "formula_name": "Measured length",
+      "name": "Exterior trim",
+      "unit": "ft",
+      "unit_cost": 1.45,
+      "unit_price": 2.75
+    },
+    {
+      "category": "Exterior",
+      "name": "Shutters",
+      "unit": "ea",
+      "unit_cost": 20,
+      "unit_price": 40
+    },
+    {
+      "category": "Exterior",
+      "name": "Front door",
+      "unit": "ea",
+      "unit_cost": 65,
+      "unit_price": 125
+    },
+    {
+      "category": "Exterior",
+      "name": "Garage door",
+      "unit": "ea",
+      "unit_cost": 80,
+      "unit_price": 150
+    },
+    {
+      "category": "Prep and repairs",
+      "formula_name": "Measured area",
+      "name": "Pressure washing",
+      "unit": "sq ft",
+      "unit_cost": 0.15,
+      "unit_price": 0.35
+    },
+    {
+      "category": "Prep and repairs",
+      "formula_name": "Measured area",
+      "name": "Drywall repair",
+      "unit": "sq ft",
+      "unit_cost": 1.9,
+      "unit_price": 3.5
+    },
+    {
+      "category": "Prep and repairs",
+      "name": "Caulking and patching",
+      "unit": "hr",
+      "unit_cost": 35,
+      "unit_price": 65
+    },
+    {
+      "category": "Prep and repairs",
+      "formula_name": "Measured area",
+      "name": "Wallpaper removal",
+      "unit": "sq ft",
+      "unit_cost": 0.85,
+      "unit_price": 1.5
+    }
+  ],
+  "sop_categories": [
+    "Safety and ladders",
+    "Surface prep",
+    "Interior painting",
+    "Exterior painting",
+    "Lead-safe work"
+  ],
+  "weather_rules": [
+    {
+      "applies_to": "Exterior walls and siding",
+      "max_humidity_pct": 85,
+      "max_rain_pct": 40,
+      "min_temp_f": 50,
+      "requires_dry_hours": 24
+    },
+    {
+      "applies_to": "Exterior trim",
+      "max_humidity_pct": 85,
+      "max_rain_pct": 40,
+      "min_temp_f": 50,
+      "requires_dry_hours": 24
+    }
+  ]
+}

@@ -152,6 +152,8 @@ export type HubContract =
   | { kind: "signed"; terms: string; sections: ApprovalContract["sections"]; initials: { image: string; signed_at: string | null } | null };
 export interface QuoteView {
   kind: "quote";
+  /** What this business calls the document ("Proposal" for a painting business, "Quote" otherwise) — the server sends the word, never the trade. Left out by older servers. */
+  doc_word?: string;
   drawings?: HubDrawing[];
   preview?: boolean;
   home: string | null;
