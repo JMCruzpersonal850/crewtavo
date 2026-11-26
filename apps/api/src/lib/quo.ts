@@ -14,11 +14,15 @@
  * workspace's numbers and their ids, which is how a key is checked before it's saved.
  *
  * Texts that come in arrive on the webhook Quo is given for the number (Settings → Webhooks in
- * Quo, or POST /v1/webhooks/messages): events message.received and message.delivered, the message
- * in data.object. A webhook's deliveries are signed with its key (the `key` the webhook was
- * created with): header openphone-signature, "hmac;1;<ms>;<base64 HMAC-SHA256 of
- * "<ms>.<raw body>", keyed by the base64-decoded key>". A company can keep that key with its
- * connection, and the webhook checks the signature when it has one (routes/messages.ts).
+ * Quo, or the API): events message.received and message.delivered. Quo runs two webhook
+ * generations and a delivery can be either (docs: webhooks overview / migration guide):
+ * legacy ones (made in the app before the new system, or with /v1/webhooks) carry the message
+ * in data.object and one header, openphone-signature "hmac;1;<ms>;<base64 HMAC-SHA256 of
+ * "<ms>.<raw body>", keyed by the base64-decoded key>"; new ones carry it in data.resource
+ * (the text in resource.text, the participants in data.context) and Standard Webhooks headers
+ * — webhook-id, webhook-timestamp (seconds), webhook-signature "v1,<base64 HMAC-SHA256 of
+ * "<id>.<timestamp>.<raw body>">" — with a `whsec_`-prefixed key. Both are checked when a
+ * company kept its webhook's key with its connection (routes/messages.ts).
  */
 import { phoneE164 } from "@crewtavo/core/phone";
 import { phoneMatchKey } from "@crewtavo/core/recipients";
@@ -164,10 +168,37 @@ export async function checkQuo(input: { api_key: string }, fetcher: FetchLike = 
 }
 
 /**
- * Whether a webhook delivery is the one Quo signed: its legacy signature (webhooks made in the
- * Quo app or with the v1 API), header openphone-signature "hmac;1;<ms>;<base64 digest>", the
- * digest HMAC-SHA256 over "<ms>.<raw body>" with the webhook's key decoded from base64, and the
- * timestamp no more than five minutes old (docs: Validate legacy webhook signatures).
+ * The HMAC key bytes a kept signing secret stands for: Quo's secrets are base64 — the new
+ * generation's with a `whsec_` in front of the base64, the legacy one's bare. Either form of
+ * either secret decodes the same way, so a key kept with or without its prefix still works.
+ */
+function signingKeyBytes(webhookKey: string): Uint8Array | null {
+  try {
+    return Uint8Array.from(atob(webhookKey.trim().replace(/^whsec_/, "")), (ch) => ch.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+async function hmacBase64(keyBytes: Uint8Array, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", keyBytes as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data)));
+  return btoa(String.fromCharCode(...mac));
+}
+
+/** A digest comparison that doesn't stop at the first different character. */
+function sameSignature(expected: string, provided: string): boolean {
+  if (expected.length !== provided.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Whether a webhook delivery is the one Quo signed, legacy generation: header
+ * openphone-signature "hmac;1;<ms>;<base64 digest>", the digest HMAC-SHA256 over
+ * "<ms>.<raw body>" with the webhook's key decoded from base64, and the timestamp no more
+ * than five minutes old (docs: Validate legacy webhook signatures).
  */
 export async function verifyQuoSignature(webhookKey: string, header: string, rawBody: string, now = Date.now()): Promise<boolean> {
   const parts = header.split(";");
@@ -175,22 +206,61 @@ export async function verifyQuoSignature(webhookKey: string, header: string, raw
   const timestamp = Number(parts[2]);
   const signature = parts[3] ?? "";
   if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > 5 * 60_000) return false;
-  let keyBytes: Uint8Array;
-  try {
-    keyBytes = Uint8Array.from(atob(webhookKey), (ch) => ch.charCodeAt(0));
-  } catch {
-    return false;
-  }
-  const key = await crypto.subtle.importKey("raw", keyBytes as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${parts[2]}.${rawBody}`)));
-  const expected = btoa(String.fromCharCode(...mac));
-  if (expected.length !== signature.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  return diff === 0;
+  const keyBytes = signingKeyBytes(webhookKey);
+  if (!keyBytes) return false;
+  return sameSignature(await hmacBase64(keyBytes, `${parts[2]}.${rawBody}`), signature);
 }
 
-/** A message as a Quo webhook carries it (message.received: the message in data.object). */
+/** The three headers a new-generation Quo delivery is signed with (Standard Webhooks). */
+export interface QuoStandardHeaders {
+  id?: string;
+  timestamp?: string;
+  signature?: string;
+}
+
+/**
+ * Whether a webhook delivery is the one Quo signed, new generation (docs: Validate webhook
+ * signatures): headers webhook-id, webhook-timestamp (Unix *seconds*) and webhook-signature,
+ * a space-separated list of "v1,<base64 digest>" entries (more than one while a key rotates);
+ * the digest is HMAC-SHA256 over "<id>.<timestamp>.<raw body>" with the webhook's key — the
+ * `whsec_…` value Quo returned when the webhook was created, its prefix not part of the key —
+ * decoded from base64, and the timestamp no more than five minutes old.
+ */
+export async function verifyQuoStandardSignature(webhookKey: string, headers: QuoStandardHeaders, rawBody: string, now = Date.now()): Promise<boolean> {
+  const { id, timestamp, signature } = headers;
+  if (!id || !timestamp || !signature) return false;
+  const seconds = Number(timestamp);
+  if (!Number.isFinite(seconds) || Math.abs(now / 1000 - seconds) > 5 * 60) return false;
+  const keyBytes = signingKeyBytes(webhookKey);
+  if (!keyBytes) return false;
+  const expected = await hmacBase64(keyBytes, `${id}.${timestamp}.${rawBody}`);
+  for (const entry of signature.split(" ")) {
+    const comma = entry.indexOf(",");
+    if (comma < 0 || entry.slice(0, comma) !== "v1") continue;
+    if (sameSignature(expected, entry.slice(comma + 1))) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a delivery is the one Quo signed, whichever generation sent it: a delivery that
+ * carries the new headers is checked the new way, one that doesn't falls back to the legacy
+ * openphone-signature. Which generation a webhook sends is fixed when the webhook is made,
+ * and both kinds can point at this address at once (docs: Migrate from legacy webhooks —
+ * "Code that verifies the legacy OpenPhone-Signature header rejects every new delivery").
+ */
+export async function verifyQuoDelivery(webhookKey: string, headers: QuoStandardHeaders & { legacy?: string }, rawBody: string, now = Date.now()): Promise<boolean> {
+  if (headers.id || headers.timestamp || headers.signature) return verifyQuoStandardSignature(webhookKey, headers, rawBody, now);
+  return verifyQuoSignature(webhookKey, headers.legacy ?? "", rawBody, now);
+}
+
+/**
+ * A message as a Quo webhook carries it. The two generations carry it differently (docs:
+ * Webhook event payloads): legacy deliveries put the whole message in data.object (from, to,
+ * body, phoneNumberId on it); new ones put the message itself in data.resource (its text, no
+ * participants) and the participants around it in data.context — senderIdentifier is who
+ * texted, recipientIdentifiers the number(s) they texted, phoneNumberId the number's id.
+ */
 export interface QuoInboundMessage {
   from: string;
   to: string;
@@ -201,22 +271,28 @@ export interface QuoInboundMessage {
   phoneNumberId: string | null;
 }
 
+const asString = (value: unknown): string => (typeof value === "string" ? value : "");
+const firstString = (value: unknown): string => (Array.isArray(value) ? asString(value[0]) : asString(value));
+
 /** The message in a webhook delivery, or null when the delivery isn't a text that came in. */
 export function quoMessageFromPayload(payload: unknown): QuoInboundMessage | null {
-  const root = payload as { type?: string; data?: { object?: Record<string, unknown>; resource?: Record<string, unknown> } } | null;
+  const root = payload as { type?: string; data?: { object?: Record<string, unknown>; resource?: Record<string, unknown>; context?: Record<string, unknown> } } | null;
   if (!root || root.type !== "message.received") return null;
   const obj = root.data?.object ?? root.data?.resource;
   if (!obj) return null;
-  const from = typeof obj.from === "string" ? obj.from : "";
-  const to = Array.isArray(obj.to) ? String(obj.to[0] ?? "") : typeof obj.to === "string" ? obj.to : "";
+  // A message.received is an inbound text; a delivery that says otherwise isn't one to file.
+  if (obj.direction !== undefined && obj.direction !== "incoming") return null;
+  const context = root.data?.context ?? {};
+  const from = asString(obj.from) || asString(context.senderIdentifier);
+  const to = firstString(obj.to) || firstString(context.recipientIdentifiers) || asString(context.recipientIdentifier);
   const body = [obj.body, obj.text, obj.content].find((v) => typeof v === "string") as string | undefined;
   if (!from || !body) return null;
   return {
     from,
     to,
     body,
-    sid: typeof obj.id === "string" ? obj.id : null,
-    phoneNumberId: typeof obj.phoneNumberId === "string" ? obj.phoneNumberId : null,
+    sid: asString(obj.id) || null,
+    phoneNumberId: asString(obj.phoneNumberId) || asString(context.phoneNumberId) || null,
   };
 }
 
