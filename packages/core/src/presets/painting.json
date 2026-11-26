@@ -322,61 +322,78 @@
       "formula_name": "Measured area",
       "name": "Interior walls",
       "unit": "sq ft",
-      "unit_cost": 1.35,
-      "unit_price": 2.5
+      "unit_cost": 2.21,
+      "unit_price": 3.16
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured area",
+      "name": "Textured walls",
+      "unit": "sq ft",
+      "unit_cost": 2.28,
+      "unit_price": 3.26
     },
     {
       "category": "Interior",
       "formula_name": "Measured area",
       "name": "Ceilings",
       "unit": "sq ft",
-      "unit_cost": 1.1,
-      "unit_price": 2
+      "unit_cost": 2.21,
+      "unit_price": 3.16
+    },
+    {
+      "category": "Interior",
+      "formula_name": "Measured area",
+      "name": "Closet walls",
+      "unit": "sq ft",
+      "unit_cost": 2.21,
+      "unit_price": 3.16
     },
     {
       "category": "Interior",
       "formula_name": "Measured length",
       "name": "Trim",
       "unit": "ft",
-      "unit_cost": 1.3,
-      "unit_price": 2.5
+      "unit_cost": 1.69,
+      "unit_price": 2.42
     },
     {
       "category": "Interior",
       "formula_name": "Measured length",
       "name": "Baseboards, 3 in",
       "unit": "ft",
-      "unit_cost": 0.9,
-      "unit_price": 1.75
+      "unit_cost": 1.69,
+      "unit_price": 2.42
     },
     {
       "category": "Interior",
       "formula_name": "Measured length",
       "name": "Baseboards, 5 in",
       "unit": "ft",
-      "unit_cost": 1.15,
-      "unit_price": 2.25
+      "unit_cost": 1.69,
+      "unit_price": 2.42
     },
     {
       "category": "Interior",
       "name": "Window trim",
       "unit": "ea",
-      "unit_cost": 22,
-      "unit_price": 45
+      "unit_cost": 28.0,
+      "unit_price": 40.0
     },
     {
       "category": "Interior",
       "name": "Tray ceiling",
-      "unit": "ea",
-      "unit_cost": 80,
-      "unit_price": 150
+      "unit": "sq ft",
+      "unit_cost": 2.21,
+      "unit_price": 3.16,
+      "formula_name": "Measured area"
     },
     {
       "category": "Interior",
       "name": "Doors",
       "unit": "ea",
-      "unit_cost": 45,
-      "unit_price": 85
+      "unit_cost": 59.65,
+      "unit_price": 85.21
     },
     {
       "category": "Interior",
@@ -390,16 +407,24 @@
       "formula_name": "Measured area",
       "name": "Exterior walls and siding",
       "unit": "sq ft",
-      "unit_cost": 1.5,
-      "unit_price": 2.75
+      "unit_cost": 5.3,
+      "unit_price": 7.57
     },
     {
       "category": "Exterior",
       "formula_name": "Measured length",
       "name": "Exterior trim",
       "unit": "ft",
-      "unit_cost": 1.45,
-      "unit_price": 2.75
+      "unit_cost": 5.27,
+      "unit_price": 7.53
+    },
+    {
+      "category": "Exterior",
+      "formula_name": "Measured length",
+      "name": "Fascia",
+      "unit": "ft",
+      "unit_cost": 3.36,
+      "unit_price": 4.8
     },
     {
       "category": "Exterior",
@@ -412,15 +437,22 @@
       "category": "Exterior",
       "name": "Front door",
       "unit": "ea",
-      "unit_cost": 65,
-      "unit_price": 125
+      "unit_cost": 59.65,
+      "unit_price": 85.21
     },
     {
       "category": "Exterior",
       "name": "Garage door",
       "unit": "ea",
-      "unit_cost": 80,
-      "unit_price": 150
+      "unit_cost": 650.0,
+      "unit_price": 928.57
+    },
+    {
+      "category": "Exterior",
+      "name": "Downspouts",
+      "unit": "ea",
+      "unit_cost": 100.0,
+      "unit_price": 142.86
     },
     {
       "category": "Prep and repairs",
@@ -432,18 +464,17 @@
     },
     {
       "category": "Prep and repairs",
-      "formula_name": "Measured area",
       "name": "Drywall repair",
-      "unit": "sq ft",
-      "unit_cost": 1.9,
-      "unit_price": 3.5
+      "unit": "ea",
+      "unit_cost": 600,
+      "unit_price": 950
     },
     {
       "category": "Prep and repairs",
       "name": "Caulking and patching",
       "unit": "hr",
-      "unit_cost": 35,
-      "unit_price": 65
+      "unit_cost": 80.0,
+      "unit_price": 114.29
     },
     {
       "category": "Prep and repairs",

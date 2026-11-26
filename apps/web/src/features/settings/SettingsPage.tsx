@@ -43,6 +43,7 @@ import { StorageSettings } from "./StorageSettings";
 import { TeamSettings } from "./TeamSettings";
 import { TemplateSettings } from "./TemplateSettings";
 import { WebAddressSettings } from "./WebAddressSettings";
+import { PaintingSettings } from "./PaintingSettings";
 import { WeatherSettings } from "./WeatherSettings";
 
 /** One line under a section's title: what it's for. Sections with their own words at the top have none. */
@@ -91,6 +92,7 @@ function SettingsBody({ tab }: { tab: SettingsTab }) {
     case "custom-fields": return <CustomFieldSettings />;
     case "checklists": return <ChecklistSettings />;
     case "weather": return <WeatherSettings />;
+    case "painting": return <PaintingSettings />;
     case "client-notifications": return <ClientNotificationSettings />;
     case "email": return <EmailSettings />;
     case "calendars": return <CalendarSettings />;

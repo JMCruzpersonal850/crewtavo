@@ -97,6 +97,7 @@ import { depthLines, lineDepths, type DepthLine } from "./depths";
 import { AddOptionsDialog, QuoteOptions } from "./QuoteOptions";
 import { QuoteSections } from "./QuoteSections";
 import { DraftedCallout } from "./DraftedCallout";
+import { PaintMathPanel } from "./PaintMathPanel";
 import { PaymentScheduleCard } from "./PaymentSchedule";
 import { DiscountRows } from "./PromoRow";
 import { SendDialog } from "./SendDialog";
@@ -125,7 +126,7 @@ async function loadQuoteRow(id: string) {
   return unwrapOne(
     await supabase()
       .from("quotes")
-      .select("id, number, title, status, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, valid_until, recurrence_rule, active_months, starts_on, ends_on, sent_at, approved_at, approval, lost_reason, request_id, created_at, template_id, option_id, section_ids, roof_package_id, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, every_visit), request:requests(promo_code, website_form_id, rejected_promo_code, promo_problem), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), property:properties(id, line1, city, region, postal_code, lat, lng), lines:quote_line_items(id, name, description, quantity, unit, unit_price, unit_cost, taxable, optional, selected, option_group, option_id, formula, sort, service_id), jobs!jobs_company_id_quote_id_fkey(id, number), change_order_for, change_job:jobs!quotes_change_order_fkey(id, number, title), package:roof_packages!quotes_roof_package_fkey(name, warranty, price_mode, markup_pct), range_low, range_high, range_accepted_at, priced_on_site_at, exact_sent_at, custom_fields, is_template, left_out, payment_schedule, drafted")
+      .select("id, number, title, status, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, valid_until, recurrence_rule, active_months, starts_on, ends_on, sent_at, approved_at, approval, lost_reason, request_id, created_at, template_id, option_id, section_ids, roof_package_id, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, every_visit), request:requests(promo_code, website_form_id, rejected_promo_code, promo_problem), client:clients(id, display_name, email, phone, billing_address, sms_opt_out_at, tax_exempt, tax_exempt_note), property:properties(id, line1, city, region, postal_code, lat, lng), lines:quote_line_items(id, name, description, quantity, unit, unit_price, unit_cost, material_cost, taxable, optional, selected, option_group, option_id, formula, sort, service_id), jobs!jobs_company_id_quote_id_fkey(id, number), change_order_for, change_job:jobs!quotes_change_order_fkey(id, number, title), package:roof_packages!quotes_roof_package_fkey(name, warranty, price_mode, markup_pct), paint_package_id, range_low, range_high, range_accepted_at, priced_on_site_at, exact_sent_at, custom_fields, is_template, left_out, payment_schedule, drafted")
       .eq("id", id)
       .order("sort", { referencedTable: "quote_line_items" })
       .maybeSingle(),
@@ -757,6 +758,17 @@ export function QuotePage() {
     </Section>
   );
 
+  // A painting business prices by its numbers, in the open: the math behind this proposal's lines.
+  const paintMath = isPaintingTrade(session.company.trade_preset) && canSell && !isTemplate && (
+    <PaintMathPanel
+      quoteId={q.id}
+      lines={q.lines.filter((l) => l.selected && !l.optional && l.option_id === printedOption(q, viewing))}
+      editable={editable}
+      hasOptions={options.length > 0}
+      onChanged={refresh}
+    />
+  );
+
   // What happened to it, the latest first, ending where it was made.
   const historyRows = canSell && !isTemplate && history.data?.activity.length ? history.data.activity : null;
 
@@ -793,6 +805,7 @@ export function QuotePage() {
           <>
             {!narrow && totals}
             {profit}
+            {paintMath}
             {/* On a template too: the quotes made from it carry it. */}
             {canSell && <PaymentScheduleCard quote={q} editable={editable} onSaved={refresh} />}
             {/* Filled in after it's signed too: a permit number often comes later. */}

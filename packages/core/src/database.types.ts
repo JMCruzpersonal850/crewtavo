@@ -1876,6 +1876,52 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"paint_packages": {
+                  Row: {
+                    "coats": number,"company_id": string,"created_at": string,"description": string,"highlights": (string)[],"id": string,"is_default": boolean,"is_enabled": boolean,"markup_pct": number,"name": string,"paint_grade": string | null,"primer_coats": number,"product_id": string | null,"product_name": string | null,"scope": string,"set_name": string,"sort": number,"tagline": string,"tier": string,"updated_at": string,"warranty": string,"warranty_months": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "coats"?: number,"company_id": string,"created_at"?: string,"description"?: string,"highlights"?: (string)[],"id"?: string,"is_default"?: boolean,"is_enabled"?: boolean,"markup_pct"?: number,"name": string,"paint_grade"?: string | null,"primer_coats"?: number,"product_id"?: string | null,"product_name"?: string | null,"scope": string,"set_name"?: string,"sort"?: number,"tagline"?: string,"tier": string,"updated_at"?: string,"warranty"?: string,"warranty_months"?: number
+                  }
+                  Update: {
+                    "coats"?: number,"company_id"?: string,"created_at"?: string,"description"?: string,"highlights"?: (string)[],"id"?: string,"is_default"?: boolean,"is_enabled"?: boolean,"markup_pct"?: number,"name"?: string,"paint_grade"?: string | null,"primer_coats"?: number,"product_id"?: string | null,"product_name"?: string | null,"scope"?: string,"set_name"?: string,"sort"?: number,"tagline"?: string,"tier"?: string,"updated_at"?: string,"warranty"?: string,"warranty_months"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "paint_packages_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "paint_packages_company_id_product_id_fkey"
+      columns: ["company_id","product_id"]
+isOneToOne: false
+      referencedRelation: "paint_products"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"paint_products": {
+                  Row: {
+                    "active": boolean,"brand": string | null,"company_id": string,"cost_per_gallon": number,"coverage_per_gallon": number,"created_at": string,"id": string,"markup_pct": number,"name": string,"scope": string,"sort": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"brand"?: string | null,"company_id": string,"cost_per_gallon"?: number,"coverage_per_gallon"?: number,"created_at"?: string,"id"?: string,"markup_pct"?: number,"name": string,"scope"?: string,"sort"?: number,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"brand"?: string | null,"company_id"?: string,"cost_per_gallon"?: number,"coverage_per_gallon"?: number,"created_at"?: string,"id"?: string,"markup_pct"?: number,"name"?: string,"scope"?: string,"sort"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "paint_products_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"paving_worksheets": {
                   Row: {
                     "company_id": string,"created_at": string,"created_by": string | null,"data": NonNullable<Json>,"id": string,"line_id": string | null,"name": string,"notes": string | null,"quote_id": string,"updated_at": string
@@ -2380,14 +2426,14 @@ isOneToOne: false
                   ]
                 },"quote_options": {
                   Row: {
-                    "company_id": string,"created_at": string,"highlights": (string)[],"id": string,"name": string,"package_id": string | null,"picture": string | null,"picture_height": number | null,"picture_width": number | null,"quote_id": string,"section_ids": (string)[],"sort": number,"style": string,"tier": string | null,"updated_at": string,"warranty": string
+                    "company_id": string,"created_at": string,"highlights": (string)[],"id": string,"name": string,"package_id": string | null,"paint_package_id": string | null,"picture": string | null,"picture_height": number | null,"picture_width": number | null,"quote_id": string,"section_ids": (string)[],"sort": number,"style": string,"tier": string | null,"updated_at": string,"warranty": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "company_id": string,"created_at"?: string,"highlights"?: (string)[],"id"?: string,"name": string,"package_id"?: string | null,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"quote_id": string,"section_ids"?: (string)[],"sort"?: number,"style"?: string,"tier"?: string | null,"updated_at"?: string,"warranty"?: string
+                    "company_id": string,"created_at"?: string,"highlights"?: (string)[],"id"?: string,"name": string,"package_id"?: string | null,"paint_package_id"?: string | null,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"quote_id": string,"section_ids"?: (string)[],"sort"?: number,"style"?: string,"tier"?: string | null,"updated_at"?: string,"warranty"?: string
                   }
                   Update: {
-                    "company_id"?: string,"created_at"?: string,"highlights"?: (string)[],"id"?: string,"name"?: string,"package_id"?: string | null,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"quote_id"?: string,"section_ids"?: (string)[],"sort"?: number,"style"?: string,"tier"?: string | null,"updated_at"?: string,"warranty"?: string
+                    "company_id"?: string,"created_at"?: string,"highlights"?: (string)[],"id"?: string,"name"?: string,"package_id"?: string | null,"paint_package_id"?: string | null,"picture"?: string | null,"picture_height"?: number | null,"picture_width"?: number | null,"quote_id"?: string,"section_ids"?: (string)[],"sort"?: number,"style"?: string,"tier"?: string | null,"updated_at"?: string,"warranty"?: string
                   }
                   Relationships: [
                     {
@@ -2403,6 +2449,12 @@ isOneToOne: false
       referencedRelation: "roof_packages"
       referencedColumns: ["company_id","id"]
     },{
+      foreignKeyName: "quote_options_paint_package_fkey"
+      columns: ["company_id","paint_package_id"]
+isOneToOne: false
+      referencedRelation: "paint_packages"
+      referencedColumns: ["company_id","id"]
+    },{
       foreignKeyName: "quote_options_quote_fkey"
       columns: ["company_id","quote_id"]
 isOneToOne: false
@@ -2412,14 +2464,14 @@ isOneToOne: false
                   ]
                 },"quotes": {
                   Row: {
-                    "active_months": (number)[] | null,"approval": Json | null,"approved_at": string | null,"change_order_for": string | null,"client_id": string | null,"company_id": string,"converted_at": string | null,"created_at": string,"created_by": string | null,"custom_fields": NonNullable<Json>,"deposit_amount": number,"deposit_invoice_id": string | null,"deposit_percent": number | null,"deposit_told_at": string | null,"discount_amount": number,"drafted": Json | null,"ends_on": string | null,"every_job_items_added": boolean,"every_job_items_left_off": (string)[],"exact_sent_at": string | null,"id": string,"is_template": boolean,"left_out": NonNullable<Json>,"lost_reason": string | null,"measure_on_site_at": string | null,"measure_on_site_reason": string | null,"message": string | null,"number": number | null,"option_id": string | null,"payment_schedule": Json | null,"pipeline_stage": string | null,"priced_on_site_at": string | null,"promo_code_id": string | null,"promo_every_visit": boolean | null,"property_id": string | null,"range_accepted_at": string | null,"range_high": number | null,"range_lines": Json | null,"range_low": number | null,"range_sent_at": string | null,"recurrence_rule": string | null,"request_id": string | null,"roof_package_id": string | null,"salesperson_id": string | null,"section_ids": (string)[],"sent_at": string | null,"source_id": string | null,"starts_on": string | null,"status": string,"subtotal": number,"tax_amount": number,"tax_rate": number,"template_id": string | null,"title": string,"total": number,"updated_at": string,"valid_until": string | null,"work_kind": string | null
+                    "active_months": (number)[] | null,"approval": Json | null,"approved_at": string | null,"change_order_for": string | null,"client_id": string | null,"company_id": string,"converted_at": string | null,"created_at": string,"created_by": string | null,"custom_fields": NonNullable<Json>,"deposit_amount": number,"deposit_invoice_id": string | null,"deposit_percent": number | null,"deposit_told_at": string | null,"discount_amount": number,"drafted": Json | null,"ends_on": string | null,"every_job_items_added": boolean,"every_job_items_left_off": (string)[],"exact_sent_at": string | null,"id": string,"is_template": boolean,"left_out": NonNullable<Json>,"lost_reason": string | null,"measure_on_site_at": string | null,"measure_on_site_reason": string | null,"message": string | null,"number": number | null,"option_id": string | null,"paint_package_id": string | null,"payment_schedule": Json | null,"pipeline_stage": string | null,"priced_on_site_at": string | null,"promo_code_id": string | null,"promo_every_visit": boolean | null,"property_id": string | null,"range_accepted_at": string | null,"range_high": number | null,"range_lines": Json | null,"range_low": number | null,"range_sent_at": string | null,"recurrence_rule": string | null,"request_id": string | null,"roof_package_id": string | null,"salesperson_id": string | null,"section_ids": (string)[],"sent_at": string | null,"source_id": string | null,"starts_on": string | null,"status": string,"subtotal": number,"tax_amount": number,"tax_rate": number,"template_id": string | null,"title": string,"total": number,"updated_at": string,"valid_until": string | null,"work_kind": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "active_months"?: (number)[] | null,"approval"?: Json | null,"approved_at"?: string | null,"change_order_for"?: string | null,"client_id"?: string | null,"company_id": string,"converted_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"deposit_amount"?: number,"deposit_invoice_id"?: string | null,"deposit_percent"?: number | null,"deposit_told_at"?: string | null,"discount_amount"?: number,"drafted"?: Json | null,"ends_on"?: string | null,"every_job_items_added"?: boolean,"every_job_items_left_off"?: (string)[],"exact_sent_at"?: string | null,"id"?: string,"is_template"?: boolean,"left_out"?: NonNullable<Json>,"lost_reason"?: string | null,"measure_on_site_at"?: string | null,"measure_on_site_reason"?: string | null,"message"?: string | null,"number"?: number | null,"option_id"?: string | null,"payment_schedule"?: Json | null,"pipeline_stage"?: string | null,"priced_on_site_at"?: string | null,"promo_code_id"?: string | null,"promo_every_visit"?: boolean | null,"property_id"?: string | null,"range_accepted_at"?: string | null,"range_high"?: number | null,"range_lines"?: Json | null,"range_low"?: number | null,"range_sent_at"?: string | null,"recurrence_rule"?: string | null,"request_id"?: string | null,"roof_package_id"?: string | null,"salesperson_id"?: string | null,"section_ids"?: (string)[],"sent_at"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"template_id"?: string | null,"title": string,"total"?: number,"updated_at"?: string,"valid_until"?: string | null,"work_kind"?: string | null
+                    "active_months"?: (number)[] | null,"approval"?: Json | null,"approved_at"?: string | null,"change_order_for"?: string | null,"client_id"?: string | null,"company_id": string,"converted_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"deposit_amount"?: number,"deposit_invoice_id"?: string | null,"deposit_percent"?: number | null,"deposit_told_at"?: string | null,"discount_amount"?: number,"drafted"?: Json | null,"ends_on"?: string | null,"every_job_items_added"?: boolean,"every_job_items_left_off"?: (string)[],"exact_sent_at"?: string | null,"id"?: string,"is_template"?: boolean,"left_out"?: NonNullable<Json>,"lost_reason"?: string | null,"measure_on_site_at"?: string | null,"measure_on_site_reason"?: string | null,"message"?: string | null,"number"?: number | null,"option_id"?: string | null,"paint_package_id"?: string | null,"payment_schedule"?: Json | null,"pipeline_stage"?: string | null,"priced_on_site_at"?: string | null,"promo_code_id"?: string | null,"promo_every_visit"?: boolean | null,"property_id"?: string | null,"range_accepted_at"?: string | null,"range_high"?: number | null,"range_lines"?: Json | null,"range_low"?: number | null,"range_sent_at"?: string | null,"recurrence_rule"?: string | null,"request_id"?: string | null,"roof_package_id"?: string | null,"salesperson_id"?: string | null,"section_ids"?: (string)[],"sent_at"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"template_id"?: string | null,"title": string,"total"?: number,"updated_at"?: string,"valid_until"?: string | null,"work_kind"?: string | null
                   }
                   Update: {
-                    "active_months"?: (number)[] | null,"approval"?: Json | null,"approved_at"?: string | null,"change_order_for"?: string | null,"client_id"?: string | null,"company_id"?: string,"converted_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"deposit_amount"?: number,"deposit_invoice_id"?: string | null,"deposit_percent"?: number | null,"deposit_told_at"?: string | null,"discount_amount"?: number,"drafted"?: Json | null,"ends_on"?: string | null,"every_job_items_added"?: boolean,"every_job_items_left_off"?: (string)[],"exact_sent_at"?: string | null,"id"?: string,"is_template"?: boolean,"left_out"?: NonNullable<Json>,"lost_reason"?: string | null,"measure_on_site_at"?: string | null,"measure_on_site_reason"?: string | null,"message"?: string | null,"number"?: number | null,"option_id"?: string | null,"payment_schedule"?: Json | null,"pipeline_stage"?: string | null,"priced_on_site_at"?: string | null,"promo_code_id"?: string | null,"promo_every_visit"?: boolean | null,"property_id"?: string | null,"range_accepted_at"?: string | null,"range_high"?: number | null,"range_lines"?: Json | null,"range_low"?: number | null,"range_sent_at"?: string | null,"recurrence_rule"?: string | null,"request_id"?: string | null,"roof_package_id"?: string | null,"salesperson_id"?: string | null,"section_ids"?: (string)[],"sent_at"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"template_id"?: string | null,"title"?: string,"total"?: number,"updated_at"?: string,"valid_until"?: string | null,"work_kind"?: string | null
+                    "active_months"?: (number)[] | null,"approval"?: Json | null,"approved_at"?: string | null,"change_order_for"?: string | null,"client_id"?: string | null,"company_id"?: string,"converted_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"custom_fields"?: NonNullable<Json>,"deposit_amount"?: number,"deposit_invoice_id"?: string | null,"deposit_percent"?: number | null,"deposit_told_at"?: string | null,"discount_amount"?: number,"drafted"?: Json | null,"ends_on"?: string | null,"every_job_items_added"?: boolean,"every_job_items_left_off"?: (string)[],"exact_sent_at"?: string | null,"id"?: string,"is_template"?: boolean,"left_out"?: NonNullable<Json>,"lost_reason"?: string | null,"measure_on_site_at"?: string | null,"measure_on_site_reason"?: string | null,"message"?: string | null,"number"?: number | null,"option_id"?: string | null,"paint_package_id"?: string | null,"payment_schedule"?: Json | null,"pipeline_stage"?: string | null,"priced_on_site_at"?: string | null,"promo_code_id"?: string | null,"promo_every_visit"?: boolean | null,"property_id"?: string | null,"range_accepted_at"?: string | null,"range_high"?: number | null,"range_lines"?: Json | null,"range_low"?: number | null,"range_sent_at"?: string | null,"recurrence_rule"?: string | null,"request_id"?: string | null,"roof_package_id"?: string | null,"salesperson_id"?: string | null,"section_ids"?: (string)[],"sent_at"?: string | null,"source_id"?: string | null,"starts_on"?: string | null,"status"?: string,"subtotal"?: number,"tax_amount"?: number,"tax_rate"?: number,"template_id"?: string | null,"title"?: string,"total"?: number,"updated_at"?: string,"valid_until"?: string | null,"work_kind"?: string | null
                   }
                   Relationships: [
                     {
@@ -2464,6 +2516,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "quote_options"
       referencedColumns: ["quote_id","id"]
+    },{
+      foreignKeyName: "quotes_paint_package_fkey"
+      columns: ["company_id","paint_package_id"]
+isOneToOne: false
+      referencedRelation: "paint_packages"
+      referencedColumns: ["company_id","id"]
     },{
       foreignKeyName: "quotes_promo_fkey"
       columns: ["company_id","promo_code_id"]
