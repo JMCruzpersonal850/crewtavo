@@ -35,6 +35,7 @@ export * from "./notifications";
 export * from "./pay";
 export * from "./phone";
 export * from "./paving";
+export * from "./painting";
 export * from "./presets";
 export * from "./privacy";
 export * from "./privacyPolicy";

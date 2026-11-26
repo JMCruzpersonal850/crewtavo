@@ -20,7 +20,7 @@ import { useChatBadge, useChatLive } from "@/features/chat/data";
 import { useMyJobs, waitingCount } from "@/features/field/myJobsData";
 import { signOutNote, subCodeWays } from "@/features/auth/textCode";
 import { inkOn } from "@/features/documents/words";
-import { createItems, foldedGroups, mobileTabs, NAV_GROUP_LABELS, NAV_GROUPS, navVisible, saveFoldedGroups, settingsItem, subCanOpen, type NavItem } from "./nav";
+import { createItems, foldedGroups, mobileTabs, NAV_GROUP_LABELS, NAV_GROUPS, navLabel, navVisible, saveFoldedGroups, settingsItem, subCanOpen, type NavItem } from "./nav";
 import { HelpButton, openHelp } from "./Help";
 import { NotificationsButton } from "./Notifications";
 import { BrandLockup } from "./BrandMark";
@@ -30,7 +30,7 @@ import { getLocale, showScreenLang, t } from "@/lib/i18n";
 /** The sidebar for this person: its groups, each under its name, and the links kept at its foot. */
 function useVisibleNav(): { groups: Array<{ label: string | null; items: NavItem[] }>; foot: NavItem[] } {
   const session = useSession();
-  const shown = NAV_GROUPS.map((group, i) => ({ label: NAV_GROUP_LABELS[i] ?? null, items: group.filter((item) => navVisible(session, item)) }));
+  const shown = NAV_GROUPS.map((group, i) => ({ label: NAV_GROUP_LABELS[i] ?? null, items: group.filter((item) => navVisible(session, item)).map((item) => ({ ...item, label: navLabel(session, item) })) }));
   return {
     groups: shown.map((g) => ({ ...g, items: g.items.filter((item) => !item.foot) })).filter((g) => g.items.length),
     foot: shown.flatMap((g) => g.items.filter((item) => item.foot)),

@@ -1,4 +1,5 @@
 import { isStaff, type Permission } from "@crewtavo/core/roles";
+import { isPaintingTrade } from "@crewtavo/core/painting";
 import { can, hasRole, type Session } from "@/lib/session";
 import type { IconName } from "../ui/Icon";
 import { msg, t } from "@/lib/i18n";
@@ -82,6 +83,15 @@ export const OTHER_SCREENS: NavItem[] = [
   { to: "/chat/settings", label: msg("Chat settings"), icon: "chat", roles: ["admin"], feature: "team_chat", keywords: "team chat channels roles who can see post manage" },
 ];
 
+/**
+ * The label a nav item wears for this business: a painting business's Quotes are "Proposals"
+ * (core painting.ts docWord). Every other item, and every other trade, wears its own label.
+ */
+export function navLabel(session: { company?: { trade_preset?: string | null } }, item: NavItem): string {
+  if (item.to !== "/quotes") return item.label;
+  return isPaintingTrade(session.company?.trade_preset) ? msg("Proposals") : msg("Quotes");
+}
+
 export const SETTINGS_ITEM: NavItem = { to: "/settings", label: msg("Settings"), icon: "settings", also: ["/automations", "/booking"] };
 /** A sub's settings are their profile and notifications. */
 export const PROFILE_ITEM: NavItem = { to: "/settings?tab=profile", label: msg("Profile"), icon: "user", only: ["subcontractor"] };
@@ -126,7 +136,7 @@ export const subCanOpen = (pathname: string) => /^\/field(\/paperwork|\/jobs(\/[
  * work's records first, in the order of the stages on Home (request, quote, job, invoice), then the
  * tools (`tool`), which the Create menu puts below a line.
  */
-export function createItems(session: Pick<Session, "role" | "permissions">): Array<{ to: string; label: string; newLabel: string; icon: IconName; keywords: string; key: string; tool?: boolean }> {
+export function createItems(session: Pick<Session, "role" | "permissions"> & { company?: { trade_preset?: string | null } }): Array<{ to: string; label: string; newLabel: string; icon: IconName; keywords: string; key: string; tool?: boolean }> {
   if (!isStaff(session.role)) return [];
   const canSell = hasRole(session, "admin", "office", "estimator");
   // newLabel whole, not "New " + the label: Spanish says "Nuevo cliente" but "Nueva cotización".
@@ -141,7 +151,7 @@ export function createItems(session: Pick<Session, "role" | "permissions">): Arr
     // The Jobs page lets the same people start a job as a quote.
     ...(canSell && can(session, "sales")
       ? [
-          { to: "/quotes?new=1", label: msg("Quote"), newLabel: t("New quote"), icon: "quote" as const, keywords: "estimate proposal", key: "Q" },
+          { to: "/quotes?new=1", label: isPaintingTrade(session.company?.trade_preset) ? msg("Proposal") : msg("Quote"), newLabel: isPaintingTrade(session.company?.trade_preset) ? t("New proposal") : t("New quote"), icon: "quote" as const, keywords: "estimate proposal", key: "Q" },
           { to: "/jobs?new=1", label: msg("Job"), newLabel: t("New job"), icon: "job" as const, keywords: "work order project", key: "J" },
         ]
       : []),
@@ -157,7 +167,7 @@ export function createItems(session: Pick<Session, "role" | "permissions">): Arr
  * N then a Create item's key starts it (N R, a new request). Search shows each beside its row. Only
  * what this person can open; null for anything else.
  */
-export function shortcutTarget(session: Pick<Session, "role" | "permissions"> & { company?: { settings?: Record<string, unknown> | null } }, prefix: string, key: string): string | null {
+export function shortcutTarget(session: Pick<Session, "role" | "permissions"> & { company?: { settings?: Record<string, unknown> | null; trade_preset?: string | null } }, prefix: string, key: string): string | null {
   const k = key.toUpperCase();
   if (prefix.toLowerCase() === "g") return NAV_GROUPS.flat().find((item) => item.go === k && navVisible(session, item))?.to ?? null;
   if (prefix.toLowerCase() === "n") return createItems(session).find((item) => item.key === k)?.to ?? null;

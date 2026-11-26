@@ -13,6 +13,7 @@ export interface WeatherRule {
   min_temp_f?: number;          // e.g. hot-mix asphalt needs 50°F
   max_temp_f?: number;          // e.g. shingles scuff above 90°F
   max_rain_pct?: number;        // e.g. mowing skips above 70%
+  max_humidity_pct?: number;    // e.g. exterior paint won't cure right above 85%
   max_wind_mph?: number;        // e.g. spraying stops above 10 mph
   requires_dry_hours?: number;  // e.g. sealcoat needs 24 dry hours after
 }
@@ -73,6 +74,7 @@ export function weatherRuleSummary(rule: WeatherRule): string {
   const { min_temp_f: low, max_temp_f: high } = rule;
   const parts = [
     rule.max_rain_pct != null && `at most ${rule.max_rain_pct}% rain`,
+    rule.max_humidity_pct != null && `humidity at most ${rule.max_humidity_pct}%`,
     low != null && high != null ? `${low}°F to ${high}°F` : low != null ? `at least ${low}°F` : high != null && `at most ${high}°F`,
     rule.max_wind_mph != null && `wind at most ${rule.max_wind_mph} mph`,
     rule.requires_dry_hours && `${rule.requires_dry_hours} dry hours after`,

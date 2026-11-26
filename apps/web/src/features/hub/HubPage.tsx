@@ -210,7 +210,7 @@ export function HubPage() {
   useEffect(() => printTicketsFrom(async () => (await hubFetch<{ ticket: string }>(`${token}/print-ticket`, {})).ticket), [token]);
 
   useEffect(() => {
-    if (view.data) document.title = `${view.data.kind === "quote" ? `${view.data.quote.range ? rangeWords({ roof: isRoofJob(view.data), options: 0, first: null }).kind : "Quote"} #${view.data.quote.number}` : view.data.kind === "invoice" ? `Invoice #${view.data.invoice.number}` : "Your account"} · ${view.data.company.name}`;
+    if (view.data) document.title = `${view.data.kind === "quote" ? `${view.data.quote.range ? rangeWords({ roof: isRoofJob(view.data), options: 0, first: null }).kind : (view.data.doc_word ?? "Quote")} #${view.data.quote.number}` : view.data.kind === "invoice" ? `Invoice #${view.data.invoice.number}` : "Your account"} · ${view.data.company.name}`;
     // Once: a refresh of the page's data (after paying, say) doesn't print it again.
     if (view.data && printing && !printed.current) {
       printed.current = true;
@@ -256,7 +256,7 @@ export function HubPage() {
             {/* Who it's from and what this is (Client-Desktop); "Your account" under it is the way back. */}
             <div className="hub-company">
               <CompanyMark company={d.company} />
-              <span className="hub-company-text"><strong>{d.company.name}</strong><span>{d.kind === "client" ? "Your account" : d.kind === "quote" ? `Quote #${d.quote.number}` : `Invoice #${d.invoice.number}`}</span></span>
+              <span className="hub-company-text"><strong>{d.company.name}</strong><span>{d.kind === "client" ? "Your account" : d.kind === "quote" ? `${d.doc_word ?? "Quote"} #${d.quote.number}` : `Invoice #${d.invoice.number}`}</span></span>
             </div>
             {/* Words beside the icons on a computer; on a phone round buttons, the words still their names. */}
             {d.company.phone && (
@@ -811,7 +811,7 @@ function SignedQuote({ token, data, printing, onPrint }: { token: string; data: 
   const tz = hubZone(data.company);
   const contract = hubContract(data, q.option_id ?? null, q.total ?? 0);
   // An older server sends no contract: the signed copy prints the one kept with its approval.
-  const doc = { template: contractTemplate(hubTemplate(data), contract), company: hubLetterhead(data.company), data: quoteDocument(data, contract ? { contract } : {}) };
+  const doc = { template: contractTemplate(hubTemplate(data), contract), company: hubLetterhead(data.company), data: quoteDocument(data, contract ? { contract } : {}), estimateWord: data.doc_word === "Proposal" ? "Proposal" : undefined };
   const when = q.approval?.signed_at ?? q.approved_at;
   const signed = Boolean(q.approval?.signature) && q.approval?.method !== "manual";
   // The deposit asked for as they approved, still to pay (its invoice's own page pays it).
@@ -913,6 +913,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
       company: hubLetterhead(data.company),
       // While choosing, the options side by side; from the agreement on, the copy being signed.
       data: quoteDocument(data, { optionId, picked: chosen, signing, contract: stamped }),
+      estimateWord: data.doc_word === "Proposal" ? "Proposal" : undefined,
     }),
     [data, stamped, optionId, chosen, signing],
   );
@@ -1061,7 +1062,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
       <div className="hub-layout" data-single={requestChanges.isSuccess || undefined}>
         <div className="hub-main">
           <section className="hub-card hub-intro">
-            <span className="hub-kick">Quote #{q.number}{q.client ? ` for ${q.client.display_name}` : ""}{q.valid_until ? ` · valid until ${formatDate(q.valid_until)}` : ""}</span>
+            <span className="hub-kick">{data.doc_word ?? "Quote"} #{q.number}{q.client ? ` for ${q.client.display_name}` : ""}{q.valid_until ? ` · valid until ${formatDate(q.valid_until)}` : ""}</span>
             <h1>{q.title}</h1>
             {q.property && <span className="hub-intro-place">{q.property.line1}{q.property.city ? `, ${q.property.city}` : ""}</span>}
             {q.message && <p className="hub-intro-note pre-wrap">{q.message}</p>}

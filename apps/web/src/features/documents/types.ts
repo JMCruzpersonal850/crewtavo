@@ -162,6 +162,11 @@ export interface EstimateDocumentProps {
    * under the screen's heading it's shown below (3 under an h2). 2 unless given.
    */
   headingLevel?: number;
+  /**
+   * The word an estimate wears instead of "Estimate" — a painting business's "Proposal"
+   * (core painting.ts docWord). Left out, estimates are "Estimate" as always.
+   */
+  estimateWord?: string;
 }
 
 /** The business's Google reviews as an estimate prints them ("What clients say"). */

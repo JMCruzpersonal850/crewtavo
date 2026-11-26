@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { docWord } from "@crewtavo/core/painting";
 import { Button } from "@/components/ui/Button";
 import { confirm } from "@/components/ui/Confirm";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -234,11 +235,11 @@ export function QuotesPage() {
   return (
     <>
       <PageHeader
-        title="Quotes"
+        title={docWord(session.company.trade_preset, true)}
         actions={
           <>
             <Link to="/pipeline" className="btn"><Icon name="pipeline" size={16} />Sales board</Link>
-            {canSell && <Button variant="primary" icon="plus" onClick={() => startQuote()}>New quote</Button>}
+            {canSell && <Button variant="primary" icon="plus" onClick={() => startQuote()}>New {docWord(session.company.trade_preset).toLowerCase()}</Button>}
           </>
         }
       />

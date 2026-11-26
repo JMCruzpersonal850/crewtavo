@@ -10,6 +10,7 @@ import hvac from "./presets/hvac.json";
 import landscaping from "./presets/landscaping.json";
 import lawnExterior from "./presets/lawn_exterior.json";
 import paving from "./presets/paving.json";
+import painting from "./presets/painting.json";
 import pestControl from "./presets/pest_control.json";
 import plumbing from "./presets/plumbing.json";
 import poolService from "./presets/pool_service.json";
@@ -175,6 +176,7 @@ export const PRESETS: Record<string, TradePreset> = {
   landscaping: landscaping as TradePreset,
   lawn_exterior: lawnExterior as TradePreset,
   paving: paving as TradePreset,
+  painting: painting as TradePreset,
   pest_control: pestControl as TradePreset,
   plumbing: plumbing as TradePreset,
   pool_service: poolService as TradePreset,

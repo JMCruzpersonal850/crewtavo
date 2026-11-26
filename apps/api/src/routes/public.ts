@@ -6,6 +6,7 @@
 import { autopaySettings, methodLabel, tipsAllowed } from "@crewtavo/core/autopay";
 import { lateFeeCouldApply, lateFeeSettings } from "@crewtavo/core/billing";
 import { contractValues, fillIn } from "@crewtavo/core/contracts";
+import { docWord } from "@crewtavo/core/painting";
 import { shownCustomFields } from "@crewtavo/core/customFields";
 import { pickTemplate, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import { hidesExactPrice, inRangeMode, isSiteAdjustment, notIncluded, optionsRange, priceRange, rangeSettings } from "@crewtavo/core/estimates";
@@ -227,7 +228,8 @@ async function verifyTurnstile(c: Parameters<typeof appUrl>[0], token: string | 
 }
 
 // The range settings (company_private_settings' roofing), whether Roofing is installed, the autopay settings and the
-// trade are read here but never sent: the room on top is the business's own, Roofing only decides
+// trade are read here but the trade itself is never sent — only the word it gives the document
+// (doc_word: a painting business's "Proposal"); the rest stays on the server: the room on top is the business's own, Roofing only decides
 // whether a preview shows a roofing range, autopay's only say whether a card is required, and the
 // trade only picks the starter terms.
 const BRANDING = "name, phone, email, website, timezone, currency, address, trade_preset, settings->branding, settings->hub_tips, settings->roofing_app, settings->paving_app, settings->autopay, settings->privacy_url";
@@ -576,6 +578,7 @@ publicRoutes.get("/hub/:token", async (c) => {
     return c.json({
       kind: "quote",
       company,
+      doc_word: docWord(trade),
       template,
       contract,
       autopay_offer: autopayOffer,
@@ -1568,7 +1571,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   const money = l.nm !== 1;
   const none = { data: [] as never[], error: null };
   const client = must(await admin.from("clients").select("id, display_name, properties(id, line1, city)").eq("company_id", companyId).eq("id", clientId).maybeSingle(), "This link isn't valid anymore.");
-  const settings = must(await admin.from("companies").select("timezone, currency, settings").eq("id", companyId).maybeSingle());
+  const settings = must(await admin.from("companies").select("timezone, currency, settings, trade_preset").eq("id", companyId).maybeSingle());
   const today = new Date().toLocaleDateString("en-CA", { timeZone: settings.timezone || "UTC" });
   const [quotes, invoices, jobs, payments, requests, services, found] = await Promise.all([
     admin.from("quotes").select("id, number, title, status, total, tax_rate, discount_amount, valid_until, sent_at, approved_at, recurrence_rule, range_low, range_high, range_accepted_at, priced_on_site_at, exact_sent_at, promo:promo_codes(kind, value)").eq("company_id", companyId).eq("client_id", clientId).in("status", ["sent", "changes_requested", "approved", "converted"]).order("created_at", { ascending: false }).limit(20),
@@ -1683,6 +1686,7 @@ async function clientHome(c: Parameters<typeof appUrl>[0], admin: ReturnType<typ
   return {
     kind: "client",
     company,
+    doc_word: docWord(settings.trade_preset),
     arrival_window_min: arrivalWindowMin(companySettings),
     preview: Boolean(l.pv),
     // false: the money is left out (nm), so the page doesn't say nothing is owed.
