@@ -22,6 +22,90 @@ export function docWord(tradePreset: string | null | undefined, plural = false):
   return plural ? "Quotes" : "Quote";
 }
 
+// ---------- Rooms and the proposal's own words (phase 3) ----------
+
+/**
+ * A line's room, from quote_line_items.paint_detail: the room or area the line belongs to on
+ * the proposal ("Exterior", "Master Bedroom") and the dimensions its card shows
+ * (52' × 52' × 8'). The room lives on the line, the way Lead Control's rooms hold their
+ * services: renaming a room rewrites the lines that say it, and a room with no lines in it
+ * isn't stored anywhere. Null outside painting and on lines in no room.
+ */
+export interface PaintDetail {
+  room: string | null;
+  dimensions: string | null;
+}
+
+const detailText = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** Read a stored paint_detail; anything malformed reads as no room. */
+export function paintDetailFrom(raw: unknown): PaintDetail {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { room: null, dimensions: null };
+  const o = raw as Record<string, unknown>;
+  return { room: detailText(o.room), dimensions: detailText(o.dimensions) };
+}
+
+/** The stored shape for a line's room (null when the line is in no room). */
+export function paintDetailJson(detail: PaintDetail): { room: string; dimensions?: string } | null {
+  if (!detail.room) return null;
+  return detail.dimensions ? { room: detail.room, dimensions: detail.dimensions } : { room: detail.room };
+}
+
+/**
+ * The proposal's own words for its client page, from quotes.paint_presentation: the Overall
+ * Scope of Work paragraph, the Job Notes, and the What's Included checklist — the pieces a
+ * proposal carries beyond its lines. quotes.message stays what it is (the note over the
+ * lines); a piece left out here falls back to what the proposal already carries — the lines'
+ * descriptions for the scope, the message for the notes, a picked package's highlights for
+ * the checklist (the fallbacks live where the page is built, in the web's hub document).
+ */
+export interface PaintPresentation {
+  scope: string | null;
+  notes: string | null;
+  highlights: string[];
+}
+
+/** Read a stored paint_presentation; anything malformed reads as unwritten. */
+export function paintPresentationFrom(raw: unknown): PaintPresentation {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { scope: null, notes: null, highlights: [] };
+  const o = raw as Record<string, unknown>;
+  const highlights = Array.isArray(o.highlights)
+    ? o.highlights.filter((h): h is string => typeof h === "string" && !!h.trim()).map((h) => h.trim())
+    : [];
+  return { scope: detailText(o.scope), notes: detailText(o.notes), highlights };
+}
+
+/** One room's lines, in the order they were written. */
+export interface PaintRoomGroup<T> {
+  /** The room's name; null for the lines in no room. */
+  room: string | null;
+  /** The room's dimensions, from the first of its lines that carries them. */
+  dimensions: string | null;
+  lines: T[];
+}
+
+/**
+ * Group lines by their room, in first-written order — the Detailed Scope of Work's room
+ * cards on the client page and the room blocks in the builder. Lines in no room gather into
+ * one null group where the first of them sits.
+ */
+export function paintRoomGroups<T extends { paint_detail?: unknown }>(lines: readonly T[]): PaintRoomGroup<T>[] {
+  const groups: PaintRoomGroup<T>[] = [];
+  const byRoom = new Map<string | null, PaintRoomGroup<T>>();
+  for (const line of lines) {
+    const detail = paintDetailFrom(line.paint_detail);
+    let group = byRoom.get(detail.room);
+    if (!group) {
+      group = { room: detail.room, dimensions: detail.dimensions, lines: [] };
+      byRoom.set(detail.room, group);
+      groups.push(group);
+    }
+    if (group.dimensions == null && detail.dimensions) group.dimensions = detail.dimensions;
+    group.lines.push(line);
+  }
+  return groups;
+}
+
 /* ------------------------------------------------------------------------------------------
  * The company's painting numbers (Settings → Painting, stored at companies.settings.painting).
  * The defaults are Ocean Crest's, from the Lead Control blueprint: proposals price in

@@ -297,3 +297,22 @@ describe("offering paint packages on a proposal (phase 2)", () => {
     expect(again.status).toBe(409);
   });
 });
+
+describe("paint packages keep the proposal's rooms (phase 3)", () => {
+  it("copies each line's room onto the other tiers' lines", async () => {
+    company(PAINTER, "painting");
+    await send(PAINTER, "/painting/setup", {});
+    state.tables.services.push({ id: SVC_WALLS, company_id: PAINTER, name: "Exterior walls and siding", category: "Exterior", active: true, sort: 0 });
+    state.tables.quotes.push({ id: QUOTE, company_id: PAINTER, status: "draft", option_id: null });
+    state.tables.quote_line_items.push(
+      { id: "line-brick", company_id: PAINTER, quote_id: QUOTE, option_id: null, service_id: SVC_WALLS, name: "Brick Painting", description: null, quantity: 2700, unit: "sq ft", unit_price: 1.3, unit_cost: null, material_cost: null, taxable: true, optional: false, selected: true, formula: null, sort: 0, paint_detail: { room: "Exterior", dimensions: "52' × 52' × 8'" } },
+    );
+    const { packages } = (await (await get(PAINTER, "/painting/packages")).json()) as { packages: Array<Record<string, unknown>> };
+    const set = packages.filter((p) => p.set_name === "Exterior Painting");
+    const res = await send(PAINTER, `/painting/${QUOTE}/packages`, { package_ids: set.map((p) => p.id) });
+    expect(res.status).toBe(200);
+    const copies = state.tables.quote_line_items.filter((l) => l.quote_id === QUOTE && l.id !== "line-brick");
+    expect(copies.length).toBeGreaterThan(0);
+    for (const copy of copies) expect(copy.paint_detail).toEqual({ room: "Exterior", dimensions: "52' × 52' × 8'" });
+  });
+});

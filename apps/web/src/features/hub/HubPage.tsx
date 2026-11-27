@@ -106,6 +106,7 @@ import {
   type SignedFor,
   type TrustBadge,
 } from "./document";
+import { PaintAcceptIntro, PaintProposalSections } from "./PaintProposal";
 import styles from "./range.module.css";
 import { SignaturePad } from "../field/SignaturePad";
 import { scheduleText } from "../jobs/repeatText";
@@ -295,7 +296,12 @@ export function HubPage() {
             <footer className="public-foot hub-foot">
               <span><Icon name="lock" size={12} /> Private link{clientName ? ` for ${clientName}` : ""}. Keep it to yourself.</span>
               {d.company.privacy_url && <span><PrivacyLink url={d.company.privacy_url} /></span>}
-              <span className="hub-powered">Powered by <BrandMark size={13} /> <strong>Crewtavo</strong></span>
+              {d.kind === "quote" && d.quote.paint ? (
+                // A painting proposal closes with the company's own footer, as Lead Control's do.
+                <span>{[d.company.name, ...(d.company.address ?? []), d.company.phone, d.company.email, d.company.website].filter(Boolean).join(" · ")}</span>
+              ) : (
+                <span className="hub-powered">Powered by <BrandMark size={13} /> <strong>Crewtavo</strong></span>
+              )}
             </footer>
           </>
         )}
@@ -832,14 +838,30 @@ function SignedQuote({ token, data, printing, onPrint }: { token: string; data: 
         {signedThanks(data)}
       </Done>
       {data.autopay_offer && data.home && <AutopayOffer home={data.home} required={data.card_required === true} />}
-      <section className="hub-document" aria-label={`${signed ? "Signed estimate" : "Estimate"} #${q.number}`}>
-        <DocumentSheet {...doc} headingLevel={3} />
-      </section>
-      {contract && <TermsToRead contract={contract} />}
+      {q.paint ? (
+        // A signed painting proposal keeps its own page (its terms ride in its Terms card).
+        <PaintProposalSections
+          data={data}
+          lines={q.lines}
+          chosen={q.lines.filter((l) => l.optional && l.selected).map((l) => l.id!)}
+          editable={false}
+          option={(q.options ?? []).find((o) => o.id === q.option_id) ?? null}
+          totals={{ subtotal: Number(q.subtotal ?? 0), discount: Math.max(0, Number(q.subtotal ?? 0) + Number(q.tax_amount ?? 0) - Number(q.total ?? 0)), tax: Number(q.tax_amount ?? 0), total: Number(q.total ?? 0) }}
+          deposit={data.deposit?.amount ?? depositToBook(q.deposit_amount, q.total ?? 0, q.deposit_percent)}
+          contract={contract}
+        />
+      ) : (
+        <>
+          <section className="hub-document" aria-label={`${signed ? "Signed estimate" : "Estimate"} #${q.number}`}>
+            <DocumentSheet {...doc} headingLevel={3} />
+          </section>
+          {contract && <TermsToRead contract={contract} />}
+        </>
+      )}
       {(q.portal_fields?.length ?? 0) > 0 && <section className="hub-card hub-pad"><HubFieldList fields={q.portal_fields} /></section>}
       <HubDrawings token={token} drawings={data.drawings} />
       <HubReviews reviews={data.reviews} />
-      {printing && <PrintableDocument {...doc} />}
+      {printing && !q.paint && <PrintableDocument {...doc} />}
     </div>
   );
 }
@@ -889,6 +911,10 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
   // percent code follows the options the client picks, as it does on the saved quote.
   const totals = useMemo(() => hubTotals(data, optionId, chosen), [data, optionId, chosen]);
   const contract = useMemo(() => hubContract(data, optionId, totals.total), [data, optionId, totals.total]);
+  // A painting proposal's page (Lead Control's shape) replaces the intro card, the lines card
+  // and the review step's paper; the steps, the signing and these totals stay as they are.
+  const paint = q.paint;
+  const paintDeposit = paint ? depositToBook(q.deposit_amount, totals.total, q.deposit_percent) : 0;
   const steps = hubSteps(options.length, contract);
   const signedFor: SignedFor = { total: totals.total, hash: contract?.hash ?? null };
   // The quote was loaded again while they were signing, and it changed: back to the first step.
@@ -1061,25 +1087,34 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
     <>
       <div className="hub-layout" data-single={requestChanges.isSuccess || undefined}>
         <div className="hub-main">
-          <section className="hub-card hub-intro">
-            <span className="hub-kick">{data.doc_word ?? "Quote"} #{q.number}{q.client ? ` for ${q.client.display_name}` : ""}{q.valid_until ? ` · valid until ${formatDate(q.valid_until)}` : ""}</span>
-            <h1>{q.title}</h1>
-            {q.property && <span className="hub-intro-place">{q.property.line1}{q.property.city ? `, ${q.property.city}` : ""}</span>}
-            {q.message && <p className="hub-intro-note pre-wrap">{q.message}</p>}
-            <HubFieldList fields={q.portal_fields} />
-          </section>
+          {!paint && (
+            <section className="hub-card hub-intro">
+              <span className="hub-kick">{data.doc_word ?? "Quote"} #{q.number}{q.client ? ` for ${q.client.display_name}` : ""}{q.valid_until ? ` · valid until ${formatDate(q.valid_until)}` : ""}</span>
+              <h1>{q.title}</h1>
+              {q.property && <span className="hub-intro-place">{q.property.line1}{q.property.city ? `, ${q.property.city}` : ""}</span>}
+              {q.message && <p className="hub-intro-note pre-wrap">{q.message}</p>}
+              <HubFieldList fields={q.portal_fields} />
+            </section>
+          )}
 
           <HubDrawings token={token} drawings={data.drawings} />
 
+          {paint && (
+            <>
+              <PaintProposalSections data={data} lines={shownLines} chosen={chosen} onChoose={setChosen} editable={editable} option={option} totals={totals} deposit={paintDeposit} contract={contract} />
+              {(q.portal_fields?.length ?? 0) > 0 && <section className="hub-card hub-pad"><HubFieldList fields={q.portal_fields} /></section>}
+            </>
+          )}
+
           {/* Without options, what's on it and its add-ons, always in view: under the steps while going through them. */}
-          {!offers && !flow && lineCard}
+          {!offers && !flow && !paint && lineCard}
 
           {requestChanges.isSuccess ? (
             <Done title="Request sent">{data.company.name} will review your notes and follow up with an updated quote.</Done>
           ) : closed ? (
             <>
-              {offers && <OptionsCompared options={options} optionId={q.option_id ?? null} />}
-              {offers && lineCard}
+              {offers && !paint && <OptionsCompared options={options} optionId={q.option_id ?? null} />}
+              {offers && !paint && lineCard}
               <p className="hub-card hub-pad hub-note">This quote is no longer open. Contact {data.company.name} if you have questions.</p>
             </>
           ) : mode === "changes" ? (
@@ -1127,7 +1162,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
                 </div>
               )}
 
-              {!offers && lineCard}
+              {!offers && !paint && lineCard}
 
               {current === "choose" && (
                 <>
@@ -1150,7 +1185,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
                       ))}
                     </div>
                   </section>
-                  {option && lineCard}
+                  {option && !paint && lineCard}
                 </>
               )}
 
@@ -1175,15 +1210,18 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
                       {asking.length ? " Add your initials where it asks, below." : ""}
                     </p>
                   </section>
-                  <section className="hub-document" aria-label="The agreement">
-                    {/* Its headings go under the step's. */}
-                    <DocumentSheet {...doc} headingLevel={3} />
-                  </section>
-                  {contract && <TermsToRead contract={contract} />}
+                  {!paint && (
+                    <section className="hub-document" aria-label="The agreement">
+                      {/* Its headings go under the step's. */}
+                      <DocumentSheet {...doc} headingLevel={3} />
+                    </section>
+                  )}
+                  {contract && !paint && <TermsToRead contract={contract} />}
                   {asking.length > 0 && <InitialsCard sections={asking} initials={initials} onInitials={drawInitials} initialed={initialedNow} onInitial={initial} />}
                 </>
               )}
 
+              {current === "sign" && paint && <PaintAcceptIntro data={data} total={totals.total} />}
               {current === "sign" && (
                 <section className="hub-card hub-sign no-print" aria-labelledby="hub-sign">
                   <h2 id="hub-sign" ref={heading} tabIndex={-1} className="hub-step-title">{steps.length > 1 ? "Sign" : "Approve"}</h2>
@@ -1232,7 +1270,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
                         </>
                       ) : (
                         <>
-                          <Button type="submit" variant="primary" size="lg" block icon={depositDue > 0 ? "card" : "check"} loading={approve.isPending} disabled={!ready}>{approveLabel}</Button>
+                          <Button type="submit" variant="primary" size="lg" block icon={depositDue > 0 ? "card" : "check"} loading={approve.isPending} disabled={!ready}>{paint ? `Accept ${data.doc_word ?? "Proposal"} — ${formatMoneyCents(totals.total)}` : approveLabel}</Button>
                           {depositNote}
                         </>
                       )}
@@ -1248,7 +1286,7 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
 
         {!requestChanges.isSuccess && (
           <aside className="hub-aside" aria-label="Summary">
-            {summary}
+            {!paint && summary}
             {flow && bar}
             {/* Licensed, Fully insured: under the button (Client-Desktop), when the document style shows them. */}
             {badges.length > 0 && (
@@ -1260,8 +1298,9 @@ function OpenQuote({ token, data, onChanged, printing }: { token: string; data: 
         )}
       </div>
 
-      {/* What prints: the estimate on the business's template, with the option and add-ons the client has picked. */}
-      {printing && printable && <PrintableDocument {...doc} />}
+      {/* What prints: the estimate on the business's template, with the option and add-ons the client has picked.
+          A painting proposal prints as its own page instead — the sections above are the document. */}
+      {printing && printable && !paint && <PrintableDocument {...doc} />}
     </>
   );
 }

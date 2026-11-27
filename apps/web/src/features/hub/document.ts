@@ -14,6 +14,7 @@ import type { ClientChecklist } from "@crewtavo/core/forms";
 import { SITE_ADJUSTMENT_NAME } from "@crewtavo/core/estimates";
 import { normalizePitch, pitchFactor } from "@crewtavo/core/geo";
 import { chosenTotals, lineTotal, optionLabels, toCents, type Amount } from "@crewtavo/core/money";
+import { paintDetailFrom, paintRoomGroups, type PaintPresentation } from "@crewtavo/core/painting";
 import { dateIn, formatMoney, formatMoneyCents, formatNumber } from "@/lib/format";
 import { linkToken } from "@/lib/linkToken";
 import {
@@ -48,6 +49,8 @@ export interface HubLine {
   selected?: boolean;
   /** Optional lines that share a group are one choice (Good, Better, Best): the client picks one. */
   option_group?: string | null;
+  /** A painting proposal line's room ({room, dimensions}); sent for painting companies only. */
+  paint_detail?: unknown;
 }
 export interface HubCompany {
   name: string;
@@ -203,8 +206,10 @@ export interface QuoteView {
     sent_at?: string | null;
     created_at?: string | null;
     approved_at: string | null;
-    /** tax_exempt: the totals say "Tax exempt" (left out by older servers). */
-    client: { display_name: string; tax_exempt?: boolean; tax_exempt_note?: string | null } | null;
+    /** tax_exempt: the totals say "Tax exempt" (left out by older servers). Painting proposals also carry the client's email, for their Prepared For card. */
+    client: { display_name: string; email?: string | null; tax_exempt?: boolean; tax_exempt_note?: string | null } | null;
+    /** A painting proposal's own words for its page (its scope, notes and What's Included list); sent for painting companies only. */
+    paint?: PaintPresentation;
     property: { line1: string; city: string | null; region?: string | null; postal_code?: string | null } | null;
     package?: { name: string } | null;
     approval?: HubApproval | null;
@@ -473,6 +478,86 @@ export function promoShortfall(promo: HubPromoInfo, lines: ReadonlyArray<Pick<Hu
  * never more than it comes to (a cheaper option can come to less).
  */
 export const depositToBook = (deposit: Amount | null | undefined, total: Amount, percent?: Amount | null) => Math.max(0, Number(depositFor(deposit ?? 0, total, percent)));
+
+/* ---------- A painting proposal's page (phase 3) ----------
+ * The pieces of the Lead Control-shaped proposal page, worked out from the view the server
+ * sent. Only a painting proposal carries them (quote.paint and each line's paint_detail);
+ * every helper here reads nothing when they're absent. Money is totals only, the way the
+ * locked decisions have it: rooms show their total, never a line's price. */
+
+/** One room's card in the Detailed Scope of Work: its lines, and what the counted ones come to. */
+export interface PaintRoomCard {
+  /** The room's name; a roomless group is titled by its only line, else "General". */
+  title: string;
+  dimensions: string | null;
+  /** How many services are inside. */
+  count: number;
+  /** The room's total: its counted lines (required ones, and the add-ons ticked). */
+  total: number;
+  lines: HubLine[];
+}
+
+/** The lines that count toward what's being signed for: the required ones, and the add-ons ticked (or, signed, the ones kept). */
+export const countedLines = (lines: readonly HubLine[], chosen: readonly string[]) => lines.filter((l) => !l.optional || chosen.includes(l.id ?? ""));
+
+/**
+ * The Detailed Scope of Work's room cards, from the lines of the option being looked at:
+ * grouped by each line's room (core paintRoomGroups), every line on its card — an add-on not
+ * ticked yet is there to tick — while the card's total counts only what counts (the required
+ * lines and the add-ons ticked). Lines in no room gather into one card — titled by the line
+ * itself when it's alone there (a one-line proposal's "Exterior — Brick Painting"), else
+ * "General".
+ */
+export function paintRoomCards(lines: readonly HubLine[], chosen: readonly string[]): PaintRoomCard[] {
+  const counted = new Set(countedLines(lines, chosen).map((l) => l.id));
+  return paintRoomGroups(lines).map((group) => ({
+    title: group.room ?? (group.lines.length === 1 ? group.lines[0]!.name : "General"),
+    dimensions: group.dimensions,
+    count: group.lines.length,
+    total: group.lines.filter((l) => counted.has(l.id)).reduce((sum, l) => sum + lineTotal(l.quantity, l.unit_price), 0),
+    lines: group.lines,
+  }));
+}
+
+/**
+ * The Overall Scope of Work: the paragraph the office wrote for the page, or — a proposal
+ * written before it could, like the first ones mirrored from Lead Control — the counted
+ * lines' own descriptions, each once, in order.
+ */
+export function paintScope(view: QuoteView, lines: readonly HubLine[], chosen: readonly string[]): string | null {
+  if (view.quote.paint?.scope) return view.quote.paint.scope;
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const line of countedLines(lines, chosen)) {
+    const text = line.description?.trim();
+    if (text && !seen.has(text)) {
+      seen.add(text);
+      parts.push(text);
+    }
+  }
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+/** The Job Notes: the notes written for the page, or the message over the lines. */
+export const paintNotes = (view: QuoteView): string | null => view.quote.paint?.notes ?? view.quote.message ?? null;
+
+/**
+ * The What's Included checklist: the list written for the page, or the picked package's own
+ * highlights, with its warranty among them when the list doesn't already name one. Without a
+ * package and nothing written, there's no list — the room cards say what's included.
+ */
+export function paintHighlights(view: QuoteView, option: HubOption | null): string[] {
+  const written = view.quote.paint?.highlights ?? [];
+  if (written.length) return written;
+  if (!option) return [];
+  const list = [...option.highlights];
+  const warranty = option.warranty?.trim();
+  if (warranty && !list.some((h) => /warrant/i.test(h))) list.push(warranty);
+  return list;
+}
+
+/** A line's room name, for the builder-shaped checks in tests and the page alike. */
+export const paintRoomOf = (line: HubLine): string | null => paintDetailFrom(line.paint_detail).room;
 
 /**
  * What a signed quote says under "Signed on …": thanks, and where its deposit stands. Paid online

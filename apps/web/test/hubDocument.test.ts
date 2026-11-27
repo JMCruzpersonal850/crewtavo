@@ -19,6 +19,10 @@ import {
   needsNewCard,
   yoursToPayNote,
   optionLinesOf,
+  paintHighlights,
+  paintNotes,
+  paintRoomCards,
+  paintScope,
   pickedOption,
   promoShortfall,
   quoteDocument,
@@ -445,5 +449,88 @@ describe("autopay on the Client Hub's invoices", () => {
     ];
     expect(waitingInvoices(invoices).map((i) => i.id)).toEqual(["owed", "late", "failed", "confirm"]);
     expect(invoices.filter(needsNewCard).map((i) => i.id)).toEqual(["failed", "confirm"]);
+  });
+});
+
+describe("a painting proposal's page (phase 3)", () => {
+  // Proposal #2's shape, as the Ocean Crest copy holds it: one flat line in the Exterior
+  // room, the scope in the line's description, the notes in the message, nothing written for
+  // the page yet, a 50% deposit by percent.
+  const larue = (quote: Partial<QuoteView["quote"]> = {}) =>
+    quoteView({
+      number: 2, title: "Exterior — Brick Painting", message: "One coat, no primer, no warranty. Cash offer.", subtotal: 3500, tax_rate: 0, tax_amount: 0, total: 3500,
+      deposit_amount: 0, deposit_percent: 50, valid_until: "2026-12-27",
+      client: { display_name: "Geoff Larue", email: "larue123@hotmail.com" },
+      property: { line1: "504 Silverthorn Road", city: "Gulf Breeze", region: "FL", postal_code: "32561" },
+      paint: { scope: null, notes: null, highlights: [] },
+      lines: [
+        { id: "p1", name: "Exterior — Brick Painting", description: "Apply 1 coat of Sherwin-Williams Emerald Rain Refresh over the existing paint.", quantity: 1, unit: "job", unit_price: 3500, optional: false, selected: true, paint_detail: { room: "Exterior", dimensions: "52' × 52' × 8'" } },
+      ],
+      ...quote,
+    });
+
+  it("renders a pre-existing proposal from what it already carries", () => {
+    const view = larue();
+    expect(paintRoomCards(view.quote.lines, [])).toEqual([
+      { title: "Exterior", dimensions: "52' × 52' × 8'", count: 1, total: 3500, lines: view.quote.lines },
+    ]);
+    // The scope falls back to the line's description; the notes to the message.
+    expect(paintScope(view, view.quote.lines, [])).toBe("Apply 1 coat of Sherwin-Williams Emerald Rain Refresh over the existing paint.");
+    expect(paintNotes(view)).toBe("One coat, no primer, no warranty. Cash offer.");
+    // No list written and no package picked: no checklist.
+    expect(paintHighlights(view, null)).toEqual([]);
+    // The deposit is the quote's own mechanism: 50% of the total.
+    expect(depositToBook(view.quote.deposit_amount, view.quote.total!, view.quote.deposit_percent)).toBe(1750);
+  });
+
+  it("prefers the words written for the page", () => {
+    const view = larue({ paint: { scope: "Repaint the painted brick exterior.", notes: "Cash offer — one coat.", highlights: ["Cash offer — $3,500 total", "No warranty included"] } });
+    expect(paintScope(view, view.quote.lines, [])).toBe("Repaint the painted brick exterior.");
+    expect(paintNotes(view)).toBe("Cash offer — one coat.");
+    expect(paintHighlights(view, null)).toEqual(["Cash offer — $3,500 total", "No warranty included"]);
+  });
+
+  it("feeds What's Included from the picked package, warranty and all", () => {
+    const view = larue();
+    const option: HubOption = { id: "o1", name: "Better", tier: "Better", picture: null, style: "", highlights: ["2 coats Sherwin-Williams Duration"], warranty: "3-year workmanship warranty", section_ids: [], sort: 0, total: 3500, range: null };
+    expect(paintHighlights(view, option)).toEqual(["2 coats Sherwin-Williams Duration", "3-year workmanship warranty"]);
+    // A list that already names a warranty doesn't get a second one.
+    expect(paintHighlights(view, { ...option, highlights: ["36-month warranty included"] })).toEqual(["36-month warranty included"]);
+  });
+
+  it("groups the room cards and counts only what counts", () => {
+    const view = larue({
+      lines: [
+        { id: "a", name: "Walls", description: null, quantity: 1, unit: "job", unit_price: 800, optional: false, selected: true, paint_detail: { room: "Master Bedroom" } },
+        { id: "b", name: "Ceiling", description: null, quantity: 1, unit: "job", unit_price: 200, optional: false, selected: true, paint_detail: { room: "Master Bedroom", dimensions: "12 × 14 × 8" } },
+        { id: "c", name: "Exterior walls", description: null, quantity: 1, unit: "job", unit_price: 1000, optional: false, selected: true, paint_detail: { room: "Exterior" } },
+        { id: "d", name: "Accent wall", description: null, quantity: 1, unit: "job", unit_price: 300, optional: true, selected: false, paint_detail: { room: "Master Bedroom" } },
+        { id: "e", name: "Trip charge", description: null, quantity: 1, unit: "job", unit_price: 75, optional: false, selected: true },
+        { id: "f", name: "Dump fee", description: null, quantity: 1, unit: "job", unit_price: 25, optional: false, selected: true },
+      ],
+    });
+    const cards = paintRoomCards(view.quote.lines, []);
+    expect(cards.map((c) => [c.title, c.count, c.total])).toEqual([
+      ["Master Bedroom", 3, 1000],
+      ["Exterior", 1, 1000],
+      ["General", 2, 100],
+    ]);
+    expect(cards[0]!.dimensions).toBe("12 × 14 × 8");
+    // Tick the accent wall and its room's total takes it in.
+    expect(paintRoomCards(view.quote.lines, ["d"])[0]!.total).toBe(1300);
+    // One roomless line alone is titled by the line itself.
+    const single = paintRoomCards([view.quote.lines[4]!], []);
+    expect(single[0]!.title).toBe("Trip charge");
+  });
+
+  it("says the scope once when lines share a description", () => {
+    const view = larue({
+      paint: { scope: null, notes: null, highlights: [] },
+      lines: [
+        { id: "a", name: "Walls", description: "Two coats throughout.", quantity: 1, unit: "job", unit_price: 800, optional: false, selected: true },
+        { id: "b", name: "Ceiling", description: "Two coats throughout.", quantity: 1, unit: "job", unit_price: 200, optional: false, selected: true },
+      ],
+    });
+    expect(paintScope(view, view.quote.lines, [])).toBe("Two coats throughout.");
   });
 });

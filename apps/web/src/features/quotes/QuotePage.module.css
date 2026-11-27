@@ -144,3 +144,6 @@
   .choice input { top: 50%; bottom: auto; margin-top: -9px; }
   .choiceName { font-size: var(--fs-16); }
 }
+
+/* The proposal-page card's field labels (PaintPresentationCard.tsx). */
+.fieldLabel { font-size: var(--fs-12); font-weight: 600; color: var(--text-2, inherit); margin-top: 6px; }

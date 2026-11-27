@@ -8,7 +8,8 @@
  * product, plus the tier's markup — the DripJobs uplift Lead Control's templates carry.
  * Painting only: the routes refuse any company whose trade isn't painting before calling here.
  */
-import { DEFAULT_PAINT_PRODUCTS, paintProposalMath, paintSettingsFrom, type PaintProduct, type PaintScope, type PaintSurfaceInput } from "@crewtavo/core/painting";
+import type { Json } from "@crewtavo/core/database";
+import { DEFAULT_PAINT_PRODUCTS, paintDetailFrom, paintProposalMath, paintSettingsFrom, type PaintProduct, type PaintScope, type PaintSurfaceInput } from "@crewtavo/core/painting";
 import { dbError, HttpError, must } from "../lib/http";
 import type { Db } from "../lib/supabase";
 import { EDITABLE, lockedMessage } from "./roofPackages";
@@ -205,6 +206,8 @@ interface BaseLine {
   selected: boolean;
   formula: string | null;
   sort: number;
+  /** The line's room (phase 3), carried onto the copies so a package keeps the proposal's rooms. */
+  paint_detail: Json | null;
 }
 
 /**
@@ -233,7 +236,7 @@ export async function applyPaintPackages(db: Db, adminDb: Db, companyId: string,
   const defaultPkg = ordered.find((p) => p.is_default) ?? ordered[0]!;
 
   const lines = must(
-    await db.from("quote_line_items").select("id, service_id, name, description, quantity, unit, unit_price, unit_cost, material_cost, taxable, optional, selected, formula, sort").eq("quote_id", quoteId).eq("company_id", companyId).order("sort"),
+    await db.from("quote_line_items").select("id, service_id, name, description, quantity, unit, unit_price, unit_cost, material_cost, taxable, optional, selected, formula, sort, paint_detail").eq("quote_id", quoteId).eq("company_id", companyId).order("sort"),
   ) as BaseLine[];
   const base = lines.filter((l) => l.selected && !l.optional);
   if (!base.length) throw new HttpError(400, "Add the work to the proposal first, then offer packages on it.");
@@ -266,13 +269,15 @@ export async function applyPaintPackages(db: Db, adminDb: Db, companyId: string,
       const scope = scopeOf(line);
       if (!scope) return;
       paintIdx.push(i);
+      // The line's room, so a package's gallons round up per room like the proposal's own do.
+      const room = paintDetailFrom(line.paint_detail).room ?? undefined;
       // The panel's modes, here too: hour lines are the crew's hours; per-piece lines carry
       // the price book's per-piece cost as their fee and drink no gallons of their own.
-      if (line.unit === "hr") inputs.push({ scope, quantity: Number(line.quantity), coats: pkg.coats, laborHoursPerUnit: 1, product: null });
+      if (line.unit === "hr") inputs.push({ room, scope, quantity: Number(line.quantity), coats: pkg.coats, laborHoursPerUnit: 1, product: null });
       else if (line.unit === "ea" || line.unit === "visit" || line.unit === "job") {
         const cost = line.service_id ? serviceOf.get(line.service_id)?.unit_cost : null;
-        inputs.push({ scope, quantity: Number(line.quantity), coats: pkg.coats, flatFeePerUnit: cost != null ? Number(cost) : null, product: null });
-      } else inputs.push({ scope, quantity: Number(line.quantity), coats: pkg.coats, product });
+        inputs.push({ room, scope, quantity: Number(line.quantity), coats: pkg.coats, flatFeePerUnit: cost != null ? Number(cost) : null, product: null });
+      } else inputs.push({ room, scope, quantity: Number(line.quantity), coats: pkg.coats, product });
     });
     const math = paintProposalMath(inputs, settings);
     const uplift = 1 + Number(pkg.markup_pct) / 100;
@@ -327,6 +332,7 @@ export async function applyPaintPackages(db: Db, adminDb: Db, companyId: string,
         selected: true,
         formula: line.formula,
         sort: line.sort,
+        paint_detail: line.paint_detail,
       }));
       const { error } = await db.from("quote_line_items").insert(rows);
       if (error) throw dbError(error);

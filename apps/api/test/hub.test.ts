@@ -2782,3 +2782,46 @@ describe("resetting a client's links", () => {
     expect((await app.request(`/api/public/refer/${tokenOf(refer)}`, {}, env)).status).toBe(200);
   });
 });
+
+describe("a painting proposal in the Client Hub (phase 3)", () => {
+  // The roofer's fixture, wearing a painting company's clothes: a sent proposal shaped like
+  // the ones Ocean Crest sends — one flat line in a room, its own scope and notes written,
+  // a 50% deposit by percent.
+  const paintIt = () => {
+    const companyRow = state.tables.companies![0]!;
+    Object.assign(companyRow, { name: "Ocean Crest Painting", trade_preset: "painting", settings: { branding: { color: "#1e3a5f" }, hub_tips: false } });
+    const quote = state.tables.quotes![0]!;
+    Object.assign(quote, {
+      title: "Exterior — Brick Painting", range_low: null, range_high: null, range_sent_at: null, roof_package_id: null,
+      subtotal: 3500, total: 3500, deposit_amount: 0, deposit_percent: 50, valid_until: "2026-12-27",
+      paint_presentation: { scope: "Repaint the painted brick exterior.", notes: "Cash offer — one coat.", highlights: ["Cash offer — $3,500 total", "No warranty included"] },
+      client: { display_name: "Geoff Larue", email: "larue123@hotmail.com", billing_address: {} },
+    });
+    state.tables.quote_line_items = [
+      line("p1", null, "Exterior — Brick Painting", { description: "Apply 1 coat of Sherwin-Williams Emerald Rain Refresh.", quantity: 1, unit: "job", unit_price: 3500, sort: 1, paint_detail: { room: "Exterior", dimensions: "52' × 52' × 8'" } }),
+    ];
+  };
+
+  it("sends the proposal's words, its lines' rooms and the client's email", async () => {
+    paintIt();
+    const body = (await (await hub({ t: "quote", id: QUOTE })).json()) as Row;
+    expect(body.doc_word).toBe("Proposal");
+    const quote = body.quote as Row;
+    expect(quote.paint).toEqual({ scope: "Repaint the painted brick exterior.", notes: "Cash offer — one coat.", highlights: ["Cash offer — $3,500 total", "No warranty included"] });
+    expect((quote.lines as Row[])[0]!.paint_detail).toEqual({ room: "Exterior", dimensions: "52' × 52' × 8'" });
+    expect((quote.client as Row).email).toBe("larue123@hotmail.com");
+  });
+
+  it("sends none of it for another trade, even with painting data on the rows", async () => {
+    const quote = state.tables.quotes![0]!;
+    Object.assign(quote, { paint_presentation: { scope: "Should not ship" } });
+    state.tables.quote_line_items![0] = { ...state.tables.quote_line_items![0]!, paint_detail: { room: "Roof" } };
+    const res = await hub({ t: "quote", id: QUOTE });
+    const text = await res.text();
+    expect(text).not.toContain("paint_detail");
+    expect(text).not.toContain("Should not ship");
+    const body = JSON.parse(text) as Row;
+    expect((body.quote as Row).paint).toBeUndefined();
+    expect(((body.quote as Row).client as Row).email).toBeUndefined();
+  });
+});
