@@ -1,7 +1,7 @@
 /**
  * A painting proposal's working numbers, beside the lines (office only, painting companies
  * only — QuotePage mounts it behind isPaintingTrade): each surface's labor at the sub rate,
- * the paint it takes with gallons rounded up per line (per room once rooms arrive), material
+ * the paint it takes with gallons rounded up per room (a line in no room rounds on its own), material
  * with its markup, then overhead and the warranty reserve, and the price the margin sets —
  * profit in dollars and percent before anything is sent. The math itself is core's
  * paintProposalMath; this panel only feeds it the proposal's lines and shows its work.
@@ -9,7 +9,7 @@
  * shared totals never change shape), and packages offer the same scope Good / Better / Best
  * through the Hub's pick-and-sign options.
  */
-import { paintProposalMath, type PaintProduct, type PaintSettings, type PaintSurfaceInput } from "@crewtavo/core/painting";
+import { paintDetailFrom, paintProposalMath, type PaintProduct, type PaintSettings, type PaintSurfaceInput } from "@crewtavo/core/painting";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -27,6 +27,8 @@ interface PanelLine {
   name: string;
   quantity: number;
   unit: string;
+  /** The line's room (paint_detail), so its gallons round up with its room's. */
+  paint_detail?: unknown;
 }
 
 interface ProductRow {
@@ -142,7 +144,9 @@ export function PaintMathPanel({ quoteId, lines, editable, hasOptions, onChanged
   // hour lines are the crew's hours; per-piece lines (a door, a garage door) carry the price
   // book's per-piece cost as their fee and drink no gallons of their own.
   const inputs: PaintSurfaceInput[] = paintLines.map(({ line, scope }) => {
-    const base = { scope, quantity: Number(line.quantity), coats, room: line.id };
+    // Gallons round up per room: lines in the same room share its name as the key; a line in
+    // no room keeps its own, so it rounds on its own as it did before rooms.
+    const base = { scope, quantity: Number(line.quantity), coats, room: paintDetailFrom(line.paint_detail).room ?? line.id };
     if (line.unit === "hr") return { ...base, laborHoursPerUnit: 1, product: null };
     if (line.unit === "ea" || line.unit === "visit" || line.unit === "job") {
       const cost = line.service_id ? serviceOf.get(line.service_id)?.unit_cost : null;

@@ -10,3 +10,14 @@
   .addTo button { position: relative; height: 34px; font-size: var(--fs-13); }
   .addTo button::after { content: ""; position: absolute; inset: -5px 0; }
 }
+
+/* A painting proposal's room head over its lines: the room's name and dimensions (editable,
+   writing every line in the room), what its lines shown come to, and the way to take the room
+   off (its lines stay). The add row's room picker sits with the other ways to add a line. */
+.roomHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 2px 4px; }
+.roomHead .roomName { font-size: var(--fs-14, 14px); }
+.roomDims { color: var(--muted, #667); font-size: var(--fs-12); }
+.roomMeta { margin-left: auto; color: var(--muted, #667); font-size: var(--fs-12); white-space: nowrap; }
+.roomNameInput { width: 170px; font-weight: 600; }
+.roomDimsInput { width: 190px; }
+.addRoom { display: inline-flex; align-items: center; gap: 6px; }

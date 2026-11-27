@@ -6,7 +6,7 @@
 import { autopaySettings, methodLabel, tipsAllowed } from "@crewtavo/core/autopay";
 import { lateFeeCouldApply, lateFeeSettings } from "@crewtavo/core/billing";
 import { contractValues, fillIn } from "@crewtavo/core/contracts";
-import { docWord } from "@crewtavo/core/painting";
+import { docWord, isPaintingTrade, paintPresentationFrom } from "@crewtavo/core/painting";
 import { shownCustomFields } from "@crewtavo/core/customFields";
 import { pickTemplate, templateSettings, type TemplateSettings } from "@crewtavo/core/documents";
 import { hidesExactPrice, inRangeMode, isSiteAdjustment, notIncluded, optionsRange, priceRange, rangeSettings } from "@crewtavo/core/estimates";
@@ -444,20 +444,23 @@ publicRoutes.get("/hub/:token", async (c) => {
       await admin
         .from("quotes")
         .select(
-          "id, number, status, title, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, deposit_invoice_id, valid_until, sent_at, created_at, approved_at, approval, client_id, change_order_for, template_id, roof_package_id, work_kind, option_id, section_ids, recurrence_rule, active_months, range_low, range_high, range_sent_at, range_lines, range_accepted_at, priced_on_site_at, exact_sent_at, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, min_subtotal, every_visit), client:clients(display_name, billing_address, tax_exempt, tax_exempt_note), property:properties(line1, city, region, postal_code), custom_fields, left_out, payment_schedule",
+          "id, number, status, title, message, subtotal, discount_amount, tax_rate, tax_amount, total, deposit_amount, deposit_percent, deposit_invoice_id, valid_until, sent_at, created_at, approved_at, approval, client_id, change_order_for, template_id, roof_package_id, work_kind, option_id, section_ids, recurrence_rule, active_months, range_low, range_high, range_sent_at, range_lines, range_accepted_at, priced_on_site_at, exact_sent_at, promo_code_id, promo_every_visit, promo:promo_codes(code, kind, value, description, min_subtotal, every_visit), client:clients(display_name, email, billing_address, tax_exempt, tax_exempt_note), property:properties(line1, city, region, postal_code), custom_fields, left_out, payment_schedule, paint_presentation",
         )
         .eq("company_id", l.c)
         .eq("id", l.id)
         .maybeSingle(),
       "Quote not found.",
     );
+    // Painting proposals carry their rooms (on their lines) and their own words for the client
+    // page; the trade is the gate, and no other trade's payload grows either field.
+    const painting = isPaintingTrade(trade);
     if (quote.status === "draft" && !l.pv) throw new HttpError(404, "This quote isn't ready yet.");
     // A quote template (no client) never reaches the Client Hub, not even as a preview.
     if (!quote.client_id) throw new HttpError(404, "Quote not found.");
     const signed = quote.status === "approved" || quote.status === "converted";
     const [lineRows, options, drawings, template, roofPackage, home, fields, reviews] = await Promise.all([
       // The formula only tells the server which line is the tear-off; it's never sent.
-      admin.from("quote_line_items").select("id, option_id, service_id, name, description, quantity, unit, unit_price, taxable, optional, selected, option_group, sort, formula").eq("company_id", l.c).eq("quote_id", quote.id).order("sort"),
+      admin.from("quote_line_items").select("id, option_id, service_id, name, description, quantity, unit, unit_price, taxable, optional, selected, option_group, sort, formula, paint_detail").eq("company_id", l.c).eq("quote_id", quote.id).order("sort"),
       loadOptions(admin, l.c, quote.id),
       hubDrawings(admin, l.c, "quote_id", quote.id),
       // Signed, it prints with the template it was signed with.
@@ -604,8 +607,11 @@ publicRoutes.get("/hub/:token", async (c) => {
         // How it's paid: never with a price range (its amounts would say the price). Signed, the
         // approval has each payment as it was signed.
         payment_schedule: exact ? scheduleRows(quote.payment_schedule) : null,
-        promo, client: quote.client ? { display_name: quote.client.display_name, tax_exempt: quote.client.tax_exempt, tax_exempt_note: quote.client.tax_exempt_note } : null, property: quote.property,
+        promo, client: quote.client ? { display_name: quote.client.display_name, tax_exempt: quote.client.tax_exempt, tax_exempt_note: quote.client.tax_exempt_note, ...(painting ? { email: quote.client.email } : {}) } : null, property: quote.property,
         package: roofPackage?.data ? { name: roofPackage.data.name } : null,
+        // Painting only: the proposal's scope, notes and What's Included words, as written in
+        // the builder (pieces left unwritten fall back on the page, to the lines and message).
+        ...(painting ? { paint: paintPresentationFrom(quote.paint_presentation) } : {}),
         approval: signed ? publicApproval(quote.approval, quote.approved_at) : null,
         // A price agreed on site is in effect, so a promo code can't go on it (the promo route says so).
         site_priced: sitePriceSet(quote, lines),
@@ -616,6 +622,8 @@ publicRoutes.get("/hub/:token", async (c) => {
         lines: sent.map((line) => ({
           id: line.id, option_id: line.option_id, name: line.name, description: line.description, quantity: line.quantity, unit: line.unit, unit_price: line.unit_price,
           taxable: line.taxable, optional: line.optional, selected: line.selected, option_group: line.option_group, sort: line.sort,
+          // Painting only: the line's room, for the Detailed Scope of Work's room cards.
+          ...(painting ? { paint_detail: line.paint_detail } : {}),
         })),
         ...fields,
       },

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  paintDetailFrom,
+  paintDetailJson,
+  paintPresentationFrom,
+  paintRoomGroups,
   DEFAULT_PAINT_PRODUCTS,
   DEFAULT_PAINT_SETTINGS,
   docWord,
@@ -194,5 +198,49 @@ describe("the painting proposal math", () => {
     expect(at24.marginPct).toBe(24);
     expect(at24.price).toBeLessThan(paintProposalMath(input, settings).price);
     expect(() => paintProposalMath(input, settings, 100)).not.toThrow();
+  });
+});
+
+describe("paint detail and presentation (phase 3)", () => {
+  it("reads a line's room and dimensions, tolerating anything else", () => {
+    expect(paintDetailFrom({ room: " Exterior ", dimensions: "52' × 52' × 8'" })).toEqual({ room: "Exterior", dimensions: "52' × 52' × 8'" });
+    expect(paintDetailFrom({ room: "Kitchen" })).toEqual({ room: "Kitchen", dimensions: null });
+    expect(paintDetailFrom(null)).toEqual({ room: null, dimensions: null });
+    expect(paintDetailFrom("Exterior")).toEqual({ room: null, dimensions: null });
+    expect(paintDetailFrom({ room: "  " })).toEqual({ room: null, dimensions: null });
+    expect(paintDetailFrom([{ room: "X" }])).toEqual({ room: null, dimensions: null });
+  });
+
+  it("writes a line's room back, and nothing when the line is in no room", () => {
+    expect(paintDetailJson({ room: "Exterior", dimensions: null })).toEqual({ room: "Exterior" });
+    expect(paintDetailJson({ room: "Exterior", dimensions: "10 × 12" })).toEqual({ room: "Exterior", dimensions: "10 × 12" });
+    expect(paintDetailJson({ room: null, dimensions: "10 × 12" })).toBeNull();
+  });
+
+  it("reads the proposal's words, keeping only real highlights", () => {
+    expect(paintPresentationFrom({ scope: " Paint the brick. ", notes: "Cash job.", highlights: [" 1 coat ", "", 42, "No warranty"] })).toEqual({
+      scope: "Paint the brick.",
+      notes: "Cash job.",
+      highlights: ["1 coat", "No warranty"],
+    });
+    expect(paintPresentationFrom(null)).toEqual({ scope: null, notes: null, highlights: [] });
+    expect(paintPresentationFrom({ highlights: "nope" })).toEqual({ scope: null, notes: null, highlights: [] });
+  });
+
+  it("groups lines by room in first-written order, roomless lines together", () => {
+    const line = (name: string, paint_detail?: unknown) => ({ name, paint_detail });
+    const groups = paintRoomGroups([
+      line("Walls", { room: "Master Bedroom" }),
+      line("Trim"),
+      line("Ceiling", { room: "Master Bedroom", dimensions: "12 × 14 × 8" }),
+      line("Doors", { room: "Hallway" }),
+      line("Baseboards"),
+    ]);
+    expect(groups.map((g) => g.room)).toEqual(["Master Bedroom", null, "Hallway"]);
+    expect(groups[0]!.lines.map((l) => l.name)).toEqual(["Walls", "Ceiling"]);
+    expect(groups[0]!.dimensions).toBe("12 × 14 × 8");
+    expect(groups[1]!.lines.map((l) => l.name)).toEqual(["Trim", "Baseboards"]);
+    expect(groups[2]!.dimensions).toBeNull();
+    expect(paintRoomGroups([])).toEqual([]);
   });
 });

@@ -15,9 +15,10 @@
  */
 import { evaluateFormula, formulaVariables } from "@crewtavo/core/formulas";
 import { countsOn, lineTotal, optionLabels, optionLines, toCents } from "@crewtavo/core/money";
+import { paintDetailFrom, paintDetailJson, paintRoomGroups, type PaintDetail } from "@crewtavo/core/painting";
 import { promoCodeOf, removedPromoWords } from "@crewtavo/core/promos";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button, cx } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Menu } from "@/components/ui/Menu";
@@ -56,6 +57,8 @@ export interface Line {
   option_id?: string | null;
   /** Add-ons that share one are a single choice: the client picks one of them. */
   option_group?: string | null;
+  /** A painting quote line's room (quote_line_items.paint_detail); only read when the list shows rooms. */
+  paint_detail?: unknown;
   /** An invoice line that's a job's promo code discount (supabase/migrations/20261031000600_promo_once_per_job.sql). */
   discount_quote_id?: string | null;
   /** A job line that's a promo code's discount: the quote it's from. */
@@ -174,6 +177,7 @@ export function LineItems({
   promoJob = null,
   followMarkup = null,
   propertyId = null,
+  rooms = false,
 }: {
   table: Table;
   parent: Parent;
@@ -198,6 +202,12 @@ export function LineItems({
   promoJob?: { id: string; repeats: boolean } | null;
   /** The property the work is at: its drawings' areas are offered on a line priced by size. */
   propertyId?: string | null;
+  /**
+   * Painting quotes only: group the lines into their rooms (each line's paint_detail), with a
+   * head over each room — its name, dimensions and subtotal — and a room field on each line.
+   * A room is its lines: renaming or clearing it writes the lines that say it, quote-wide.
+   */
+  rooms?: boolean;
 }) {
   const session = useSession();
   const { company } = session;
@@ -212,6 +222,10 @@ export function LineItems({
   const viewingName = options.find((o) => o.id === viewing)?.name ?? "this option";
   // Where a new line goes: the option looked at, or every option.
   const [addToEvery, setAddToEvery] = useState(false);
+  // Painting rooms: where a new line goes, by room — an existing room's name, "" for no room,
+  // or "__new__" with the name typed beside it. A room exists once a line is in it.
+  const [addRoom, setAddRoom] = useState("");
+  const [newRoomName, setNewRoomName] = useState("");
   const services = useQuery({
     queryKey: ["services", company.id, seesCosts ? "with-costs" : "without-costs"],
     enabled: editable,
@@ -251,6 +265,10 @@ export function LineItems({
       const followed = table === "quote_line_items" && s && followMarkup !== null ? await followedPriceOf(s.id, followMarkup) : null;
       if (followed !== null) row.unit_price = followed;
       if (offers) row.option_id = addToEvery ? null : viewing;
+      if (rooms) {
+        const target = addRoom === "__new__" ? newRoomName.trim() : addRoom;
+        if (target) row.paint_detail = paintDetailJson({ room: target, dimensions: null });
+      }
       return { id: await insert([row]), open: !s || sizedBy(s.formula) };
     },
     // A custom item opens for editing right away, and so does one priced by its size, to ask for it; any other price-list item is ready as it is.
@@ -273,7 +291,7 @@ export function LineItems({
     mutationFn: async (line: Line) => {
       const row: Record<string, unknown> = Object.fromEntries(COPY_FIELDS.map((k) => [k, line[k] ?? null]));
       if (table !== "invoice_line_items") row.unit_cost = line.unit_cost ?? null;
-      if (table === "quote_line_items") Object.assign(row, { optional: line.optional ?? false, selected: line.selected ?? true, formula: line.formula ?? null });
+      if (table === "quote_line_items") Object.assign(row, { optional: line.optional ?? false, selected: line.selected ?? true, formula: line.formula ?? null, paint_detail: line.paint_detail ?? null });
       // The copy is where the line is: on every option, or on the one looked at.
       if (offers) row.option_id = line.option_id ?? null;
       setOpenId(await insert([row]));
@@ -325,6 +343,44 @@ export function LineItems({
   });
 
   const totals = useMemo(() => lineSums(shown, { optionId: viewing, shownOptionId, withOptions }), [shown, viewing, shownOptionId, withOptions]);
+  // Painting rooms: the room names on the quote (in the order its lines first say them), and
+  // the groups among the lines shown. A room's head goes over its first line shown, with the
+  // subtotal of what's shown of it; renaming, sizing or clearing a room writes every line on
+  // the quote that says it — another option's lines too, or the room would split in two.
+  const roomNames = useMemo(
+    () => (rooms ? [...new Set(lines.map((l) => paintDetailFrom(l.paint_detail).room).filter((r): r is string => r !== null))] : []),
+    [rooms, lines],
+  );
+  const shownGroups = useMemo(() => (rooms ? paintRoomGroups(shown) : []), [rooms, shown]);
+  const roomHeadIds = useMemo(() => new Set(shownGroups.filter((g) => g.room !== null && g.lines[0]).map((g) => g.lines[0]!.id)), [shownGroups]);
+  const roomWrite = useMutation({
+    mutationFn: async ({ room, write }: { room: string; write: (detail: PaintDetail) => unknown }) => {
+      const targets = lines.filter((l) => paintDetailFrom(l.paint_detail).room === room);
+      await Promise.all(targets.map((l) => supabase().from(table).update({ paint_detail: write(paintDetailFrom(l.paint_detail)) } as never).eq("id", l.id)));
+    },
+    onSuccess: onChanged,
+  });
+  const roomHead = (line: Line) => {
+    if (!rooms) return null;
+    const room = paintDetailFrom(line.paint_detail).room;
+    if (!room || !roomHeadIds.has(line.id)) return null;
+    const group = shownGroups.find((g) => g.room === room);
+    if (!group) return null;
+    return (
+      <RoomHead
+        key={`room-${room}`}
+        room={room}
+        dimensions={group.dimensions}
+        count={group.lines.length}
+        subtotal={lineSums(group.lines, { optionId: viewing, shownOptionId, withOptions }).price}
+        editable={editable}
+        pending={roomWrite.isPending}
+        onRename={(name) => roomWrite.mutate({ room, write: (d) => paintDetailJson({ room: name, dimensions: d.dimensions }) })}
+        onDimensions={(dimensions) => roomWrite.mutate({ room, write: (d) => paintDetailJson({ room: d.room, dimensions }) })}
+        onRemove={() => roomWrite.mutate({ room, write: () => null })}
+      />
+    );
+  };
   const place = offers ? options : null;
   // Without options, a line group's add-ons have the tier words the Client Hub and the paper give them.
   const tiers = useMemo(() => (table === "quote_line_items" && !offers ? optionLabels(lines) : null), [table, offers, lines]);
@@ -360,10 +416,15 @@ export function LineItems({
                 ]}
               />
             );
-            return openId === line.id ? (
-              <LineRow key={line.id} table={table} line={line} withOptions={withOptions} showCosts={showCosts} place={place} viewing={viewing} saveStatus={saveStatus} onChanged={onChanged} onDone={() => setOpenId(null)} actions={actions} rule={ruleOf(line)} drawings={drawings.data} />
-            ) : (
-              <LineSummary key={line.id} line={line} withOptions={withOptions} shared={offers && line.option_id == null} addOn={chipOf(line)} onOpen={() => setOpenId(line.id)} actions={actions} />
+            return (
+              <Fragment key={line.id}>
+                {roomHead(line)}
+                {openId === line.id ? (
+                  <LineRow table={table} line={line} withOptions={withOptions} showCosts={showCosts} place={place} viewing={viewing} saveStatus={saveStatus} onChanged={onChanged} onDone={() => setOpenId(null)} actions={actions} rule={ruleOf(line)} drawings={drawings.data} roomNames={rooms ? roomNames : undefined} />
+                ) : (
+                  <LineSummary line={line} withOptions={withOptions} shared={offers && line.option_id == null} addOn={chipOf(line)} onOpen={() => setOpenId(line.id)} actions={actions} />
+                )}
+              </Fragment>
             );
           })}
         </div>
@@ -378,7 +439,10 @@ export function LineItems({
             <span role="columnheader" className="num">Total</span>
           </div>}
           {shown.map((line) => (
-            <LineSummary key={line.id} line={line} withOptions={withOptions} shared={Boolean(place) && line.option_id == null} addOn={chipOf(line)} />
+            <Fragment key={line.id}>
+              {roomHead(line)}
+              <LineSummary line={line} withOptions={withOptions} shared={Boolean(place) && line.option_id == null} addOn={chipOf(line)} />
+            </Fragment>
           ))}
         </div>
       )}
@@ -388,6 +452,18 @@ export function LineItems({
         <div className="lines-add">
           <ServicePicker services={services.data ?? []} loading={services.isPending || add.isPending} pending={services.isPending} onPick={(id) => add.mutate(id)} />
           <Button size="sm" variant="ghost" icon="plus" onClick={() => add.mutate(null)} disabled={add.isPending}>Custom item</Button>
+          {/* Painting rooms: new lines land in the room picked here. A new room starts with its
+              first line — a room with nothing in it isn't kept. */}
+          {rooms && (
+            <span className={styles.addRoom}>
+              <Select className="select input-sm" style={{ width: "auto", maxWidth: "100%", fontSize: 12 }} aria-label="Room for new items" value={addRoom} onChange={(e) => setAddRoom(e.target.value)}>
+                <option value="">No room</option>
+                {roomNames.map((r) => <option key={r} value={r}>{r}</option>)}
+                <option value="__new__">New room…</option>
+              </Select>
+              {addRoom === "__new__" && <input className="input input-sm" style={{ width: 150 }} aria-label="New room name" placeholder="Room name" value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} />}
+            </span>
+          )}
           {/* What the options bar offered before there were any: one package to price it from, or two or three side by side. */}
           {onOfferOptions && <Button size="sm" variant="ghost" icon="package" onClick={onOfferOptions}>{lines.length ? "Offer options" : "Pick packages"}</Button>}
           {offers && (
@@ -550,7 +626,7 @@ function LineSummary({ line, withOptions, shared, addOn, onOpen, actions }: { li
  * when it offers them, for where the line is; `viewing` is the option looked at. `saveStatus`: the
  * page header's, which each save reports to.
  */
-function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStatus, onChanged, onDone, actions, rule = null, drawings = [] }: {
+function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStatus, onChanged, onDone, actions, rule = null, drawings = [], roomNames }: {
   table: Table;
   line: Line;
   withOptions: boolean;
@@ -565,6 +641,8 @@ function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStat
   rule?: SizeRule | null;
   /** The property's drawings with an area, to price it from. */
   drawings?: ReadonlyArray<{ id: string; title: string; total_area_sqft: number }>;
+  /** Painting proposals: the quote's room names, offered as the line's room is typed. Left out, no room fields. */
+  roomNames?: string[];
 }) {
   const [draft, setDraft] = useState(line);
   useEffect(() => setDraft(line), [line]);
@@ -612,6 +690,21 @@ function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStat
     else unchanged();
   };
   const blurOnEnter = (e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && e.currentTarget.blur();
+  // The line's room (painting proposals): typed, with the quote's rooms offered; the dimensions
+  // ride with it. Both save together on blur, as the line's paint_detail.
+  const roomListId = useId();
+  const [roomText, setRoomText] = useState(() => paintDetailFrom(line.paint_detail).room ?? "");
+  const [dimsText, setDimsText] = useState(() => paintDetailFrom(line.paint_detail).dimensions ?? "");
+  useEffect(() => {
+    const d = paintDetailFrom(line.paint_detail);
+    setRoomText(d.room ?? "");
+    setDimsText(d.dimensions ?? "");
+  }, [line.paint_detail]);
+  const commitRoom = () => {
+    const next = paintDetailJson({ room: roomText.trim() || null, dimensions: dimsText.trim() || null });
+    if (JSON.stringify(next) !== JSON.stringify(paintDetailJson(paintDetailFrom(line.paint_detail)))) persist({ paint_detail: next });
+    else unchanged();
+  };
   // Priced by its size: the rule's price (or quantity) for that many square feet, saved like one typed.
   const [size, setSize] = useState("");
   const sized = useRef("");
@@ -678,6 +771,19 @@ function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStat
               {place.map((o) => <option key={o.id} value={o.id}>{placeName(o.id, place)}</option>)}
             </Select>
           )}
+          {roomNames !== undefined && (
+            <>
+              <label style={{ gap: 6 }}>
+                Room
+                <input className="input input-sm" style={{ width: 150 }} aria-label="Room" list={roomListId} placeholder="No room" value={roomText} onChange={(e) => { setRoomText(e.target.value); edited(); }} onBlur={commitRoom} onKeyDown={blurOnEnter} />
+                <datalist id={roomListId}>{roomNames.map((r) => <option key={r} value={r} />)}</datalist>
+              </label>
+              <label style={{ gap: 6 }}>
+                Dimensions
+                <input className="input input-sm" style={{ width: 130 }} aria-label="Room dimensions" placeholder={"52' × 52' × 8'"} value={dimsText} onChange={(e) => { setDimsText(e.target.value); edited(); }} onBlur={commitRoom} onKeyDown={blurOnEnter} />
+              </label>
+            </>
+          )}
           {withOptions && (
             <label>
               <input type="checkbox" checked={Boolean(draft.optional)} onChange={(e) => set({ optional: e.target.checked, selected: !e.target.checked })} />
@@ -715,6 +821,75 @@ function LineRow({ table, line, withOptions, showCosts, place, viewing, saveStat
           {onDone && <Button size="sm" style={{ marginLeft: "auto" }} onClick={onDone}>Done</Button>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A room's head over its lines (painting proposals): its name, its dimensions and what its
+ * lines shown come to — Lead Control's room card, in the builder. Editing the name or the
+ * dimensions writes every line in the room (the room is its lines); removing the room leaves
+ * its lines standing, in no room. A room with no lines in it isn't stored anywhere, so there
+ * is nothing else to delete.
+ */
+function RoomHead({ room, dimensions, count, subtotal, editable, pending, onRename, onDimensions, onRemove }: {
+  room: string;
+  dimensions: string | null;
+  count: number;
+  subtotal: number;
+  editable: boolean;
+  pending: boolean;
+  onRename: (name: string) => void;
+  onDimensions: (dimensions: string | null) => void;
+  onRemove: () => void;
+}) {
+  const [name, setName] = useState(room);
+  const [dims, setDims] = useState(dimensions ?? "");
+  useEffect(() => setName(room), [room]);
+  useEffect(() => setDims(dimensions ?? ""), [dimensions]);
+  const blurOnEnter = (e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && e.currentTarget.blur();
+  const meta = `${count} ${count === 1 ? "service" : "services"} inside · Room total ${formatMoneyCents(subtotal)}`;
+  if (!editable) {
+    return (
+      <div className={styles.roomHead} role="row">
+        <strong className={styles.roomName}>{room}</strong>
+        {dimensions && <span className={styles.roomDims}>{dimensions}</span>}
+        <span className={styles.roomMeta}>{meta}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.roomHead} role="row">
+      <input
+        className={cx("input input-sm", styles.roomNameInput)}
+        aria-label="Room name"
+        value={name}
+        disabled={pending}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => {
+          const v = name.trim();
+          if (v && v !== room) onRename(v);
+          else setName(room);
+        }}
+        onKeyDown={blurOnEnter}
+      />
+      <input
+        className={cx("input input-sm", styles.roomDimsInput)}
+        aria-label={`Dimensions for ${room}`}
+        placeholder={"Dimensions — 52' × 52' × 8'"}
+        value={dims}
+        disabled={pending}
+        onChange={(e) => setDims(e.target.value)}
+        onBlur={() => {
+          const v = dims.trim() || null;
+          if (v !== (dimensions ?? null)) onDimensions(v);
+        }}
+        onKeyDown={blurOnEnter}
+      />
+      <span className={styles.roomMeta}>{meta}</span>
+      <button type="button" className="btn btn-sm btn-ghost btn-icon" aria-label={`Remove room ${room}`} title="Remove the room — its lines stay, in no room" disabled={pending} onClick={onRemove}>
+        <Icon name="trash" size={14} />
+      </button>
     </div>
   );
 }

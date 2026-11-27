@@ -77,16 +77,49 @@ and the shared totals math untouched (the builder still writes ordinary quote li
 - **The math** (core `paintProposalMath`, pure and tested): per surface — sub cost at the
   scope's sub rate (flat-fee lines carry their fee; labor-hour lines price at the labor
   rate), gallons = quantity × coats ÷ coverage **rounded up per room per product** (rooms
-  keyed by name; phase 3's builder supplies real rooms, until then each line is its own
-  room), material at cost × (1 + markup) on the rounded gallons, shared back over the
+  keyed by name — phase 3's builder supplies real rooms; a line in no room is its own),
+  material at cost × (1 + markup) on the rounded gallons, shared back over the
   surfaces that drank from the pot; then overhead and the warranty reserve on direct cost,
   and the price set by the margin. The proposal page shows all of it (Painting math panel)
   with an adjustable margin and profit in $ and %, and can write the prices onto the lines.
 
+## Phase 3 — rooms and the proposal's page (shipped on the fork)
+
+- **Rooms** (migration `20261124000300`): a line's room rides on the line itself —
+  `quote_line_items.paint_detail` = `{room, dimensions}` — the way Lead Control's rooms hold
+  their services. The builder (the shared line list, behind a `rooms` flag only the quote
+  page passes for a painting company) heads each room with its name, dimensions and
+  subtotal; renaming, sizing or clearing a room writes every line on the quote that says
+  it, a line's own room is set in its editor, and new lines land in the room picked in the
+  add row (a room exists once a line is in it — nothing empty is stored). The math's
+  per-room gallon rounding now keys on the real rooms, in the panel and in the packages
+  service; a line in no room still rounds on its own. Package copies and `duplicate_quote`
+  carry the rooms (and the words below, and the paint package links).
+- **The proposal's words**: `quotes.paint_presentation` = `{scope, notes, highlights}` —
+  the Overall Scope of Work, the Job Notes and the What's Included checklist, edited on the
+  proposal page beside the message (which stays the note over the lines). A piece left
+  unwritten falls back on the client's page: the scope to the lines' own descriptions, the
+  notes to the message, the checklist to the picked package's highlights and warranty — so
+  proposals written before the words existed (Lead Control's PROP-0028 shape: scope in the
+  line, notes in the message) render whole.
+- **The client page**: for a painting proposal the Hub sends `quote.paint`, each line's
+  `paint_detail` and the client's email (painting-gated in `routes/public.ts` — another
+  trade's payload is byte-for-byte what it was), and the page renders Lead Control's
+  structure: branded band, Prepared For / Project Location / Company cards, the
+  offer-valid banner, Overall Scope, What's Included (total, deposit from the quote's own
+  deposit percent/amount, green-check list), Detailed Scope room cards (room total only —
+  money stays totals, per the locked decisions), Investment Summary with the deposit,
+  Job Notes, Terms & Conditions from the company's contract with a view-full-terms
+  expansion, and the signing step headed by the acknowledgment and contact card with an
+  "Accept Proposal — $X" button on the existing sign flow. It prints as itself (no
+  template document for painting proposals), and the page footer carries the company's
+  contact line instead of "Powered by Crewtavo". Signing, options and add-on picking are
+  the Hub's own, unchanged; a signed painting proposal keeps the same page, read-only.
+
 ## Roadmap
 
-- **Phase 3 — the proposal engine**: room-by-room builder (measurements → sq ft → gallons
-  per room, rounded up per room) writing ordinary quote line items; the Hub shows rooms and
-  scope, prices only as package totals.
+- **Phase 3 remainder — measurements**: typing a room's L×W×H in the builder to work out
+  its square feet (today dimensions are the text the card shows; quantities are typed as
+  they are on any line).
 - **Phase 4 — subs and profit**: proposal material costs carried into job costs, sub price
   prompt on painting jobs, profit views; sub pay remains office-only.
