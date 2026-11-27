@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { AppEnv } from "../env";
 import { requireCompany, requireUser } from "../lib/auth";
 import { asJson, dbError, HttpError, must, param, readJson, uuid } from "../lib/http";
+import { adminClient } from "../lib/supabase";
 import { applyPaintPackages, setupPainting } from "../services/paintPackages";
 import { addMissingCustomFields, addMissingServices } from "../services/presetServices";
 
@@ -55,10 +56,18 @@ const paintSettingsSchema = z.object({
   warrantyReservePct: z.number().min(0).max(100),
 });
 
-/** The company's painting numbers, over the defaults (Settings → Painting, and the proposal page's math). */
+/**
+ * The company's painting numbers, over the defaults (Settings → Painting, and the proposal
+ * page's math). Read with the server's key: the person's own client cannot select
+ * companies.settings at all (20261123100100_prices_and_settings_for_the_office.sql grants
+ * authenticated a column list that leaves it out), so reading it as the person answers 42501 —
+ * "You don't have permission to do that." — even for the owner. Autopay, Square and the other
+ * settings readers read the column this way, for the company requireCompany checked the
+ * person into; only the painting slice is handed back.
+ */
 painting.get("/painting/settings", requireUser, requireCompany(OFFICE, "settings"), async (c) => {
   await requirePainting(c);
-  const company = must(await c.var.db.from("companies").select("settings").eq("id", c.var.companyId).maybeSingle(), "Company not found.");
+  const company = must(await adminClient(c.env).from("companies").select("settings").eq("id", c.var.companyId).maybeSingle(), "Company not found.");
   return c.json({ settings: paintSettingsFrom((company.settings as Record<string, unknown> | null)?.painting) });
 });
 
@@ -66,7 +75,7 @@ painting.get("/painting/settings", requireUser, requireCompany(OFFICE, "settings
 painting.put("/painting/settings", requireUser, requireCompany(ADMINS, "settings"), async (c) => {
   await requirePainting(c);
   const body = await readJson(c, z.object({ settings: paintSettingsSchema }));
-  const company = must(await c.var.db.from("companies").select("settings").eq("id", c.var.companyId).maybeSingle(), "Company not found.");
+  const company = must(await adminClient(c.env).from("companies").select("settings").eq("id", c.var.companyId).maybeSingle(), "Company not found.");
   const current = (company.settings ?? {}) as Record<string, unknown>;
   const saved: PaintSettings = { ...body.settings };
   const { error } = await c.var.db.from("companies").update({ settings: asJson({ ...current, painting: saved }) }).eq("id", c.var.companyId);
@@ -217,5 +226,5 @@ painting.delete("/painting/packages/:id", requireUser, requireCompany(ADMINS, "s
 painting.post("/painting/:id/packages", requireUser, requireCompany(SALES, "sales"), async (c) => {
   await requirePainting(c);
   const body = await readJson(c, z.object({ package_ids: z.array(uuid).min(1).max(3) }));
-  return c.json(await applyPaintPackages(c.var.db, c.var.companyId, param(c, "id"), body.package_ids));
+  return c.json(await applyPaintPackages(c.var.db, adminClient(c.env), c.var.companyId, param(c, "id"), body.package_ids));
 });

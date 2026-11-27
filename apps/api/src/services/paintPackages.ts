@@ -214,7 +214,7 @@ interface BaseLine {
  * product and coats by the painting math, plus its markup. Optional add-on lines stay shared.
  * A proposal that already offers options is left alone (409) — take those off first.
  */
-export async function applyPaintPackages(db: Db, companyId: string, quoteId: string, packageIds: readonly string[]) {
+export async function applyPaintPackages(db: Db, adminDb: Db, companyId: string, quoteId: string, packageIds: readonly string[]) {
   if (!packageIds.length) throw new HttpError(400, "Pick at least one package to offer.");
   if (packageIds.length > 3) throw new HttpError(400, "A proposal offers up to 3 options.");
   const quote = must(
@@ -238,7 +238,10 @@ export async function applyPaintPackages(db: Db, companyId: string, quoteId: str
   const base = lines.filter((l) => l.selected && !l.optional);
   if (!base.length) throw new HttpError(400, "Add the work to the proposal first, then offer packages on it.");
 
-  const company = must(await db.from("companies").select("settings").eq("id", companyId).maybeSingle(), "Company not found.");
+  // The company's numbers come through the server's key (adminDb): the person's own client
+  // cannot select companies.settings (20261123100100_prices_and_settings_for_the_office.sql),
+  // so reading it through db answers 42501 even for the owner.
+  const company = must(await adminDb.from("companies").select("settings").eq("id", companyId).maybeSingle(), "Company not found.");
   const settings = paintSettingsFrom((company.settings as Record<string, unknown> | null)?.painting);
   const services = must(await db.from("services").select("id, category, unit_cost").eq("company_id", companyId));
   const categoryOf = new Map(services.map((s) => [s.id, s.category]));
