@@ -5,17 +5,27 @@ import type { Env } from "../src/env";
 // Stand-ins for the signed-in person's Supabase client and the service-role client, as paving's
 // tests use: tables of rows that eq-filter, with insert adding rows. Phase 2 also updates,
 // deletes and reads single rows (products, packages, quote options), so the stand-in does those.
+// One real-database rule the stand-in must keep, or the painting settings page's first bug hides
+// again: the person's own client cannot SELECT companies.settings — migration
+// 20261123100100_prices_and_settings_for_the_office.sql grants authenticated a column list that
+// leaves settings out (it holds the money settings and secrets), so Postgres answers 42501 and
+// the API turns that into "You don't have permission to do that." Code that needs the column
+// reads it with the server's key (adminClient), as autopay, Square and the rest do. The update
+// of the column is granted, and the trade_preset column is readable, so neither is denied here.
 type Row = Record<string, unknown>;
 const state = vi.hoisted(() => ({ tables: {} as Record<string, Row[]>, rpcs: [] as Array<[string, unknown]>, seq: 0 }));
 vi.mock("../src/lib/supabase", () => {
-  const client = () => ({
+  const client = (kind: "user" | "admin") => ({
     auth: { getClaims: async () => ({ data: { claims: { sub: "viewer" } }, error: null }) },
     rpc: async (name: string, args: unknown) => (state.rpcs.push([name, args]), { data: true, error: null }),
     from: (table: string) => {
       const filters: Array<(row: Row) => boolean> = [];
       let mode: "select" | "update" | "delete" = "select";
       let patch: Row | null = null;
+      let selectedCols: unknown;
       const inserted: Row[] = [];
+      const denied = () => kind === "user" && table === "companies" && typeof selectedCols === "string" && /\bsettings\b/.test(selectedCols);
+      const deniedError = { code: "42501", message: "permission denied for table companies" };
       const rows = () => (state.tables[table] ?? []).filter((row) => filters.every((keep) => keep(row)));
       const execute = (): Row[] => {
         if (inserted.length) return inserted;
@@ -40,7 +50,7 @@ vi.mock("../src/lib/supabase", () => {
         return builder;
       };
       const builder: Record<string, unknown> = {
-        select: () => builder,
+        select: (cols?: unknown) => ((selectedCols = cols), builder),
         order: () => builder,
         limit: () => builder,
         eq: (column: string, value: unknown) => (filters.push((row) => row[column] === value), builder),
@@ -51,18 +61,20 @@ vi.mock("../src/lib/supabase", () => {
         upsert: doInsert,
         update: (next: Row) => ((mode = "update"), (patch = next), builder),
         delete: () => ((mode = "delete"), builder),
-        maybeSingle: () => Promise.resolve({ data: execute()[0] ?? null, error: null }),
+        maybeSingle: () => (denied() ? Promise.resolve({ data: null, error: deniedError }) : Promise.resolve({ data: execute()[0] ?? null, error: null })),
         single: () => {
+          if (denied()) return Promise.resolve({ data: null, error: deniedError });
           const hit = execute();
           return Promise.resolve(hit.length === 1 ? { data: hit[0], error: null } : { data: null, error: { message: "not exactly one row" } });
         },
-        then: (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve({ data: execute(), error: null }).then(resolve, reject),
+        then: (resolve: (r: unknown) => unknown, reject: (e: unknown) => unknown) =>
+          (denied() ? Promise.resolve({ data: null, error: deniedError }) : Promise.resolve({ data: execute(), error: null })).then(resolve, reject),
       };
       return builder;
     },
   });
-  const user = client();
-  const admin = client();
+  const user = client("user");
+  const admin = client("admin");
   return { userClient: () => user, adminClient: () => admin, publishableKey: () => "key" };
 });
 const { app } = await import("../src/app");
@@ -157,6 +169,52 @@ describe("painting numbers (phase 2)", () => {
     for (const res of await Promise.all(attempts)) expect(res.status).toBe(403);
     expect(state.tables.paint_products).toEqual([]);
     expect(state.tables.paint_packages).toEqual([]);
+  });
+});
+
+describe("who may use painting settings (phase 2)", () => {
+  const CUSTOMCO = "00000000-0000-4000-8000-0000000000c3";
+  const CREWCO = "00000000-0000-4000-8000-0000000000c4";
+  const ROLE_ID = "00000000-0000-4000-8000-0000000000d1";
+
+  // A painting company where the signed-in person is a member at `role`, optionally through a
+  // custom role (company_roles) carrying exactly `permissions` — the shape a real company has
+  // once the owner defines roles under Settings → Roles.
+  function member(id: string, role: string, role_id: string | null = null, permissions: string[] | null = null) {
+    company(id, "painting");
+    state.tables.memberships = [{ company_id: id, user_id: "viewer", active: true, role, role_id, company: { id, name: "A Business", slug: "a-business", trade_preset: "painting", timezone: "America/Chicago", currency: "USD", settings: {} } }];
+    state.tables.company_roles = role_id ? [{ id: role_id, company_id: id, permissions }] : [];
+  }
+
+  it("refuses an office member whose custom role leaves Business setup off", async () => {
+    member(CUSTOMCO, "office", ROLE_ID, ["sales", "invoices", "schedule"]);
+    const attempts = [
+      get(CUSTOMCO, "/painting/settings"),
+      get(CUSTOMCO, "/painting/products"),
+      get(CUSTOMCO, "/painting/packages"),
+      send(CUSTOMCO, "/painting/setup", {}),
+      send(CUSTOMCO, "/painting/products", { name: "Emerald Exterior", scope: "exterior", cost_per_gallon: 62, markup_pct: 30, coverage_per_gallon: 350 }),
+    ];
+    for (const res of await Promise.all(attempts)) {
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { error: string }).error).toMatch(/don't have permission/);
+    }
+    expect(state.tables.paint_products).toEqual([]);
+    expect(state.tables.paint_packages).toEqual([]);
+  });
+
+  it("lets an office member whose custom role includes Business setup read the page", async () => {
+    member(CUSTOMCO, "office", ROLE_ID, ["sales", "settings"]);
+    expect((await get(CUSTOMCO, "/painting/settings")).status).toBe(200);
+    expect((await get(CUSTOMCO, "/painting/products")).status).toBe(200);
+    expect((await get(CUSTOMCO, "/painting/packages")).status).toBe(200);
+  });
+
+  it("refuses a field-crew member outright", async () => {
+    member(CREWCO, "field_crew");
+    expect((await get(CREWCO, "/painting/settings")).status).toBe(403);
+    expect((await get(CREWCO, "/painting/products")).status).toBe(403);
+    expect((await send(CREWCO, "/painting/setup", {})).status).toBe(403);
   });
 });
 
