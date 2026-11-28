@@ -9,6 +9,7 @@ import { laborRates, localDate, workLines, workToBill } from "@crewtavo/core";
 import { hidesExactPrice, inRangeMode, optionsIntroText, rangeIntroText } from "@crewtavo/core/estimates";
 import { optionBaseTotal, toCents, type Amount, type OptionLine, type TotalsPromo } from "@crewtavo/core/money";
 import { clientRecipients, emailMatchKey, MAX_RECIPIENTS, phoneMatchKey, uniqueAddresses, type Recipient } from "@crewtavo/core/recipients";
+import { brandColor } from "@crewtavo/core/social";
 import { z } from "zod";
 import type { Env } from "../env";
 import { stripeAccess, syncStripeInvoice } from "../integrations/stripe";
@@ -246,7 +247,7 @@ export async function deliver(s: SalesScope, kind: "quote" | "invoice", record: 
           const subject = body.subject || defaults.subject || `${label} from ${company.name}`;
           const footer = [company.name, companyAddress(company.address as Record<string, string>), company.phone].filter(Boolean).join(" · ");
           const text = message(linkFor("email", person.to));
-          return sendEmail(s.env, { to: person.to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer }), replyTo: company.email ?? undefined, fromName: company.name }, s.companyId);
+          return sendEmail(s.env, { to: person.to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer, color: brandColor(company.settings) ?? "#0f2a35" }), replyTo: company.email ?? undefined, fromName: company.name }, s.companyId);
         })
       : await sendToEach(people, async (person) => {
           const result = await textWithStopLine(admin, s.companyId, person.to, `${company.name}: ${intro} ${linkFor("sms", person.to)}`, (text) => sendSms(s.env, { to: person.to, body: text, company: s.companyId }));

@@ -11,6 +11,7 @@
  * here as the person asking, so the database decides who may: whoever may move the visit.
  */
 import { arrivalWindowMin, localTime, slotLabel, zonedTimeToUtc } from "@crewtavo/core";
+import { brandColor } from "@crewtavo/core/social";
 import type { Env } from "../env";
 import { companyFooter, firstName, renderEmail } from "../lib/email";
 import { dbError, HttpError, must } from "../lib/http";
@@ -116,7 +117,7 @@ async function tellClient(env: Env, s: Scope, requestId: string, note: string | 
         : [`Your visit is now ${when}`, `Your ${visit.title} visit is now ${when}.`]
       : [`About your visit on ${when}`, `We can't ${cancel ? "cancel" : "move"} your ${visit.title} visit, so it stays on ${when}.${note ? `\n\n${note}` : ""}`];
   const text = [`Hi ${firstName(client.display_name)},`, line, `Questions? Reply to this email${co.phone ? ` or call ${co.phone}` : ""}.`, co.name].join("\n\n");
-  const email = renderEmail({ companyName: co.name, logo: baseUrl ? logoImage(baseUrl, co.id, co.settings) : null, text, footer: companyFooter(co) });
+  const email = renderEmail({ companyName: co.name, logo: baseUrl ? logoImage(baseUrl, co.id, co.settings) : null, text, footer: companyFooter(co), color: brandColor(co.settings) ?? "#0f2a35", contact: [co.phone, co.email].filter(Boolean).join(" \u00b7 ") || null });
   const delivery = await sendToEach(people, (person) => sendEmail(env, { to: person.to, subject, text: email.text, html: email.html, replyTo: co.email ?? undefined, fromName: co.name }, co.id));
   if (!delivery.went.length) return false;
   await admin.from("messages").insert({

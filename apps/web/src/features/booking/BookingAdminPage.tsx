@@ -117,7 +117,14 @@ export function BookingAdminPage() {
       <PageHeader
         title="Online booking"
         lede="Forms clients use to ask for work or book a time. Share a form's link, or put the form on your website."
-        actions={canEdit && <Button variant="primary" icon="plus" onClick={() => openForm("new")}>New form</Button>}
+        actions={
+          <>
+            {rows.some((f) => f.active) && (
+              <Button icon="copy" onClick={() => copyText(`${window.location.origin}/book/${company.slug}`, "Booking page link copied")}>Booking page</Button>
+            )}
+            {canEdit && <Button variant="primary" icon="plus" onClick={() => openForm("new")}>New form</Button>}
+          </>
+        }
       />
       {/* For the people who can add it (Settings → Company is the owners' and admins'), while there's none. */}
       {hasRole(session, "admin") && !privacyUrl(company.settings) && (

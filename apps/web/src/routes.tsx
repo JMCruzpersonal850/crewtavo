@@ -15,6 +15,7 @@ const screens = {
   booking: () => import("@/features/booking/BookingAdminPage"),
   pipeline: () => import("@/features/pipeline/PipelinePage"),
   messages: () => import("@/features/messages/MessagesPage"),
+  aiCalls: () => import("@/features/voice/AiCallsPage"),
   chat: () => import("@/features/chat/ChatPage"),
   chatSettings: () => import("@/features/chat/ChatSettingsPage"),
   website: () => import("@/features/website/WebsitePage"),
@@ -121,6 +122,7 @@ export const routes: RouteObject[] = [
           { path: "booking", ...page(screens.booking, "BookingAdminPage") },
           { path: "pipeline", ...page(screens.pipeline, "PipelinePage") },
           { path: "messages", ...page(screens.messages, "MessagesPage") },
+          { path: "ai-calls", ...page(screens.aiCalls, "AiCallsPage") },
           { path: "chat", ...page(screens.chat, "ChatPage") },
           { path: "chat/settings", ...page(screens.chatSettings, "ChatSettingsPage") },
           { path: "chat/:channelId", ...page(screens.chat, "ChatPage") },
@@ -217,10 +219,13 @@ export const routes: RouteObject[] = [
   },
   // Client-facing pages work without an account.
   { path: "hub/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/hub/HubPage"), "HubPage") },
+  { path: "book/:company", errorElement: <RouteError fullPage />, ...page(() => import("@/features/booking/BookingIndexPage"), "BookingIndexPage") },
   { path: "book/:company/:form", errorElement: <RouteError fullPage />, ...page(() => import("@/features/booking/BookingFormPage"), "BookingFormPage") },
   { path: "u/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/UnsubscribePage"), "UnsubscribePage") },
+  { path: "r/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ReviewGatePage"), "ReviewGatePage") },
   { path: "refer/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ReferralPage"), "ReferralPage") },
   { path: "s/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/ShowcasePage"), "ShowcasePage") },
+  { path: "track/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/TrackPage"), "TrackPage") },
   // A guide shared by link with people outside the team.
   { path: "g/:token", errorElement: <RouteError fullPage />, ...page(() => import("@/features/public/SharedGuidePage"), "SharedGuidePage") },
   // A subcontractor's link to send in their W-9 and insurance.

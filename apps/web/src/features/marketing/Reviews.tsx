@@ -146,6 +146,7 @@ export function Reviews() {
       {stacked && numbers}
       {showsList(g) && <GoogleReviewList g={g!} />}
       <RecentRequests />
+      <PrivateFeedback />
     </div>
   );
 }
@@ -453,6 +454,87 @@ function RecentRequests() {
           })}
         </RelatedList>
       )}
+    </Section>
+  );
+}
+
+const FEEDBACK_SHOWN = 10;
+
+/**
+ * What clients who tapped 1–3 stars at the review gate told the business privately instead of
+ * posting it publicly (review_feedback, written by POST /public/r/:token/feedback). The office
+ * reads it here; marking a note handled says someone has followed up. Newest first, and the
+ * count in the heading is how many still wait.
+ */
+function PrivateFeedback() {
+  const session = useSession();
+  const queryClient = useQueryClient();
+  const [all, setAll] = useState(false);
+  const feedback = useQuery({
+    queryKey: ["review-feedback", session.company.id],
+    queryFn: async () =>
+      unwrap(
+        await supabase()
+          .from("review_feedback")
+          .select("id, stars, comment, created_at, handled_at, client:clients(id, display_name)")
+          .eq("company_id", session.company.id)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ),
+  });
+  const markHandled = useMutation({
+    mutationFn: async (id: string) =>
+      unwrap(await supabase().from("review_feedback").update({ handled_at: new Date().toISOString() }).eq("company_id", session.company.id).eq("id", id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["review-feedback", session.company.id] }),
+  });
+  const rows = feedback.data ?? [];
+  const waiting = rows.filter((f) => !f.handled_at).length;
+  const timeZone = session.company.timezone;
+  return (
+    <Section
+      title="Private feedback"
+      count={waiting || undefined}
+      action={rows.length > FEEDBACK_SHOWN && <button type="button" onClick={() => setAll(!all)}>{all ? "Show less" : `Show all ${rows.length}`}</button>}
+    >
+      <p className={styles.note}>From clients who rated the work 1–3 stars: they told you here instead of posting a public review.</p>
+      {feedback.isPending && <SectionSkeleton rows={2} />}
+      {feedback.error && <ErrorState compact error={feedback.error} onRetry={() => feedback.refetch()} />}
+      {feedback.data?.length === 0 && <EmptyState inline title="No private feedback yet" />}
+      {rows.length > 0 && (
+        <div className={styles.feedbackList}>
+          {(all ? rows : rows.slice(0, FEEDBACK_SHOWN)).map((f) => {
+            const client = f.client as { id: string; display_name: string } | null;
+            return (
+              <article key={f.id} className={styles.feedbackRow}>
+                <div className={styles.feedbackHead}>
+                  <span className={styles.feedbackStars} role="img" aria-label={`${f.stars} star${f.stars > 1 ? "s" : ""}`}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Icon key={n} name="star" size={14} filled={n <= f.stars} />
+                    ))}
+                  </span>
+                  {client ? (
+                    <Link to={`/clients/${client.id}`} className={styles.feedbackClient}>{client.display_name}</Link>
+                  ) : (
+                    <span className={styles.feedbackClient}>A client</span>
+                  )}
+                  <span className={styles.note}>{timeAgo(f.created_at)}</span>
+                  <span className={styles.feedbackEnd}>
+                    {f.handled_at ? (
+                      <span className={styles.note}>Handled {formatDateTime(f.handled_at, timeZone)}</span>
+                    ) : (
+                      <Button size="sm" loading={markHandled.isPending && markHandled.variables === f.id} onClick={() => markHandled.mutate(f.id)}>
+                        Mark handled
+                      </Button>
+                    )}
+                  </span>
+                </div>
+                {f.comment ? <p className={cx("pre-wrap", styles.reviewText)}>{f.comment}</p> : <p className={styles.note}>No note — just the stars.</p>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+      <FormError error={markHandled.error} />
     </Section>
   );
 }

@@ -30,20 +30,26 @@ beforeEach(() => {
 
 describe("which notices a worker is shown", () => {
   it("says clock-ins save where they are unless the company turned that off", () => {
-    expect(notice.noticesFor(worker())).toEqual(["clock_location"]);
-    expect(notice.noticesFor(worker({ clock: { record_location: true } }))).toEqual(["clock_location"]);
-    expect(notice.noticesFor(worker({ clock: { record_location: false } }))).toEqual([]);
+    expect(notice.noticesFor(worker())).toEqual(["clock_location", "en_route_sharing"]);
+    expect(notice.noticesFor(worker({ clock: { record_location: true } }))).toEqual(["clock_location", "en_route_sharing"]);
+    expect(notice.noticesFor(worker({ clock: { record_location: false } }))).toEqual(["en_route_sharing"]);
   });
 
   it("adds the clock at the property when that's on, whether or not places are saved", () => {
-    expect(notice.noticesFor(worker(GEOFENCE))).toEqual(["clock_location", "clock_at_property"]);
-    expect(notice.noticesFor(worker({ clock: { record_location: false, geofence: { mode: "clock" } } }))).toEqual(["clock_at_property"]);
-    expect(notice.noticesFor(worker({ clock: { geofence: { mode: "off" } } }))).toEqual(["clock_location"]);
+    expect(notice.noticesFor(worker(GEOFENCE))).toEqual(["clock_location", "clock_at_property", "en_route_sharing"]);
+    expect(notice.noticesFor(worker({ clock: { record_location: false, geofence: { mode: "clock" } } }))).toEqual(["clock_at_property", "en_route_sharing"]);
+    expect(notice.noticesFor(worker({ clock: { geofence: { mode: "off" } } }))).toEqual(["clock_location", "en_route_sharing"]);
   });
 
   it("shows nothing to a sub the office keeps no hours for, and shows it to one on the clock", () => {
     expect(notice.noticesFor(worker(GEOFENCE, { role: "subcontractor", subcontractor: { uses_clock: false } } as Partial<Who>))).toEqual([]);
     expect(notice.noticesFor(worker(GEOFENCE, { role: "subcontractor", subcontractor: { uses_clock: true } } as Partial<Who>))).toEqual(["clock_location", "clock_at_property"]);
+  });
+
+  it("tells the team about sharing on the way, never a sub, and not when the company turned live tracking off", () => {
+    expect(notice.noticesFor(worker({ tracking: { live: false } }))).toEqual(["clock_location"]);
+    expect(notice.noticesFor(worker(GEOFENCE, { role: "subcontractor", subcontractor: { uses_clock: true } } as Partial<Who>))).not.toContain("en_route_sharing");
+    expect(notice.noticesFor(worker({}, { role: "owner" }))).toContain("en_route_sharing");
   });
 });
 
@@ -72,7 +78,7 @@ describe("before the notice is acknowledged", () => {
 describe("acknowledging it", () => {
   it("keeps the date on the phone, and the phone's position is read from then on", async () => {
     const who = worker(GEOFENCE);
-    expect(notice.noticesToShow(who)).toEqual(["clock_location", "clock_at_property"]);
+    expect(notice.noticesToShow(who)).toEqual(["clock_location", "clock_at_property", "en_route_sharing"]);
     notice.acknowledgeHere(who, notice.noticesToShow(who), "2026-11-14T15:00:00.000Z");
     expect(notice.noticesToShow(who)).toEqual([]);
     expect(notice.acknowledgedAt(who, "clock_location")).toBe("2026-11-14T15:00:00.000Z");
@@ -83,13 +89,13 @@ describe("acknowledging it", () => {
 
   it("is per person and per company", () => {
     notice.acknowledgeHere(worker(), ["clock_location"]);
-    expect(notice.noticesToShow(worker({}, { userId: "sam" }))).toEqual(["clock_location"]);
-    expect(notice.noticesToShow({ ...worker(), company: { id: "other", settings: {} } } as Who)).toEqual(["clock_location"]);
+    expect(notice.noticesToShow(worker({}, { userId: "sam" }))).toEqual(["clock_location", "en_route_sharing"]);
+    expect(notice.noticesToShow({ ...worker(), company: { id: "other", settings: {} } } as Who)).toEqual(["clock_location", "en_route_sharing"]);
   });
 
   it("asks again about the clock at the property when the company turns that on later", () => {
     notice.acknowledgeHere(worker(), ["clock_location"]);
-    expect(notice.noticesToShow(worker(GEOFENCE))).toEqual(["clock_at_property"]);
+    expect(notice.noticesToShow(worker(GEOFENCE))).toEqual(["clock_at_property", "en_route_sharing"]);
   });
 
   it("waits to be sent until the server has it, with the date they tapped", () => {
@@ -107,7 +113,7 @@ describe("acknowledging it", () => {
   it("isn't asked again on a phone they haven't used before: what the server has is learned", () => {
     const who = worker(GEOFENCE);
     notice.learnAcknowledged(who, [{ notice: "clock_location", acknowledged_at: "2026-11-01T12:00:00+00:00" }, { notice: "something_newer", acknowledged_at: "2026-11-01T12:00:00+00:00" }]);
-    expect(notice.noticesToShow(who)).toEqual(["clock_at_property"]);
+    expect(notice.noticesToShow(who)).toEqual(["clock_at_property", "en_route_sharing"]);
     expect(notice.acknowledgedAt(who, "clock_location")).toBe("2026-11-01T12:00:00+00:00");
     // Nothing to send back for what came from the server.
     expect(notice.unsentNotices(who)).toBeNull();
@@ -116,7 +122,7 @@ describe("acknowledging it", () => {
   it("still holds on a phone that won't keep anything, for as long as the page is open", () => {
     vi.stubGlobal("localStorage", { getItem: () => { throw new Error("off"); }, setItem: () => { throw new Error("off"); } });
     notice.acknowledgeHere(worker(), ["clock_location"]);
-    expect(notice.noticesToShow(worker())).toEqual([]);
+    expect(notice.noticesToShow(worker())).toEqual(["en_route_sharing"]);
   });
 });
 
@@ -129,6 +135,13 @@ describe("what the notice says, and where", () => {
     expect(dialog).toContain("it compares where the phone is with the property of your visit");
     expect(dialog).toContain("your position isn't saved and isn't sent anywhere");
     expect(dialog).toContain("The date you tap OK is kept.");
+  });
+
+  it("says the client gets a live map on the way, that only the latest place is kept, and that a closed app sends nothing", () => {
+    expect(dialog).toContain("the client gets a link to a live map");
+    expect(dialog).toContain("Only the latest place is kept: there's no record of the trip afterwards.");
+    expect(dialog).toContain("If Crewtavo isn't open, nothing is sent, and the map says how old the last update is.");
+    expect(dialog).toContain("until the visit starts or you tap Stop sharing on the visit");
   });
 
   it("records the date through the database's own function, and only on OK", () => {

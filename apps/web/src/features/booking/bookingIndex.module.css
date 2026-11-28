@@ -1,0 +1,13 @@
+/* The booking page's choices (/book/:company): one big tappable row per form the business offers. */
+.choices { display: grid; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
+.choice {
+  display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--m-card);
+  color: var(--ink); text-decoration: none; transition: background-color var(--dur-fast), border-color var(--dur-fast);
+}
+.choice:hover { background: var(--fill-2); border-color: var(--brand); color: var(--ink); text-decoration: none; }
+.choice:focus-visible { outline: 2px solid var(--brand-text); outline-offset: 2px; }
+.choice svg { flex: none; color: var(--quiet); }
+.choiceText { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.choiceName { font-size: var(--fs-16); font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.choiceBlurb { font-size: var(--fs-14); color: var(--text-2); }

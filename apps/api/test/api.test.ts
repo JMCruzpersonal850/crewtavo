@@ -697,6 +697,65 @@ describe("email rendering", () => {
     expect(isEmail("not an email")).toBe(false);
     expect(isEmail(null)).toBe(false);
   });
+
+  it("brands the shell with a company's colour: a band header and matching buttons", () => {
+    const { html } = renderEmail({
+      companyName: "Acme Lawn",
+      text: "Hi Ana,\n\nhttps://ops.example.com/hub/abc\n\nDetails at https://example.com/x.",
+      color: "#1d4ed8",
+    });
+    // The header is a band in the brand colour, with the company name in contrasting text on it.
+    expect(html).toContain('style="background:#1d4ed8;color:#ffffff;padding:18px 24px;border-radius:12px 12px 0 0;font-weight:800;font-size:17px">Acme Lawn</td>');
+    // A link on its own line becomes a button in the same colour, with the same contrasting text.
+    expect(html).toContain('style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">View online</a>');
+    // A dark-enough brand colour also colours inline links.
+    expect(html).toContain('style="color:#1d4ed8;font-weight:600;word-break:break-all">https://example.com/x</a>');
+  });
+
+  it("shows a logo inside the band, on a white chip so it reads on any colour", () => {
+    const { html } = renderEmail({
+      companyName: "Acme Lawn",
+      logo: { src: "https://ops.example.com/logo.png", width: 120, height: 30 },
+      text: "Hello.",
+      color: "#1d4ed8",
+    });
+    expect(html).toContain('style="background:#1d4ed8;color:#ffffff;padding:18px 24px;border-radius:12px 12px 0 0;font-weight:800;font-size:17px">');
+    expect(html).toContain('<span style="display:inline-block;background:#ffffff;border-radius:8px;padding:6px 10px"><img src="https://ops.example.com/logo.png" width="120" height="30" alt="Acme Lawn"');
+  });
+
+  it("keeps the legacy look when the colour isn't a colour", () => {
+    const { html } = renderEmail({ companyName: "Acme Lawn", text: "Hi,\n\nhttps://ops.example.com/hub/abc", color: "blue" });
+    expect(html).toContain('style="display:inline-block;background:#3b7d23;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">View online</a>');
+    expect(html).toContain('style="padding:20px 24px 0;font-weight:800;font-size:17px">Acme Lawn</td>');
+    expect(html).not.toContain("background:blue");
+  });
+
+  it("puts a contact line under the card in HTML and after the text in plain text", () => {
+    const { html, text } = renderEmail({
+      companyName: "Acme Lawn",
+      text: "Hello.",
+      footer: "Acme Lawn · 1 Main St",
+      contact: "555-0100 · office@acme.example · acme.example",
+      unsubscribeUrl: "https://ops.example.com/u/unsub",
+    });
+    expect(html).toContain('<p style="max-width:560px;margin:12px auto 0;font-size:12px;color:#5f6f76;text-align:center">555-0100 · office@acme.example · acme.example</p>');
+    // In HTML the contact line sits above the footer line; in plain text it follows the message and precedes footer and unsubscribe.
+    expect(html.indexOf("555-0100")).toBeLessThan(html.indexOf("1 Main St"));
+    expect(text).toBe("Hello.\n\n555-0100 · office@acme.example · acme.example\n\nAcme Lawn · 1 Main St\n\nUnsubscribe: https://ops.example.com/u/unsub");
+    // Without a contact line, the plain text is exactly as before.
+    expect(renderEmail({ companyName: "Acme Lawn", text: "Hello.", footer: "Acme Lawn · 1 Main St" }).text).toBe("Hello.\n\nAcme Lawn · 1 Main St");
+  });
+
+  it("uses dark ink on a light brand colour, and keeps links green when the colour is too light to read", () => {
+    const { html } = renderEmail({
+      companyName: "Acme Lawn",
+      text: "Hi,\n\nhttps://ops.example.com/hub/abc\n\nDetails at https://example.com/x.",
+      color: "#f5c518",
+    });
+    expect(html).toContain('style="background:#f5c518;color:#182430;padding:18px 24px;border-radius:12px 12px 0 0;font-weight:800;font-size:17px">Acme Lawn</td>');
+    expect(html).toContain('style="display:inline-block;background:#f5c518;color:#182430;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">View online</a>');
+    expect(html).toContain('style="color:#2c611a;font-weight:600;word-break:break-all">https://example.com/x</a>');
+  });
 });
 
 describe("email From header", () => {

@@ -1,7 +1,8 @@
 /**
  * The notice a worker sees once, before Crewtavo first reads where their phone is: what's saved
- * when they clock in and out, and, with the clock at the property on, that the phone compares its
- * position with the property without saving it. Shown where the clock is (My day, a visit's
+ * when they clock in and out, with the clock at the property on, that the phone compares its
+ * position with the property without saving it, and that on the way to a visit the phone's place
+ * goes to the client's live map. Shown where the clock is (My day, a visit's
  * screen, Timesheets). OK keeps the date (locationNotice.ts); closing it without OK saves nothing,
  * reads no position, and it's shown again next time.
  */
@@ -79,6 +80,11 @@ export function LocationNotice() {
         {has("clock_at_property") && (
           <p style={{ margin: 0 }}>
             {t("While Crewtavo is open on this phone, it compares where the phone is with the property of your visit, to remind you to start and finish or to move your clock. That's worked out on this phone: your position isn't saved and isn't sent anywhere.")}
+          </p>
+        )}
+        {has("en_route_sharing") && (
+          <p style={{ margin: 0 }}>
+            {t("When you tap On my way, the client gets a link to a live map. While Crewtavo is open on this phone, it sends where the phone is to that map, until the visit starts or you tap Stop sharing on the visit. Only the latest place is kept: there's no record of the trip afterwards. If Crewtavo isn't open, nothing is sent, and the map says how old the last update is.")}
           </p>
         )}
         <p style={{ margin: 0 }}>{t("Your phone will ask you to allow location. If you say no, or turn it off later in your phone's settings, your clock still works.")}</p>

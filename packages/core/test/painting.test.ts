@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPaintArea,
+  emptyPaintAreaDraft,
+  paintAreaDetailFrom,
+  paintAreaDraftFromLines,
+  paintAreaQuantities,
+  paintAreaServiceFor,
+  paintDimensionsText,
   paintDetailFrom,
   paintDetailJson,
   paintPresentationFrom,
@@ -11,6 +18,7 @@ import {
   isPaintingTrade,
   paintProposalMath,
   paintSettingsFrom,
+  INTERIOR_SURFACES,
   PAINTING_TRADE,
   PRESETS,
   presetCustomFields,
@@ -18,6 +26,7 @@ import {
   presetWeatherRules,
   productSellPerGallon,
   weatherRuleSummary,
+  type PaintAreaService,
   type PaintProduct,
 } from "../src";
 
@@ -242,5 +251,163 @@ describe("paint detail and presentation (phase 3)", () => {
     expect(groups[1]!.lines.map((l) => l.name)).toEqual(["Trim", "Baseboards"]);
     expect(groups[2]!.dimensions).toBeNull();
     expect(paintRoomGroups([])).toEqual([]);
+  });
+});
+
+describe("the one-screen area builder", () => {
+  // The price book as the builder reads it: the preset's surfaces with ids.
+  const svc = (name: string, category: string, unit: string, unit_price: number): PaintAreaService => ({
+    id: `svc-${name}`,
+    name,
+    category,
+    unit,
+    unit_price,
+    unit_cost: null,
+    taxable: true,
+  });
+  const services: PaintAreaService[] = [
+    svc("Interior walls", "Interior", "sq ft", 3.16),
+    svc("Ceilings", "Interior", "sq ft", 3.16),
+    svc("Trim", "Interior", "ft", 2.42),
+    svc("Baseboards, 3 in", "Interior", "ft", 2.42),
+    svc("Baseboards, 5 in", "Interior", "ft", 2.42),
+    svc("Window trim", "Interior", "ea", 40),
+    svc("Doors", "Interior", "ea", 85.21),
+    svc("Exterior walls and siding", "Exterior", "sq ft", 7.57),
+    svc("Exterior trim", "Exterior", "ft", 7.53),
+    svc("Fascia", "Exterior", "ft", 4.8),
+    svc("Shutters", "Exterior", "ea", 40),
+    svc("Front door", "Exterior", "ea", 85.21),
+    svc("Garage door", "Exterior", "ea", 928.57),
+  ];
+  const products = DEFAULT_PAINT_PRODUCTS.map((p) => ({ ...p, key: p.name }));
+  const settings = DEFAULT_PAINT_SETTINGS;
+
+  it("measures a room from its feet: walls, ceiling, perimeter", () => {
+    expect(paintAreaQuantities({ l: 12, w: 12, h: 8 })).toEqual({ walls: 384, ceiling: 144, perimeter: 48 });
+    expect(paintAreaQuantities({ l: 52, w: 52, h: 8 })).toEqual({ walls: 1664, ceiling: 2704, perimeter: 208 });
+    expect(paintDimensionsText({ l: 12, w: 12, h: 8 })).toBe("12' × 12' × 8'");
+  });
+
+  it("starts an area with the measured surfaces on at two coats, the pieces off", () => {
+    const draft = emptyPaintAreaDraft("interior", "Bedroom");
+    expect(draft.surfaces.walls).toMatchObject({ on: true, coats: 2 });
+    expect(draft.surfaces.ceiling!.on).toBe(true);
+    expect(draft.surfaces.trim!.on).toBe(true);
+    expect(draft.surfaces.baseboards!.on).toBe(false);
+    expect(draft.surfaces.doors!.on).toBe(false);
+    expect(draft.prep).toEqual({ on: false, amount: 0 });
+    // A ceiling-only room starts from just its ceiling.
+    const ceilingOnly = emptyPaintAreaDraft("interior", "Ceiling only");
+    expect(ceilingOnly.surfaces.ceiling!.on).toBe(true);
+  });
+
+  it("builds an interior area into ordinary lines with the room on them", () => {
+    const draft = emptyPaintAreaDraft("interior", "Master bedroom");
+    draft.feet = { l: 12, w: 12, h: 8 };
+    draft.surfaces.doors = { on: true, coats: 2, count: 2, variant: "default" };
+    draft.prep = { on: true, amount: 150 };
+    const built = buildPaintArea(draft, services, settings, products);
+    const byName = new Map(built.lines.map((l) => [l.name, l]));
+    expect(byName.get("Interior walls")).toMatchObject({ quantity: 384, unit: "sq ft", unit_price: 3.16 });
+    expect(byName.get("Ceilings")).toMatchObject({ quantity: 144 });
+    expect(byName.get("Trim")).toMatchObject({ quantity: 48, unit: "ft" });
+    expect(byName.get("Doors")).toMatchObject({ quantity: 2, unit: "ea" });
+    expect(byName.get("Prep")).toMatchObject({ quantity: 1, unit_price: 150, service_id: null });
+    // The room rides on every line, with its dimensions, coats and feet for the readers.
+    for (const line of built.lines) {
+      expect(paintDetailFrom(line.paint_detail)).toEqual({ room: "Master bedroom", dimensions: "12' × 12' × 8'" });
+    }
+    expect(paintAreaDetailFrom(byName.get("Interior walls")!.paint_detail).coats).toBe(2);
+    expect(paintAreaDetailFrom(byName.get("Interior walls")!.paint_detail).feet).toEqual({ l: 12, w: 12, h: 8 });
+    // The room total is the lines' total, and the breakdown shows the same work.
+    expect(built.roomTotal).toBeCloseTo(384 * 3.16 + 144 * 3.16 + 48 * 2.42 + 2 * 85.21 + 150, 2);
+    expect(built.breakdown.find((r) => r.key === "walls")).toMatchObject({ quantity: 384, rate: 3.16, coats: 2 });
+    // Gallons round up per room per product: walls + ceiling share the interior pot
+    // ((384 + 144) × 2 coats ÷ 400 = 2.64 → 3); the trim drinks its own (48 × 2 ÷ 350 → 1).
+    expect(built.gallonsByProduct["Interior Acrylic Latex"]).toBe(3);
+    expect(built.gallonsByProduct["ProClassic Trim"]).toBe(1);
+  });
+
+  it("prices a double door as two slabs and says so on the line", () => {
+    const draft = emptyPaintAreaDraft("interior", "Hallway");
+    draft.feet = { l: 10, w: 4, h: 8 };
+    draft.doorType = "double";
+    draft.surfaces.doors = { on: true, coats: 2, count: 1, variant: "default" };
+    const built = buildPaintArea(draft, services, settings, products);
+    const doors = built.lines.find((l) => l.name === "Doors")!;
+    expect(doors.quantity).toBe(2);
+    expect(doors.description).toBe("Double door");
+  });
+
+  it("picks the baseboard size the person picked", () => {
+    const draft = emptyPaintAreaDraft("interior", "Bedroom");
+    draft.feet = { l: 12, w: 10, h: 8 };
+    draft.surfaces.baseboards = { on: true, coats: 2, count: 1, variant: "5" };
+    const built = buildPaintArea(draft, services, settings, products);
+    expect(built.lines.map((l) => l.name)).toContain("Baseboards, 5 in");
+    expect(built.lines.map((l) => l.name)).not.toContain("Baseboards, 3 in");
+    const def = INTERIOR_SURFACES.find((d) => d.key === "baseboards")!;
+    expect(paintAreaServiceFor(def, "5", services)?.name).toBe("Baseboards, 5 in");
+  });
+
+  it("builds an exterior area off the house's feet", () => {
+    const draft = emptyPaintAreaDraft("exterior", "Whole house");
+    draft.feet = { l: 52, w: 52, h: 8 };
+    draft.surfaces.shutters = { on: true, coats: 2, count: 6, variant: "default" };
+    const built = buildPaintArea(draft, services, settings, products);
+    const byName = new Map(built.lines.map((l) => [l.name, l]));
+    expect(byName.get("Exterior walls and siding")).toMatchObject({ quantity: 1664, unit_price: 7.57 });
+    expect(byName.get("Exterior trim")).toMatchObject({ quantity: 208, unit: "ft" });
+    expect(byName.get("Shutters")).toMatchObject({ quantity: 6, unit: "ea" });
+    expect(built.gallonsByProduct["Exterior Acrylic Latex"]).toBe(Math.ceil((1664 * 2) / 320));
+  });
+
+  it("shows a surface whose service the company doesn't carry as missing, not broken", () => {
+    const draft = emptyPaintAreaDraft("exterior", "Front");
+    draft.feet = { l: 30, w: 20, h: 9 };
+    draft.surfaces.fascia = { on: true, coats: 2, count: 1, variant: "default" };
+    const built = buildPaintArea(draft, services.filter((s) => s.name !== "Fascia"), settings, products);
+    expect(built.breakdown.find((r) => r.key === "fascia")).toMatchObject({ missing: true, total: 0 });
+    expect(built.lines.map((l) => l.name)).not.toContain("Fascia");
+  });
+
+  it("writes nothing measured until the room has a size, and reads junk detail as unset", () => {
+    const draft = emptyPaintAreaDraft("interior", "Bedroom");
+    const built = buildPaintArea(draft, services, settings, products);
+    expect(built.lines).toEqual([]);
+    expect(built.breakdown.find((r) => r.key === "walls")!.quantity).toBe(0);
+    expect(paintAreaDetailFrom(null)).toEqual({ coats: null, feet: null });
+    expect(paintAreaDetailFrom({ coats: "2", feet: { l: -1 } })).toEqual({ coats: null, feet: null });
+    expect(paintAreaDetailFrom({ coats: 3, feet: { l: 10, w: 9, h: 8 } })).toEqual({ coats: 3, feet: { l: 10, w: 9, h: 8 } });
+  });
+
+  it("reads an area back from its lines, the way it was saved", () => {
+    const draft = emptyPaintAreaDraft("interior", "Master bedroom");
+    draft.feet = { l: 12, w: 12, h: 8 };
+    draft.doorType = "double";
+    draft.surfaces.doors = { on: true, coats: 2, count: 1, variant: "default" };
+    draft.surfaces.ceiling = { on: false, coats: 2, count: 1, variant: "default" };
+    draft.prep = { on: true, amount: 150 };
+    const built = buildPaintArea(draft, services, settings, products);
+    const back = paintAreaDraftFromLines("Master bedroom", built.lines, services)!;
+    expect(back).not.toBeNull();
+    expect(back.scope).toBe("interior");
+    expect(back.feet).toEqual({ l: 12, w: 12, h: 8 });
+    expect(back.surfaces.walls!.on).toBe(true);
+    expect(back.surfaces.ceiling!.on).toBe(false);
+    expect(back.surfaces.trim!.on).toBe(true);
+    expect(back.doorType).toBe("double");
+    expect(back.surfaces.doors).toMatchObject({ on: true, count: 1 });
+    expect(back.prep).toEqual({ on: true, amount: 150 });
+    // Rebuilding the read-back draft writes the same lines again.
+    const rebuilt = buildPaintArea(back, services, settings, products);
+    expect(rebuilt.lines.map((l) => [l.name, l.quantity, l.unit_price])).toEqual(built.lines.map((l) => [l.name, l.quantity, l.unit_price]));
+    expect(rebuilt.roomTotal).toBe(built.roomTotal);
+  });
+
+  it("won't read a room the builder doesn't manage", () => {
+    const custom = [{ service_id: null, name: "Fix the fence too", quantity: 1, unit_price: 200, paint_detail: { room: "Yard" } }];
+    expect(paintAreaDraftFromLines("Yard", custom, services)).toBeNull();
   });
 });

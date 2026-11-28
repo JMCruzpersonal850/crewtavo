@@ -11,7 +11,7 @@ import { firstName } from "../lib/email";
 import { appUrl, dbError, HttpError, must, readJson } from "../lib/http";
 import { emailReady, smsReady } from "../lib/notify";
 import { adminClient } from "../lib/supabase";
-import { buildContext, keptVars, previewRecipients, processAutomations, withAutopayLink, withEvent } from "../services/automations";
+import { buildContext, keptVars, previewRecipients, processAutomations, withAutopayLink, withEvent, withTrackingLink } from "../services/automations";
 import { autopayAvailable, autopayInviteText } from "../services/autopay";
 
 export const automations = new Hono<AppEnv>();
@@ -72,7 +72,7 @@ automations.post("/automations/preview", requireUser, requireCompany(OFFICE, "au
   // What the event said (a sub's name and price, the card a charge failed on), as a run would have it.
   // The person previewing sees what stands for any client link in what the team reads (keptVars),
   // not a link that opens the client's page as them.
-  const ctx = await withAutopayLink(c.env, await withEvent(admin, loaded, rule.trigger, eventId), rule.trigger, appUrl(c));
+  const ctx = await withTrackingLink(c.env, await withAutopayLink(c.env, await withEvent(admin, loaded, rule.trigger, eventId), rule.trigger, appUrl(c)), rule.trigger, appUrl(c));
   const vars = keptVars(ctx);
   const check = evaluateConditions(rule.conditions as Condition[], ctx.facts, ctx.subject);
   const r = (t?: string) => renderTemplate(t ?? "", vars).trim();

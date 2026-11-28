@@ -1,0 +1,8 @@
+/* The review gate's own pieces: the star row and the private-feedback form under it. */
+.gate { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.stars { display: flex; gap: 6px; justify-content: center; }
+.star { display: grid; place-items: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: var(--radius-pill); background: none; color: var(--text-4); cursor: pointer; transition: color var(--dur-fast), transform var(--dur-fast); }
+.star:hover { transform: scale(1.08); }
+.star[data-on] { color: var(--brand); }
+.word { margin: 0; font-size: var(--fs-15); font-weight: 600; color: var(--ink); }
+.form { display: grid; gap: 14px; width: 100%; text-align: left; }

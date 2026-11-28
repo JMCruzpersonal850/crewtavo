@@ -32,6 +32,7 @@ export const NAV_GROUPS: NavItem[][] = [
     { to: "/field/paperwork", label: msg("My paperwork"), icon: "file", only: ["subcontractor"], keywords: "w-9 w9 insurance certificate liability workers comp upload send" },
     { to: "/schedule", label: msg("Schedule"), icon: "calendar", go: "S", keywords: "calendar visits appointments dispatch route crews tasks" },
     { to: "/chat", label: msg("Team chat"), icon: "chat", feature: "team_chat", go: "T", keywords: "chat channels messages talk team crew announcements" },
+    { to: "/ai-calls", label: msg("AI Calls"), icon: "phone", keywords: "voice agent ai calls retell vapi missed calls forwarded transcripts recordings bookings messages" },
   ],
   [
     { to: "/clients", label: msg("Clients"), icon: "clients", go: "C", keywords: "customers contacts properties addresses client hub portal" },

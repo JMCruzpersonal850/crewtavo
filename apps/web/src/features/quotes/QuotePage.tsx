@@ -97,6 +97,7 @@ import { depthLines, lineDepths, type DepthLine } from "./depths";
 import { AddOptionsDialog, QuoteOptions } from "./QuoteOptions";
 import { QuoteSections } from "./QuoteSections";
 import { DraftedCallout } from "./DraftedCallout";
+import { PaintAreaBuilder } from "./PaintAreaBuilder";
 import { PaintMathPanel } from "./PaintMathPanel";
 import { PaintPresentationCard } from "./PaintPresentationCard";
 import { PaymentScheduleCard } from "./PaymentSchedule";
@@ -919,6 +920,11 @@ export function QuotePage() {
           </div>
         )}
 
+        {/* The one-screen way to build a painting proposal: areas first, priced as you tap.
+            It writes the lines below; the step-by-step list stays for everything else. */}
+        {isPaintingTrade(session.company.trade_preset) && canSell && !isTemplate && view === "lines" && (
+          <PaintAreaBuilder quoteId={q.id} lines={q.lines} editable={editable} hasOptions={offers} onChanged={refresh} />
+        )}
         {/* Without options there's no bar: they're offered from the lines' add row instead. */}
         <QuoteOptions quote={q} options={options} lines={q.lines} viewing={viewing} onView={setViewing} mode="office" onChanged={refresh} panelId={panelId} invite={false} />
         <Section

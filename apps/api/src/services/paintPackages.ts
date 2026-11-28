@@ -7,6 +7,15 @@
  * are the proposal's lines repriced by the painting math (core painting.ts) with the package's
  * product, plus the tier's markup — the DripJobs uplift Lead Control's templates carry.
  * Painting only: the routes refuse any company whose trade isn't painting before calling here.
+ *
+ * Nov 27, 2026: Josue changed Lead Control's exterior templates (2 and 6) — Better now paints
+ * Sherwin-Williams Emerald Rain Refresh in the template itself (no longer a per-job swap like
+ * the Griffis proposal's), Good names SuperPaint, and the exterior warranties stepped down to
+ * Better 2 years / Best 3 years. The exterior seeds below follow those templates as they now
+ * stand; the interior templates were not touched. Companies already seeded with the older
+ * exterior rows are brought forward by resyncPaintPackageSeeds (setup), which rewrites only
+ * rows that still match the previous seeds word for word — a package the office edited by
+ * hand is theirs and stays.
  */
 import type { Json } from "@crewtavo/core/database";
 import { DEFAULT_PAINT_PRODUCTS, paintDetailFrom, paintProposalMath, paintSettingsFrom, type PaintProduct, type PaintScope, type PaintSurfaceInput } from "@crewtavo/core/painting";
@@ -18,11 +27,9 @@ import { EDITABLE, lockedMessage } from "./roofPackages";
  * The seeds: Ocean Crest's Lead Control packages, verbatim. Feature bullets lose only their
  * literal "• " prefixes (the option card draws its own), a tier's warranty bullet moves to the
  * warranty line, and Template 1 Good's first "feature" — the package's own label repeated — is
- * dropped. Products Lead Control names but never priced (SuperPaint, Resilience, Emerald
- * Interior, Emerald Rain Refresh) stay names: product_id links only where the blueprint has a
- * cost (Duration Exterior). Template 6's Better paints SuperPaint in the template; the Griffis
- * proposal (PROP-0024) swapped in Emerald Rain Refresh per job — a per-proposal tweak, kept out
- * of the seed.
+ * dropped. Products Lead Control names but never priced (SuperPaint, Emerald Interior,
+ * Emerald Rain Refresh) stay names: product_id links only where the blueprint has a cost
+ * (Duration Exterior).
  * ---------------------------------------------------------------------------------------- */
 
 export interface PaintPackageSeed {
@@ -102,24 +109,24 @@ export const PAINT_PACKAGE_SEEDS: PaintPackageSeed[] = [
   {
     set_name: "Exterior Painting", name: "Good", tier: "good", scope: "exterior",
     tagline: "Solid protection and curb appeal", description: "",
-    paint_grade: null, product_link: null, product_name: null, coats: 1, primer_coats: 1,
+    paint_grade: null, product_link: null, product_name: "Sherwin-Williams SuperPaint", coats: 1, primer_coats: 1,
     markup_pct: 0, warranty_months: 12, warranty: "1-year warranty",
-    highlights: ["Power wash all surfaces", "1 coat primer + 1 coat exterior paint", "Caulk gaps and cracks", "Standard prep"],
+    highlights: ["Power wash all surfaces", "1 coat primer + 1 coat Sherwin-Williams SuperPaint", "Caulk gaps and cracks", "Standard prep"],
     is_enabled: true, is_default: false, sort: 6,
   },
   {
     set_name: "Exterior Painting", name: "Better", tier: "better", scope: "exterior",
     tagline: "Enhanced durability for Florida weather", description: "",
-    paint_grade: null, product_link: null, product_name: "Sherwin-Williams Resilience", coats: 2, primer_coats: 1,
-    markup_pct: 15, warranty_months: 36, warranty: "3-year warranty",
-    highlights: ["Power wash + light scraping", "1 coat primer + 2 coats exterior paint", "Premium Sherwin-Williams Resilience", "Caulk all trim and windows"],
+    paint_grade: null, product_link: null, product_name: "Sherwin-Williams Emerald Rain Refresh", coats: 2, primer_coats: 1,
+    markup_pct: 15, warranty_months: 24, warranty: "2-year warranty",
+    highlights: ["Power wash + light scraping", "1 coat primer + 2 coats exterior paint", "Premium Sherwin-Williams Emerald Rain Refresh", "Caulk all trim and windows"],
     is_enabled: true, is_default: true, sort: 7,
   },
   {
     set_name: "Exterior Painting", name: "Best", tier: "best", scope: "exterior",
     tagline: "Maximum protection, premium finish", description: "",
     paint_grade: null, product_link: "Duration Exterior", product_name: "Sherwin-Williams Duration Exterior", coats: 2, primer_coats: 0,
-    markup_pct: 30, warranty_months: 60, warranty: "5-year warranty",
+    markup_pct: 30, warranty_months: 36, warranty: "3-year warranty",
     highlights: ["Full power wash + heavy scraping", "Epoxy primer on all bare wood", "2 coats Sherwin-Williams Duration Exterior", "Full caulking around all openings", "Free annual touch-up visit"],
     is_enabled: true, is_default: false, sort: 8,
   },
@@ -127,24 +134,24 @@ export const PAINT_PACKAGE_SEEDS: PaintPackageSeed[] = [
   {
     set_name: "Exterior Painting (Good)", name: "Good", tier: "good", scope: "exterior",
     tagline: "Solid protection and curb appeal", description: "",
-    paint_grade: null, product_link: null, product_name: null, coats: 1, primer_coats: 1,
+    paint_grade: null, product_link: null, product_name: "Sherwin-Williams SuperPaint", coats: 1, primer_coats: 1,
     markup_pct: 0, warranty_months: 12, warranty: "1-year warranty",
-    highlights: ["Power wash all surfaces", "1 coat primer + 1 coat exterior paint", "Caulk gaps and cracks", "Standard prep"],
+    highlights: ["Power wash all surfaces", "1 coat primer + 1 coat Sherwin-Williams SuperPaint", "Caulk gaps and cracks", "Standard prep"],
     is_enabled: false, is_default: false, sort: 9,
   },
   {
     set_name: "Exterior Painting (Good)", name: "Better", tier: "better", scope: "exterior",
     tagline: "Enhanced durability for Florida weather", description: "",
-    paint_grade: "Standard", product_link: null, product_name: "Sherwin-Williams SuperPaint", coats: 2, primer_coats: 0,
-    markup_pct: 0, warranty_months: 36, warranty: "3-year warranty",
-    highlights: ["Power wash + light scraping", "2 coats exterior paint", "Sherwin-Williams — SuperPaint", "Caulk all trim and windows"],
+    paint_grade: "Standard", product_link: null, product_name: "Sherwin-Williams Emerald Rain Refresh", coats: 2, primer_coats: 0,
+    markup_pct: 0, warranty_months: 24, warranty: "2-year warranty",
+    highlights: ["Power wash + light scraping", "2 coats exterior paint", "Premium Sherwin-Williams Emerald Rain Refresh", "Caulk all trim and windows"],
     is_enabled: true, is_default: true, sort: 10,
   },
   {
     set_name: "Exterior Painting (Good)", name: "Best", tier: "best", scope: "exterior",
     tagline: "Maximum protection, premium finish", description: "",
     paint_grade: null, product_link: "Duration Exterior", product_name: "Sherwin-Williams Duration Exterior", coats: 2, primer_coats: 0,
-    markup_pct: 30, warranty_months: 60, warranty: "5-year warranty",
+    markup_pct: 30, warranty_months: 36, warranty: "3-year warranty",
     highlights: ["Full power wash + heavy scraping", "Epoxy primer on all bare wood", "2 coats Sherwin-Williams Duration Exterior", "Full caulking around all openings", "Free annual touch-up visit"],
     is_enabled: false, is_default: false, sort: 11,
   },
@@ -181,11 +188,119 @@ export async function seedPaintPackages(db: Db, companyId: string): Promise<numb
   return rows.length;
 }
 
+/**
+ * The exterior seeds as they stood before the Nov 27, 2026 template change, kept so setup can
+ * recognize a company's rows that were seeded from them and never edited since — only those
+ * rows move forward to the current seeds (resyncPaintPackageSeeds below).
+ */
+const PREVIOUS_PAINT_PACKAGE_SEEDS: PaintPackageSeed[] = [
+  {
+    set_name: "Exterior Painting", name: "Good", tier: "good", scope: "exterior",
+    tagline: "Solid protection and curb appeal", description: "",
+    paint_grade: null, product_link: null, product_name: null, coats: 1, primer_coats: 1,
+    markup_pct: 0, warranty_months: 12, warranty: "1-year warranty",
+    highlights: ["Power wash all surfaces", "1 coat primer + 1 coat exterior paint", "Caulk gaps and cracks", "Standard prep"],
+    is_enabled: true, is_default: false, sort: 6,
+  },
+  {
+    set_name: "Exterior Painting", name: "Better", tier: "better", scope: "exterior",
+    tagline: "Enhanced durability for Florida weather", description: "",
+    paint_grade: null, product_link: null, product_name: "Sherwin-Williams Resilience", coats: 2, primer_coats: 1,
+    markup_pct: 15, warranty_months: 36, warranty: "3-year warranty",
+    highlights: ["Power wash + light scraping", "1 coat primer + 2 coats exterior paint", "Premium Sherwin-Williams Resilience", "Caulk all trim and windows"],
+    is_enabled: true, is_default: true, sort: 7,
+  },
+  {
+    set_name: "Exterior Painting", name: "Best", tier: "best", scope: "exterior",
+    tagline: "Maximum protection, premium finish", description: "",
+    paint_grade: null, product_link: "Duration Exterior", product_name: "Sherwin-Williams Duration Exterior", coats: 2, primer_coats: 0,
+    markup_pct: 30, warranty_months: 60, warranty: "5-year warranty",
+    highlights: ["Full power wash + heavy scraping", "Epoxy primer on all bare wood", "2 coats Sherwin-Williams Duration Exterior", "Full caulking around all openings", "Free annual touch-up visit"],
+    is_enabled: true, is_default: false, sort: 8,
+  },
+  {
+    set_name: "Exterior Painting (Good)", name: "Good", tier: "good", scope: "exterior",
+    tagline: "Solid protection and curb appeal", description: "",
+    paint_grade: null, product_link: null, product_name: null, coats: 1, primer_coats: 1,
+    markup_pct: 0, warranty_months: 12, warranty: "1-year warranty",
+    highlights: ["Power wash all surfaces", "1 coat primer + 1 coat exterior paint", "Caulk gaps and cracks", "Standard prep"],
+    is_enabled: false, is_default: false, sort: 9,
+  },
+  {
+    set_name: "Exterior Painting (Good)", name: "Better", tier: "better", scope: "exterior",
+    tagline: "Enhanced durability for Florida weather", description: "",
+    paint_grade: "Standard", product_link: null, product_name: "Sherwin-Williams SuperPaint", coats: 2, primer_coats: 0,
+    markup_pct: 0, warranty_months: 36, warranty: "3-year warranty",
+    highlights: ["Power wash + light scraping", "2 coats exterior paint", "Sherwin-Williams — SuperPaint", "Caulk all trim and windows"],
+    is_enabled: true, is_default: true, sort: 10,
+  },
+  {
+    set_name: "Exterior Painting (Good)", name: "Best", tier: "best", scope: "exterior",
+    tagline: "Maximum protection, premium finish", description: "",
+    paint_grade: null, product_link: "Duration Exterior", product_name: "Sherwin-Williams Duration Exterior", coats: 2, primer_coats: 0,
+    markup_pct: 30, warranty_months: 60, warranty: "5-year warranty",
+    highlights: ["Full power wash + heavy scraping", "Epoxy primer on all bare wood", "2 coats Sherwin-Williams Duration Exterior", "Full caulking around all openings", "Free annual touch-up visit"],
+    is_enabled: false, is_default: false, sort: 11,
+  },
+];
+
+/** Does this stored package row still say exactly what the given seed said when it was planted? */
+function matchesSeed(row: Record<string, unknown>, seed: PaintPackageSeed, productId: string | null): boolean {
+  const text = (v: unknown) => (v == null ? "" : String(v));
+  const nullable = (v: unknown) => (v == null || v === "" ? null : String(v));
+  return (
+    text(row.set_name) === seed.set_name &&
+    text(row.name) === seed.name &&
+    text(row.tier) === seed.tier &&
+    text(row.scope) === seed.scope &&
+    text(row.tagline) === seed.tagline &&
+    text(row.description) === seed.description &&
+    nullable(row.paint_grade) === seed.paint_grade &&
+    nullable(row.product_name) === seed.product_name &&
+    (row.product_id ?? null) === productId &&
+    Number(row.coats) === seed.coats &&
+    Number(row.primer_coats) === seed.primer_coats &&
+    Number(row.markup_pct) === seed.markup_pct &&
+    Number(row.warranty_months) === seed.warranty_months &&
+    text(row.warranty) === seed.warranty &&
+    JSON.stringify(row.highlights ?? []) === JSON.stringify(seed.highlights) &&
+    Boolean(row.is_enabled) === seed.is_enabled &&
+    Boolean(row.is_default) === seed.is_default &&
+    Number(row.sort) === seed.sort
+  );
+}
+
+/**
+ * Bring a company's exterior packages forward to the current seeds — but only the rows that
+ * still match the previous seeds exactly, i.e. were planted by setup and never edited. A row
+ * the office changed in any way (a different product, warranty, price, even a highlight) is
+ * theirs and is left alone. Returns how many rows moved.
+ */
+export async function resyncPaintPackageSeeds(db: Db, companyId: string): Promise<number> {
+  const rows = must(await db.from("paint_packages").select("*").eq("company_id", companyId));
+  if (!rows.length) return 0;
+  const products = must(await db.from("paint_products").select("id, name").eq("company_id", companyId));
+  const idOf = (name: string | null) => (name ? (products.find((p) => p.name === name)?.id ?? null) : null);
+  let moved = 0;
+  for (const prev of PREVIOUS_PAINT_PACKAGE_SEEDS) {
+    const next = PAINT_PACKAGE_SEEDS.find((s) => s.set_name === prev.set_name && s.tier === prev.tier);
+    if (!next) continue;
+    const row = rows.find((r) => r.set_name === prev.set_name && r.tier === prev.tier);
+    if (!row || !matchesSeed(row as Record<string, unknown>, prev, idOf(prev.product_link))) continue;
+    const { product_link, ...seed } = next;
+    const { error } = await db.from("paint_packages").update({ ...seed, product_id: idOf(product_link) }).eq("id", row.id).eq("company_id", companyId);
+    if (error) throw dbError(error);
+    moved++;
+  }
+  return moved;
+}
+
 /** Painting's setup: the products and packages a painting company is missing (Settings → Painting, and the proposal page). */
-export async function setupPainting(db: Db, companyId: string): Promise<{ products_created: number; packages_created: number }> {
+export async function setupPainting(db: Db, companyId: string): Promise<{ products_created: number; packages_created: number; packages_resynced: number }> {
   const products_created = await seedPaintProducts(db, companyId);
   const packages_created = await seedPaintPackages(db, companyId);
-  return { products_created, packages_created };
+  const packages_resynced = await resyncPaintPackageSeeds(db, companyId);
+  return { products_created, packages_created, packages_resynced };
 }
 
 const TIER_ORDER: Record<string, number> = { good: 0, better: 1, best: 2 };

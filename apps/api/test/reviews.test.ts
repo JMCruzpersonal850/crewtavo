@@ -930,7 +930,8 @@ describe("Marketing's routes", () => {
     const link = await clientLink(env, "https://ops.example.com", { c: CO, t: "review", id: "rr-1" });
     const res = await app.request(link.replace("https://ops.example.com", ""), {}, env);
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://g.page/r/acme/review");
+    // The link lands on the star gate now; the gate sends 4-5 stars on to the review page.
+    expect(res.headers.get("location")).toBe(`/r/${link.split("/").pop()}`);
     // track_review_click stops the reminders, only once 30 seconds have gone by since the ask or a reminder.
     expect(rpcCalls(calls, "track_review_click")).toEqual([{ p_company: CO, p_id: "rr-1", p_count: true }]);
     expect(writes(calls, "PATCH", "review_requests")).toEqual([]);
@@ -952,11 +953,11 @@ describe("Marketing's routes", () => {
     }
   });
 
-  it("opens a short review link by its token, and a signed one whose ask is gone still reaches the review page", async () => {
+  it("opens a short review link by its token, and a signed one whose ask is gone still lands on the gate", async () => {
     let calls = serve({ tables: { companies: [companyRow()], review_requests: [{ id: "rr-1", company_id: CO, link_token: "AbCdEf123456" }] }, rpc: { track_review_click: () => CO } });
     let res = await app.request("/api/public/r/AbCdEf123456", {}, env);
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://g.page/r/acme/review");
+    expect(res.headers.get("location")).toBe("/r/AbCdEf123456");
     expect(rpcCalls(calls, "track_review_click")).toEqual([{ p_token: "AbCdEf123456", p_count: true }]);
 
     // A short token nobody has is a plain "not valid", and nothing is recorded.
@@ -965,7 +966,7 @@ describe("Marketing's routes", () => {
     expect(res.status).toBe(404);
     expect(rpcCalls(calls, "track_review_click")).toEqual([]);
 
-    // Signed links name their business, so they still go where the business's review page is.
+    // Signed links name their business, so they still land on its gate (which knows its review page).
     calls = serve({ tables: { companies: [companyRow()] }, rpc: { track_review_click: () => null } });
     const signed = await clientLink(env, "https://ops.example.com", { c: CO, t: "review", id: "gone" });
     res = await app.request(signed.replace("https://ops.example.com", ""), {}, env);

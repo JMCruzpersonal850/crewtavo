@@ -106,6 +106,7 @@ import {
   type SignedFor,
   type TrustBadge,
 } from "./document";
+import { InvoiceHead } from "./InvoicePresentation";
 import { PaintAcceptIntro, PaintProposalSections } from "./PaintProposal";
 import styles from "./range.module.css";
 import { SignaturePad } from "../field/SignaturePad";
@@ -296,8 +297,8 @@ export function HubPage() {
             <footer className="public-foot hub-foot">
               <span><Icon name="lock" size={12} /> Private link{clientName ? ` for ${clientName}` : ""}. Keep it to yourself.</span>
               {d.company.privacy_url && <span><PrivacyLink url={d.company.privacy_url} /></span>}
-              {d.kind === "quote" && d.quote.paint ? (
-                // A painting proposal closes with the company's own footer, as Lead Control's do.
+              {(d.kind === "quote" && d.quote.paint) || d.kind === "invoice" ? (
+                // Painting proposals and invoices close with the company's own footer, as Lead Control's do.
                 <span>{[d.company.name, ...(d.company.address ?? []), d.company.phone, d.company.email, d.company.website].filter(Boolean).join(" · ")}</span>
               ) : (
                 <span className="hub-powered">Powered by <BrandMark size={13} /> <strong>Crewtavo</strong></span>
@@ -1614,10 +1615,10 @@ function InvoiceHub({ token, data, onChanged, printing }: { token: string; data:
   const owing = balance > 0 && !data.preview && autopay?.status !== "charging";
   return (
     <>
-      <div className="hub-layout">
+      <div className="hub-layout hub-layout-invoice">
         <div className="hub-main">
+          <InvoiceHead data={data} balance={balance} late={Boolean(late)} />
           <section className="hub-card hub-intro hub-due">
-            <span className="hub-sub">{inv.subject ? `${inv.subject} · ` : ""}Invoice #{inv.number}{inv.client ? ` for ${inv.client.display_name}` : ""}</span>
             <h1>{balance > 0 ? <>{formatMoneyCents(balance)}<span className="hub-due-word"> due</span></> : writtenOff ? "Nothing due" : "Paid in full"}</h1>
             {/* Past due: only the date it was due in red, the words that ask for something. */}
             <span className="hub-sub">Issued {formatDate(inv.issued_on)} · {inv.due_on ? <span className={late ? "hub-late" : undefined}>due {formatDate(inv.due_on)}</span> : "due on receipt"}</span>

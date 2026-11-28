@@ -11,6 +11,7 @@
  * how it stands and send a test.
  */
 import { ADMINS, MAIL_PRESETS, mailPreset } from "@crewtavo/core";
+import { brandColor } from "@crewtavo/core/social";
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
@@ -146,7 +147,7 @@ email.put("/email", ...requireEmailOwner, async (c) => {
     const result = await sendWithMailbox(settings, secret, {
       to,
       subject: `Email is connected for ${company.name}`,
-      ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), c.var.companyId, company.settings), text: `This is a test from Crewtavo.\n\nQuotes, invoices, reminders and team notifications for ${company.name} will now be sent from ${settings.from_email}. Replies go to ${company.email || settings.from_email}.` }),
+      ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), c.var.companyId, company.settings), text: `This is a test from Crewtavo.\n\nQuotes, invoices, reminders and team notifications for ${company.name} will now be sent from ${settings.from_email}. Replies go to ${company.email || settings.from_email}.`, color: brandColor(company.settings) ?? "#0f2a35" }),
       replyTo: company.email ?? undefined,
       fromName: company.name,
     }, smtpReach(c.env));
@@ -187,7 +188,7 @@ email.post("/email/test", ...requireEmailAdmin, async (c) => {
   forgetMailbox(c.var.companyId);
   const result = await sendEmail(
     c.env,
-    { to, subject: `Test email from ${company.name}`, ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), c.var.companyId, company.settings), text: "This is a test from Crewtavo. If you can read it, email is working." }), replyTo: company.email ?? undefined, fromName: company.name },
+    { to, subject: `Test email from ${company.name}`, ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), c.var.companyId, company.settings), text: "This is a test from Crewtavo. If you can read it, email is working.", color: brandColor(company.settings) ?? "#0f2a35" }), replyTo: company.email ?? undefined, fromName: company.name },
     c.var.companyId,
   );
   if (!result.sent) throw new HttpError(400, result.reason ?? "The test email wasn't sent.");

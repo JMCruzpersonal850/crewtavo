@@ -33,7 +33,7 @@ import {
   workDays,
   yearChoices,
   yearPaid,
-  type PayLine, cutShortNote, overCounted } from "../src/features/subs/pay";
+  type PayLine, cutShortNote, overCounted, subsOnVisitsWithoutPay } from "../src/features/subs/pay";
 import { owedFor, PAY_COLUMNS, payRows, pieceJobs, waitingFor, type PayPerson } from "../src/features/timesheets/payCsv";
 
 const line = (extra: Partial<PayLine> = {}): PayLine => ({
@@ -206,6 +206,48 @@ describe("visits pay covers", () => {
   it("finds the last day of work it covers", () => {
     expect(lastWorkDay(visits, ["v1", "v2", "v3", "v4"])).toBe("2026-10-14");
     expect(lastWorkDay(visits, ["v4"])).toBeNull();
+  });
+});
+
+describe("subs on a job's visits whose pay isn't in its costs", () => {
+  const visits = [
+    { id: "v1", status: "completed", scheduled_on: "2026-10-12", assignees: [{ user_id: "al" }] },
+    { id: "v2", status: "scheduled", scheduled_on: "2026-10-14", assignees: [{ user_id: "al" }, { user_id: "cy" }, { user_id: "dee" }] },
+    { id: "v3", status: "cancelled", scheduled_on: "2026-10-20", assignees: [{ user_id: "al" }] },
+    { id: "v4", status: "scheduled", scheduled_on: null, assignees: [] },
+  ];
+  const signIns = [
+    { user_id: "al", subcontractor_id: "sub-a", name: "Al's Roofing" },
+    { user_id: "cy", subcontractor_id: "sub-c", name: "Cy's Crews" },
+  ];
+  it("flags a sub put on visits from the schedule, once, with the visits that count", () => {
+    // dee is on the team (no sign-in row), v3 is cancelled: only Al (v1, v2) and Cy (v2) are subs at work.
+    expect(subsOnVisitsWithoutPay(visits, signIns, [])).toEqual([
+      { subcontractor_id: "sub-a", name: "Al's Roofing", visits: 2, pay: null },
+      { subcontractor_id: "sub-c", name: "Cy's Crews", visits: 1, pay: null },
+    ]);
+  });
+  it("says nothing once their pay counts in the job's costs, as job_pay_costs counts it", () => {
+    for (const status of ["accepted", "done", "paid"]) {
+      expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-a", subcontractor_id: "sub-a", status }]).map((s) => s.subcontractor_id)).toEqual(["sub-c"]);
+    }
+    // A new price waiting on agreed pay still counts, at the agreed price.
+    expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-a", subcontractor_id: "sub-a", status: "offered", accepted_snapshot: { total: 900 } }]).map((s) => s.subcontractor_id)).toEqual(["sub-c"]);
+  });
+  it("keeps flagging them while their pay is a draft or an offer with no answer, and names that pay", () => {
+    // Neither counts in job_pay_costs, so the job's profit still reads high without a word.
+    expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-a", subcontractor_id: "sub-a", status: "draft" }])).toEqual([
+      { subcontractor_id: "sub-a", name: "Al's Roofing", visits: 2, pay: { id: "pay-a", status: "draft" } },
+      { subcontractor_id: "sub-c", name: "Cy's Crews", visits: 1, pay: null },
+    ]);
+    expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-a", subcontractor_id: "sub-a", status: "offered" }])[0]!.pay).toEqual({ id: "pay-a", status: "offered" });
+  });
+  it("flags them again when their only pay is over — and never for a team member's pay", () => {
+    for (const status of ["declined", "withdrawn", "expired", "cancelled"]) {
+      expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-a", subcontractor_id: "sub-a", status }]).map((s) => s.subcontractor_id)).toEqual(["sub-a", "sub-c"]);
+      expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-a", subcontractor_id: "sub-a", status }])[0]!.pay).toBeNull();
+    }
+    expect(subsOnVisitsWithoutPay(visits, signIns, [{ id: "pay-t", subcontractor_id: null, status: "accepted" }])).toHaveLength(2);
   });
 });
 

@@ -1,9 +1,12 @@
 /**
  * A visit at a glance, the way Google Calendar opens an event: when, where (tap for directions in
- * your maps app), who it's for, the crew and people, equipment, gate code and instructions. Edit
- * opens the visit form; nothing changes from here by accident. A sheet on phones.
+ * your maps app), who it's for, the crew and people, equipment, gate code and instructions — and,
+ * below the facts, what the visit itself produced: its photos, checklists, measurements and voice
+ * walkthrough, each only when there is some. Edit opens the visit form; nothing changes from here
+ * by accident. A sheet on phones.
  */
 import { marketingOn } from "@crewtavo/core/marketing";
+import { roomAreas } from "@crewtavo/core/roomMeasurements";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
@@ -17,8 +20,9 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { EntityStatus, visitKindText } from "@/components/ui/StatusPill";
 import { supabase, unwrap, unwrapOne } from "@/lib/api";
-import { addressLine, formatTime } from "@/lib/format";
+import { addressLine, formatNumber, formatTime } from "@/lib/format";
 import { visitPlace } from "@/lib/maps";
+import { photoLinks } from "@/lib/photoMarkup";
 import { can, hasRole, useSession } from "@/lib/session";
 import { useVisitExtraScope } from "../field/FieldExtras";
 import { usePendingChanges } from "./changeRequests";
@@ -63,6 +67,32 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
     queryFn: async () => unwrap(await supabase().from("property_access").select("gate_code, lockbox_code, instructions").eq("property_id", v!.property!.id))[0] ?? null,
   });
 
+  // What the visit itself produced — its photos, checklists, measurements and voice walkthrough.
+  // Quiet extras: any of them failing (or not existing yet) leaves the facts above untouched.
+  const photos = useQuery({
+    queryKey: ["visit-details", visitId, "photos"],
+    meta: { silent: true },
+    queryFn: async () => {
+      const rows = unwrap(await supabase().from("attachments").select("id, path, marked_path, file_name").eq("owner_type", "visit").eq("owner_id", visitId).order("created_at"));
+      return photoLinks(rows);
+    },
+  });
+  const checklists = useQuery({
+    queryKey: ["visit-details", visitId, "checklists"],
+    meta: { silent: true },
+    queryFn: async () => unwrap(await supabase().from("checklist_responses").select("id, completed_at, template:checklist_templates(name)").eq("visit_id", visitId).order("created_at")),
+  });
+  const measurements = useQuery({
+    queryKey: ["visit-details", visitId, "measurements"],
+    meta: { silent: true },
+    queryFn: async () => unwrap(await supabase().from("visit_measurements").select("id, label, length_ft, width_ft, height_ft").eq("visit_id", visitId).order("created_at")),
+  });
+  const voice = useQuery({
+    queryKey: ["visit-details", visitId, "voice"],
+    meta: { silent: true },
+    queryFn: async () => unwrap(await supabase().from("visit_voice_reports").select("id, status, items, created_at").eq("visit_id", visitId).order("created_at", { ascending: false }).limit(1))[0] ?? null,
+  });
+
   const extras = useVisitExtraScope(visitId, Boolean(v?.job));
   const client = v?.job?.client ?? v?.request?.client ?? null;
   const place = v ? visitPlace(v) : null;
@@ -72,6 +102,34 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
     : "";
   const codes = access.data;
   const names = (people.data ?? []).map((p) => p.full_name).filter(Boolean);
+
+  const photoRows = photos.data ?? [];
+  const checklistRows = checklists.data ?? [];
+  // One quiet line for the measuring: how many rooms, and the wall area where a height was taken
+  // (walls need one — roomAreas says null without it); ceilings alone are just "surfaces".
+  const measureRows = measurements.data ?? [];
+  const areas = measureRows.map((m) => roomAreas({ length_ft: Number(m.length_ft), width_ft: Number(m.width_ft), height_ft: m.height_ft == null ? null : Number(m.height_ft) }));
+  const wallsTotal = areas.reduce((sum, a) => sum + (a.walls ?? 0), 0);
+  const ceilingTotal = areas.reduce((sum, a) => sum + a.ceiling, 0);
+  const measureLine = measureRows.length
+    ? areas.some((a) => a.walls != null)
+      ? t("Measurements: {rooms} · {area} sq ft of walls", { rooms: t.plural(measureRows.length, { one: "{count} room", other: "{count} rooms" }), area: formatNumber(Math.round(wallsTotal)) })
+      : t("Measurements: {rooms} · {area} sq ft of surfaces", { rooms: t.plural(measureRows.length, { one: "{count} room", other: "{count} rooms" }), area: formatNumber(Math.round(ceilingTotal)) })
+    : null;
+  // The latest voice walkthrough, said plainly: its items when it's ready, what's missing when it isn't.
+  const report = voice.data;
+  const reportItems = report && Array.isArray(report.items) ? report.items.length : 0;
+  const voiceLine = !report
+    ? null
+    : report.status === "ready"
+      ? t("Voice walkthrough — {items}", { items: t.plural(reportItems, { one: "{count} item", other: "{count} items" }) })
+      : report.status === "needs_key"
+        ? t("Voice walkthrough — needs the OpenAI key (Apps → ChatGPT)")
+        : report.status === "transcribed"
+          ? t("Voice walkthrough — transcribed")
+          : report.status === "recorded"
+            ? t("Voice walkthrough — recorded")
+            : t("Voice walkthrough — failed");
 
   return (
     <Dialog open onClose={onClose} title={v?.title ?? t("Visit")} description={v?.job ? <>{t("Job #{number}", { number: v.job.number })}{client ? ` · ${client.display_name}` : ""}</> : client?.display_name} className="visit-sheet">
@@ -186,13 +244,65 @@ export function VisitDetails({ visitId, onClose, onEdit }: { visitId: string; on
               )}
             </div>
 
+            {/* What the visit produced, in the same facts style, each piece only when there is some:
+                the photos taken on it, the checklists filled in, the rooms measured, the voice
+                walkthrough. The working visit itself (camera, checklist, voice) is Open visit below. */}
+            {(photoRows.length > 0 || checklistRows.length > 0 || measureLine || voiceLine) && (
+              <div className="visit-facts">
+                {photoRows.length > 0 && (
+                  <>
+                    <Icon name="image" size={16} />
+                    <div>
+                      <div className="visit-photo-strip">
+                        {photoRows.slice(0, 8).map((p) =>
+                          p.url ? (
+                            <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
+                              <img src={p.url} alt={p.file_name} loading="lazy" />
+                            </a>
+                          ) : null,
+                        )}
+                        {photoRows.length > 8 && <span className="visit-photo-more">{t("+{count} more", { count: photoRows.length - 8 })}</span>}
+                      </div>
+                      <span className="visit-sub">{t.plural(photoRows.length, { one: "{count} photo", other: "{count} photos" })}</span>
+                    </div>
+                  </>
+                )}
+
+                {checklistRows.length > 0 && (
+                  <>
+                    <Icon name="checklist" size={16} />
+                    <div className="stack-sm">
+                      {checklistRows.map((r) => (
+                        <span key={r.id}>{r.template?.name ?? t("Checklist")} — {r.completed_at ? t("Done") : t("In progress")}</span>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {measureLine && (
+                  <>
+                    <Icon name="ruler" size={16} />
+                    <div>{measureLine}</div>
+                  </>
+                )}
+
+                {voiceLine && (
+                  <>
+                    <Icon name="chat" size={16} />
+                    <div>{voiceLine}</div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Ways to reach it on the left as quiet buttons (tiles on a phone), Edit the one green button. */}
             <div className="visit-actions">
               {place && <MapsLink className="btn" place={place}><Icon name="navigation" size={16} />{t("Directions")}</MapsLink>}
               {client?.phone && <a className="btn" href={`tel:${client.phone}`}><Icon name="phone" size={16} />{t("Call")}</a>}
               {client?.phone && <a className="btn" href={`sms:${client.phone}`}><Icon name="messages" size={16} />{t("Text")}</a>}
               {office && v.job && <Link className="btn" to={`/jobs/${v.job.id}`} onClick={onClose}><Icon name="job" size={16} />{t("Open job")}</Link>}
-              {!office && <Link className="btn" to={`/field/visits/${v.id}`} onClick={onClose}><Icon name="clipboard" size={16} />{t("Open visit")}</Link>}
+              {/* The full working visit — camera, checklists, measurements, voice — for the office too, not just the field. */}
+              <Link className="btn" to={`/field/visits/${v.id}`} onClick={onClose}><Icon name="clipboard" size={16} />{t("Open visit")}</Link>
               {/* A finished visit's before and after photos, on a page to share (Marketing → Showcases). */}
               {showcases && v.job && v.status === "completed" && (
                 <Menu

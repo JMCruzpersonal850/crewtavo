@@ -9,6 +9,7 @@
  */
 import { OFFICE, SALES } from "@crewtavo/core";
 import { asksToStopTexts, smsKeyword, STOP_HOWS } from "@crewtavo/core/marketing";
+import { brandColor } from "@crewtavo/core/social";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
@@ -51,7 +52,7 @@ messages.post("/messages/send", requireUser, requireCompany(SALES), async (c) =>
     if (!isEmail(to)) throw new HttpError(400, `${client.display_name} has no valid email address.`);
     if (!body.subject) throw new HttpError(400, "Add a subject.");
     const footer = [company.name, companyAddress(company.address as Record<string, string>), company.phone].filter(Boolean).join(" · ");
-    result = await sendEmail(c.env, { to, subject: body.subject, ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), companyId, company.settings), text: body.body, footer }), replyTo: company.email ?? undefined, fromName: company.name }, companyId);
+    result = await sendEmail(c.env, { to, subject: body.subject, ...renderEmail({ companyName: company.name, logo: logoImage(appUrl(c), companyId, company.settings), text: body.body, footer, color: brandColor(company.settings) ?? "#0f2a35" }), replyTo: company.email ?? undefined, fromName: company.name }, companyId);
   } else {
     to = body.to || client.phone || "";
     if (!to) throw new HttpError(400, `${client.display_name} has no phone number.`);

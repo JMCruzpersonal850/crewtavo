@@ -1,5 +1,6 @@
 import { greetingName } from "@crewtavo/core";
 import { LINK_PATTERN } from "@crewtavo/core/campaigns";
+import { cardColors } from "@crewtavo/core/social";
 /**
  * Plain-text messages rendered as a simple, readable HTML email: paragraphs, clickable links,
  * the company's logo or name, and (for marketing) the address and an unsubscribe link. A campaign
@@ -11,12 +12,27 @@ const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").rep
 
 const asIs = (url: string) => url;
 
-function linkify(text: string, href: (url: string) => string): string {
+// Why a local copy: core's contrast helper isn't exported, and a brand colour only earns the
+// link colour when it still reads clearly on the white card (below), so email needs its own.
+const HEX = /^#[0-9a-f]{6}$/i;
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const contrast = (a: string, b: string) => {
+  const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m) as [number, number];
+  return (x + 0.05) / (y + 0.05);
+};
+
+function linkify(text: string, href: (url: string) => string, linkColor = "#2c611a"): string {
   let html = "";
   let last = 0;
   for (const match of text.matchAll(LINK_PATTERN)) {
     const url = match[0];
-    html += `${escape(text.slice(last, match.index))}<a href="${escape(href(url))}" style="color:#2c611a;font-weight:600;word-break:break-all">${escape(url)}</a>`;
+    html += `${escape(text.slice(last, match.index))}<a href="${escape(href(url))}" style="color:${linkColor};font-weight:600;word-break:break-all">${escape(url)}</a>`;
     last = match.index + url.length;
   }
   return html + escape(text.slice(last));
@@ -48,18 +64,18 @@ const originOf = (url: string) => {
 /** Whether a link on its own line may be a button: any link, with `base` only one to that address, and with `base` null none. */
 const buttonFor = (url: string, base: string | null | undefined) => base === undefined || (base !== null && originOf(url) === originOf(base));
 
-function paragraph(p: string, code: string | null | undefined, href: (url: string) => string, buttons: Record<string, string> | undefined, shown: readonly string[] | undefined, label: string | null | undefined, base: string | null | undefined): string {
+function paragraph(p: string, code: string | null | undefined, href: (url: string) => string, buttons: Record<string, string> | undefined, shown: readonly string[] | undefined, label: string | null | undefined, base: string | null | undefined, brand?: { buttonBackground: string; buttonText: string; linkColor: string } | null): string {
   const trimmed = p.trim();
   if (code && trimmed === code) {
     return `<p style="margin:0 0 20px;font-size:32px;font-weight:800;letter-spacing:0.2em;font-variant-numeric:tabular-nums">${escape(code)}</p>`;
   }
   if (/^https?:\/\/\S+$/.test(trimmed) && buttonFor(trimmed, base)) {
     const url = escape(href(trimmed));
-    const button = `<p style="margin:0 0 20px"><a href="${url}" style="display:inline-block;background:#3b7d23;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">${escape(buttons?.[trimmed] ?? label ?? buttonLabel(trimmed))}</a></p>`;
+    const button = `<p style="margin:0 0 20px"><a href="${url}" style="display:inline-block;background:${brand ? brand.buttonBackground : "#3b7d23"};color:${brand ? brand.buttonText : "#ffffff"};text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px">${escape(buttons?.[trimmed] ?? label ?? buttonLabel(trimmed))}</a></p>`;
     // A link the client is meant to pass on (their referral link) is written out under it, to copy.
-    return shown?.includes(trimmed) ? `${button}<p style="margin:-8px 0 20px;font-size:13px">${linkify(trimmed, href)}</p>` : button;
+    return shown?.includes(trimmed) ? `${button}<p style="margin:-8px 0 20px;font-size:13px">${linkify(trimmed, href, brand?.linkColor)}</p>` : button;
   }
-  return `<p style="margin:0 0 16px">${linkify(p, href).replace(/\n/g, "<br>")}</p>`;
+  return `<p style="margin:0 0 16px">${linkify(p, href, brand?.linkColor).replace(/\n/g, "<br>")}</p>`;
 }
 
 export interface EmailParts {
@@ -89,21 +105,39 @@ export interface EmailParts {
    * Null when the address isn't known (no APP_URL): then no link is a button.
    */
   base?: string | null;
+  /**
+   * The company's brand colour (settings.branding.color, or Crewtavo's navy when it has none):
+   * when it's a real #rrggbb colour the header becomes a band in it and the buttons follow it.
+   * Left out (or not a colour), the email keeps the plain header and green buttons it always had,
+   * so callers that don't pass one see no change at all.
+   */
+  color?: string | null;
+  /** A company contact line ("phone · email · website") shown under the card, above the footer. */
+  contact?: string | null;
 }
 
-export function renderEmail({ companyName, logo, text, footer, unsubscribeUrl, code, href = asIs, pixel, buttons, showUrls, button, base }: EmailParts): { html: string; text: string } {
-  const paragraphs = text.trim().split(/\n{2,}/).map((p) => paragraph(p, code, href, buttons, showUrls, button, base)).join("");
+export function renderEmail({ companyName, logo, text, footer, unsubscribeUrl, code, href = asIs, pixel, buttons, showUrls, button, base, color, contact }: EmailParts): { html: string; text: string } {
+  // Only a real #rrggbb colour brands the shell; anything else leaves every byte as it was.
+  const validColor = typeof color === "string" && HEX.test(color) ? color.toLowerCase() : null;
+  const brand = validColor ? { buttonBackground: validColor, buttonText: cardColors(validColor).text, linkColor: contrast(validColor, "#ffffff") >= 3.0 ? validColor : "#2c611a" } : null;
+  const bandText = validColor ? cardColors(validColor).text : null;
+  const header = validColor
+    ? `<tr><td style="background:${validColor};color:${bandText};padding:18px 24px;border-radius:12px 12px 0 0;font-weight:800;font-size:17px">${logo ? `<span style="display:inline-block;background:#ffffff;border-radius:8px;padding:6px 10px"><img src="${escape(logo.src)}" width="${logo.width}" height="${logo.height}" alt="${escape(companyName)}" style="display:block;border:0;width:${logo.width}px;height:${logo.height}px"></span>` : escape(companyName)}</td></tr>`
+    : `<tr><td style="padding:20px 24px 0;font-weight:800;font-size:17px">${logo ? `<img src="${escape(logo.src)}" width="${logo.width}" height="${logo.height}" alt="${escape(companyName)}" style="display:block;border:0;width:${logo.width}px;height:${logo.height}px">` : escape(companyName)}</td></tr>`;
+  const contactLine = contact?.trim() ? contact : null;
+  const contactHtml = contactLine ? `<p style="max-width:560px;margin:12px auto 0;font-size:12px;color:#5f6f76;text-align:center">${escape(contactLine)}</p>\n` : "";
+  const paragraphs = text.trim().split(/\n{2,}/).map((p) => paragraph(p, code, href, buttons, showUrls, button, base, brand)).join("");
   const foot = [footer ? escape(footer) : null, unsubscribeUrl ? `<a href="${escape(unsubscribeUrl)}" style="color:#5f6f76">Unsubscribe</a>` : null].filter(Boolean).join(" · ");
   const html = `<!doctype html><html><body style="margin:0;padding:24px 12px;background:#f6f5f1;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;color:#0f2a35">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;border:1px solid #e3e2dd">
-<tr><td style="padding:20px 24px 0;font-weight:800;font-size:17px">${logo ? `<img src="${escape(logo.src)}" width="${logo.width}" height="${logo.height}" alt="${escape(companyName)}" style="display:block;border:0;width:${logo.width}px;height:${logo.height}px">` : escape(companyName)}</td></tr>
+${header}
 <tr><td style="padding:16px 24px 8px;font-size:15px;line-height:1.6">${paragraphs}</td></tr>
 </table>
-${foot ? `<p style="max-width:560px;margin:12px auto 0;font-size:12px;color:#5f6f76;text-align:center">${foot}</p>` : ""}
+${contactHtml}${foot ? `<p style="max-width:560px;margin:12px auto 0;font-size:12px;color:#5f6f76;text-align:center">${foot}</p>` : ""}
 ${pixel ? `<img src="${escape(pixel)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">` : ""}
 </td></tr></table></body></html>`;
-  const plain = [text.trim().replace(LINK_PATTERN, (url) => href(url)), footer, unsubscribeUrl ? `Unsubscribe: ${unsubscribeUrl}` : null].filter(Boolean).join("\n\n");
+  const plain = [text.trim().replace(LINK_PATTERN, (url) => href(url)), contactLine, footer, unsubscribeUrl ? `Unsubscribe: ${unsubscribeUrl}` : null].filter(Boolean).join("\n\n");
   return { html, text: plain };
 }
 

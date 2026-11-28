@@ -16,6 +16,7 @@
  * prefers less motion.
  */
 import type { Json } from "@crewtavo/core/database";
+import { pipelineLanes, type PipelineStageKey } from "@crewtavo/core/pipeline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LazyMotion, MotionConfig, domMax, m } from "motion/react";
 import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
@@ -57,7 +58,7 @@ interface Card {
   /** The option shown first; once it's signed, the one chosen, which its value is for. */
   option: { name: string; tier: string | null } | null;
 }
-type ColumnKey = "new" | "assess" | "draft" | "sent" | "won";
+type ColumnKey = PipelineStageKey;
 
 const PICK_ON_QUOTE = "Open the quote to pick the option they chose.";
 
@@ -73,6 +74,9 @@ export function moveRefusal(card: Pick<Card, "kind" | "options">, to: ColumnKey 
 /**
  * The stages, in order. `groups` is a stage that holds more than one status, as the phone groups it:
  * what someone must act on first. `empty` is what the phone says when the stage has nothing in it.
+ * These are the stages' insides — which statuses each holds — and never change; the names a
+ * company gives them and the ones it folds away are its settings (core's pipelineStages), laid
+ * over these by boardLanes.
  */
 const COLUMNS: Array<{ key: ColumnKey; label: string; statuses: string[]; kind: Card["kind"]; empty: string; groups?: Array<{ status: string; label: string; tone?: GroupTone; icon?: IconName }> }> = [
   { key: "new", label: "New requests", statuses: ["new"], kind: "request", empty: "No new requests" },
@@ -102,8 +106,52 @@ const COLUMNS: Array<{ key: ColumnKey; label: string; statuses: string[]; kind: 
   { key: "won", label: "Approved", statuses: ["approved"], kind: "quote", empty: "No approved quotes" },
 ];
 
-const DAY = 86_400_000;
-const daysOld = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / DAY);
+type ColumnDef = (typeof COLUMNS)[number];
+type ColumnGroup = NonNullable<ColumnDef["groups"]>[number];
+
+/** A lane the board draws: one shown stage, with any stages folded into it (core's pipelineLanes). */
+export interface BoardLane {
+  key: ColumnKey;
+  /** The company's name for the shown stage. */
+  label: string;
+  /** The lane's stages in board order, the shown one and the ones folded into it. */
+  columns: ColumnKey[];
+  /** Every status the lane holds (a status belongs to one stage and one kind, so this is unambiguous). */
+  statuses: string[];
+  kind: Card["kind"];
+  empty: string;
+  groups?: ColumnGroup[];
+}
+
+/**
+ * The board's lanes from the company's settings: its stage names, and its folded stages riding in
+ * the lane before them. A folded stage's cards keep their own groups on the phone, so the office
+ * still sees which stage of the work each card is in.
+ */
+export function boardLanes(settings: unknown): BoardLane[] {
+  return pipelineLanes(settings).map((lane) => {
+    const columns = lane.stages.map((key) => COLUMNS.find((c) => c.key === key)!);
+    const first = columns.find((c) => c.key === lane.key) ?? columns[0]!;
+    const groups = columns.length > 1 ? columns.flatMap((c) => c.groups ?? c.statuses.map((status) => ({ status, label: statusText(c.kind, status) }))) : first.groups;
+    return {
+      key: lane.key, label: lane.label, columns: columns.map((c) => c.key), statuses: columns.flatMap((c) => c.statuses), kind: first.kind, empty: first.empty,
+      ...(groups ? { groups } : {}),
+    };
+  });
+}
+
+/**
+ * The stage a card dropped on a lane moves to, or null when the lane holds no stage it can move
+ * to: the board's moves are between stages, and a lane is one or more of them.
+ */
+export function laneTarget(card: Pick<Card, "kind" | "status">, laneColumns: readonly ColumnKey[]): ColumnKey | null {
+  if (card.kind === "request") return laneColumns.includes("draft") ? "draft" : null;
+  if (card.status === "draft") return laneColumns.includes("sent") ? "sent" : null;
+  if (waiting(card.status)) return laneColumns.includes("won") ? "won" : null;
+  return null;
+}
+
+const DAY = 86_400_000;const daysOld = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / DAY);
 /** A card nobody has moved in a week is amber, in two weeks red. */
 const ageTone = (iso: string) => {
   const age = daysOld(iso);
@@ -230,6 +278,26 @@ export function PipelinePage() {
     // While a card is held, the stages it can go to show where to drop it.
     "data-target": (dragging && allowed(dragging, to)) || undefined,
   });
+  /** A lane takes a drop when it holds a stage the held card can move to; the move is to that stage. */
+  const laneZone = (lane: BoardLane): Zone => ({
+    onDragOver: (e: DragEvent) => {
+      if (dragging && laneTarget(dragging, lane.columns)) {
+        e.preventDefault();
+        if (over !== lane.key) setOver(lane.key);
+      }
+    },
+    onDragLeave: (e: DragEvent) => !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node) && setOver(null),
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      const card = dragging;
+      setDragging(null);
+      setOver(null);
+      const target = card && laneTarget(card, lane.columns);
+      if (card && target) void moveTo(card, target);
+    },
+    "data-drop": over === lane.key || undefined,
+    "data-target": (dragging && laneTarget(dragging, lane.columns) !== null) || undefined,
+  });
 
   /** A card's menu, as the Menus board's row menu: open it, the moves dragging makes, its link, then lost or archived last. */
   const actions = (c: Card): MenuEntry[] => {
@@ -249,9 +317,10 @@ export function PipelinePage() {
   };
 
   const cards = data.data?.cards ?? [];
-  const lanes = COLUMNS.map((col) => {
-    const items = cards.filter((c) => c.kind === col.kind && col.statuses.includes(c.status)).sort((a, b) => a.updated.localeCompare(b.updated));
-    return { ...col, items, total: items.reduce((s, c) => s + (c.value ?? 0), 0) };
+  // The lanes as the company has them: its stage names, its folded stages riding in the lane before.
+  const lanes = boardLanes(company.settings).map((lane) => {
+    const items = cards.filter((c) => lane.statuses.includes(c.status)).sort((a, b) => a.updated.localeCompare(b.updated));
+    return { ...lane, items, total: items.reduce((s, c) => s + (c.value ?? 0), 0) };
   });
   // The cards on the board when it last drew: one new to it (a quote just started) fades in, while one
   // that only changed column glides there. Nothing fades in the first time the board draws.
@@ -264,8 +333,8 @@ export function PipelinePage() {
   const winRate = data.data && data.data.won.count + data.data.lost.count ? Math.round((data.data.won.count / (data.data.won.count + data.data.lost.count)) * 100) : null;
 
   // The phone shows one stage at a time: the one in the link, or the first with something in it.
-  const asked = COLUMNS.find((c) => c.key === params.get("stage"))?.key;
-  const stage = asked ?? lanes.find((l) => l.items.length)?.key ?? "new";
+  const asked = lanes.find((l) => l.key === params.get("stage"))?.key;
+  const stage = asked ?? lanes.find((l) => l.items.length)?.key ?? lanes[0]!.key;
   const pickStage = (next: ColumnKey) => {
     const p = new URLSearchParams(params);
     p.set("stage", next);
@@ -312,7 +381,7 @@ export function PipelinePage() {
               {/* The board scrolls sideways, so Motion measures its scroll too. */}
               <m.div className="board" role="group" aria-label="Sales board" layoutScroll>
                 {lanes.map((lane) => (
-                  <Lane key={lane.key} label={lane.label} count={lane.items.length} total={lane.total} zone={zone(lane.key)}>
+                  <Lane key={lane.key} label={lane.label} count={lane.items.length} total={lane.total} zone={laneZone(lane)}>
                     {lane.items.map((c) => {
                       const card = cardKey(c);
                       return (
@@ -345,7 +414,7 @@ export function PipelinePage() {
                 <InboxList
                   className="pipe-phone"
                   label={shown.label}
-                  foot={<ListFoot end={shown.total > 0 ? <><b>{formatMoney(shown.total)}</b> total</> : undefined}>{shown.kind === "quote" ? plural(shown.items.length, "quote", "quotes") : plural(shown.items.length, "request", "requests")}</ListFoot>}
+                  foot={<ListFoot end={shown.total > 0 ? <><b>{formatMoney(shown.total)}</b> total</> : undefined}>{shown.columns.length > 1 ? plural(shown.items.length, "card", "cards") : shown.kind === "quote" ? plural(shown.items.length, "quote", "quotes") : plural(shown.items.length, "request", "requests")}</ListFoot>}
                 >
                   {shown.groups ? (
                     shown.groups.map((g) => {

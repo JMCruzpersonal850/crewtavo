@@ -1,0 +1,15 @@
+/* The client's live map of the crew on the way (/track/:token, TrackPage.tsx), in the client kit. */
+.map { height: 340px; margin-top: 18px; border-radius: 16px; overflow: hidden; background: var(--fill-2); }
+.map :global(.maplibregl-ctrl-attrib) { font-size: 10px; }
+.crewDot { width: 18px; height: 18px; border-radius: 50%; background: var(--brand, #0f2a35); border: 3px solid #fff; box-shadow: 0 1px 6px rgb(0 0 0 / 0.35); box-sizing: border-box; }
+.destDot { width: 14px; height: 14px; border-radius: 50%; background: var(--ink, #1c2733); border: 3px solid #fff; box-shadow: 0 1px 6px rgb(0 0 0 / 0.35); box-sizing: border-box; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 2px 0; font-size: var(--fs-13); color: var(--text-2); }
+.legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.legendCrew { width: 11px; height: 11px; border-radius: 50%; background: var(--brand, #0f2a35); flex: none; }
+.legendDest { width: 9px; height: 9px; border-radius: 50%; background: var(--ink, #1c2733); flex: none; }
+.eta { margin: 16px 0 0; font-size: var(--fs-18, 18px); font-weight: 650; }
+.updated { margin: 12px 2px 0; font-size: var(--fs-13); color: var(--text-2); }
+
+@media (max-width: 900px) {
+  .map { height: 300px; border-radius: 14px; }
+}

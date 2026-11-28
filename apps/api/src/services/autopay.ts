@@ -16,6 +16,7 @@
 import { autopayBankText, autopayCoversMonthly, autopaySettings, autopayTimingText, methodExpiry, methodLabel, tipsAllowed, type AutopaySettings } from "@crewtavo/core/autopay";
 import { isPlaceholderEmail } from "@crewtavo/core/email";
 import { textsOff, textsOffReason } from "@crewtavo/core/marketing";
+import { brandColor } from "@crewtavo/core/social";
 import type { Env } from "../env";
 import {
   autopayStripeCheck,
@@ -260,7 +261,7 @@ function emailFrom(env: Env, company: Company, to: string, subject: string, text
   const footer = [company.name, companyAddress(company.address as Record<string, string>), company.phone].filter(Boolean).join(" · ");
   return sendEmail(
     env,
-    { to, subject, ...renderEmail({ companyName: company.name, logo: base ? logoImage(base, company.id, company.settings) : null, text, footer, button }), replyTo: company.email ?? undefined, fromName: company.name },
+    { to, subject, ...renderEmail({ companyName: company.name, logo: base ? logoImage(base, company.id, company.settings) : null, text, footer, button, color: brandColor(company.settings) ?? "#0f2a35" }), replyTo: company.email ?? undefined, fromName: company.name },
     company.id,
   );
 }

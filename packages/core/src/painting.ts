@@ -51,6 +51,63 @@ export function paintDetailJson(detail: PaintDetail): { room: string; dimensions
   return detail.dimensions ? { room: detail.room, dimensions: detail.dimensions } : { room: detail.room };
 }
 
+/** A room's measured size in feet, as the one-screen builder asks for it: length × width × height. */
+export interface PaintAreaFeet {
+  l: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * What the one-screen area builder adds to a line's paint_detail beside the room: the coats
+ * that surface takes (the math panel reads it over its own coats pick, so the panel and the
+ * builder agree) and the room's measured feet, so reopening the area shows the numbers it was
+ * built from. Phase 3's readers ignore both keys — they ride along untouched through copies,
+ * packages and the client page, which only ever read the room and its dimensions.
+ */
+export interface PaintAreaDetail {
+  coats: number | null;
+  feet: PaintAreaFeet | null;
+}
+
+const feetFrom = (v: unknown): PaintAreaFeet | null => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : null);
+  const l = n(o.l);
+  const w = n(o.w);
+  const h = n(o.h);
+  return l !== null && w !== null && h !== null ? { l, w, h } : null;
+};
+
+/** Read a line's builder detail (coats, measured feet); anything malformed reads as unset. */
+export function paintAreaDetailFrom(raw: unknown): PaintAreaDetail {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { coats: null, feet: null };
+  const o = raw as Record<string, unknown>;
+  const coats = typeof o.coats === "number" && Number.isFinite(o.coats) && o.coats > 0 ? Math.round(o.coats) : null;
+  return { coats, feet: feetFrom(o.feet) };
+}
+
+/** The stored shape for a line written by the area builder: its room detail plus its coats and feet. */
+export function paintAreaDetailJson(
+  detail: PaintDetail,
+  area: PaintAreaDetail,
+): { room: string; dimensions?: string; coats?: number; feet?: PaintAreaFeet } | null {
+  const base = paintDetailJson(detail);
+  if (!base) return null;
+  return {
+    ...base,
+    ...(area.coats ? { coats: area.coats } : {}),
+    ...(area.feet ? { feet: area.feet } : {}),
+  };
+}
+
+/** A room's dimensions as its card shows them, from its measured feet: 52' × 52' × 8'. */
+export function paintDimensionsText(feet: PaintAreaFeet): string {
+  const n = (x: number) => String(Math.round(x * 100) / 100);
+  return `${n(feet.l)}' × ${n(feet.w)}' × ${n(feet.h)}'`;
+}
+
 /**
  * The proposal's own words for its client page, from quotes.paint_presentation: the Overall
  * Scope of Work paragraph, the Job Notes, and the What's Included checklist — the pieces a
@@ -326,4 +383,430 @@ export function paintProposalMath(surfaces: readonly PaintSurfaceInput[], settin
     profit,
     marginPct: price > 0 ? round2((profit / price) * 100) : 0,
   };
+}
+
+/* ------------------------------------------------------------------------------------------
+ * The one-screen area builder (phase 3's remainder): Josue's way of building a proposal —
+ * pick an area, say how big it is once, tap the surfaces in it on or off, and watch the room
+ * price itself. No add-a-surface screens: the area's surfaces are its price-book services,
+ * their quantities come from the room's feet, and the lines it writes are ordinary quote
+ * lines carrying the room in paint_detail, so the line list, the math panel, the packages
+ * and the client page all read them exactly as they read any other line. The rates are the
+ * price book's; coats drive the paint (quantity × coats ÷ coverage, rounded up per room,
+ * the math above) — a surface's line price is its quantity at its rate, the way the price
+ * book already prices every line in the builder.
+ * ---------------------------------------------------------------------------------------- */
+
+/** Which side of the house an area is on; its surfaces and presets follow it. */
+export type PaintAreaScope = "interior" | "exterior";
+
+/** The areas Josue picks from, interior first — his Lead Control rooms, plus a free name. */
+export const INTERIOR_AREA_PRESETS = [
+  "Master bedroom", "Bedroom", "Living room", "Kitchen", "Bathroom", "Dining room",
+  "Hallway", "Office", "Laundry room", "Closet", "Ceiling only",
+] as const;
+
+/** Exterior areas: a whole house, or one side of it at a time. */
+export const EXTERIOR_AREA_PRESETS = [
+  "Whole house", "Front", "Back", "Left side", "Right side", "Porch", "Garage",
+] as const;
+
+/** The area presets for a scope, in the order the chips show them. */
+export const paintAreaPresets = (scope: PaintAreaScope): readonly string[] =>
+  scope === "interior" ? INTERIOR_AREA_PRESETS : EXTERIOR_AREA_PRESETS;
+
+/** A preset that starts from a narrower set of surfaces than the usual walls + ceiling + trim. */
+export const PAINT_AREA_PRESET_SURFACES: Readonly<Record<string, readonly string[]>> = {
+  "Ceiling only": ["ceiling"],
+};
+
+/** How a surface's quantity comes from the room: its walls, its ceiling, its perimeter, or a count typed for it. */
+export type PaintMeasure = "walls" | "ceiling" | "perimeter" | "count";
+
+export interface PaintSurfaceDef {
+  /** The surface's key in a draft ("walls", "baseboards", "frontDoor"). */
+  key: string;
+  /** What the toggle says. */
+  label: string;
+  scope: PaintAreaScope;
+  /** The price-book category its service sits in. */
+  category: "Interior" | "Exterior";
+  /**
+   * Its price-book services by variant key — one entry ("default") for most surfaces; the
+   * baseboards carry their two sizes ("3", "5"). A surface whose service a company doesn't
+   * have (renamed, never seeded) can't be priced: the builder shows it off, not broken.
+   */
+  services: Readonly<Record<string, string>>;
+  measure: PaintMeasure;
+  /** Painted surfaces ask for coats (the steppers); per-piece surfaces (a door, shutters) ask for a count. */
+  coats: boolean;
+}
+
+/** The interior surfaces, in the order they show: the big areas, the trim work, the pieces. */
+export const INTERIOR_SURFACES: readonly PaintSurfaceDef[] = [
+  { key: "walls", label: "Walls", scope: "interior", category: "Interior", services: { default: "Interior walls" }, measure: "walls", coats: true },
+  { key: "ceiling", label: "Ceiling", scope: "interior", category: "Interior", services: { default: "Ceilings" }, measure: "ceiling", coats: true },
+  { key: "trim", label: "Trim", scope: "interior", category: "Interior", services: { default: "Trim" }, measure: "perimeter", coats: true },
+  { key: "baseboards", label: "Baseboards", scope: "interior", category: "Interior", services: { "3": "Baseboards, 3 in", "5": "Baseboards, 5 in" }, measure: "perimeter", coats: true },
+  { key: "windowTrim", label: "Window trim", scope: "interior", category: "Interior", services: { default: "Window trim" }, measure: "count", coats: false },
+  { key: "doors", label: "Doors", scope: "interior", category: "Interior", services: { default: "Doors" }, measure: "count", coats: false },
+];
+
+/** The exterior surfaces: the walls and the trim work measured off the house, the pieces counted. */
+export const EXTERIOR_SURFACES: readonly PaintSurfaceDef[] = [
+  { key: "extWalls", label: "Walls & siding", scope: "exterior", category: "Exterior", services: { default: "Exterior walls and siding" }, measure: "walls", coats: true },
+  { key: "extTrim", label: "Exterior trim", scope: "exterior", category: "Exterior", services: { default: "Exterior trim" }, measure: "perimeter", coats: true },
+  { key: "fascia", label: "Fascia", scope: "exterior", category: "Exterior", services: { default: "Fascia" }, measure: "perimeter", coats: true },
+  { key: "shutters", label: "Shutters", scope: "exterior", category: "Exterior", services: { default: "Shutters" }, measure: "count", coats: false },
+  { key: "frontDoor", label: "Front door", scope: "exterior", category: "Exterior", services: { default: "Front door" }, measure: "count", coats: false },
+  { key: "garageDoor", label: "Garage door", scope: "exterior", category: "Exterior", services: { default: "Garage door" }, measure: "count", coats: false },
+];
+
+/** A scope's surfaces, in the order they show. */
+export const paintSurfacesFor = (scope: PaintAreaScope): readonly PaintSurfaceDef[] =>
+  scope === "interior" ? INTERIOR_SURFACES : EXTERIOR_SURFACES;
+
+/**
+ * The door kinds the picker offers. A door is priced per slab in the price book, so a kind
+ * that paints two slabs (a double door, French doors) counts as two doors on the line; the
+ * kind rides in the line's description, where the client reads it.
+ */
+export const PAINT_DOOR_TYPES = [
+  { key: "single", label: "Interior door", slabs: 1 },
+  { key: "double", label: "Double door", slabs: 2 },
+  { key: "french", label: "French doors", slabs: 2 },
+] as const;
+
+export const paintDoorType = (key: string): (typeof PAINT_DOOR_TYPES)[number] =>
+  PAINT_DOOR_TYPES.find((d) => d.key === key) ?? PAINT_DOOR_TYPES[0];
+
+/** The measured quantities of a room in feet: its wall area, its ceiling, its way around. */
+export function paintAreaQuantities(feet: PaintAreaFeet): { walls: number; ceiling: number; perimeter: number } {
+  const perimeter = 2 * (feet.l + feet.w);
+  return { walls: round2(perimeter * feet.h), ceiling: round2(feet.l * feet.w), perimeter: round2(perimeter) };
+}
+
+/** One surface as the person quoting left it: on or off, its coats, its count, its variant. */
+export interface PaintAreaSurfaceState {
+  on: boolean;
+  coats: number;
+  count: number;
+  /** The chosen service variant ("3" / "5" for baseboards); "default" where there's one service. */
+  variant: string;
+}
+
+/** One area being built on the one screen: its scope, its name, its size, its surfaces, its prep. */
+export interface PaintAreaDraft {
+  scope: PaintAreaScope;
+  room: string;
+  /** The room's feet; null until they're typed (measured surfaces can't price without them). */
+  feet: PaintAreaFeet | null;
+  surfaces: Record<string, PaintAreaSurfaceState>;
+  /** The Doors surface's kind (PAINT_DOOR_TYPES key); interior areas only. */
+  doorType: string;
+  /** Prep as one fixed amount for the area, the RollerQuote way — a flat line, no paint in it. */
+  prep: { on: boolean; amount: number };
+}
+
+const surfaceState = (def: PaintSurfaceDef): PaintAreaSurfaceState => ({
+  on: def.measure !== "count" && def.key !== "baseboards",
+  coats: 2,
+  count: 1,
+  variant: Object.keys(def.services)[0] ?? "default",
+});
+
+/** A fresh area draft for a scope: measured surfaces on at two coats, counts off, prep off. */
+export function emptyPaintAreaDraft(scope: PaintAreaScope, room = ""): PaintAreaDraft {
+  const surfaces: Record<string, PaintAreaSurfaceState> = {};
+  for (const def of paintSurfacesFor(scope)) surfaces[def.key] = surfaceState(def);
+  return { scope, room, feet: null, surfaces, doorType: "single", prep: { on: false, amount: 0 } };
+}
+
+/** A price-book service, as much of it as the area builder reads. */
+export interface PaintAreaService {
+  id: string;
+  name: string;
+  category: string | null;
+  unit: string;
+  unit_price: number;
+  unit_cost?: number | null;
+  taxable: boolean;
+}
+
+/** The service a surface writes, for its chosen variant — null when the company doesn't carry it. */
+export function paintAreaServiceFor(
+  def: PaintSurfaceDef,
+  variant: string,
+  services: readonly PaintAreaService[],
+): PaintAreaService | null {
+  const name = def.services[variant] ?? def.services[Object.keys(def.services)[0] ?? "default"];
+  if (!name) return null;
+  return services.find((s) => s.name === name && s.category === def.category) ?? null;
+}
+
+/** Every service id the area builder manages for a scope — how a save knows which of a room's lines are its own. */
+export function paintAreaManagedServiceIds(scope: PaintAreaScope, services: readonly PaintAreaService[]): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const def of paintSurfacesFor(scope)) {
+    for (const variant of Object.keys(def.services)) {
+      const service = paintAreaServiceFor(def, variant, services);
+      if (service) ids.add(service.id);
+    }
+  }
+  return ids;
+}
+
+/** The name the prep line carries — how a save (and the draft reader) knows a room's flat line is its prep. */
+export const PAINT_PREP_LINE_NAME = "Prep";
+
+/** Whether a room's line is the area builder's prep line: no service behind it, named Prep. */
+export const isPaintPrepLine = (line: { service_id?: string | null; name: string }): boolean =>
+  !line.service_id && line.name === PAINT_PREP_LINE_NAME;
+
+/** One line the area builder writes: an ordinary quote line, its room in paint_detail. */
+export interface PaintAreaLine {
+  /** The surface's key, or "prep". */
+  key: string;
+  service_id: string | null;
+  name: string;
+  description: string | null;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  unit_cost: number | null;
+  taxable: boolean;
+  paint_detail: { room: string; dimensions?: string; coats?: number; feet?: PaintAreaFeet } | null;
+}
+
+/** One row of the live breakdown: what a surface measures, its rate, what it comes to, the paint it takes. */
+export interface PaintAreaBreakdownRow {
+  key: string;
+  label: string;
+  quantity: number;
+  unit: string;
+  /** The price-book rate the line writes. */
+  rate: number;
+  total: number;
+  /** The surface's coats, where it takes coats; null for per-piece surfaces and prep. */
+  coats: number | null;
+  /** This surface's share of its room's rounded-up gallons, from the proposal math. */
+  gallons: number;
+  /** On in the draft but unpriceable — its service isn't in the company's price book. */
+  missing: boolean;
+}
+
+export interface PaintAreaBuild {
+  lines: PaintAreaLine[];
+  breakdown: PaintAreaBreakdownRow[];
+  /** What the room's lines come to — the room total the screen shows. */
+  roomTotal: number;
+  /** Whole gallons the room's paint comes to, per product key — the math's count. */
+  gallonsByProduct: Record<string, number>;
+}
+
+/**
+ * The product a surface drinks from, the way the math panel picks it: trim paint for a
+ * linear-foot surface, the scope's first product for the rest. (The panel lets the office
+ * pick between a scope's products; the one screen takes the first, as the panel does until
+ * it's told otherwise.)
+ */
+function areaProductFor(
+  scope: PaintAreaScope,
+  unit: string,
+  products: readonly (PaintProduct & { key: string })[],
+): (PaintProduct & { key: string }) | null {
+  if (unit === "ft") return products.find((p) => p.scope === "trim") ?? null;
+  return products.find((p) => p.scope === scope) ?? null;
+}
+
+/**
+ * Build an area's lines and its live breakdown from a draft. Pure: the screen runs it on
+ * every tap, and a save writes `lines` as they stand. The gallons run through the proposal
+ * math with the panel's own inputs (per-piece surfaces carry their price-book cost as a flat
+ * fee and drink nothing; measured surfaces drink their product), so the room's gallons here
+ * are the panel's gallons for the same lines.
+ */
+export function buildPaintArea(
+  draft: PaintAreaDraft,
+  services: readonly PaintAreaService[],
+  settings: PaintSettings,
+  products: readonly (PaintProduct & { key: string })[],
+): PaintAreaBuild {
+  const room = draft.room.trim();
+  const quantities = draft.feet ? paintAreaQuantities(draft.feet) : null;
+  const detail = (coats: number | null) =>
+    room
+      ? paintAreaDetailJson(
+          { room, dimensions: draft.feet ? paintDimensionsText(draft.feet) : null },
+          { coats, feet: draft.feet },
+        )
+      : null;
+
+  const lines: PaintAreaLine[] = [];
+  const breakdown: PaintAreaBreakdownRow[] = [];
+  const inputs: PaintSurfaceInput[] = [];
+  const inputRows: PaintAreaBreakdownRow[] = [];
+
+  for (const def of paintSurfacesFor(draft.scope)) {
+    const state = draft.surfaces[def.key];
+    if (!state?.on) continue;
+    const service = paintAreaServiceFor(def, state.variant, services);
+    if (!service) {
+      breakdown.push({ key: def.key, label: def.label, quantity: 0, unit: "", rate: 0, total: 0, coats: def.coats ? state.coats : null, gallons: 0, missing: true });
+      continue;
+    }
+    const slabs = def.key === "doors" ? paintDoorType(draft.doorType).slabs : 1;
+    const quantity =
+      def.measure === "count"
+        ? Math.max(0, Math.round(state.count)) * slabs
+        : quantities
+          ? quantities[def.measure]
+          : 0;
+    const row: PaintAreaBreakdownRow = {
+      key: def.key,
+      label: def.label,
+      quantity,
+      unit: service.unit,
+      rate: Number(service.unit_price),
+      total: round2(quantity * Number(service.unit_price)),
+      coats: def.coats ? state.coats : null,
+      gallons: 0,
+      missing: false,
+    };
+    breakdown.push(row);
+    if (quantity <= 0) continue;
+    lines.push({
+      key: def.key,
+      service_id: service.id,
+      name: service.name,
+      description: def.key === "doors" && slabs > 1 ? paintDoorType(draft.doorType).label : null,
+      quantity,
+      unit: service.unit,
+      unit_price: Number(service.unit_price),
+      unit_cost: service.unit_cost != null ? Number(service.unit_cost) : null,
+      taxable: service.taxable,
+      paint_detail: detail(def.coats ? state.coats : null),
+    });
+    // The math's inputs for this surface, the panel's way: a per-piece surface is a flat fee
+    // at its price-book cost and drinks nothing; a measured one drinks its product.
+    if (service.unit === "ea" || service.unit === "visit" || service.unit === "job") {
+      inputs.push({ room, scope: def.scope === "interior" ? "interior" : "exterior", quantity, product: null, flatFeePerUnit: service.unit_cost != null ? Number(service.unit_cost) : null });
+    } else {
+      inputs.push({
+        room,
+        scope: def.scope === "interior" ? "interior" : "exterior",
+        quantity,
+        coats: def.coats ? state.coats : 2,
+        product: areaProductFor(def.scope, service.unit, products),
+      });
+    }
+    inputRows.push(row);
+  }
+
+  if (draft.prep.on && draft.prep.amount > 0) {
+    const amount = round2(draft.prep.amount);
+    breakdown.push({ key: "prep", label: "Prep", quantity: 1, unit: "ea", rate: amount, total: amount, coats: null, gallons: 0, missing: false });
+    lines.push({
+      key: "prep",
+      service_id: null,
+      name: PAINT_PREP_LINE_NAME,
+      description: null,
+      quantity: 1,
+      unit: "ea",
+      unit_price: amount,
+      unit_cost: null,
+      taxable: true,
+      paint_detail: detail(null),
+    });
+  }
+
+  const math = paintProposalMath(inputs, settings);
+  inputs.forEach((_, i) => {
+    inputRows[i]!.gallons = Math.round(math.surfaces[i]!.gallons * 10) / 10;
+  });
+  return {
+    lines,
+    breakdown,
+    roomTotal: round2(lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)),
+    gallonsByProduct: math.gallonsByProduct,
+  };
+}
+
+/** A stored line, as much of it as the draft reader reads. */
+export interface PaintAreaStoredLine {
+  service_id?: string | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unit_price: number;
+  paint_detail?: unknown;
+}
+
+const FEET_TEXT = /([\d.]+)\s*['′]?\s*[×x]\s*([\d.]+)\s*['′]?\s*[×x]\s*([\d.]+)/;
+
+/** A room's feet from a stored line: the builder's own feet when it wrote them, else its dimensions text read back. */
+function storedFeet(lines: readonly PaintAreaStoredLine[]): PaintAreaFeet | null {
+  for (const line of lines) {
+    const feet = paintAreaDetailFrom(line.paint_detail).feet;
+    if (feet) return feet;
+  }
+  for (const line of lines) {
+    const dims = paintDetailFrom(line.paint_detail).dimensions;
+    const match = dims ? FEET_TEXT.exec(dims) : null;
+    if (match) {
+      const feet = { l: Number(match[1]), w: Number(match[2]), h: Number(match[3]) };
+      if (feet.l > 0 && feet.w > 0 && feet.h > 0) return feet;
+    }
+  }
+  return null;
+}
+
+/**
+ * Read an area back from its stored lines — reopening a room in the builder shows the
+ * surfaces, coats and counts it was saved with. The scope comes from its services'
+ * categories; a room whose lines the builder doesn't manage (a custom item someone added)
+ * keeps those lines untouched and reads as just its managed surfaces. Null when none of
+ * the room's lines are the builder's.
+ */
+export function paintAreaDraftFromLines(
+  room: string,
+  lines: readonly PaintAreaStoredLine[],
+  services: readonly PaintAreaService[],
+): PaintAreaDraft | null {
+  const byId = new Map(services.map((s) => [s.id, s]));
+  let scope: PaintAreaScope | null = null;
+  for (const line of lines) {
+    const service = line.service_id ? byId.get(line.service_id) : null;
+    if (service?.category === "Interior") scope = "interior";
+    if (service?.category === "Exterior") scope = "exterior";
+    if (scope) break;
+  }
+  const prepLine = lines.find((l) => isPaintPrepLine(l));
+  if (!scope && !prepLine) return null;
+  const draft = emptyPaintAreaDraft(scope ?? "interior", room);
+  draft.feet = storedFeet(lines);
+  draft.prep = prepLine ? { on: true, amount: Number(prepLine.unit_price) } : { on: false, amount: 0 };
+  if (!scope) return draft;
+  for (const def of paintSurfacesFor(scope)) draft.surfaces[def.key]!.on = false;
+  for (const def of paintSurfacesFor(scope)) {
+    for (const variant of Object.keys(def.services)) {
+      const service = paintAreaServiceFor(def, variant, services);
+      if (!service) continue;
+      const line = lines.find((l) => l.service_id === service.id);
+      if (!line) continue;
+      const state = draft.surfaces[def.key]!;
+      state.on = true;
+      state.variant = variant;
+      state.coats = paintAreaDetailFrom(line.paint_detail).coats ?? 2;
+      if (def.key === "doors") {
+        const type = PAINT_DOOR_TYPES.find((d) => d.label === line.description) ?? PAINT_DOOR_TYPES[0];
+        draft.doorType = type.key;
+        state.count = Math.max(1, Math.round(Number(line.quantity) / type.slabs));
+      } else if (def.measure === "count") {
+        state.count = Math.max(1, Math.round(Number(line.quantity)));
+      }
+      break;
+    }
+  }
+  return draft;
 }

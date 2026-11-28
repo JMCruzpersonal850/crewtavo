@@ -14,6 +14,7 @@ import { adminClient } from "../lib/supabase";
 import { geocodeAddress, suggestPlaces } from "../services/external";
 import { bookAskedTime, nextOpenings } from "../services/onlineBooking";
 import { geocodeLater, geocodeProperty } from "../services/properties";
+import { recordPing, stopSharing } from "../services/tracking";
 import { answerVisitChange } from "../services/visitChanges";
 import { bulkVisits, createVisits, findTime, generateVisits, MAX_ROUTE_STOPS, newVisitInput, previewRoute, saveRoute, scheduleRange, shiftDay, undoRoute, updateVisit, visitChangeInput, type Scope } from "../services/schedule";
 
@@ -139,6 +140,23 @@ schedule.get("/schedule", requireUser, requireCompany(WITH_SUBS), async (c) => {
 /** Changes a visit. The crew and subs change their own visit's status and notes (services/schedule.ts). */
 schedule.patch("/visits/:id", requireUser, requireCompany(WITH_SUBS), async (c) => {
   return c.json(await updateVisit(scope(c), param(c, "id"), await readJson(c, visitChangeInput)));
+});
+
+/**
+ * A crew phone's place while its visit is on the way, for the client's live map: kept as the
+ * visit's latest place only (services/tracking.ts recordPing, which checks the person is on the
+ * visit). Subs don't share a place in v1: their visits come by offer, not by crew.
+ */
+schedule.post("/visits/:id/ping", requireUser, requireCompany(WITH_SUBS), async (c) => {
+  if (c.var.role === "subcontractor") throw new HttpError(403, "Subcontractors don't share a live location.");
+  const body = await readJson(c, z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().nonnegative().max(100_000).optional() }));
+  return c.json(await recordPing(adminClient(c.env), c.var.companyId, param(c, "id"), c.var.userId, body));
+});
+
+/** The worker's Stop sharing on a visit they're on the way to: the client's map stops there. */
+schedule.post("/visits/:id/stop-sharing", requireUser, requireCompany(WITH_SUBS), async (c) => {
+  if (c.var.role === "subcontractor") throw new HttpError(403, "Subcontractors don't share a live location.");
+  return c.json(await stopSharing(adminClient(c.env), c.var.companyId, param(c, "id"), c.var.userId));
 });
 
 /** Rain day: move every open visit from one date to another, keeping each visit's local time. */

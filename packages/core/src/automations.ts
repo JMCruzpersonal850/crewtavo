@@ -98,7 +98,8 @@ export const TRIGGERS: TriggerDef[] = [
   // {{date}} and {{time}} are when it was to be: by now the visit has no day, or is gone.
   { verb: "visit.cancelled", label: "A visit is cancelled", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.reminder", label: "A visit is tomorrow", group: "Visits", subject: "visit", delayable: false },
-  { verb: "visit.en_route", label: "A crew is on the way", group: "Visits", subject: "visit", delayable: false },
+  { verb: "visit.en_route", label: "A crew is on the way", group: "Visits", subject: "visit", delayable: false,
+    variables: [{ token: "tracking_link", label: "Live tracking link" }] },
   { verb: "visit.started", label: "A visit starts", group: "Visits", subject: "visit", delayable: false },
   { verb: "visit.completed", label: "A visit is completed", group: "Visits", subject: "visit", delayable: true },
   // With Snow installed (20261113000100_snow_app.sql), for snow customers set to be told: their storm

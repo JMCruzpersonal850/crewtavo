@@ -35,6 +35,7 @@ import { GeofenceCard } from "./GeofenceCard";
 import { InstallAppCard } from "./InstallAppCard";
 import { SnowAvailabilityCard } from "../snow/SnowAvailabilityCard";
 import { dayOrder, myDayKey, useMyDay, type MyDayVisit } from "./myDay";
+import { LiveSharingRun } from "./LiveSharingNote";
 import { OfflineNote } from "./OfflineNote";
 import { SpanishOffer } from "./SpanishOffer";
 import { featureOn } from "@/components/shell/nav";
@@ -111,6 +112,8 @@ export function FieldTodayPage() {
       <FieldHeader kicker={new Date().toLocaleDateString(intlLocale(), { weekday: "long", month: "long", day: "numeric", timeZone: tz })} title={t("My day")} />
 
       <OfflineNote />
+      {/* A visit sent on its way from here still feeds the client's live map while this screen is open. */}
+      <LiveSharingRun visitId={open.find((v) => v.status === "en_route")?.id ?? null} />
       {languageChoice() && <SpanishOffer />}
       {!hasRole(session, "admin", "office", "estimator") && <InstallAppCard />}
       {/* The clock at the property, when the company has it on: what the phone asks as they get there and leave. */}

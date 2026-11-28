@@ -80,8 +80,9 @@ describe("what a client hears about a visit", () => {
 
 describe("the starters a switch puts back", () => {
   const read = (name: string) => readFileSync(fileURLToPath(new URL(`../../../supabase/migrations/${name}`, import.meta.url)), "utf8");
-  // A visit booked, moved or cancelled has its own (private.install_visit_notice_rules); the rest are install_default_automations'.
-  const defaults = read("20261105000210_on_my_way_eta.sql");
+  // A visit booked, moved or cancelled has its own (private.install_visit_notice_rules); the rest are install_default_automations',
+  // whose latest full writing is the live-tracking migration's (the on-my-way starter carries the tracking link there).
+  const defaults = read("20261124000500_visit_live_location.sql");
   const visits = read("20261113000510_visit_notice_rules.sql");
   /** A string as the migrations write it: E'…' with '' for a quote and \n for a new line. */
   const sql = (text: string) => (text.includes("\n") ? `E'${text.replace(/'/g, "''").replace(/\n/g, "\\n")}'` : `'${text.replace(/'/g, "''")}'`);

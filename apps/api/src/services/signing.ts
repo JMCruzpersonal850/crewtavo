@@ -11,6 +11,7 @@
  */
 import { pickTemplate } from "@crewtavo/core/documents";
 import { countsOn } from "@crewtavo/core/money";
+import { brandColor } from "@crewtavo/core/social";
 import { z } from "zod";
 import type { Env } from "../env";
 import { firstName, isEmail, renderEmail } from "../lib/email";
@@ -287,7 +288,7 @@ async function deliverCopy(s: SigningScope, quote: Quote, company: Company, link
       const text = email(linkFor("email", to));
       result = await sendEmail(
         s.env,
-        { to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer }), replyTo: company.email ?? undefined, fromName: company.name },
+        { to, subject, ...renderEmail({ companyName: company.name, logo: logoImage(s.baseUrl, s.companyId, company.settings), text, footer, color: brandColor(company.settings) ?? "#0f2a35" }), replyTo: company.email ?? undefined, fromName: company.name },
         s.companyId,
       );
     } else {
