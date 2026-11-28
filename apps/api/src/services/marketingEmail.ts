@@ -8,6 +8,7 @@
  * the copies of it that go to a client's contacts don't (`unsubscribe: false`).
  */
 import type { Env } from "../env";
+import { brandColor } from "@crewtavo/core/social";
 import { renderEmail } from "../lib/email";
 import { clientLink } from "../lib/links";
 import { sendEmail, type SendResult } from "../lib/notify";
@@ -54,6 +55,7 @@ export async function emailClient(
         pixel: d.track?.pixel,
         buttons: d.buttons,
         showUrls: d.showUrls,
+        color: brandColor(d.company.settings) ?? "#0f2a35",
       }),
       replyTo: d.company.email ?? undefined,
       fromName: d.company.name,

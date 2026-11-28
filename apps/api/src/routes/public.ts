@@ -63,6 +63,7 @@ import {
   turnOffAutopay,
 } from "../services/autopay";
 import { geocodeAddress } from "../services/external";
+import { trackView } from "../services/tracking";
 import { quoteReviewsFor } from "../services/googleReviews";
 import { saveLocation } from "../services/properties";
 import { draftArrivedRequest } from "../services/quoteDrafts";
@@ -433,6 +434,18 @@ async function hubFields(admin: ReturnType<typeof adminClient>, companyId: strin
   const shown = (where: "pdf" | "portal") => shownCustomFields(data ?? [], values, where).map(({ label, text }) => ({ label, text }));
   return { pdf_fields: shown("pdf"), portal_fields: shown("portal") };
 }
+
+/**
+ * The client's live map of the crew on the way (the /track/:token page): a signed link of kind
+ * "track", minted by the on-my-way automation for one visit. The data is shaped by
+ * services/tracking.ts trackView — the visit's own status decides what shows, so a link
+ * outliving the drive shows the visit as arrived or ended, never a stale place.
+ */
+publicRoutes.get("/track/:token", async (c) => {
+  const payload = await readClientLink(c.env, c.req.param("token") ?? "");
+  if (!payload || payload.t !== "track") throw new HttpError(404, "This link has expired or isn't valid. Ask for a new one.");
+  return c.json(await trackView(adminClient(c.env), payload.c, payload.id));
+});
 
 publicRoutes.get("/hub/:token", async (c) => {
   const l = await link(c);
@@ -1183,6 +1196,34 @@ async function findForm(c: Parameters<typeof appUrl>[0]) {
   );
   return { admin, company, form };
 }
+
+/**
+ * The company's booking page (/book/:company in the web app): every form that's on, so a visitor
+ * picks what they came for — an estimate, a service, a plain request — and lands on that form,
+ * the way a single form that starts by asking what the visit is for does. Names and kinds only:
+ * no questions, no times, nothing about the schedule.
+ */
+publicRoutes.get("/public/forms/:company", async (c) => {
+  if (!(await allow(c.env, `form-index:ip:${clientIp(c)}`, 60, 60 * 60))) throw new HttpError(429, "Too many tries. Try again later, or call us.");
+  const admin = adminClient(c.env);
+  const company = must(
+    await admin.from("companies").select("id, name, phone, settings").eq("slug", c.req.param("company") ?? "").maybeSingle(),
+    "Company not found.",
+  );
+  const { data } = await admin
+    .from("intake_forms")
+    .select("slug, name, kind, pick_time, requires_approval")
+    .eq("company_id", company.id)
+    .eq("active", true)
+    .order("name");
+  return c.json({
+    company: {
+      name: company.name, phone: company.phone, logo: logoImage("", company.id, company.settings)?.src ?? null, color: brandColor(company.settings),
+      privacy_url: privacyUrl(company.settings as Record<string, unknown> | null),
+    },
+    forms: (data ?? []).map((f) => ({ slug: f.slug, name: f.name, kind: f.kind, pick_time: f.pick_time, requires_approval: f.requires_approval })),
+  });
+});
 
 publicRoutes.post("/public/forms/:company/:form/promo", async (c) => {
   if (!(await allow(c.env, `promo:${clientIp(c)}`, 10, 10 * 60))) throw new HttpError(429, "Too many tries. Wait a few minutes and try again.");
@@ -2130,37 +2171,111 @@ publicRoutes.post("/public/unsubscribe/:token", async (c) => {
 });
 
 /**
- * Tracked review link: records the open, which stops its reminders, then sends the client to the
- * review page. The link is the ask's short token (review_requests.link_token), or the signed token
- * links sent before had. It works with Marketing uninstalled too: the client asked for nothing.
- *
- * Opens are honest: a HEAD request (a link checker) and a link preview (a text's, a chat app's)
- * aren't counted, nor is anything in the first 30 seconds after the ask or a reminder went (a mail
- * scanner's: track_review_click). The client still goes to the review page either way.
+ * What a review link points at, whichever kind it is: the ask's short token
+ * (review_requests.link_token), or the signed token links sent before had. A signed link names
+ * its business, so it still works when the ask is gone — the ask is then null, and only the
+ * company is known. `message`/`status` say why not, in the words the link's own page has always
+ * used.
+ */
+type ReviewLinkTarget =
+  | { ok: true; short: boolean; payload: ClientLink | null; companyId: string; ask: { id: string; client_id: string; job_id: string | null } | null }
+  | { ok: false; status: 404 | 503; message: string };
+
+async function reviewLinkTarget(c: Context<AppEnv>, token: string): Promise<ReviewLinkTarget> {
+  const short = REVIEW_TOKEN.test(token);
+  const payload = short ? null : await readClientLink(c.env, token);
+  if (!short && (!payload || payload.t !== "review")) return { ok: false, status: 404, message: "This link has expired." };
+  const admin = adminClient(c.env);
+  if (short) {
+    const { data: ask, error } = await admin.from("review_requests").select("id, company_id, client_id, job_id").eq("link_token", token).maybeSingle();
+    if (error) return { ok: false, status: 503, message: "This link can't be opened right now. Try again in a minute." };
+    if (!ask) return { ok: false, status: 404, message: "This link isn't valid anymore." };
+    return { ok: true, short, payload, companyId: ask.company_id, ask: { id: ask.id, client_id: ask.client_id, job_id: ask.job_id } };
+  }
+  const { data: ask } = await admin.from("review_requests").select("id, client_id, job_id").eq("company_id", payload!.c).eq("id", payload!.id).maybeSingle();
+  return { ok: true, short, payload, companyId: payload!.c, ask: ask ? { id: ask.id, client_id: ask.client_id, job_id: ask.job_id } : null };
+}
+
+/** The business a review link is for and the review page its happy clients go on to. */
+async function reviewGateTarget(c: Context<AppEnv>, token: string): Promise<{ ok: true; target: Extract<ReviewLinkTarget, { ok: true }>; company: { name: string; settings: unknown }; reviewUrl: string } | { ok: false; status: 404 | 503; message: string }> {
+  const target = await reviewLinkTarget(c, token);
+  if (!target.ok) return target;
+  const { data: company } = await adminClient(c.env).from("companies").select("name, settings").eq("id", target.companyId).maybeSingle();
+  const url = (company?.settings as { review_url?: string } | null)?.review_url;
+  if (!company || !url || !/^https:\/\//.test(url)) return { ok: false, status: 404, message: "This business hasn't set up reviews yet." };
+  return { ok: true, target, company: { name: company.name, settings: company.settings }, reviewUrl: url };
+}
+
+/**
+ * Record a review link's open, which stops its reminders. Opens are honest: a HEAD request (a
+ * link checker) and a link preview (a text's, a chat app's) aren't counted, nor is anything in
+ * the first 30 seconds after the ask or a reminder went (a mail scanner's: track_review_click).
+ * The database counts an ask's open once, so the gate page asking again changes nothing.
+ */
+async function countReviewOpen(c: Context<AppEnv>, target: Extract<ReviewLinkTarget, { ok: true }>, token: string): Promise<void> {
+  const count = c.req.method === "GET" && !linkPreview(c.req.header("User-Agent"));
+  const { error } = await adminClient(c.env).rpc("track_review_click", target.short ? { p_token: token, p_count: count } : { p_company: target.payload!.c, p_id: target.payload!.id, p_count: count });
+  if (error) console.error("A review link's open wasn't recorded", error);
+}
+
+/**
+ * Tracked review link: records the open, which stops its reminders, then sends the client to
+ * the review gate (the web's /r/<token>), where they're asked how it went first. 4-5 stars go
+ * on to the business's review page; 1-3 stay private as feedback (review_feedback). The gate is
+ * the open either way, so a gated ask's reminders stop exactly like a redirected one's did. It
+ * works with Marketing uninstalled too: the client asked for nothing.
  */
 publicRoutes.get("/public/r/:token", async (c) => {
   const token = c.req.param("token") ?? "";
-  const short = REVIEW_TOKEN.test(token);
-  const payload = short ? null : await readClientLink(c.env, token);
-  if (!short && (!payload || payload.t !== "review")) return c.text("This link has expired.", 404);
-  const admin = adminClient(c.env);
-  // A signed link names its business, so it still goes to the review page when the ask is gone.
-  let companyId = payload?.c ?? null;
-  if (short) {
-    const { data: ask, error } = await admin.from("review_requests").select("company_id").eq("link_token", token).maybeSingle();
-    if (error) return c.text("This link can't be opened right now. Try again in a minute.", 503);
-    if (!ask) return c.text("This link isn't valid anymore.", 404);
-    companyId = ask.company_id;
-  }
-  const { data: company } = await admin.from("companies").select("settings").eq("id", companyId!).maybeSingle();
-  const url = (company?.settings as { review_url?: string } | null)?.review_url;
-  if (!url || !/^https:\/\//.test(url)) return c.text("This business hasn't set up reviews yet.", 404);
-  const count = c.req.method === "GET" && !linkPreview(c.req.header("User-Agent"));
-  const { error } = await admin.rpc("track_review_click", short ? { p_token: token, p_count: count } : { p_company: payload!.c, p_id: payload!.id, p_count: count });
-  // The client still gets to the review page.
-  if (error) console.error("A review link's open wasn't recorded", error);
+  const gate = await reviewGateTarget(c, token);
+  if (!gate.ok) return c.text(gate.message, gate.status);
+  await countReviewOpen(c, gate.target, token);
   c.header("Referrer-Policy", "no-referrer");
-  return c.redirect(url, 302);
+  return c.redirect(`/r/${token}`, 302);
+});
+
+/** The gate page's facts: the business as the client should see it, and where 4-5 stars lead. */
+publicRoutes.get("/public/r/:token/gate", async (c) => {
+  const token = c.req.param("token") ?? "";
+  const gate = await reviewGateTarget(c, token);
+  if (!gate.ok) throw new HttpError(gate.status, gate.message);
+  // A client who lands on the gate page itself (a forwarded link) has opened the ask too.
+  await countReviewOpen(c, gate.target, token);
+  return c.json({
+    company: gate.company.name, logo: logoImage("", gate.target.companyId, gate.company.settings)?.src ?? null, color: brandColor(gate.company.settings),
+    review_url: gate.reviewUrl, privacy_url: privacyUrl(gate.company.settings as Record<string, unknown> | null),
+  });
+});
+
+/**
+ * The gate's other half: a 1-3 star client tells the business what went wrong instead of
+ * posting it publicly. One note per ask — a second submit (a double tap, a reopened page) is
+ * the same note, not a new one. A signed link whose ask is gone still leaves its note, with
+ * only the business known.
+ */
+publicRoutes.post("/public/r/:token/feedback", async (c) => {
+  const token = c.req.param("token") ?? "";
+  const body = (await c.req.json().catch(() => null)) as { stars?: unknown; comment?: unknown } | null;
+  const stars = typeof body?.stars === "number" && Number.isInteger(body.stars) ? body.stars : null;
+  if (stars === null || stars < 1 || stars > 3) throw new HttpError(400, "Private feedback is for 1 to 3 stars — 4 or 5 go on the review page instead.");
+  const comment = typeof body?.comment === "string" ? body.comment.trim().slice(0, 2000) : "";
+  const target = await reviewLinkTarget(c, token);
+  if (!target.ok) throw new HttpError(target.status, target.message);
+  const admin = adminClient(c.env);
+  if (target.ask) {
+    const { data: existing } = await admin.from("review_feedback").select("id").eq("company_id", target.companyId).eq("review_request_id", target.ask.id).maybeSingle();
+    if (existing) return c.json({ ok: true, already: true });
+  }
+  const { error } = await admin.from("review_feedback").insert({
+    company_id: target.companyId,
+    client_id: target.ask?.client_id ?? null,
+    job_id: target.ask?.job_id ?? null,
+    review_request_id: target.ask?.id ?? null,
+    stars,
+    comment: comment || null,
+  });
+  if (error) throw dbError(error);
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------------------------

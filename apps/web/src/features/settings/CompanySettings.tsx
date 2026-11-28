@@ -23,6 +23,7 @@ import { useSession } from "@/lib/session";
 import { formatPhoneTyping } from "@/lib/validate";
 import { CompanyLogo } from "./CompanyLogo";
 import { JobCostSettings } from "./JobCostSettings";
+import { PipelineStageSettings } from "./PipelineStageSettings";
 import { NextNumbers } from "./NextNumberSettings";
 import { QuoteSettings } from "./QuoteSettings";
 import { SaveBar, Suffix, SwitchRow, unsavedCount } from "./SettingsKit";
@@ -339,6 +340,8 @@ export function CompanySettings() {
     </form>
     {/* Saved by itself: the hourly profit check goes by when its line changes. */}
     <JobCostSettings settings={(details.data?.settings ?? {}) as Record<string, unknown>} />
+    {/* Saved by itself: the board's stage names and folded stages. */}
+    <PipelineStageSettings settings={(details.data?.settings ?? {}) as Record<string, unknown>} />
     {/* Saved by itself, through the database's own function: not one of the settings above. */}
     <NextNumbers />
     <QuoteSettings />

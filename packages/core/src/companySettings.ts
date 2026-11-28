@@ -14,7 +14,19 @@ import type { Role } from "./roles";
 export const SEES_ALL_SETTINGS: readonly Role[] = ["owner", "admin", "office", "estimator"];
 
 /** Settings crew leads and field crew read as they are. */
-export const FIELD_SETTINGS = ["clock", "branding", "working_hours", "schedule", "depot", "arrival_window_min", "maps", "files", "contact_messages", "receipt_reading"] as const;
+export const FIELD_SETTINGS = ["clock", "branding", "working_hours", "schedule", "depot", "arrival_window_min", "maps", "files", "contact_messages", "receipt_reading", "tracking"] as const;
+
+/**
+ * Whether clients can follow the crew live while they're on the way (settings.tracking.live):
+ * on unless the company turned it off. The crew's phone shares its place only between the
+ * On my way tap and the visit starting, and only after the worker has acknowledged the
+ * en_route_sharing notice (worker_notices).
+ */
+export function liveTrackingOn(settings: unknown): boolean {
+  const all = settings && typeof settings === "object" && !Array.isArray(settings) ? (settings as Record<string, unknown>) : {};
+  const tracking = all.tracking as { live?: unknown } | undefined;
+  return tracking?.live !== false;
+}
 
 /** Apps the business turns on (Apps), of which crew leads and field crew read only whether each is on. */
 export const FIELD_APPS = ["team_chat", "drive", "marketing", "paving_app", "roofing_app", "snow_app", "careers", "website"] as const;

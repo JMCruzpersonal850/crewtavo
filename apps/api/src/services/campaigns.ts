@@ -13,6 +13,7 @@
 import { renderTemplate } from "@crewtavo/core";
 import { HUB_HOME_BUTTON, trackableLinks } from "@crewtavo/core/campaigns";
 import { marketingOn } from "@crewtavo/core/marketing";
+import { brandColor } from "@crewtavo/core/social";
 import type { Env } from "../env";
 import { firstName, renderEmail } from "../lib/email";
 import { dbError, HttpError, must } from "../lib/http";
@@ -152,6 +153,7 @@ export async function processCampaigns(env: Env, options: { campaignId?: string;
           unsubscribeUrl: unsubscribe,
           ...trackedLinks(baseUrl, r.track_token, links),
           buttons: { [vars.link]: HUB_HOME_BUTTON },
+          color: brandColor(company.settings) ?? "#0f2a35",
         });
         // The claim is renewed right before each email, with the links it carries (its tracked links
         // go only to these). A slow mail server can take minutes per message, so a batch can outlast

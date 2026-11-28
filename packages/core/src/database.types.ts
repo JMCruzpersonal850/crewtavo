@@ -26,6 +26,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"ai_calls": {
+                  Row: {
+                    "called_number": string | null,"caller_name": string | null,"caller_phone": string | null,"client_id": string | null,"company_id": string,"created_at": string,"duration_seconds": number | null,"ended_at": string | null,"extracted": NonNullable<Json>,"id": string,"outcome": string,"provider": string,"provider_call_id": string | null,"raw": Json | null,"recording_url": string | null,"request_id": string | null,"started_at": string | null,"summary": string | null,"transcript": string | null,"updated_at": string,"visit_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "called_number"?: string | null,"caller_name"?: string | null,"caller_phone"?: string | null,"client_id"?: string | null,"company_id": string,"created_at"?: string,"duration_seconds"?: number | null,"ended_at"?: string | null,"extracted"?: NonNullable<Json>,"id"?: string,"outcome"?: string,"provider": string,"provider_call_id"?: string | null,"raw"?: Json | null,"recording_url"?: string | null,"request_id"?: string | null,"started_at"?: string | null,"summary"?: string | null,"transcript"?: string | null,"updated_at"?: string,"visit_id"?: string | null
+                  }
+                  Update: {
+                    "called_number"?: string | null,"caller_name"?: string | null,"caller_phone"?: string | null,"client_id"?: string | null,"company_id"?: string,"created_at"?: string,"duration_seconds"?: number | null,"ended_at"?: string | null,"extracted"?: NonNullable<Json>,"id"?: string,"outcome"?: string,"provider"?: string,"provider_call_id"?: string | null,"raw"?: Json | null,"recording_url"?: string | null,"request_id"?: string | null,"started_at"?: string | null,"summary"?: string | null,"transcript"?: string | null,"updated_at"?: string,"visit_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "ai_calls_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "ai_calls_company_id_client_id_fkey"
+      columns: ["company_id","client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "ai_calls_company_id_request_id_fkey"
+      columns: ["company_id","request_id"]
+isOneToOne: false
+      referencedRelation: "requests"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "ai_calls_company_id_visit_id_fkey"
+      columns: ["company_id","visit_id"]
+isOneToOne: false
+      referencedRelation: "visits"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
                 },"app_secrets": {
                   Row: {
                     "ciphertext": string,"created_at": string,"name": string
@@ -2806,6 +2844,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"review_feedback": {
+                  Row: {
+                    "client_id": string | null,"comment": string | null,"company_id": string,"created_at": string,"handled_at": string | null,"id": string,"job_id": string | null,"review_request_id": string | null,"stars": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "client_id"?: string | null,"comment"?: string | null,"company_id": string,"created_at"?: string,"handled_at"?: string | null,"id"?: string,"job_id"?: string | null,"review_request_id"?: string | null,"stars": number
+                  }
+                  Update: {
+                    "client_id"?: string | null,"comment"?: string | null,"company_id"?: string,"created_at"?: string,"handled_at"?: string | null,"id"?: string,"job_id"?: string | null,"review_request_id"?: string | null,"stars"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "review_feedback_company_id_client_id_fkey"
+      columns: ["company_id","client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "review_feedback_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "review_feedback_company_id_job_id_fkey"
+      columns: ["company_id","job_id"]
+isOneToOne: false
+      referencedRelation: "jobs"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "review_feedback_company_id_review_request_id_fkey"
+      columns: ["company_id","review_request_id"]
+isOneToOne: false
+      referencedRelation: "review_requests"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
                 },"review_requests": {
                   Row: {
                     "channel": string,"clicked_at": string | null,"client_id": string,"company_id": string,"created_by": string | null,"error": string | null,"id": string,"job_id": string | null,"last_reminder_at": string | null,"link_token": string,"next_reminder_at": string | null,"reminder_claim": string | null,"reminder_error": string | null,"reminder_locked_until": string | null,"reminder_note": string | null,"reminders_failed": number,"reminders_sent": number,"reviewed_at": string | null,"sent_at": string,"status": string
@@ -4014,6 +4090,90 @@ isOneToOne: false
       referencedColumns: ["company_id","id"]
     },{
       foreignKeyName: "visit_extras_company_id_visit_id_fkey"
+      columns: ["company_id","visit_id"]
+isOneToOne: false
+      referencedRelation: "visits"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"visit_live_location": {
+                  Row: {
+                    "accuracy": number | null,"company_id": string,"created_at": string,"lat": number | null,"lng": number | null,"recorded_at": string | null,"sharing_stopped_at": string | null,"updated_at": string,"user_id": string | null,"visit_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accuracy"?: number | null,"company_id": string,"created_at"?: string,"lat"?: number | null,"lng"?: number | null,"recorded_at"?: string | null,"sharing_stopped_at"?: string | null,"updated_at"?: string,"user_id"?: string | null,"visit_id": string
+                  }
+                  Update: {
+                    "accuracy"?: number | null,"company_id"?: string,"created_at"?: string,"lat"?: number | null,"lng"?: number | null,"recorded_at"?: string | null,"sharing_stopped_at"?: string | null,"updated_at"?: string,"user_id"?: string | null,"visit_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "visit_live_location_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "visit_live_location_company_id_visit_id_fkey"
+      columns: ["company_id","visit_id"]
+isOneToOne: true
+      referencedRelation: "visits"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"visit_measurements": {
+                  Row: {
+                    "company_id": string,"created_at": string,"created_by": string | null,"height_ft": number | null,"id": string,"label": string,"length_ft": number,"notes": string | null,"photo_id": string | null,"updated_at": string,"visit_id": string,"width_ft": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "company_id": string,"created_at"?: string,"created_by"?: string | null,"height_ft"?: number | null,"id"?: string,"label": string,"length_ft": number,"notes"?: string | null,"photo_id"?: string | null,"updated_at"?: string,"visit_id": string,"width_ft": number
+                  }
+                  Update: {
+                    "company_id"?: string,"created_at"?: string,"created_by"?: string | null,"height_ft"?: number | null,"id"?: string,"label"?: string,"length_ft"?: number,"notes"?: string | null,"photo_id"?: string | null,"updated_at"?: string,"visit_id"?: string,"width_ft"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "visit_measurements_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "visit_measurements_company_id_visit_id_fkey"
+      columns: ["company_id","visit_id"]
+isOneToOne: false
+      referencedRelation: "visits"
+      referencedColumns: ["company_id","id"]
+    }
+                  ]
+                },"visit_voice_reports": {
+                  Row: {
+                    "audio_path": string,"company_id": string,"created_at": string,"created_by": string | null,"id": string,"items": NonNullable<Json>,"problem": string | null,"quote_id": string | null,"status": string,"transcript": string | null,"updated_at": string,"visit_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "audio_path": string,"company_id": string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"items"?: NonNullable<Json>,"problem"?: string | null,"quote_id"?: string | null,"status"?: string,"transcript"?: string | null,"updated_at"?: string,"visit_id": string
+                  }
+                  Update: {
+                    "audio_path"?: string,"company_id"?: string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"items"?: NonNullable<Json>,"problem"?: string | null,"quote_id"?: string | null,"status"?: string,"transcript"?: string | null,"updated_at"?: string,"visit_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "visit_voice_reports_company_id_fkey"
+      columns: ["company_id"]
+isOneToOne: false
+      referencedRelation: "companies"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "visit_voice_reports_company_id_quote_id_fkey"
+      columns: ["company_id","quote_id"]
+isOneToOne: false
+      referencedRelation: "quotes"
+      referencedColumns: ["company_id","id"]
+    },{
+      foreignKeyName: "visit_voice_reports_company_id_visit_id_fkey"
       columns: ["company_id","visit_id"]
 isOneToOne: false
       referencedRelation: "visits"

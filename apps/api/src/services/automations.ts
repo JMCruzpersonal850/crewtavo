@@ -29,6 +29,7 @@ import {
   evaluateConditions,
   isAutopayTrigger,
   isVisitNotice,
+  liveTrackingOn,
   localDate,
   memberPermissions,
   renderTemplate,
@@ -50,9 +51,11 @@ import { hidesExactPrice } from "@crewtavo/core/estimates";
 import { inTextQuietHours, marketingOn, REFERRAL_GAP_DAYS, REVIEW_GAP_DAYS, textQuietHoursEnd, textsOffReason } from "@crewtavo/core/marketing";
 import { clientRecipients, type Recipient } from "@crewtavo/core/recipients";
 import { countsOn } from "@crewtavo/core/money";
+import { brandColor } from "@crewtavo/core/social";
 import type { Env } from "../env";
 import { companyAddress, companyFooter, firstName, isEmail, renderEmail } from "../lib/email";
-import { clientLink, KEPT_LINK } from "../lib/links";
+import { clientLink, KEPT_LINK, KEPT_TRACKING_LINK } from "../lib/links";
+import { trackingLink } from "./tracking";
 import { peopleOnVisits } from "./visitPeople";
 import { sendEmail, sendSms } from "../lib/notify";
 import { adminClient, type Db } from "../lib/supabase";
@@ -570,6 +573,31 @@ export async function withAutopayLink(env: Env, ctx: RunContext, trigger: string
 }
 
 /**
+ * Adds {{tracking_link}} to a run about a crew setting out (visit.en_route): the signed link to
+ * the client's live map of this visit (services/tracking.ts). Only while the company shares live
+ * tracking (settings.tracking.live — off stops the link, and the pings and page with it). A rule
+ * whose words don't use it still carries the link: the send adds "Track them live: …" when the
+ * rendered words leave it out (withTrackingLine), as Lead Control's text does, so a company that
+ * edited its on-my-way words long ago gets the link too.
+ */
+export async function withTrackingLink(env: Env, ctx: RunContext, trigger: string, baseUrl: string | null): Promise<RunContext> {
+  if (!baseUrl || trigger !== "visit.en_route" || ctx.subject !== "visit" || !liveTrackingOn(ctx.company.settings)) return ctx;
+  return { ...ctx, vars: { ...ctx.vars, tracking_link: await trackingLink(env, baseUrl, ctx.company.id, ctx.id) } };
+}
+
+/**
+ * A sent message's words with the tracking line on, when the run has a live link and the words
+ * as rendered don't already carry it (the template never mentioned {{tracking_link}}, or a
+ * contact's copy of the link differs). The copy the team keeps never gets the line: its
+ * {{tracking_link}} is KEPT_TRACKING_LINK, as every kept link is no link.
+ */
+export function withTrackingLine(body: string, ctx: RunContext): string {
+  const link = ctx.vars.tracking_link;
+  if (ctx.trigger !== "visit.en_route" || typeof link !== "string" || !link || body.includes(link)) return body;
+  return `${body}\nTrack them live: ${link}`;
+}
+
+/**
  * The values for a client's email or text that goes to one of their contacts: the client links in it
  * are the office's copies (via "office", as Copy Client Hub link makes them), so none can be used to
  * confirm a card for the client or add a tip to their saved card. Everything else is as the client's
@@ -600,6 +628,7 @@ export async function officeVars(env: Env, ctx: RunContext, baseUrl: string | nu
 export function keptVars(ctx: RunContext): TemplateVars {
   const vars: TemplateVars = { ...ctx.vars };
   if (vars.link) vars.link = KEPT_LINK;
+  if (vars.tracking_link) vars.tracking_link = KEPT_TRACKING_LINK;
   const group = autopayVars(vars);
   if (group.link) vars.autopay = { ...group, link: KEPT_LINK };
   return vars;
@@ -764,7 +793,7 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       const kept = { ...ctx, vars: keptVars(ctx) };
       const delivery = await sendToEach(people, (person) => {
         const from = person.contact_id ? forContacts : ctx;
-        const email = renderEmail({ companyName: ctx.company.name, logo: baseUrl ? logoImage(baseUrl, ctx.company.id, ctx.company.settings) : null, text: render(action.body, from), footer: companyFooter(ctx.company) });
+        const email = renderEmail({ companyName: ctx.company.name, logo: baseUrl ? logoImage(baseUrl, ctx.company.id, ctx.company.settings) : null, text: withTrackingLine(render(action.body, from), from), footer: companyFooter(ctx.company), color: brandColor(ctx.company.settings) ?? "#0f2a35" });
         return sendEmail(env, { to: person.to, subject: render(action.subject, from), text: email.text, html: email.html, replyTo: ctx.company.email ?? undefined, fromName: ctx.company.name }, ctx.company.id);
       }, "The email wasn't sent.");
       if (!delivery.went.length) throw new Error(delivery.failed[0]!.reason);
@@ -807,7 +836,7 @@ export async function performAction(env: Env, admin: Db, ctx: RunContext, action
       const delivery = await sendToEach(people, async (person) => {
         // The first text a number gets says how to stop them, and a promotional one always does (services/stopLine.ts).
         const result = await textWithStopLine(
-          admin, ctx.company.id, person.to, render(action.body, person.contact_id ? forContacts : ctx),
+          admin, ctx.company.id, person.to, withTrackingLine(render(action.body, person.contact_id ? forContacts : ctx), ctx),
           (body) => sendSms(env, { to: person.to, body }, ctx.company.id),
           { promotional: Boolean(ctx.campaign?.marketing) },
         );
@@ -967,9 +996,14 @@ export async function executeRun(env: Env, admin: Db, run: RunRow, baseUrl: stri
     }
     if (!loaded) return finish(admin, run, "skipped", [], "The record was deleted.");
     const campaign = campaignRuleOf(rule) ?? undefined;
-    let ctx: RunContext = await withAutopayLink(
+    let ctx: RunContext = await withTrackingLink(
       env,
-      { ...(await withEvent(admin, loaded, rule.trigger, run.activity_id)), trigger: rule.trigger, campaign, run: { id: run.id, activity_id: run.activity_id ?? null } },
+      await withAutopayLink(
+        env,
+        { ...(await withEvent(admin, loaded, rule.trigger, run.activity_id)), trigger: rule.trigger, campaign, run: { id: run.id, activity_id: run.activity_id ?? null } },
+        rule.trigger,
+        baseUrl,
+      ),
       rule.trigger,
       baseUrl,
     );

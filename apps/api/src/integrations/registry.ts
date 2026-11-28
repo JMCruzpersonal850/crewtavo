@@ -28,7 +28,7 @@ import type { Env } from "../env";
 import { DIALOG, GRAPH_VERSION, META_SCOPES } from "./metaConfig";
 
 /** Apps with a row in integrations (and maybe integration_secrets). */
-export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "square" | "twilio" | "quo" | "anthropic" | "chatgpt" | "fal" | "railway" | "abc_supply" | "lob" | "open_meteo";
+export type Provider = "quickbooks" | "zoho_books" | "google_calendar" | "google_business" | "meta" | "stripe" | "square" | "twilio" | "quo" | "anthropic" | "chatgpt" | "fal" | "railway" | "abc_supply" | "lob" | "open_meteo" | "voice_agent";
 /** Apps whose calendars are added by link. They're also the calendar_sources.app values (with google_calendar). */
 export type LinkApp = "zoho_calendar" | "outlook_calendar" | "apple_calendar" | "ics_calendar";
 export type AppId = Provider | LinkApp | "team_chat" | "website_analytics" | "website_forms" | "careers" | "drive" | "marketing" | "paving" | "roofing" | "snow" | "sveltia";

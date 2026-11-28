@@ -116,10 +116,32 @@ and the shared totals math untouched (the builder still writes ordinary quote li
   contact line instead of "Powered by Crewtavo". Signing, options and add-on picking are
   the Hub's own, unchanged; a signed painting proposal keeps the same page, read-only.
 
+## Phase 3 remainder — the one-screen area builder (shipped on the fork)
+
+- **Building by area**: the step-by-step line list was too many steps, so a painting
+  proposal also opens with a **Build by area** card (QuotePage, painting only, on the
+  lines view). Pick an area — Interior or Exterior, a preset chip (Master bedroom,
+  Bedroom, Living room, Hallway… / Whole house, Front, Back…) or a name of your own —
+  type its length × width × height once, then tap its surfaces on or off: walls, ceiling
+  and trim with a coats stepper, baseboards by size (3 in / 5 in), window trim and doors
+  by count (doors by kind — a double or French door prices as two slabs and says so on
+  the line), and the exterior set (walls & siding, trim, fascia, shutters, front door,
+  garage door). Prep is one flat amount for the area. Every row shows its price-book
+  rate; the per-surface breakdown and the room total price themselves as you tap, with
+  the room's gallons from the proposal math (rounded up per room, as ever). A surface
+  whose service the company doesn't carry shows as not-in-the-price-book, never broken.
+- **What it writes**: ordinary quote lines (core `buildPaintArea`), each carrying
+  `paint_detail` = `{room, dimensions, coats, feet}` — Phase 3's readers use the room and
+  dimensions; the coats ride along so the math panel prices that line's gallons with the
+  coats it was built with (over the panel's own pick), and the feet so reopening the area
+  shows the size it was built from (`paintAreaDraftFromLines` reads an area back from its
+  lines; rebuilding the read-back draft writes the same lines). Saving an area replaces
+  only the lines the builder manages in that room — a hand-added custom line in the room
+  is never touched. Areas are built before packages are offered: once a proposal carries
+  options, its lines belong to the options and the card says so instead of editing a copy.
+  The step-by-step line list stays, for everything the one screen doesn't do.
+
 ## Roadmap
 
-- **Phase 3 remainder — measurements**: typing a room's L×W×H in the builder to work out
-  its square feet (today dimensions are the text the card shows; quantities are typed as
-  they are on any line).
 - **Phase 4 — subs and profit**: proposal material costs carried into job costs, sub price
   prompt on painting jobs, profit views; sub pay remains office-only.

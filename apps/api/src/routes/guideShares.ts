@@ -126,7 +126,7 @@ guideShares.patch("/guides/:id/share", requireUser, sharer, async (c) => {
 async function invite(c: Ctx, guide: Guide, share: ShareRow, to: string, company: { name: string; settings: unknown }, by: string | null) {
   const base = appUrl(c);
   const message = guideInviteEmail({ companyName: company.name, title: guide.title, url: guideShareUrl(base, share.token), by, access: share.access === "anyone" ? "anyone" : "restricted" });
-  const email = renderEmail({ companyName: company.name, logo: logoImage(base, c.var.companyId, company.settings), text: message.text, button: "Open the guide" });
+  const email = renderEmail({ companyName: company.name, logo: logoImage(base, c.var.companyId, company.settings), text: message.text, button: "Open the guide", color: brandColor(company.settings) ?? "#0f2a35" });
   return sendEmail(c.env, { to, subject: message.subject, text: email.text, html: email.html, fromName: company.name }, c.var.companyId);
 }
 
@@ -366,7 +366,7 @@ async function sendCode(env: Env, base: string, view: View, to: string, code: st
   const { data: company } = await adminClient(env).from("companies").select("name, settings").eq("id", view.company_id).maybeSingle();
   if (!company) return;
   const message = guideCodeEmail({ companyName: company.name, title: view.title || "a guide", code });
-  const email = renderEmail({ companyName: company.name, logo: logoImage(base, view.company_id, company.settings), text: message.text, code });
+  const email = renderEmail({ companyName: company.name, logo: logoImage(base, view.company_id, company.settings), text: message.text, code, color: brandColor(company.settings) ?? "#0f2a35" });
   const result = await sendEmail(env, { to, subject: message.subject, text: email.text, html: email.html, fromName: company.name }, view.company_id);
   if (!result.sent) console.warn(`A guide's code wasn't emailed: ${result.reason ?? "unknown reason"}`);
 }

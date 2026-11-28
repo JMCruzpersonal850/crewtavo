@@ -1,0 +1,41 @@
+/* An invoice's head in the Client Hub (InvoicePresentation.tsx), in Lead Control's shape, modeled
+   on PaintProposal.module.css: a branded band, a title block and three info cards. The brand color
+   is the page's own (--brand, set by the Hub from the company's branding), never Crewtavo's green. */
+
+.head { display: grid; gap: 14px; }
+
+.band {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--brand); color: var(--on-brand);
+  border-radius: 12px; padding: 14px 18px;
+}
+.bandMain { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.bandWord { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: var(--fs-13); }
+.bandDate { opacity: 0.85; font-size: var(--fs-13); }
+.pill {
+  background: rgb(255 255 255 / 0.18); border: 1px solid rgb(255 255 255 / 0.35);
+  border-radius: 999px; padding: 3px 11px; font-size: var(--fs-12); font-weight: 600; white-space: nowrap;
+}
+
+.titleBlock { padding: 0 2px; }
+.title { margin: 0; font-size: 22px; line-height: 1.25; }
+.titleLine { margin: 4px 0 0; color: var(--text-2); }
+
+.infoGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.infoCard {
+  display: grid; gap: 2px; align-content: start;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+  font-size: var(--fs-13);
+}
+.infoCard strong { font-size: var(--fs-14); }
+.infoKick { font-size: var(--fs-11, 11px); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
+.infoCard strong.balanceAmount { font-size: 24px; font-weight: 800; line-height: 1.1; }
+
+@media (max-width: 720px) {
+  .infoGrid { grid-template-columns: 1fr; }
+}
+
+@media print {
+  .band { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .infoCard { break-inside: avoid; }
+}

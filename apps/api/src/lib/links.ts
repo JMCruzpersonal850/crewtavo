@@ -7,8 +7,12 @@ import { signToken, verifyToken } from "./crypto";
  * client: the client's Hub home (upcoming visits, quotes, invoices, request work).
  * unsub: marketing unsubscribe.  review: tracked review link.  refer: a client's referral page.
  * sub: a subcontractor's page for sending in their paperwork (routes/subs.ts), without signing in.
+ * track: the client's live map of the crew on the way to a visit (routes/public.ts /track/:token),
+ * minted by the on-my-way automation as it runs. Its id is the visit's. The four hours are only a
+ * backstop: the page reads the visit's own status, so the link shows nothing once the visit has
+ * started, however long it has left.
  */
-export type LinkKind = "quote" | "invoice" | "client" | "unsub" | "review" | "refer" | "sub";
+export type LinkKind = "quote" | "invoice" | "client" | "unsub" | "review" | "refer" | "sub" | "track";
 
 export interface ClientLink {
   c: string; // company id
@@ -47,9 +51,10 @@ const PATHS: Record<LinkKind, string> = {
   review: "/api/public/r/",
   refer: "/refer/",
   sub: "/paperwork/",
+  track: "/track/",
 };
 
-const LIFETIME_DAYS: Record<LinkKind, number> = { quote: 60, invoice: 90, client: 120, unsub: 3650, review: 365, refer: 3650, sub: 30 };
+const LIFETIME_DAYS: Record<LinkKind, number> = { quote: 60, invoice: 90, client: 120, unsub: 3650, review: 365, refer: 3650, sub: 30, track: 4 / 24 };
 export const linkLifetimeDays = (kind: LinkKind) => LIFETIME_DAYS[kind];
 
 /**
@@ -74,6 +79,9 @@ export async function clientLink(env: Env, baseUrl: string, link: Omit<ClientLin
  * office who needs one copies it from the quote, invoice or client page.
  */
 export const KEPT_LINK = "[Client Hub link]";
+
+/** A live tracking link as it stands in the copy the team keeps of what was sent (keptVars): no link at all. */
+export const KEPT_TRACKING_LINK = "[Live tracking link]";
 
 /**
  * One client link minted for each place it goes: `own`, the client's own (own: 1), only for the email

@@ -75,6 +75,7 @@ import {
   payStatusLine,
   quantityWords,
   startingVisits,
+  subsOnVisitsWithoutPay,
   visitsHint,
   warnsPaperwork,
   type LineDraft,
@@ -96,7 +97,7 @@ import {
   type JobPay,
   type PayeeRef,
 } from "../subs/payData";
-import { loadSubs, useSubPaperwork } from "../subs/subsData";
+import { loadSubs, useSubPaperwork, useSubSignIns } from "../subs/subsData";
 import { RowsSkeleton } from "./JobMaterials";
 import styles from "./jobMoney.module.css";
 import { ChangePriceDialog, SendOfferDialog } from "./OfferDialogs";
@@ -141,10 +142,11 @@ export function JobPayCard({ job, visits, lines = [], startAdding = false, onAdd
   const teamArea = handlesTeamPay(session);
   const pays = useJobPays(session.company.id, job.id, subsArea || teamArea);
   const payees = usePayees({ subs: subsArea, team: teamArea });
+  const subSignIns = useSubSignIns(session.company.id, subsArea);
   const [open, setOpen] = useState<string | null>(null);
-  // Adding pay: for anyone, or for a sub (offering the job to someone else after an offer ended,
-  // for the visits that offer covered).
-  const [adding, setAdding] = useState<null | "any" | { elsewhere: readonly string[] }>(startAdding ? "any" : null);
+  // Adding pay: for anyone, for a sub (offering the job to someone else after an offer ended, for
+  // the visits that offer covered), or for the sub the card flags as working the job unpaid.
+  const [adding, setAdding] = useState<null | "any" | { elsewhere: readonly string[] } | { sub: string }>(startAdding ? "any" : null);
   const [showOver, setShowOver] = useState(false);
   const listRef = useListAnimation<HTMLUListElement>();
   if (!subsArea && !teamArea) return null;
@@ -156,12 +158,32 @@ export function JobPayCard({ job, visits, lines = [], startAdding = false, onAdd
   const total = Math.round(agreed.reduce((s, p) => s + agreedAmount(p) * 100, 0)) / 100;
   const openPay = list.find((p) => p.id === open);
   const twice = overCounted(list, lines);
+  // Subs put on this job's visits from the schedule whose pay isn't in the job's costs yet — none
+  // set up, or only a draft or an unanswered offer: the card says so until it's agreed, and either
+  // starts the pay or opens the one waiting.
+  const unpaidSubs = subsArea && pays.data && subSignIns.data ? subsOnVisitsWithoutPay(visits, subSignIns.data, list) : [];
 
   return (
     <Section className="rel-figures" title="Sub and crew pay" count={list.length || undefined} action={!job.archived && <Button size="sm" icon="plus" onClick={() => setAdding("any")}>Add pay</Button>}>
       <div className={styles.parts}>
         {twice.map((w) => (
           <div key={w} className="callout callout-warning"><Icon name="alert" size={16} /><div className="grow">{w}</div></div>
+        ))}
+        {unpaidSubs.map((s) => (
+          <div key={s.subcontractor_id} className="callout callout-warning">
+            <Icon name="alert" size={16} />
+            <div className="grow">
+              {s.name} is on {s.visits === 1 ? "one of this job's visits" : `${s.visits} of this job's visits`}{" "}
+              {s.pay === null
+                ? "with no pay set up, so what they're owed isn't in the job's costs yet."
+                : s.pay.status === "draft"
+                  ? "and their pay is still a draft, so it isn't in the job's costs yet."
+                  : "and their pay is offered but not agreed yet, so it isn't in the job's costs yet."}
+            </div>
+            {!job.archived && (s.pay === null
+              ? <Button size="sm" onClick={() => setAdding({ sub: s.subcontractor_id })}>Set up pay</Button>
+              : <Button size="sm" onClick={() => setOpen(s.pay!.id)}>Open pay</Button>)}
+          </div>
         ))}
         {pays.isPending ? (
           <RowsSkeleton rows={2} lead />
@@ -220,7 +242,8 @@ export function JobPayCard({ job, visits, lines = [], startAdding = false, onAdd
           pays={list}
           payees={payees}
           areas={adding !== "any" ? { subs: true, team: false } : { subs: subsArea, team: teamArea }}
-          elsewhere={adding !== "any" ? adding.elsewhere : undefined}
+          elsewhere={adding !== "any" && "elsewhere" in adding ? adding.elsewhere : undefined}
+          presetSub={adding !== "any" && "sub" in adding ? adding.sub : undefined}
           onClose={() => {
             setAdding(null);
             onAddClosed?.();
@@ -253,7 +276,7 @@ export function JobPayCard({ job, visits, lines = [], startAdding = false, onAdd
 // Adding pay
 // ---------------------------------------------------------------------------------------------
 
-function AddPayDialog({ job, visits, pays, payees, areas, elsewhere, onClose, onOpen }: {
+function AddPayDialog({ job, visits, pays, payees, areas, elsewhere, presetSub, onClose, onOpen }: {
   job: { id: string };
   visits: readonly JobVisit[];
   pays: readonly JobPay[];
@@ -261,13 +284,15 @@ function AddPayDialog({ job, visits, pays, payees, areas, elsewhere, onClose, on
   areas: { subs: boolean; team: boolean };
   /** After an offer ended: new pay for another sub, to send them, for the visits that offer covered. */
   elsewhere?: readonly string[];
+  /** Opened from the card's flag for a sub working the job unpaid: they're chosen already. */
+  presetSub?: string;
   onClose: () => void;
   onOpen: (id: string) => void;
 }) {
   const session = useSession();
   const queryClient = useQueryClient();
-  const [kind, setKind] = useState<"sub" | "team">(areas.subs ? "sub" : "team");
-  const [payeeId, setPayeeId] = useState("");
+  const [kind, setKind] = useState<"sub" | "team">(presetSub || areas.subs ? "sub" : "team");
+  const [payeeId, setPayeeId] = useState(presetSub ?? "");
   // Offering it to someone else, the visits the last offer covered; otherwise theirs (below).
   const startCovered = elsewhere ? [...elsewhere] : null;
   const [covered, setCovered] = useState<string[] | null>(startCovered);

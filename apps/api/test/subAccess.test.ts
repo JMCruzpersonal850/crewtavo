@@ -256,6 +256,10 @@ const NOT_SIGNED_IN_ROUTES = [
   "POST /api/auth/email-link", "POST /api/auth/recover", ...PUBLIC_SUB_ROUTES,
   // Callbacks and webhooks, each checked its own way.
   "GET /api/apps/:provider/callback", "GET /api/railway/callback", "POST /api/webhooks/twilio", "POST /api/webhooks/stripe", "POST /api/webhooks/stripe/:company", "POST /api/webhooks/quo", "POST /api/webhooks/square/:company",
+  // The AI voice agent's end-of-call webhook, checked by the company's webhook secret or the provider's signature.
+  "POST /api/webhooks/voice/:companyId/:provider",
+  // The voice agent's mid-call tools, behind their own bearer token (routes/voiceAgent.ts).
+  "POST /api/voice/tools/check-availability", "POST /api/voice/tools/book-appointment",
   // Pages for people without an account, behind signed links: a sub's paperwork, the Client Hub,
   // booking forms, logos, unsubscribing, reviews, referrals and calendar feeds; and the pictures on
   // estimates (letterheads, packages, price list items), each under a name never reused.
@@ -264,10 +268,14 @@ const NOT_SIGNED_IN_ROUTES = [
   "DELETE /api/hub/:token/promo", "POST /api/hub/:token/pay", "POST /api/hub/:token/pay-square", "POST /api/hub/:token/message", "GET /api/hub/:token/drawings/:file", "GET /api/hub/:token/photos/:file", "GET /api/hub/:token/visits/:file",
   "GET /api/hub/:token/visits/:id/slots", "POST /api/hub/:token/visits/:id/change",
   "POST /api/hub/:token/request", "POST /api/hub/:token/autopay/setup", "POST /api/hub/:token/autopay/finish", "POST /api/hub/:token/autopay/confirm",
-  "POST /api/hub/:token/autopay/off", "POST /api/hub/:token/tip", "POST /api/hub/:token/print-ticket", "POST /api/public/forms/:company/:form/promo", "GET /api/public/forms/:company/:form", "GET /api/public/forms/:company/:form/openings", "POST /api/public/forms/:company/:form",
+  "POST /api/hub/:token/autopay/off", "POST /api/hub/:token/tip", "POST /api/hub/:token/print-ticket", "POST /api/public/forms/:company/:form/promo", "GET /api/public/forms/:company", "GET /api/public/forms/:company/:form", "GET /api/public/forms/:company/:form/openings", "POST /api/public/forms/:company/:form",
   "POST /api/public/forms/:company/:form/files", "GET /api/public/logo/:company/:file", "GET /api/public/letterhead/:company/:file", "POST /api/public/documents/:file",
   "GET /api/public/package/:company/:file", "GET /api/public/service/:company/:file", "GET /api/public/unsubscribe/:token", "POST /api/public/unsubscribe/:token",
   "GET /api/public/r/:token", "GET /api/public/refer/:token", "POST /api/public/refer/:token",
+  // The review link's star gate and its private feedback (routes/public.ts): by the request's random token.
+  "GET /api/public/r/:token/gate", "POST /api/public/r/:token/feedback",
+  // The live map for a visit on its way (routes/public.ts): by the tracking link's random token.
+  "GET /api/track/:token",
   // A campaign email's tracking image and tracked links (routes/public.ts): a random token each.
   "GET /api/public/o/:token", "GET /api/public/c/:token/:n", "GET /api/calendar/:file",
   // A social post's picture, fetched by Meta and Google (routes/public.ts): a random token each, for 7 days.
@@ -297,6 +305,9 @@ const SUB_REFUSAL = "You don't have permission to do that. Ask an admin if you n
 const OWN_REFUSALS: Record<string, string> = {
   // Setting up a business isn't a company's route: a sign-in made for a sub can't (routes/account.ts).
   "POST /api/companies": "This sign-in is for your work with another business. To run your own business on Crewtavo, use a different email address.",
+  // Live location sharing is crew-only in v1: a sub's visits come by offer, not by crew (routes/schedule.ts).
+  "POST /api/visits/:id/ping": "Subcontractors don't share a live location.",
+  "POST /api/visits/:id/stop-sharing": "Subcontractors don't share a live location.",
 };
 
 /** Every route behind a sign-in (requireUser), as method and path. Public routes have their own checks. */

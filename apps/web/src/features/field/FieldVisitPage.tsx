@@ -66,6 +66,10 @@ import { VisitExtraScope, WorkLines } from "./FieldExtras";
 import { dayOrder, useMyDay } from "./myDay";
 import { YourPrice } from "./YourPrice";
 import { LocationNotice } from "./LocationNoticeDialog";
+import { LiveSharingNote } from "./LiveSharingNote";
+import { VisitCamera } from "./VisitCamera";
+import { VisitMeasurements } from "./VisitMeasurements";
+import { VoiceWalkthrough } from "./VoiceWalkthrough";
 import { msg, t, T } from "@/lib/i18n";
 
 interface ChecklistItem { key: string; label: string; type: "check" | "number" | "text" | "choice" | "photo" | "signature"; required: boolean; options?: string[]; sop_page_id?: string }
@@ -104,7 +108,7 @@ export function FieldVisitPage() {
       const row = unwrapOne(
         await supabase()
           .from("visits")
-          .select("id, title, kind, status, starts_at, ends_at, scheduled_on, notes, address, hold_reason, completed_at, invoice_id, series_day, series_total, equipment:visit_equipment(equipment:equipment(id, name, kind)), job:jobs(id, number, title, instructions, property_id, custom_fields, kind, status, pricing, client:clients(display_name, phone, social_photos_opt_out)), request:requests(id, title, details, client:clients(display_name, phone, social_photos_opt_out)), property:properties(id, line1, city, region, postal_code, lat, lng, notes, custom_fields)")
+          .select("id, title, kind, status, starts_at, ends_at, scheduled_on, notes, address, hold_reason, completed_at, invoice_id, series_day, series_total, crew:crews(name), assignees:visit_assignees(user_id), equipment:visit_equipment(equipment:equipment(id, name, kind)), job:jobs(id, number, title, instructions, property_id, custom_fields, kind, status, pricing, client:clients(display_name, phone, social_photos_opt_out)), request:requests(id, title, details, client:clients(display_name, phone, social_photos_opt_out)), property:properties(id, line1, city, region, postal_code, lat, lng, notes, custom_fields)")
           .eq("id", id)
           .maybeSingle(),
         msg("This visit"),
@@ -140,6 +144,13 @@ export function FieldVisitPage() {
     enabled: !sub && Boolean(v?.job),
     meta: { silent: true },
     queryFn: async () => unwrap(await supabase().rpc("visit_autopay", { p_visit: id })) === true,
+  });
+  // Who's on this visit with them: the assignees' names (the crew is on the visit row itself).
+  const people = useQuery({
+    queryKey: ["field-visit", id, "people", v?.assignees.map((a) => a.user_id).join(",")],
+    enabled: Boolean(v?.assignees.length),
+    meta: { silent: true },
+    queryFn: async () => unwrap(await supabase().from("profiles").select("user_id, full_name").in("user_id", v!.assignees.map((a) => a.user_id))),
   });
   const myTime = useQuery({
     queryKey: ["field-visit", id, "time"],
@@ -278,6 +289,8 @@ export function FieldVisitPage() {
       <OfflineNote />
       {/* What's saved about where they are, said once before a tap here would save it. */}
       <LocationNotice />
+      {/* On the way, this phone feeds the client's live map, and the sharing is the worker's to stop. */}
+      {v.status === "en_route" && <LiveSharingNote visitId={v.id} />}
       {/* The clock at the property: Complete visit goes through the checklist check, as the button below does. */}
       <GeofenceCard visitId={v.id} onStatus={(_visit, status) => (status === "completed" ? void complete() : setStatus(status))} />
       {v.status === "completed" && v.completed_at && <div className="callout callout-good"><Icon name="check" size={16} /><div className="grow">{t("Completed {when}.", { when: timeAgo(v.completed_at) })}</div></div>}
@@ -300,6 +313,8 @@ export function FieldVisitPage() {
         <section className="visit-site" aria-label={t("Site")}>
           <div className="visit-site-name">{client.name ?? t("Site")}</div>
           {place && <MapsLink className="visit-site-address" place={place}>{v.property ? addressLine(v.property) : v.address}</MapsLink>}
+          {v.crew?.name && <p className="visit-site-note">{t("Crew: {name}", { name: v.crew.name })}</p>}
+          {(people.data ?? []).some((p) => p.full_name) && <p className="visit-site-note">{(people.data ?? []).map((p) => p.full_name).filter(Boolean).join(", ")}</p>}
           {access.isPending && v.property ? <Skeleton width="40%" height={28} /> : (codes?.gate_code || codes?.lockbox_code || codes?.alarm_code) && (
             <dl className="visit-codes">
               {codes.gate_code && <div><dt>{t("Gate code")}</dt><dd>{codes.gate_code}</dd></div>}
@@ -330,7 +345,7 @@ export function FieldVisitPage() {
           </Section>
         )}
 
-        <VisitWork visitId={v.id} visitStatus={v.status} checklist={checklist} onProgress={setProgress} jobId={v.job?.id ?? null} materials={!sub}
+        <VisitWork visitId={v.id} visitStatus={v.status} checklist={checklist} onProgress={setProgress} jobId={v.job?.id ?? null} materials={!sub} team={!sub}
           clientOptOut={Boolean(v.job?.client?.social_photos_opt_out ?? v.request?.client?.social_photos_opt_out)} />
 
         <Section title={<label htmlFor="visit-notes">{t("Notes for the office")}</label>} action={<AutoSaveStatus status={notesSave.status} waiting={notesSending > 0} />} className="visit-notes">
@@ -385,12 +400,15 @@ function ScopeLines({ jobId }: { jobId: string }) {
 }
 
 /** The checklists, photos and materials (not a sub's), sharing the visit's photos (a checklist item can ask for them). */
-function VisitWork({ visitId, visitStatus, checklist, onProgress, jobId, materials, clientOptOut }: { visitId: string; visitStatus: string; checklist: RefObject<ChecklistHandle>; onProgress: (p: ChecklistProgress | null | undefined) => void; jobId: string | null; materials: boolean; clientOptOut: boolean }) {
+function VisitWork({ visitId, visitStatus, checklist, onProgress, jobId, materials, team, clientOptOut }: { visitId: string; visitStatus: string; checklist: RefObject<ChecklistHandle>; onProgress: (p: ChecklistProgress | null | undefined) => void; jobId: string | null; materials: boolean; team: boolean; clientOptOut: boolean }) {
   const photos = useVisitPhotos(visitId);
   return (
     <>
       <Checklists ref={checklist} visitId={visitId} jobId={jobId} visitStatus={visitStatus} photos={photos} onProgress={onProgress} />
       <Photos photos={photos} clientOptOut={clientOptOut} />
+      {/* The team's measuring and voice walkthrough (not a sub's): the measurements link to the visit's photos above. */}
+      {team && <VisitMeasurements visitId={visitId} photos={photos.photos} canEdit={team} />}
+      {team && <VoiceWalkthrough visitId={visitId} />}
       {jobId && materials && <MaterialsCard jobId={jobId} visitId={visitId} compact />}
     </>
   );
@@ -936,6 +954,7 @@ function PhotoPicker({ photos, compact, ids }: { photos: VisitPhotos; compact?: 
 
 function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: boolean }) {
   const session = useSession();
+  const [cameraOpen, setCameraOpen] = useState(false);
   const grid = useListAnimation<HTMLDivElement>();
   // Tapping a photo opens it in the gallery with the others; the ones still on the phone aren't links.
   const gallery = usePhotoGallery();
@@ -967,7 +986,12 @@ function Photos({ photos, clientOptOut }: { photos: VisitPhotos; clientOptOut: b
         ? unsupported === 1 ? t("This photo can't be marked OK to share: only JPEG and PNG photos can be posted.") : t("These photos can't be marked OK to share: only JPEG and PNG photos can be posted.")
         : unsupported === 1 ? t("The photo marked Can't share can't be marked OK to share: only JPEG and PNG photos can be posted.") : t("The photos marked Can't share can't be marked OK to share: only JPEG and PNG photos can be posted.")}</p>}
       {count > 0 && clientOptOut && shareToggleState(session, { content_type: "image/jpeg" }) !== "hidden" && <p className="field-hint">{t("This client asked us not to post photos of their property.")}</p>}
-      <PhotoPicker photos={photos} ids={{ add: "visit-add-photos", draw: "visit-draw-photo" }} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <PhotoPicker photos={photos} ids={{ add: "visit-add-photos", draw: "visit-draw-photo" }} />
+        {/* The in-app camera: many shots in one session, added through the same queue as picked photos. */}
+        <button type="button" className="btn" onClick={() => setCameraOpen(true)}><Icon name="camera" size={18} />{t("Open camera")}</button>
+      </div>
+      {cameraOpen && <VisitCamera onAdd={(files) => photos.add(files)} onClose={() => setCameraOpen(false)} />}
       {gallery.dialog}
     </Section>
   );

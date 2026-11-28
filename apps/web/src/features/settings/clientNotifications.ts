@@ -141,7 +141,9 @@ export const CLIENT_NOTIFICATIONS: ClientNotification[] = [
       delay_minutes: 0,
       conditions: [],
       // {{eta}}: " and should arrive in about 20 minutes", or nothing when that isn't known.
-      actions: [{ type: "send_sms", body: "Hi {{client.first_name}}, this is {{company.name}}. Our crew is on the way to {{address}} now{{eta}}." }],
+      // {{tracking_link}}: the client's live map of the crew on the way (it goes out only while
+      // the company shares live tracking: Settings → Client notifications).
+      actions: [{ type: "send_sms", body: "Hi {{client.first_name}}, this is {{company.name}}. Our crew is on the way to {{address}} now{{eta}}. Track them live: {{tracking_link}}" }],
       enabled: false,
     },
   },

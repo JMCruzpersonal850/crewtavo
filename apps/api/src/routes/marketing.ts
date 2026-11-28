@@ -35,6 +35,7 @@ import {
   type AskRule,
   type AskRuleKind,
 } from "@crewtavo/core/marketing";
+import { brandColor } from "@crewtavo/core/social";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
@@ -102,6 +103,8 @@ async function sendTest(c: Ctx, d: { to?: string; subject: string; body: string;
     unsubscribeUrl: `${appUrl(c)}/u/test`,
     // {{link}} on its own line is the same button the real email has.
     buttons: { [String(vars.link)]: d.button },
+    // A test is held to what the real one is, look included: the company's brand shell.
+    color: brandColor(company.settings) ?? "#0f2a35",
   });
   const result = await sendEmail(c.env, { to, subject: `[Test] ${renderTemplate(d.subject, vars)}`, ...email, fromName: company.name }, c.var.companyId);
   if (!result.sent) throw new HttpError(502, result.reason ?? "The test email wasn't sent.");

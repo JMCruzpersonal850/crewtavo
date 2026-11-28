@@ -56,6 +56,7 @@ import { SCREENSHOTS, type Screenshot } from "./screenshots";
 import { StripePanel } from "./StripePanel";
 import { TeamChatPanel, useTeamChatSwitch } from "./TeamChatPanel";
 import { QuoPanel } from "./QuoPanel";
+import { VoiceAgentPanel } from "./VoiceAgentPanel";
 import { SquarePanel } from "./SquarePanel";
 import { TwilioPanel } from "./TwilioPanel";
 import { useTradeAppSwitch } from "./tradeApps";
@@ -106,7 +107,7 @@ function statusOf(app: AppRow, installed: boolean): { label: string; tone: Tone 
 
 /** Signed in or a key added: what /apps/:id/disconnect takes away. Stripe or Twilio set up for the server isn't the company's to remove. */
 const hasAccount = (app: AppRow) =>
-  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own) && !(app.id === "twilio" && !app.twilio?.own) && !(app.id === "quo" && !app.quo?.own) && !(app.id === "square" && !app.square?.own);
+  (app.auth === "oauth" || app.auth === "api_key") && app.status !== "disconnected" && !(app.id === "stripe" && !app.stripe?.own) && !(app.id === "twilio" && !app.twilio?.own) && !(app.id === "quo" && !app.quo?.own) && !(app.id === "square" && !app.square?.own) && app.id !== "voice";
 
 /** Where Open goes: a page in Crewtavo, or the app itself. */
 const openTarget = (app: AppRow, info: AppInfo) => (app.id === "stripe" && !app.stripe?.own ? "/payouts" : (info.open ?? info.website));
@@ -452,6 +453,8 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
               <TwilioPanel app={app} onChanged={refresh} />
             ) : app.id === "quo" ? (
               <QuoPanel app={app} onChanged={refresh} />
+            ) : app.id === "voice" ? (
+              <VoiceAgentPanel app={app} onChanged={refresh} />
             ) : app.id === "square" ? (
               <SquarePanel app={app} onChanged={refresh} />
             ) : app.id === "lob" ? (
@@ -482,7 +485,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
             {app.auth === "link" && <LinkCalendarsPanel app={app.id} appName={app.name} steps={info.steps} />}
             {(app.id === "anthropic" || app.id === "chatgpt") && <AiServiceChoice ai={ai} onChanged={refresh} />}
             {app.id === "stripe" && app.stripe && <StripePanel app={app} onChanged={refresh} />}
-            {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "quo" && app.id !== "square" && app.id !== "lob" && <KeyCard app={app} onSaved={refresh} />}
+            {app.auth === "api_key" && app.id !== "abc_supply" && app.id !== "twilio" && app.id !== "quo" && app.id !== "square" && app.id !== "lob" && app.id !== "voice" && <KeyCard app={app} onSaved={refresh} />}
             {app.id === "chatgpt" && app.status !== "disconnected" && <OpenAiModelCard app={app} onChanged={refresh} />}
             {app.id === "chatgpt" && <ChatGptPlanCard where="app" />}
             {app.id === "chatgpt" && <TeamPlansSwitch />}
@@ -490,6 +493,7 @@ function AppListing({ app, all, ai }: { app: AppRow; all: AppRow[]; ai: AiState 
             {app.id === "abc_supply" && <AbcSupplyPanel app={app} onChanged={refresh} />}
             {app.id === "twilio" && <TwilioPanel app={app} onChanged={refresh} />}
             {app.id === "quo" && <QuoPanel app={app} onChanged={refresh} />}
+            {app.id === "voice" && <VoiceAgentPanel app={app} onChanged={refresh} />}
             {app.id === "square" && <SquarePanel app={app} onChanged={refresh} />}
             {app.id === "website_analytics" && <AnalyticsPanel />}
             {app.id === "website_forms" && <WebsiteFormsPanel />}

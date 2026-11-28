@@ -7,16 +7,21 @@
  *                       that unless it turned it off: Settings → Company → Time clock).
  *   clock_at_property   With the clock at the property on, the phone compares its position with
  *                       the property while Crewtavo is open, without saving it.
+ *   en_route_sharing    On the way to a visit, while Crewtavo is open the phone sends where it
+ *                       is to the client's live map, until the visit starts or they stop the
+ *                       sharing (the company shares that unless it turned it off:
+ *                       Settings → Client notifications). Only the latest place is kept.
  *
  * Until the notice is acknowledged the phone's position isn't read for either: a clock tap goes
  * through with no place (`NOT_YET`), and the clock at the property stays off. Nobody's clock ever
  * waits on it. What was acknowledged is kept on the phone, so it holds with no signal, and sent to
  * the server when there is some; a phone they haven't used before learns it from the server.
  */
+import { liveTrackingOn } from "@crewtavo/core/companySettings";
 import { geofence } from "@crewtavo/core/geofence";
 import { keepsTime, type Company, type Session } from "@/lib/session";
 
-export type NoticeKind = "clock_location" | "clock_at_property";
+export type NoticeKind = "clock_location" | "clock_at_property" | "en_route_sharing";
 type Who = Pick<Session, "userId" | "role" | "subcontractor"> & { company: Pick<Company, "id" | "settings"> };
 
 /** What a clock tap carries for its place while the notice hasn't been acknowledged: no position was read. */
@@ -60,7 +65,13 @@ const savesPlaces = (company: Pick<Company, "settings">) => (company.settings?.c
 /** The notices that apply to this person at this company: none for someone whose hours aren't kept here. */
 export function noticesFor(session: Who): NoticeKind[] {
   if (!keepsTime(session)) return [];
-  return [...(savesPlaces(session.company) ? (["clock_location"] as const) : []), ...(geofence(session.company.settings).mode !== "off" ? (["clock_at_property"] as const) : [])];
+  return [
+    ...(savesPlaces(session.company) ? (["clock_location"] as const) : []),
+    ...(geofence(session.company.settings).mode !== "off" ? (["clock_at_property"] as const) : []),
+    // Live sharing on the way is the team's, never a sub's (their visits come by offer), and
+    // only while the company shares it at all.
+    ...(!session.subcontractor && liveTrackingOn(session.company.settings) ? (["en_route_sharing"] as const) : []),
+  ];
 }
 
 /** When this person acknowledged a notice, as this phone knows it, or null. */
@@ -84,7 +95,7 @@ export function acknowledgeHere(session: Who, notices: readonly NoticeKind[], at
 /** What the server has on record, for a phone that didn't know: kept here with the server's dates. */
 export function learnAcknowledged(session: Who, rows: ReadonlyArray<{ notice: string; acknowledged_at: string }>) {
   for (const row of rows) {
-    if (row.notice !== "clock_location" && row.notice !== "clock_at_property") continue;
+    if (row.notice !== "clock_location" && row.notice !== "clock_at_property" && row.notice !== "en_route_sharing") continue;
     const key = keyOf(session.company.id, session.userId, row.notice);
     if (read(key) === null) write(key, row.acknowledged_at);
     markSent(session, row.notice);

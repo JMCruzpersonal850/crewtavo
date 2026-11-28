@@ -21,6 +21,7 @@ export default {
   "Team chat": "Chat del equipo",
   "Clients": "Clientes",
   "Requests": "Solicitudes",
+  "AI Calls": "Llamadas de IA",
   "Quotes": "Cotizaciones",
   "Proposals": "Propuestas",
   "Jobs": "Trabajos",

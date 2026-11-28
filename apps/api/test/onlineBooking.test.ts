@@ -81,7 +81,7 @@ function database(options: Options = {}) {
     settings: { working_hours: { start: "08:00", end: "12:00", days: [0, 1, 2, 3, 4, 5, 6] } },
   };
   const form = {
-    id: "form-1", name: "Free roof inspection", kind: "assessment", questions: [], service_area_zips: [], lead_time_days: 1, slot_minutes: 60, max_per_day: null,
+    id: "form-1", slug: "inspection", name: "Free roof inspection", kind: "assessment", questions: [], service_area_zips: [], lead_time_days: 1, slot_minutes: 60, max_per_day: null,
     requires_approval: false, pick_time: true, crew_id: null, ...options.form,
   };
   const calls = serve((call) => {
@@ -417,5 +417,23 @@ describe("the office books a time a client asked for", () => {
     await expect(bookAskedTime(office(), env, "request-2", false, null)).rejects.toThrow(/didn't ask for a time/);
     requestDb();
     await expect(bookAskedTime({ ...office(), role: "field_crew" as never }, env, "request-2", false, null)).rejects.toThrow(/can't schedule assessments/);
+  });
+});
+
+describe("the company's booking page (the forms index)", () => {
+  it("lists the forms on offer — names, kinds and what picking one does — and nothing of their questions or the schedule", async () => {
+    database();
+    const res = await get("/public/forms/acme");
+    expect(res.status).toBe(200);
+    const view = await res.json();
+    expect(view.company).toMatchObject({ name: "Acme Roofing", phone: "540-555-0100" });
+    expect(view.forms).toEqual([{ slug: "inspection", name: "Free roof inspection", kind: "assessment", pick_time: true, requires_approval: false }]);
+    expect(JSON.stringify(view)).not.toContain("questions");
+    expect(JSON.stringify(view)).not.toContain("starts_at");
+  });
+
+  it("is rate limited like the other public form reads", async () => {
+    database({ full: /form-index/ });
+    expect((await get("/public/forms/acme")).status).toBe(429);
   });
 });

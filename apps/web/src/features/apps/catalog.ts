@@ -55,6 +55,8 @@ export interface AppRow {
   twilio?: TwilioState | null;
   /** Quo: whose account texts go from, and the address Quo needs for incoming texts (routes/apps.ts). */
   quo?: QuoState | null;
+  /** AI Voice Agent: the Retell/Vapi agent that answers forwarded calls (routes/apps.ts, /apps/voice). */
+  voice?: VoiceState | null;
   /** Square: whose account client payments go through, and the address Square needs for payment updates (routes/apps.ts). */
   square?: SquareState | null;
   /** Lob, once connected: whether its key is a test key (nothing mailed) or a live one. */
@@ -111,6 +113,35 @@ export interface QuoState {
   webhook_url: string;
   /** This Crewtavo has a public https address, which Quo needs to reach it. */
   reachable: boolean;
+}
+
+/** One question the AI voice agent can answer on a call, and the answer it gives. */
+export interface VoiceFaq {
+  question: string;
+  answer: string;
+}
+
+/**
+ * The AI Voice Agent's state, exactly as GET /api/apps/voice answers it (routes/apps.ts): whether a
+ * Retell or Vapi agent is connected and live, the greeting and FAQs it speaks, and the addresses and
+ * secrets the platform side needs (the webhook it posts finished calls to, and the two tools it calls
+ * to check the calendar and book). The platform's API key itself is never read back: `has_api_key`.
+ */
+export interface VoiceState {
+  connected: boolean;
+  live: boolean;
+  platform: "retell" | "vapi" | null;
+  agent_id: string | null;
+  phone_number: string | null;
+  form_id: string | null;
+  enabled: boolean;
+  greeting: string;
+  faqs: VoiceFaq[];
+  has_api_key: boolean;
+  tool_token: string | null;
+  webhook_secret: string | null;
+  webhook_urls: { retell: string; vapi: string };
+  tool_urls: { check_availability: string; book_appointment: string };
 }
 
 export interface SquareState {
@@ -845,6 +876,27 @@ export const APP_INFO: Record<string, AppInfo> = {
     connectsWith: "Your Quo account",
     website: "https://www.quo.com/",
     open: "/messages",
+  },
+  voice: {
+    developer: "Retell / Vapi",
+    tagline: "An AI agent that answers the calls nobody picks up",
+    about:
+      "When a call to your Quo number goes unanswered, it forwards to your AI agent's number at Retell or Vapi. The agent greets the caller in your words, answers the questions you give it, and can book a free estimate on your real calendar or take a message. Every call it handles — the summary, the transcript, the recording and what came of it — lands in AI Calls. Connect it with your Retell or Vapi API key and the agent you make there; the setup file on its page has the greeting, questions and tools to give that agent, and the addresses below wire its finished calls and bookings back into Crewtavo.",
+    highlights: [
+      { icon: "phone", title: "Answers missed calls", text: "Calls forwarded from your Quo number are picked up by the agent, day or night." },
+      { icon: "calendarCheck", title: "Books real estimates", text: "The agent checks your calendar and books a free estimate while the caller is still on the line." },
+      { icon: "messages", title: "Or takes a message", text: "Anything it can't book becomes a message, with the caller's name, number and what they need." },
+    ],
+    access: [
+      "Receive each finished call's summary, transcript, recording link and outcome at the webhook address",
+      "Let your agent check open estimate times and book one, through the two tool addresses, with your tool token",
+      "Nothing else: it can't see your clients, prices or anything else from Crewtavo",
+      "Retell or Vapi bills your account directly for the calls the agent takes",
+      "Disconnecting removes your key, token and secret from Crewtavo; calls already recorded stay in AI Calls",
+    ],
+    connectsWith: "Retell or Vapi account",
+    website: "https://www.retellai.com/",
+    open: "/ai-calls",
   },
   square: {
     developer: "Square",

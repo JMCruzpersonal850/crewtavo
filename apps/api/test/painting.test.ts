@@ -223,7 +223,7 @@ describe("painting products and packages (phase 2)", () => {
     company(PAINTER, "painting");
     const res = await send(PAINTER, "/painting/setup", {});
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ products_created: 4, packages_created: 12 });
+    expect(await res.json()).toEqual({ products_created: 4, packages_created: 12, packages_resynced: 0 });
 
     const { products } = (await (await get(PAINTER, "/painting/products")).json()) as { products: Array<Record<string, unknown>> };
     expect(products.find((p) => p.name === "Interior Acrylic Latex")).toMatchObject({ cost_per_gallon: 42, coverage_per_gallon: 400, markup_pct: 30 });
@@ -234,14 +234,52 @@ describe("painting products and packages (phase 2)", () => {
     const t1Better = packages.find((p) => p.set_name === "Interior Painting: Standard / Premium / Ultimate" && p.tier === "better")!;
     expect(t1Better).toMatchObject({ product_name: "Sherwin-Williams Duration", product_id: null, markup_pct: 15, warranty: "3-year workmanship warranty", is_default: true });
     const extBest = packages.find((p) => p.set_name === "Exterior Painting" && p.tier === "best")!;
-    expect(extBest.warranty_months).toBe(60);
+    expect(extBest.warranty_months).toBe(36);
+    expect(extBest.warranty).toBe("3-year warranty");
     expect(extBest.product_id).toBeTruthy(); // Duration Exterior has a blueprint cost, so Best links to it.
     expect(extBest.highlights).toContain("Free annual touch-up visit");
+    // Nov 27: Lead Control's exterior templates carry Emerald Rain Refresh in Better itself.
+    const extBetter = packages.find((p) => p.set_name === "Exterior Painting" && p.tier === "better")!;
+    expect(extBetter).toMatchObject({ product_name: "Sherwin-Williams Emerald Rain Refresh", warranty_months: 24, warranty: "2-year warranty", markup_pct: 15 });
+    const extGood = packages.find((p) => p.set_name === "Exterior Painting" && p.tier === "good")!;
+    expect(extGood.product_name).toBe("Sherwin-Williams SuperPaint");
+    const t6Better = packages.find((p) => p.set_name === "Exterior Painting (Good)" && p.tier === "better")!;
+    expect(t6Better).toMatchObject({ product_name: "Sherwin-Williams Emerald Rain Refresh", warranty_months: 24, warranty: "2-year warranty", markup_pct: 0 });
     const t5Better = packages.find((p) => String(p.set_name).includes("(Standard Package)") && p.tier === "better")!;
     expect(t5Better.is_enabled).toBe(false); // A tier Lead Control has off seeds off.
 
     const again = await send(PAINTER, "/painting/setup", {});
-    expect(await again.json()).toEqual({ products_created: 0, packages_created: 0 });
+    expect(await again.json()).toEqual({ products_created: 0, packages_created: 0, packages_resynced: 0 });
+  });
+
+  it("resyncs exterior packages seeded before the Nov 27 template change, but leaves hand-edited rows alone", async () => {
+    company(PAINTER, "painting");
+    await send(PAINTER, "/painting/setup", {});
+    // Roll the exterior rows back to what setup planted before Nov 27 (the previous seeds).
+    const rows = state.tables.paint_packages;
+    const find = (set: string, tier: string) => rows.find((p) => p.set_name === set && p.tier === tier)!;
+    Object.assign(find("Exterior Painting", "good"), { product_name: null, highlights: ["Power wash all surfaces", "1 coat primer + 1 coat exterior paint", "Caulk gaps and cracks", "Standard prep"] });
+    Object.assign(find("Exterior Painting", "better"), { product_name: "Sherwin-Williams Resilience", warranty_months: 36, warranty: "3-year warranty", highlights: ["Power wash + light scraping", "1 coat primer + 2 coats exterior paint", "Premium Sherwin-Williams Resilience", "Caulk all trim and windows"] });
+    Object.assign(find("Exterior Painting", "best"), { warranty_months: 60, warranty: "5-year warranty" });
+    Object.assign(find("Exterior Painting (Good)", "good"), { product_name: null, highlights: ["Power wash all surfaces", "1 coat primer + 1 coat exterior paint", "Caulk gaps and cracks", "Standard prep"] });
+    Object.assign(find("Exterior Painting (Good)", "better"), { product_name: "Sherwin-Williams SuperPaint", warranty_months: 36, warranty: "3-year warranty", highlights: ["Power wash + light scraping", "2 coats exterior paint", "Sherwin-Williams — SuperPaint", "Caulk all trim and windows"] });
+    Object.assign(find("Exterior Painting (Good)", "best"), { warranty_months: 60, warranty: "5-year warranty" });
+    // One row was edited by hand after seeding — a different markup — so it is no longer the seed's row.
+    find("Exterior Painting", "better").markup_pct = 20;
+
+    const res = await send(PAINTER, "/painting/setup", {});
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ products_created: 0, packages_created: 0, packages_resynced: 5 });
+
+    // The hand-edited row kept everything, including its old product and warranty.
+    expect(find("Exterior Painting", "better")).toMatchObject({ markup_pct: 20, product_name: "Sherwin-Williams Resilience", warranty_months: 36 });
+    // The untouched rows moved to the Nov 27 templates.
+    expect(find("Exterior Painting", "good").product_name).toBe("Sherwin-Williams SuperPaint");
+    expect(find("Exterior Painting", "best")).toMatchObject({ warranty_months: 36, warranty: "3-year warranty" });
+    expect(find("Exterior Painting (Good)", "better")).toMatchObject({ product_name: "Sherwin-Williams Emerald Rain Refresh", warranty_months: 24, markup_pct: 0 });
+    expect(find("Exterior Painting (Good)", "best").warranty_months).toBe(36);
+    // Interior rows were never part of the resync.
+    expect(find("Interior Painting: Standard / Premium / Ultimate", "better").product_name).toBe("Sherwin-Williams Duration");
   });
 
   it("adds, changes and removes a product", async () => {

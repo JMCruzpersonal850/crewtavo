@@ -12,6 +12,7 @@
 import { SALES } from "@crewtavo/core/roles";
 import { BOOKING_WEEK_DAYS, bookingDays, bookingLength, bookingOpenings, slotLabel, timeZoneLabel, type OpenSlot } from "@crewtavo/core/slots";
 import { addDays, arrivalWindowMin, localDate, zonedTimeToUtc } from "@crewtavo/core/time";
+import { brandColor } from "@crewtavo/core/social";
 import type { Env } from "../env";
 import { companyFooter, firstName, renderEmail } from "../lib/email";
 import { buildCalendar } from "../lib/ics";
@@ -227,7 +228,7 @@ export async function confirmBooking(
             co.name,
           ].join("\n\n");
         const text = words(hub);
-        const email = renderEmail({ companyName: co.name, logo: baseUrl ? logoImage(baseUrl, co.id, co.settings) : null, text, footer: companyFooter(co) });
+        const email = renderEmail({ companyName: co.name, logo: baseUrl ? logoImage(baseUrl, co.id, co.settings) : null, text, footer: companyFooter(co), color: brandColor(co.settings) ?? "#0f2a35", contact: [co.phone, co.email].filter(Boolean).join(" \u00b7 ") || null });
         const delivery = await sendToEach(people, (person) => sendEmail(env, { to: person.to, subject, text: email.text, html: email.html, replyTo: co.email ?? undefined, fromName: co.name }, co.id));
         if (delivery.went.length) {
           result.emailed = true;

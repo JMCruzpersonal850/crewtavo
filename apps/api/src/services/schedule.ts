@@ -213,7 +213,7 @@ export async function updateVisit(s: Scope, id: string, body: z.infer<typeof vis
   const { assignee_ids, equipment_ids, shift_series, forward_only, completed_at, from, ...fields } = body;
   const tapped = tapTime(fields.status, completed_at);
   const current =
-    (fields.status && (forward_only || crew)) || tapped
+    (fields.status && (forward_only || crew)) || tapped || fields.status === "en_route"
       ? must(await s.db.from("visits").select("status, completed_at").eq("id", id).eq("company_id", s.companyId).maybeSingle(), "Visit not found.")
       : null;
   if (fields.status && current && fields.status !== current.status) {
@@ -264,6 +264,14 @@ export async function updateVisit(s: Scope, id: string, body: z.infer<typeof vis
     if (!data.length && forward) return { ...must(await s.db.from("visits").select(VISIT_FIELDS).eq("id", id).maybeSingle(), "Visit not found."), skipped: true };
     if (!data.length) throw new HttpError(404, "Visit not found.");
     const now = data[0]!;
+    // On the way again after having been back on the schedule: the last trip's live place (and
+    // any Stop sharing on it) goes, so the client's map starts this trip clean. The delete
+    // policy covers the people who can send a visit out (the office, and the people on it);
+    // while a stop stands on the row, services/tracking.ts holds it, so this delete is what
+    // ends it.
+    if (fields.status === "en_route" && current && current.status !== "en_route") {
+      await s.db.from("visit_live_location").delete().eq("company_id", s.companyId).eq("visit_id", id);
+    }
     if (moved && now.status === "scheduled" && now.scheduled_on && !now.starts_at) await fitQuietly(s, [id], now.crew_id, now.scheduled_on);
     // Later days of the same multi-day job follow on the work days after it, keeping their own times
     // (and skipping the days the business doesn't work if the job didn't use them).

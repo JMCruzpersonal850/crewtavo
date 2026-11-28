@@ -6,6 +6,7 @@
  * talks to it, so it's tested on its own (test/jobPay.test.ts).
  */
 import { isLivePay, isSquareUnit, jobPayMethodLabel, jobPayStatusLabel, payLineAmount } from "@crewtavo/core/jobPay";
+import { isChangeOffer } from "@crewtavo/core/subOffers";
 import { toUnits } from "@crewtavo/core/money";
 import { PAPERWORK_REQUIREMENTS } from "@crewtavo/core/subs";
 import type { Tone } from "@/components/ui/StatusPill";
@@ -482,4 +483,57 @@ export function overCounted(
     }
   }
   return out;
+}
+
+/** A sub whose sign-in is on a job's visits, with how many of them. */
+export interface SubOnJob {
+  subcontractor_id: string;
+  name: string;
+  visits: number;
+  /**
+   * Their pay on the job that isn't in its costs yet — a draft, or an offer with no answer (a new
+   * price waiting on agreed pay counts at the agreed price, so it isn't one of these). Null when
+   * they have no pay on the job at all: it still has to be set up.
+   */
+  pay: { id: string; status: string } | null;
+}
+
+/** What public.job_pay_costs counts, as offers.ts's countsAsAgreed puts it for the same rows. */
+const countsInJobCosts = (p: { status: string; accepted_snapshot?: unknown }) =>
+  ["accepted", "done", "paid"].includes(p.status) || isChangeOffer(p);
+
+/**
+ * The subs working a job whose pay isn't in the job's costs: their sign-in is on one of its visits
+ * (put there from the schedule, not by agreed pay — agreed pay puts them on and counts by itself),
+ * and no pay of theirs counts in public.job_pay_costs yet. That lasts past setting pay up: a draft,
+ * or an offer the sub hasn't answered, counts for nothing there, so the flag stays — naming the pay
+ * — until it's agreed, done or paid. Until then what they're owed isn't in the job's costs, so its
+ * profit reads high and nothing says so.
+ * Each sub once, in the order their sign-in first appears on a visit; cancelled visits don't count.
+ */
+export function subsOnVisitsWithoutPay(
+  visits: readonly PayVisit[],
+  signIns: ReadonlyArray<{ user_id: string; subcontractor_id: string; name: string }>,
+  pays: ReadonlyArray<{ id: string; subcontractor_id?: string | null; status: string; accepted_snapshot?: unknown }>,
+): SubOnJob[] {
+  const byUser = new Map(signIns.map((s) => [s.user_id, s]));
+  const counted = new Set(pays.filter((p) => p.subcontractor_id && countsInJobCosts(p)).map((p) => p.subcontractor_id!));
+  const pending = new Map<string, { id: string; status: string }>();
+  for (const p of pays) {
+    if (p.subcontractor_id && isLivePay(p.status) && !countsInJobCosts(p) && !pending.has(p.subcontractor_id)) {
+      pending.set(p.subcontractor_id, { id: p.id, status: p.status });
+    }
+  }
+  const out = new Map<string, SubOnJob>();
+  for (const v of visits) {
+    if (v.status === "cancelled") continue;
+    for (const a of v.assignees ?? []) {
+      const sub = byUser.get(a.user_id);
+      if (!sub || counted.has(sub.subcontractor_id)) continue;
+      const was = out.get(sub.subcontractor_id);
+      if (was) was.visits += 1;
+      else out.set(sub.subcontractor_id, { subcontractor_id: sub.subcontractor_id, name: sub.name, visits: 1, pay: pending.get(sub.subcontractor_id) ?? null });
+    }
+  }
+  return [...out.values()];
 }

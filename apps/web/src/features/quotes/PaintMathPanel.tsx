@@ -9,7 +9,7 @@
  * shared totals never change shape), and packages offer the same scope Good / Better / Best
  * through the Hub's pick-and-sign options.
  */
-import { paintDetailFrom, paintProposalMath, type PaintProduct, type PaintSettings, type PaintSurfaceInput } from "@crewtavo/core/painting";
+import { paintAreaDetailFrom, paintDetailFrom, paintProposalMath, type PaintProduct, type PaintSettings, type PaintSurfaceInput } from "@crewtavo/core/painting";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -146,7 +146,9 @@ export function PaintMathPanel({ quoteId, lines, editable, hasOptions, onChanged
   const inputs: PaintSurfaceInput[] = paintLines.map(({ line, scope }) => {
     // Gallons round up per room: lines in the same room share its name as the key; a line in
     // no room keeps its own, so it rounds on its own as it did before rooms.
-    const base = { scope, quantity: Number(line.quantity), coats, room: paintDetailFrom(line.paint_detail).room ?? line.id };
+    // A line the one-screen builder wrote carries its own coats (in its paint_detail); it
+    // wins over the panel's pick, so the panel's gallons are the builder's gallons.
+    const base = { scope, quantity: Number(line.quantity), coats: paintAreaDetailFrom(line.paint_detail).coats ?? coats, room: paintDetailFrom(line.paint_detail).room ?? line.id };
     if (line.unit === "hr") return { ...base, laborHoursPerUnit: 1, product: null };
     if (line.unit === "ea" || line.unit === "visit" || line.unit === "job") {
       const cost = line.service_id ? serviceOf.get(line.service_id)?.unit_cost : null;

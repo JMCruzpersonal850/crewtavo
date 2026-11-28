@@ -5,6 +5,7 @@
  * booked, moved, cancelled, the reminder, on the way, and any rule of the business's own.
  */
 import { describeRuleSentence } from "@crewtavo/core/automations";
+import { liveTrackingOn } from "@crewtavo/core/companySettings";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { FormError } from "@/components/ui/Field";
@@ -13,6 +14,7 @@ import { Section } from "@/components/ui/Section";
 import { SectionSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
 import { supabase, unwrap } from "@/lib/api";
+import { loadSettings } from "@/lib/companySettings";
 import { useSession } from "@/lib/session";
 import type { RuleRow } from "../automations/AutomationsPage";
 import { ContactMessagesSwitch } from "../clients/ContactMessages";
@@ -46,6 +48,19 @@ export function ClientNotificationSettings() {
       unwrap(await supabase().from("automation_rules").insert({ ...recipe, conditions: recipe.conditions as never, actions: recipe.actions as never, enabled, company_id: company.id }));
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["automation-rules", company.id] }),
+  });
+  // The live map in the on-my-way text (settings.tracking.live): not a rule, so it isn't in
+  // Automations — it rides along with the message above, and the text leaves the link out
+  // while it's off.
+  const tracking = useMutation({
+    meta: { inline: true, success: (_: unknown, live: boolean) => (live ? "Live tracking on" : "Live tracking off") },
+    mutationFn: async (live: boolean) => {
+      // Read the settings fresh, so a change someone made meanwhile isn't undone.
+      const current = await loadSettings(company.id);
+      const next = { ...((current.tracking ?? {}) as Record<string, unknown>), live };
+      unwrap(await supabase().from("companies").update({ settings: { ...current, tracking: next } as never }).eq("id", company.id));
+    },
+    onSettled: () => session.refresh(),
   });
 
   if (rules.isPending) return <SectionSkeleton rows={6} />;
@@ -98,6 +113,18 @@ export function ClientNotificationSettings() {
         <p className="set-note">
           A client who asks to move or cancel a visit in the Client Hub is always emailed your answer when you approve or decline it. That change isn't told a second time by the messages above.
         </p>
+      </Section>
+      <Section level={3} title="Live tracking">
+        <div className="set-rows">
+          <SwitchRow
+            label="Live map in the on-my-way text"
+            hint="While a crew is on the way, the text carries a link to a live map of where they are, until the visit starts. Only the latest place is kept — there's no record of the trip afterwards — and each worker is told once, before their phone first shares. Turn it off and the text goes out with no link."
+            checked={tracking.isPending ? tracking.variables : liveTrackingOn(company.settings)}
+            disabled={tracking.isPending}
+            onChange={(live) => tracking.mutate(live)}
+          />
+        </div>
+        <FormError error={tracking.error} />
       </Section>
       <Section level={3} title="Requests, quotes, invoices and reviews">
         <p className="set-note">The rest of what Crewtavo sends your clients for you, each a rule in <Link to="/automations">Automations</Link> too.</p>
